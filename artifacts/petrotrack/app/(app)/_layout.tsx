@@ -2,6 +2,12 @@ import { Redirect, Stack } from 'expo-router';
 import React from 'react';
 
 import { useApp } from '@/context/AppContext';
+import { useNotifications } from '@/hooks/useNotifications';
+
+function NotificationRunner() {
+  useNotifications();
+  return null;
+}
 
 export default function AppLayout() {
   const { role } = useApp();
@@ -11,6 +17,9 @@ export default function AppLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }} />
+    <>
+      <NotificationRunner />
+      <Stack screenOptions={{ headerShown: false }} />
+    </>
   );
 }
