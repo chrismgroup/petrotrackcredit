@@ -257,6 +257,7 @@ interface AppContextType {
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
   sendMessage: (to: Role, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => void;
+  addSystemNotification: (from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => void;
   markRead: (peer: Role) => void;
   approveExpense: (id: number) => void;
   rejectExpense: (id: number) => void;
@@ -371,6 +372,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ ...entry, id: genId(), ts: nowTs() }, ...a]);
   }, []);
 
+  const addSystemNotification = useCallback((from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => {
+    if (!role) return;
+    const key = chatKey(from, role);
+    const newMsg: Message = { ...msg, id: genId(), ts: nowTime(), read: false };
+    setMessages(m => ({ ...m, [key]: [...(m[key] || []), newMsg] }));
+  }, [role]);
+
   const getConversation = useCallback((peer: Role): Message[] => {
     if (!role) return [];
     return messages[chatKey(role, peer)] || [];
@@ -388,8 +396,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       role, userName, login, logout, prices, tanks, lpgTanks, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
       audit, departments, updatePrice, addDip, addDelivery, addMaintenance, addSales,
-      sendMessage, markRead, approveExpense, rejectExpense, addStaff, toggleStaff,
-      addBranch, addAudit, getConversation, unreadCount,
+      sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
+      addStaff, toggleStaff, addBranch, addAudit, getConversation, unreadCount,
     }}>
       {children}
     </AppContext.Provider>
