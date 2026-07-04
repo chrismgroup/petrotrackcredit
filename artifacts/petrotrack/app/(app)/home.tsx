@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { PriceTicker } from '@/components/PriceTicker';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   ROLE_COLORS, UINFO, fmt, fmtDateTime, useApp,
@@ -87,8 +88,10 @@ export default function HomeScreen() {
 
   const lastDip = dips[0];
 
+  const showTicker = role === 'ceo' || role === 'md' || role === 'mgr' || role === 'mktg' || role === 'csm';
+
   return (
-    <ScreenLayout title="Overview">
+    <ScreenLayout title="Overview" subHeader={showTicker ? <PriceTicker /> : undefined}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={[styles.greeting, { backgroundColor: roleColor + '18', borderColor: roleColor + '33' }]}>
           <View>

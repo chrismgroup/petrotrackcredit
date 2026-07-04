@@ -9,13 +9,15 @@ interface Props {
   title: string;
   children: React.ReactNode;
   rightAction?: React.ReactNode;
+  subHeader?: React.ReactNode;
 }
 
-export function ScreenLayout({ title, children, rightAction }: Props) {
+export function ScreenLayout({ title, children, rightAction, subHeader }: Props) {
   const colors = useColors();
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Header title={title} rightAction={rightAction} />
+      {subHeader}
       <View style={styles.content}>{children}</View>
       <TabBar />
     </View>
