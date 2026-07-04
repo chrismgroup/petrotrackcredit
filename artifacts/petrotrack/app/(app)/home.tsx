@@ -4,6 +4,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { PriceTicker } from '@/components/PriceTicker';
+import { SalesForecastCard } from '@/components/SalesForecastCard';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   ROLE_COLORS, UINFO, fmt, fmtDateTime, useApp,
