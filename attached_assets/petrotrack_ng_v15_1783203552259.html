@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=420,initial-scale=1">
+<title>PetroTrack NG v12 — Admin</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;background:#ece9e4;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:14px}
+:root{--g:#1a6e3c;--gd:#155c32;--p:#4527a0;--b:#185FA5;--a:#BA7517;--co:#D85A30;--r:#A32D2D;--t:#0F6E56}
+.app{width:100%;max-width:420px;min-height:680px;background:#fff;border-radius:20px;border:.5px solid #e5e5e3;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+.sb{padding:7px 15px 5px;display:flex;justify-content:space-between;align-items:center}
+.sb-t{color:#fff;font-size:11px;font-weight:500}
+.rb{background:rgba(255,255,255,.2);padding:1px 8px;border-radius:20px;font-size:10px;color:#fff}
+.tb{padding:0 15px 10px;display:flex;align-items:center;gap:9px}
+.ttl{color:#fff;font-size:15px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb i{color:rgba(255,255,255,.85);font-size:19px;cursor:pointer}
+.bd{flex:1;overflow-y:auto;padding:13px 13px 70px}
+.bn{background:#fff;border-top:.5px solid #e5e5e3;padding:7px 2px 11px;display:flex;justify-content:space-around;flex-shrink:0}
+.ni{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:3px 5px;border-radius:8px;min-width:36px;position:relative}
+.ni:hover{background:#f5f5f3}
+.ni i{font-size:17px;color:#6b6b6b}
+.ni span{font-size:9px;color:#6b6b6b;text-align:center;line-height:1.2}
+.ni.on i{color:var(--g)}.ni.on span{color:var(--g);font-weight:700}
+.nbg{position:absolute;top:0;right:0;min-width:14px;height:14px;border-radius:7px;background:#E24B4A;color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 2px;border:1.5px solid #fff}
+.bw{position:relative;display:inline-flex}
+.ndot{width:8px;height:8px;border-radius:50%;background:#E24B4A;position:absolute;top:-2px;right:-2px;border:1.5px solid;display:none}
+.card{background:#fff;border:.5px solid #e5e5e3;border-radius:12px;padding:11px 13px;margin-bottom:9px}
+.cr{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:.5px solid #e5e5e3}
+.cr:last-child{border-bottom:none}
+.cl{font-size:12px;color:#6b6b6b}
+.cv{font-size:12px;font-weight:500;color:#1a1a1a}
+.mg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.mc{background:#f5f5f3;border-radius:8px;padding:10px 11px}
+.ml{font-size:11px;color:#6b6b6b;margin-bottom:2px}
+.mv{font-size:19px;font-weight:600;color:#1a1a1a}
+.ms{font-size:10px;color:#9b9b99;margin-top:1px}
+.stl{font-size:10px;font-weight:600;color:#6b6b6b;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px}
+.badge{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:500;white-space:nowrap;display:inline-block}
+.bg{background:#EAF3DE;color:#27500A}.ba{background:#FAEEDA;color:#633806}.br{background:#FCEBEB;color:#791F1F}.bb{background:#E6F1FB;color:#0C447C}.bv{background:#EEEDFE;color:#3C3489}.bgr{background:#F1EFE8;color:#444441}
+.al{padding:8px 11px;border-radius:8px;font-size:11px;margin-bottom:8px;display:flex;align-items:flex-start;gap:6px;line-height:1.5}
+.ag{background:#EAF3DE;color:#27500A;border:.5px solid #C0DD97}
+.aw{background:#FAEEDA;color:#633806;border:.5px solid #FAC775}
+.ar{background:#FCEBEB;color:#791F1F;border:.5px solid #F7C1C1}
+.ai{background:#E6F1FB;color:#0C447C;border:.5px solid #B5D4F4}
+.av{background:#EEEDFE;color:#3C3489;border:.5px solid #CECBF6}
+.aco{background:#FAECE7;color:#712B13;border:.5px solid #F5C4B3}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 13px;border-radius:8px;border:.5px solid #d4d4d2;background:transparent;color:#1a1a1a;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .1s}
+.btn:hover{background:#f5f5f3}
+.btnp{background:var(--g);color:#fff;border-color:var(--g)}.btnp:hover{background:var(--gd)}
+.btnv{background:var(--p);color:#fff;border-color:var(--p)}
+.btnb{background:var(--b);color:#fff;border-color:var(--b)}
+.btnr{background:var(--r);color:#fff;border-color:var(--r)}
+.btnmk{background:var(--co);color:#fff;border-color:var(--co)}
+.fw{width:100%;justify-content:center;margin-bottom:8px}
+.ir{margin-bottom:9px}
+.ir label{font-size:11px;color:#6b6b6b;display:block;margin-bottom:2px}
+.ir input,.ir select,.ir textarea{width:100%;padding:7px 10px;border:.5px solid #d4d4d2;border-radius:8px;font-size:12px;background:#fff;color:#1a1a1a;font-family:inherit;outline:none}
+.ir input:focus,.ir select:focus{border-color:var(--g)}
+.ir input[readonly]{background:#f5f5f3;color:#6b6b6b}
+.ir textarea{min-height:50px;resize:vertical}
+.pb{height:5px;background:#f5f5f3;border-radius:3px;overflow:hidden;margin-top:3px}
+.pf{height:100%;border-radius:3px}
+.dh{margin:-11px -13px 11px;padding:8px 13px;display:flex;align-items:center;gap:6px;border-radius:12px 12px 0 0}
+.dh i{font-size:15px;color:rgba(255,255,255,.85)}
+.dh span{font-size:12px;font-weight:600;color:#fff}
+.li{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:.5px solid #e5e5e3}
+.li:last-child{border-bottom:none}
+.lic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.lic i{font-size:14px}
+.lib{flex:1}
+.lit{font-size:12px;font-weight:500}
+.lis{font-size:10px;color:#6b6b6b;margin-top:1px}
+.tab-bar{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.tab-bar::-webkit-scrollbar{display:none}
+.tab{padding:5px 10px;border-radius:20px;font-size:11px;cursor:pointer;white-space:nowrap;border:.5px solid #d4d4d2;background:transparent;color:#6b6b6b;font-family:inherit}
+.tab.on{background:var(--g);color:#fff;border-color:var(--g)}
+.tab.onv{background:var(--p);color:#fff;border-color:var(--p)}
+.mchip{background:#f5f5f3;border-radius:5px;padding:2px 6px;font-size:10px;color:#6b6b6b;display:inline-flex;align-items:center;gap:2px;margin:2px}
+.upz{border:1.5px dashed #d4d4d2;border-radius:8px;padding:10px;text-align:center;cursor:pointer;margin-bottom:8px}
+.upz:active{background:#f5f5f3}
+.upz i{font-size:20px;color:#9b9b99;display:block;margin-bottom:2px}
+.upz span{font-size:11px;color:#6b6b6b}
+.avt{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;position:relative}
+.avt-sm{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0;position:relative}
+.toast{color:#fff;font-size:11px;padding:8px 13px;border-radius:8px;margin-bottom:9px;text-align:center;animation:sli .3s ease}
+@keyframes sli{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.anim{animation:sli .3s ease}
+.ldot{width:7px;height:7px;border-radius:50%;background:#3B6D11;display:inline-block;margin-right:4px}
+.pulse{animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.admin-banner{background:linear-gradient(135deg,#0a2318,#1a6e3c);border-radius:12px;padding:14px;margin-bottom:10px;color:#fff}
+.cli{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:.5px solid #e5e5e3;cursor:pointer}
+.cli:hover{background:#f5f5f3;margin:0 -13px;padding:9px 13px;border-radius:8px;border-bottom-color:transparent}
+.cli:last-child{border-bottom:none}
+.msgs-wrap{display:flex;flex-direction:column;gap:7px;margin-bottom:8px;max-height:340px;overflow-y:auto}
+.mm{align-self:flex-end;max-width:82%}
+.mt{align-self:flex-start;display:flex;align-items:flex-end;gap:5px;max-width:82%}
+.bm{background:var(--g);color:#fff;border-radius:14px 14px 3px 14px;padding:8px 11px;font-size:12px;line-height:1.5}
+.bt2{background:#f5f5f3;color:#1a1a1a;border-radius:14px 14px 14px 3px;padding:8px 11px;font-size:12px;line-height:1.5}
+.breq{background:linear-gradient(135deg,var(--g),var(--b));color:#fff;border-radius:14px;padding:8px 11px;font-size:12px;line-height:1.5}
+.balrt{background:linear-gradient(135deg,var(--r),var(--a));color:#fff;border-radius:14px;padding:8px 11px;font-size:12px;line-height:1.5}
+.rcard{background:rgba(255,255,255,.2);border-radius:8px;padding:6px 9px;margin-top:5px;font-size:11px}
+.mts{font-size:9px;color:#9b9b99;margin-top:2px;text-align:right}
+.cin-row{display:flex;align-items:center;gap:6px;padding:7px 10px;border-top:.5px solid #e5e5e3;margin:5px -13px -11px;background:#fff;border-radius:0 0 12px 12px}
+.cin{flex:1;background:#f5f5f3;border-radius:20px;padding:7px 13px;font-size:12px;font-family:inherit;outline:none;border:none;color:#1a1a1a}
+.csend{width:34px;height:34px;border-radius:50%;background:var(--g);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.csend i{color:#fff;font-size:17px}
+.cadd{width:34px;height:34px;border-radius:50%;background:#f5f5f3;border:.5px solid #d4d4d2;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.qchips{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.qchip{padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;border:.5px solid #d4d4d2;background:transparent;color:#6b6b6b;font-family:inherit}
+.qchip:hover{background:var(--g);color:#fff;border-color:var(--g)}
+.ro-g{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px}
+.ro{border:.5px solid #d4d4d2;border-radius:10px;padding:9px 7px;cursor:pointer;text-align:center;transition:all .15s}
+.ro i{font-size:18px;display:block;margin-bottom:2px;color:#6b6b6b}
+.ro span{font-size:11px;color:#1a1a1a}
+.sg{border-color:var(--g);background:#EAF3DE}.sg i{color:var(--g)}
+.sp{border-color:var(--p);background:#EEEDFE}.sp i{color:var(--p)}
+.sco{border-color:var(--co);background:#FAECE7}.sco i{color:var(--co)}
+.sb2{border-color:var(--b);background:#E6F1FB}.sb2 i{color:var(--b)}
+.sa{border-color:var(--a);background:#FAEEDA}.sa i{color:var(--a)}
+.admin-ro{background:linear-gradient(135deg,#0a2318,#1a6e3c);border-radius:10px;padding:11px 10px;cursor:pointer;text-align:center;border:.5px solid #1a6e3c;grid-column:1/-1}
+.admin-ro i{font-size:22px;color:#FFD700;display:block;margin-bottom:3px}
+.admin-ro span{font-size:12px;color:#fff;font-weight:600}
+.admin-ro .sub{font-size:10px;color:rgba(255,255,255,.65);margin-top:2px;display:block}
+.unread-dot{min-width:18px;height:18px;border-radius:9px;background:var(--g);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;flex-shrink:0}
+.vb{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:500}
+.vok{background:#EAF3DE;color:#27500A}.vw{background:#FAEEDA;color:#633806}.vbad{background:#FCEBEB;color:#791F1F}
+</style>
+</head>
+<body>
+<div class="app" id="APP">
+
+<!-- LOGIN -->
+<div id="LV">
+  <div class="sb" style="background:var(--g)"><span class="sb-t">PetroTrack NG</span><span class="sb-t" style="opacity:.55">v12.0.1</span></div>
+  <div style="padding:20px 18px 16px">
+    <div style="width:52px;height:52px;background:var(--g);border-radius:13px;display:flex;align-items:center;justify-content:center;margin:0 auto 13px"><i class="ti ti-gas-station" style="color:#fff;font-size:27px"></i></div>
+    <div style="text-align:center;font-size:19px;font-weight:700;margin-bottom:2px">PetroTrack NG</div>
+    <div style="text-align:center;font-size:12px;color:#6b6b6b;margin-bottom:16px">Fuel Station Management &middot; Nigeria</div>
+    <div class="ir"><label>Your name</label><input id="Ln" placeholder="Enter your name"></div>
+    <div class="ir"><label>Email / staff ID</label><input id="Le" placeholder="admin@petrotrack.ng"></div>
+    <div style="font-size:11px;color:#6b6b6b;margin-bottom:7px">Select your role:</div>
+    <div class="ro-g">
+      <div class="admin-ro" onclick="selR('admin',this)">
+        <i class="ti ti-shield-lock"></i>
+        <span>System Administrator</span>
+        <span class="sub">Full access &mdash; all modules &amp; settings</span>
+      </div>
+      <div class="ro sg" onclick="selR('ceo',this)"><i class="ti ti-crown" style="color:var(--g)"></i><span>CEO</span></div>
+      <div class="ro" onclick="selR('md',this)"><i class="ti ti-briefcase" style="color:var(--p)"></i><span>Managing Director</span></div>
+      <div class="ro" onclick="selR('mktg',this)"><i class="ti ti-speakerphone" style="color:var(--co)"></i><span>Marketing Manager</span></div>
+      <div class="ro" onclick="selR('csm',this)"><i class="ti ti-building-community" style="color:var(--p)"></i><span>Corp. Services Mgr</span></div>
+      <div class="ro" onclick="selR('acc',this)"><i class="ti ti-calculator" style="color:var(--b)"></i><span>Accountant</span></div>
+      <div class="ro" onclick="selR('mgr',this)"><i class="ti ti-layout-dashboard" style="color:var(--a)"></i><span>Station Manager</span></div>
+      <div class="ro" onclick="selR('att',this)" style="grid-column:1/-1"><i class="ti ti-user" style="color:var(--a)"></i><span>Pump Attendant</span></div>
+    </div>
+    <button class="btn btnp fw" onclick="doLogin()"><i class="ti ti-login"></i> Sign in as <span id="Lrl">Administrator</span></button>
+    <div style="text-align:center;font-size:11px;color:#9b9b99;margin-top:5px">Sign out anytime to switch roles</div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="MV" style="display:none;flex-direction:column;flex:1">
+  <div class="sb" id="TOPBAR"><span class="sb-t">PetroTrack NG</span><span class="rb" id="RB">—</span></div>
+  <div class="tb" id="TOOLBAR">
+    <i class="ti ti-menu-2"></i>
+    <span class="ttl" id="ST">Overview</span>
+    <div class="bw"><i class="ti ti-bell" onclick="showN()" style="cursor:pointer"></i><div class="ndot" id="NDOT"></div></div>
+    <i class="ti ti-logout" onclick="doLogout()" style="cursor:pointer"></i>
+  </div>
+  <div class="bd" id="BD"></div>
+  <nav class="bn" id="BN"></nav>
+</div>
+</div>
+<script>
+/* === DATA === */
+var PRICES = {PMS:830,AGO:1050,DPK:700,LPG:1200};
+var RL = {admin:'Administrator',ceo:'Chief Executive Officer',md:'Managing Director',mktg:'Marketing Manager',csm:'Corp. Services Mgr',acc:'Accountant',mgr:'Station Manager',att:'Pump Attendant'};
+var BAR = {admin:'linear-gradient(135deg,#0a2318,#1a6e3c)',ceo:'#1a6e3c',md:'#4527a0',mktg:'#D85A30',csm:'#0F6E56',acc:'#185FA5',mgr:'#BA7517',att:'#633806'};
+var UINFO = {
+  admin:{name:'System Admin',color:'#0a2318',initials:'SA',role:'Admin',online:true},
+  ceo:{name:'Amaka Osei',color:'#1a6e3c',initials:'AO',role:'CEO',online:true},
+  md:{name:'Adaeze Obi',color:'#4527a0',initials:'AD',role:'MD',online:true},
+  mktg:{name:'Funmi Adesanya',color:'#D85A30',initials:'FA',role:'Mktg',online:false},
+  csm:{name:'Ngozi Eze',color:'#0F6E56',initials:'NE',role:'CSM',online:true},
+  acc:{name:'Grace Adeyemi',color:'#185FA5',initials:'GA',role:'Acct',online:true},
+  mgr:{name:'Chukwuma Adeyemi',color:'#BA7517',initials:'CA',role:'Mgr',online:true},
+  att:{name:'Emeka Okafor',color:'#633806',initials:'EO',role:'Att',online:true}
+};
+var NAVDEF = {
+  admin:[{id:'home',i:'ti-shield-lock',l:'Admin'},{id:'users',i:'ti-users',l:'Users'},{id:'depts',i:'ti-layout-grid',l:'Depts'},{id:'audit',i:'ti-list-details',l:'Audit'},{id:'settings',i:'ti-settings',l:'Settings'}],
+  ceo:[{id:'home',i:'ti-crown',l:'Home'},{id:'tanks',i:'ti-cylinder',l:'Tanks'},{id:'msgs',i:'ti-messages',l:'Chat'},{id:'acct',i:'ti-calculator',l:'Accounts'},{id:'exprpt',i:'ti-report-analytics',l:'Reports'},{id:'mktg',i:'ti-speakerphone',l:'Mktg'}],
+  md:[{id:'ops',i:'ti-settings-2',l:'Ops'},{id:'branches',i:'ti-building-store',l:'Branches'},{id:'msgs',i:'ti-messages',l:'Chat'},{id:'exprpt',i:'ti-report-analytics',l:'Reports'},{id:'sales',i:'ti-chart-bar',l:'Sales'}],
+  mktg:[{id:'mktg',i:'ti-speakerphone',l:'Marketing'},{id:'msgs',i:'ti-messages',l:'Chat'},{id:'sales',i:'ti-chart-bar',l:'Sales'}],
+  csm:[{id:'corp',i:'ti-building-community',l:'Corporate'},{id:'branches',i:'ti-building-store',l:'Branches'},{id:'msgs',i:'ti-messages',l:'Chat'},{id:'maint',i:'ti-tool',l:'Maintain'}],
+  acc:[{id:'acct',i:'ti-calculator',l:'Accounts'},{id:'exp',i:'ti-receipt',l:'Expenses'},{id:'msgs',i:'ti-messages',l:'Chat'},{id:'exprpt',i:'ti-report-analytics',l:'Reports'},{id:'sales',i:'ti-chart-bar',l:'Sales'}],
+  mgr:[{id:'tanks',i:'ti-cylinder',l:'Tank Dip'},{id:'budget',i:'ti-wallet',l:'Budget'},{id:'msgs',i:'ti-messages',l:'Chat'},{id:'maint',i:'ti-tool',l:'Maintain'},{id:'sales',i:'ti-chart-bar',l:'Sales'}],
+  att:[{id:'sales',i:'ti-chart-bar',l:'Sales'},{id:'msgs',i:'ti-messages',l:'Chat'},{id:'maint',i:'ti-tool',l:'Report'}]
+};
+var TANKS = [
+  {id:'T1',name:'PMS Tank 1',prod:'PMS',cap:25000,dip:2500,op:18200,rv:0,sl:1600},
+  {id:'T2',name:'PMS Tank 2',prod:'PMS',cap:25000,dip:2500,op:15800,rv:0,sl:0},
+  {id:'T3',name:'AGO Tank 3',prod:'AGO',cap:30000,dip:3000,op:12600,rv:0,sl:520},
+  {id:'T4',name:'DPK Tank 4',prod:'DPK',cap:20000,dip:2000,op:16200,rv:0,sl:120}
+];
+var LPGT = [{id:'L1',name:'LPG Tank 1',cap:5000,op:3200,rv:0,sl:400},{id:'L2',name:'LPG Tank 2',cap:3000,op:1840,rv:0,sl:0}];
+var DIPS = [{id:1,dt:'2025-06-10T05:50',by:'Chukwuma Adeyemi',rd:{T1:1456,T2:1264,T3:1260,T4:1620},lpg:{L1:64,L2:58},obs:'T3 water sheen noted.',media:[]}];
+var RECS = [{id:1,dt:'2025-06-09T10:30',sup:'NNPCL Abuja',prod:'AGO',wb:'WB-2025-041',ord:20000,rec:19600,st:'short',notes:'400L short.',media:[{n:'meter.jpg',t:'img'},{n:'offload.mp4',t:'vid'}]}];
+var MAINT = [
+  {id:1,title:'Pump #3 nozzle leak',pri:'Urgent',by:'Emeka',date:'2025-06-07',st:'Open',media:[]},
+  {id:2,title:'Generator oil service',pri:'Medium',by:'Bello',date:'2025-06-05',st:'Open',media:[]},
+  {id:3,title:'Pump #1 calibration',pri:'Low',by:'Chukwuma',date:'2025-05-28',st:'Done',cost:42000,media:[]}
+];
+var SALES = [
+  {id:1,pump:'Pump #1 PMS',by:'Emeka',L:880,price:830,dt:'2025-06-10T07:30'},
+  {id:2,pump:'Pump #3 AGO',by:'Bello',L:520,price:1050,dt:'2025-06-10T08:15'}
+];
+var DOCS = [
+  {id:1,name:'NESREA Env. Permit',cat:'Permit',iss:'NESREA',exp:'2025-06-05',ref:'NESREA/EI/0567'},
+  {id:2,name:'NMDPRA Retail Licence',cat:'Licence',iss:'NMDPRA',exp:'2025-06-20',ref:'NMD/R/ABJ/0234'},
+  {id:3,name:'Fire Safety Certificate',cat:'Certificate',iss:'FSCE Abuja',exp:'2025-08-10',ref:'FSCE/2024/441'},
+  {id:4,name:'CAC Registration',cat:'Registration',iss:'CAC Nigeria',exp:'2026-03-01',ref:'RC-0987654'}
+];
+var STAFF = [
+  {id:1,name:'Amaka Osei',role:'CEO',sal:1200000,st:'Active',email:'ceo@petrotrack.ng'},
+  {id:2,name:'Adaeze Obi',role:'Managing Director',sal:650000,st:'Active',email:'md@petrotrack.ng'},
+  {id:3,name:'Funmi Adesanya',role:'Marketing Manager',sal:420000,st:'Active',email:'mktg@petrotrack.ng'},
+  {id:4,name:'Ngozi Eze',role:'Corp. Services Mgr',sal:380000,st:'Active',email:'csm@petrotrack.ng'},
+  {id:5,name:'Grace Adeyemi',role:'Accountant',sal:250000,st:'Active',email:'acc@petrotrack.ng'},
+  {id:6,name:'Chukwuma Adeyemi',role:'Station Manager',sal:280000,st:'Active',email:'mgr@petrotrack.ng'},
+  {id:7,name:'Emeka Okafor',role:'Pump Attendant',sal:120000,st:'Active',email:'emeka@petrotrack.ng'},
+  {id:8,name:'Bello Abubakar',role:'Pump Attendant',sal:120000,st:'Active',email:'bello@petrotrack.ng'}
+];
+var BRANCHES = [
+  {id:'HQ',name:'HQ — Abuja CBD',st:'Active',rev:18400000,mgr:'Adaeze Obi',pumps:4,tanks:4},
+  {id:'B1',name:'Maitama Branch',st:'Active',rev:11200000,mgr:'Chukwuma Adeyemi',pumps:3,tanks:3},
+  {id:'B2',name:'Lugbe Branch',st:'Pending',rev:0,mgr:'',pumps:2,tanks:2}
+];
+var DEPTS = [
+  {id:'d1',name:'Operations',icon:'ti-settings-2',col:{bg:'#EAF3DE',fg:'#27500A'},roles:['md','mgr'],sys:true},
+  {id:'d2',name:'Tank dipping',icon:'ti-cylinder',col:{bg:'#E6F1FB',fg:'#0C447C'},roles:['ceo','md','csm','acc','mgr'],sys:true},
+  {id:'d3',name:'Accounting',icon:'ti-calculator',col:{bg:'#EEEDFE',fg:'#3C3489'},roles:['ceo','md','csm','acc'],sys:true},
+  {id:'d4',name:'Corporate services',icon:'ti-building-community',col:{bg:'#E1F5EE',fg:'#085041'},roles:['ceo','csm'],sys:true},
+  {id:'d5',name:'Marketing & Market Intel',icon:'ti-speakerphone',col:{bg:'#FAECE7',fg:'#712B13'},roles:['ceo','md'],sys:true},
+  {id:'d6',name:'Branches',icon:'ti-building-store',col:{bg:'#EAF3DE',fg:'#27500A'},roles:['ceo','md','csm','acc','mgr'],sys:true},
+  {id:'d7',name:'Maintenance',icon:'ti-tool',col:{bg:'#FAEEDA',fg:'#633806'},roles:['ceo','md','csm','acc','mgr','att'],sys:true},
+  {id:'d8',name:'Sales',icon:'ti-chart-bar',col:{bg:'#E6F1FB',fg:'#0C447C'},roles:['ceo','md','csm','acc','mgr','att'],sys:true}
+];
+var AUDIT = [
+  {id:1,action:'User login',user:'Adaeze Obi (MD)',detail:'Successful — Abuja',ts:'2025-06-10T06:02'},
+  {id:2,action:'Price update',user:'Adaeze Obi (MD)',detail:'PMS set to NGN 830/L — synced all forms',ts:'2025-06-10T06:30'},
+  {id:3,action:'Dip submitted',user:'Chukwuma Adeyemi (Mgr)',detail:'All 6 tanks dipped. T3 anomaly flagged.',ts:'2025-06-10T05:52'},
+  {id:4,action:'Short delivery',user:'Chukwuma Adeyemi (Mgr)',detail:'AGO WB-2025-041 — 400L dispute raised',ts:'2025-06-10T09:47'},
+  {id:5,action:'Sales entry',user:'Emeka Okafor (Att)',detail:'Pump #1 PMS — 880L',ts:'2025-06-10T07:30'},
+  {id:6,action:'Message sent',user:'Ngozi Eze (CSM)',detail:'Compliance alert to CEO — NMDPRA licence',ts:'2025-06-10T13:02'},
+  {id:7,action:'Maintenance request',user:'Emeka Okafor (Att)',detail:'Pump #3 nozzle leak — Urgent',ts:'2025-06-07T10:30'}
+];
+var SYSSET = {co:'PetroTrack Petroleum Ltd',addr:'Plot 14, Cadastral Zone C12, Abuja FCT',tin:'20-34567-0001',rc:'RC-0987654',vat:7.5,timeout:30,backup:'Daily',sms:true,email:true,version:'14.0.0',dbSize:'247 MB',lastBackup:'2025-06-10T02:00'};
+var EXP_CATS=['Generator fuel','Maintenance & repairs','Utilities (EKEDC/water)','Staff welfare','Office supplies','Security & guarding','Transport & logistics','FIRS / regulatory fees','Miscellaneous'];
+var BUDGETS=[
+  {id:1,month:6,year:2025,label:'June 2025',by:'mgr',byName:'Chukwuma Adeyemi',
+   items:[{cat:'Generator fuel',amt:150000},{cat:'Security & guarding',amt:189000},{cat:'Utilities (EKEDC/water)',amt:120000},{cat:'Staff welfare',amt:48000},{cat:'Maintenance & repairs',amt:85000},{cat:'Office supplies',amt:20000},{cat:'Transport & logistics',amt:15000},{cat:'Miscellaneous',amt:10000}],
+   correctedItems:[],total:637000,correctedTotal:0,status:'fully_approved',
+   workflow:[
+     {stage:'Submitted',by:'Chukwuma Adeyemi',role:'mgr',dt:'2025-05-28T09:00',action:'submit',note:'June 2025 monthly operating budget request.'},
+     {stage:'Accountant reviewed',by:'Grace Adeyemi',role:'acc',dt:'2025-05-30T14:00',action:'forward',note:'Reviewed — no corrections needed. Forwarded to MD and CEO.'},
+     {stage:'MD approved',by:'Adaeze Obi',role:'md',dt:'2025-05-31T10:00',action:'approve',note:'Approved. Ensure all expenses are properly documented.'},
+     {stage:'CEO final approval',by:'Amaka Osei',role:'ceo',dt:'2025-05-31T15:30',action:'approve',note:'Final approval granted. Station Manager may proceed.'}
+   ]},
+  {id:2,month:7,year:2025,label:'July 2025',by:'mgr',byName:'Chukwuma Adeyemi',
+   items:[{cat:'Generator fuel',amt:165000},{cat:'Security & guarding',amt:189000},{cat:'Utilities (EKEDC/water)',amt:130000},{cat:'Staff welfare',amt:52000},{cat:'Maintenance & repairs',amt:90000},{cat:'Office supplies',amt:22000},{cat:'Transport & logistics',amt:18000},{cat:'Miscellaneous',amt:12000}],
+   correctedItems:[],total:678000,correctedTotal:0,status:'acc_forwarded',
+   workflow:[
+     {stage:'Submitted',by:'Chukwuma Adeyemi',role:'mgr',dt:'2025-06-08T09:00',action:'submit',note:'July 2025 budget — generator fuel increased due to NNPCL price hike.'},
+     {stage:'Accountant reviewed',by:'Grace Adeyemi',role:'acc',dt:'2025-06-09T14:00',action:'forward',note:'Reviewed. Miscellaneous corrected from NGN 12,000 to NGN 8,000. Forwarded to MD and CEO.'}
+   ]},
+  {id:3,month:8,year:2025,label:'August 2025',by:'mgr',byName:'Chukwuma Adeyemi',
+   items:[{cat:'Generator fuel',amt:170000},{cat:'Security & guarding',amt:200000},{cat:'Utilities (EKEDC/water)',amt:135000},{cat:'Staff welfare',amt:55000},{cat:'Maintenance & repairs',amt:95000},{cat:'Office supplies',amt:25000},{cat:'Transport & logistics',amt:20000},{cat:'Miscellaneous',amt:15000}],
+   correctedItems:[],total:715000,correctedTotal:0,status:'submitted',
+   workflow:[
+     {stage:'Submitted',by:'Chukwuma Adeyemi',role:'mgr',dt:'2025-06-10T11:00',action:'submit',note:'August 2025 budget. Security increased — new contract with Omega Guard Services.'}
+   ]}
+];
+var EXPENSES=[
+  {id:1,dt:'2025-06-10T07:15',cat:'Generator fuel',desc:'AGO for gen set — 50L offload',amt:52500,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-10T09:00',budgetId:1},
+  {id:2,dt:'2025-06-10T09:00',cat:'Security & guarding',desc:'Daily security allowance — 3 guards',amt:9000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-10T09:30',budgetId:1},
+  {id:3,dt:'2025-06-10T11:30',cat:'Office supplies',desc:'Printer paper, receipt books, pens',amt:14500,by:'mgr',byName:'Chukwuma Adeyemi',status:'pending',budgetId:1},
+  {id:4,dt:'2025-06-10T14:00',cat:'Staff welfare',desc:'Staff lunch — 8 persons',amt:16000,by:'mgr',byName:'Chukwuma Adeyemi',status:'pending',budgetId:1},
+  {id:5,dt:'2025-06-09T08:00',cat:'Maintenance & repairs',desc:'Pump #1 seal replacement — AutoFix Nigeria',amt:42000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-09T11:00',budgetId:1},
+  {id:6,dt:'2025-06-09T14:00',cat:'Utilities (EKEDC/water)',desc:'EKEDC prepaid token recharge',amt:35000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-09T16:00',budgetId:1},
+  {id:7,dt:'2025-06-08T10:00',cat:'Staff welfare',desc:'Staff welfare — mid-week',amt:12000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-08T13:00',budgetId:1},
+  {id:8,dt:'2025-06-08T09:00',cat:'Generator fuel',desc:'AGO for gen set — 40L',amt:42000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-08T12:00',budgetId:1},
+  {id:9,dt:'2025-06-07T08:30',cat:'Transport & logistics',desc:'Dispatch bike fuel and rider allowance',amt:8500,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-07T11:00',budgetId:1},
+  {id:10,dt:'2025-06-06T11:00',cat:'FIRS / regulatory fees',desc:'FIRS stamp duty payment',amt:25000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-06T14:00',budgetId:1},
+  {id:11,dt:'2025-06-05T09:00',cat:'Security & guarding',desc:'Weekly security team allowance',amt:63000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-05T12:00',budgetId:1},
+  {id:12,dt:'2025-06-04T10:00',cat:'Miscellaneous',desc:'Bank charges — First Bank',amt:3500,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-04T13:00',budgetId:1},
+  {id:13,dt:'2025-06-03T14:00',cat:'Maintenance & repairs',desc:'Generator service — Cool Tech Engineering',amt:85000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-03T16:00',budgetId:1},
+  {id:14,dt:'2025-06-02T09:00',cat:'Generator fuel',desc:'AGO gen set top-up — 55L',amt:57750,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-02T11:00',budgetId:1},
+  {id:15,dt:'2025-06-01T10:00',cat:'Office supplies',desc:'June stationery restock',amt:8500,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-06-01T14:00',budgetId:1},
+  {id:16,dt:'2025-05-31T09:00',cat:'Maintenance & repairs',desc:'Pump #3 calibration — Abuja Pump Services',amt:38000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-05-31T14:00',budgetId:1},
+  {id:17,dt:'2025-05-28T10:00',cat:'Generator fuel',desc:'AGO gen set — 60L monthly top-up',amt:63000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-05-28T13:00',budgetId:1},
+  {id:18,dt:'2025-05-20T11:00',cat:'Utilities (EKEDC/water)',desc:'Monthly EKEDC bill payment',amt:120000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-05-20T15:00',budgetId:1},
+  {id:19,dt:'2025-05-15T10:00',cat:'Staff welfare',desc:'Staff welfare May — 8 persons',amt:48000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-05-15T14:00',budgetId:1},
+  {id:20,dt:'2025-05-10T09:00',cat:'Security & guarding',desc:'May security allowance',amt:189000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-05-10T14:00',budgetId:1},
+  {id:21,dt:'2025-05-05T10:00',cat:'Maintenance & repairs',desc:'Tank 3 dip rod replacement',amt:18000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-05-05T14:00',budgetId:1},
+  {id:22,dt:'2025-04-30T09:00',cat:'FIRS / regulatory fees',desc:'FIRS VAT filing — Q1 2025',amt:75000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-04-30T14:00',budgetId:1},
+  {id:23,dt:'2025-04-15T14:00',cat:'Security & guarding',desc:'April security retainer',amt:189000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-04-15T16:00',budgetId:1},
+  {id:24,dt:'2025-04-10T10:00',cat:'Generator fuel',desc:'AGO gen set — April',amt:57750,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-04-10T13:00',budgetId:1},
+  {id:25,dt:'2025-03-20T10:00',cat:'Maintenance & repairs',desc:'Pump #2 overhaul — Q1',amt:120000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-03-20T15:00',budgetId:1},
+  {id:26,dt:'2025-03-10T09:00',cat:'Security & guarding',desc:'March security allowance',amt:189000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-03-10T14:00',budgetId:1},
+  {id:27,dt:'2025-02-14T09:00',cat:'Transport & logistics',desc:'Tanker road transport supplement',amt:55000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-02-14T13:00',budgetId:1},
+  {id:28,dt:'2025-02-05T10:00',cat:'Security & guarding',desc:'February security allowance',amt:189000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-02-05T14:00',budgetId:1},
+  {id:29,dt:'2025-01-20T11:00',cat:'Maintenance & repairs',desc:'Pump #3 calibration — Q1 setup',amt:95000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-01-20T15:00',budgetId:1},
+  {id:30,dt:'2025-01-08T09:00',cat:'Security & guarding',desc:'January security allowance',amt:189000,by:'mgr',byName:'Chukwuma Adeyemi',status:'approved',approvedBy:'Grace Adeyemi',approvedDt:'2025-01-08T14:00',budgetId:1}
+];
+var NOTIFS = [
+  {id:1,title:'AGO short delivery',msg:'400L shortfall — WB-2025-041. Evidence filed.',time:'09:45',u:true},
+  {id:2,title:'NMDPRA licence expiring',msg:'Retail licence expires in 10 days.',time:'08:00',u:true},
+  {id:3,title:'Failed login attempt',msg:'IP 41.58.120.x blocked after 5 attempts.',time:'05:12',u:true}
+];
+var MSGS = {
+  'mgr_md':[
+    {id:1,from:'mgr',to:'md',type:'req',body:'Product purchase request',req:{product:'AGO',qty:20000,sup:'NNPCL Abuja',reason:'AGO at 42% — below reorder level.'},ts:'06:03',read:true},
+    {id:2,from:'md',to:'mgr',type:'txt',body:'Approved. Proceed. Ensure proper waybill and dip before and after delivery.',ts:'06:10',read:true}
+  ],
+  'att_mgr':[
+    {id:1,from:'att',to:'mgr',type:'alert',body:'Maintenance alert',alrt:{title:'Pump #2 nozzle drip',pri:'Urgent',detail:'Nozzle dripping fuel. Product loss ongoing. Possible seal failure.'},ts:'10:31',read:false},
+    {id:2,from:'mgr',to:'att',type:'txt',body:'Shut down Pump #2 now. Technician arrives 11 AM. Move customers to Pumps #1 and #3.',ts:'10:45',read:true}
+  ],
+  'csm_ceo':[
+    {id:1,from:'csm',to:'ceo',type:'alert',body:'Compliance alert',alrt:{title:'NMDPRA Retail Licence expiring',pri:'Urgent',detail:'Expires 20 Jun 2025 — 10 days left. Please approve NGN 85,000 renewal fee.'},ts:'13:02',read:false},
+    {id:2,from:'ceo',to:'csm',type:'txt',body:'Approved Ngozi. Please proceed with filing today.',ts:'13:08',read:true}
+  ]
+};
+var CHAT_PEER = null, dipM = [], recM = [], maintM = [];
+var ROLE = 'admin', SCR = 'home', TAB = {}, UN = '';
+
+/* === HELPERS === */
+function pn(n){ return String(n).padStart(2,'0'); }
+function ts(){ var d=new Date(); return d.getFullYear()+'-'+pn(d.getMonth()+1)+'-'+pn(d.getDate())+'T'+pn(d.getHours())+':'+pn(d.getMinutes()); }
+function fd(d){ return new Date(d).toLocaleDateString('en-NG',{day:'2-digit',month:'short',year:'numeric'}); }
+function fdt(d){ var x=new Date(d); return fd(d)+' '+x.toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit'}); }
+function ini(n){ return n.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase(); }
+function mmL(t,mm){ return Math.round((mm/t.dip)*t.cap); }
+function rotK(t,p){ return Math.round((p/100)*t.cap); }
+function fmt(n){ return 'NGN '+Math.round(n).toLocaleString(); }
+function chatKey(a,b){ return [a,b].sort().join('_'); }
+function countUnread(uid){
+  var n=0;
+  Object.keys(MSGS).forEach(function(k){
+    var pts=k.split('_');
+    if(pts.indexOf(uid)>=0) n+=(MSGS[k]||[]).filter(function(m){return m.to===uid&&!m.read;}).length;
+  });
+  return n;
+}
+function avt(uid,sm){
+  var u=UINFO[uid]||{color:'#888',initials:'?',online:false};
+  var cls=sm?'avt-sm':'avt';
+  var w=sm?'6':'8';
+  var oc=u.online?'#3B6D11':'#9b9b99';
+  return '<div class="'+cls+'" style="background:'+u.color+'">'+u.initials+'<div style="width:'+w+'px;height:'+w+'px;border-radius:50%;background:'+oc+';border:1.5px solid #fff;position:absolute;bottom:0;right:0"></div></div>';
+}
+function tbar(k,tabs,fl){
+  if(!TAB[k]) TAB[k]=tabs[0].id;
+  var oc = fl==='v'?'onv':'on';
+  var h='<div class="tab-bar">';
+  tabs.forEach(function(t){
+    var sel=TAB[k]===t.id?oc:'';
+    h+='<button class="tab '+sel+'" onclick="TAB[\''+k+'\']='+"'"+t.id+"'"+';R[\''+k+'\']&&R[\''+k+'\']()">'+t.label+'</button>';
+  });
+  h+='</div>';
+  return h;
+}
+function toast(msg,c){
+  var cc={ok:'#1a6e3c',err:'#A32D2D',warn:'#BA7517',info:'#185FA5'};
+  var t=document.createElement('div');
+  t.className='toast anim';
+  t.style.background=cc[c||'ok'];
+  t.textContent=msg;
+  var B=document.getElementById('BD');
+  B.insertBefore(t,B.firstChild);
+  setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},2700);
+}
+function pushN(title,msg){
+  NOTIFS.unshift({id:Date.now(),title:title,msg:msg,time:new Date().toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit'}),u:true});
+  document.getElementById('NDOT').style.display='block';
+  buildNav();
+}
+function showN(){
+  NOTIFS.forEach(function(n){n.u=false;});
+  document.getElementById('NDOT').style.display='none';
+  buildNav();
+  var html='<div class="stl">Notifications</div>';
+  NOTIFS.slice(0,8).forEach(function(n){
+    html+='<div class="card anim"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><i class="ti ti-bell" style="font-size:14px;color:var(--g)"></i><div style="flex:1"><div class="cv">'+n.title+'</div><div class="cl">'+n.time+' today</div></div></div><div style="font-size:11px;color:#6b6b6b">'+n.msg+'</div></div>';
+  });
+  html+='<button class="btn fw" onclick="goScr(\''+SCR+'\')"><i class="ti ti-arrow-left"></i> Back</button>';
+  document.getElementById('BD').innerHTML=html;
+}
+function addM(ctx){
+  var pool={dip:['dip_rod.jpg','T3_sheen.jpg'],rec:['seal_photo.jpg','meter.jpg','offload.mp4'],maint:['pump_fault.jpg','video.mp4']};
+  var a=ctx==='dip'?dipM:ctx==='rec'?recM:maintM;
+  var p=pool[ctx];
+  a.push({n:p[a.length%p.length],t:p[a.length%p.length].slice(-3)==='mp4'?'vid':'img'});
+  var g=document.getElementById('MG-'+ctx);
+  if(g){
+    var h='';
+    a.forEach(function(m){h+='<span class="mchip"><i class="ti '+(m.t==='vid'?'ti-video':'ti-photo')+'" style="font-size:10px"></i>'+m.n+'</span>';});
+    g.innerHTML=h;
+  }
+}
+function aL(id){
+  var t=TANKS.filter(function(x){return x.id===id;})[0];
+  if(!t) return;
+  var mm=parseFloat(document.getElementById('D-'+id).value)||0;
+  var e=document.getElementById('DL-'+id);
+  if(e) e.value=mm?mmL(t,mm).toLocaleString():'';
+}
+function aK(id){
+  var t=LPGT.filter(function(x){return x.id===id;})[0];
+  if(!t) return;
+  var p=parseFloat(document.getElementById('LP-'+id).value)||0;
+  var e=document.getElementById('LK-'+id);
+  if(e) e.value=p?rotK(t,p).toLocaleString():'';
+}
+function cRV(){
+  var o=parseFloat(document.getElementById('R-o').value)||0;
+  var r=parseFloat(document.getElementById('R-r').value)||0;
+  if(!o||!r){document.getElementById('R-v').value='';return;}
+  var v=r-o, pct=((v/o)*100).toFixed(1);
+  document.getElementById('R-v').value=(v>=0?'+':'')+v.toLocaleString()+'L ('+pct+'%)';
+  var al=document.getElementById('R-al');
+  if(!al) return;
+  if(v<-200){al.className='al ar';al.innerHTML='<i class="ti ti-alert-triangle" style="flex-shrink:0"></i> Short delivery — upload evidence now.';}
+  else if(v<0){al.className='al aw';al.innerHTML='<i class="ti ti-alert-circle" style="flex-shrink:0"></i> Minor variance — verify waybill.';}
+  else al.innerHTML='';
+}
+function cSales(){
+  var sel=document.getElementById('Sp');
+  var prod=sel?sel.options[sel.selectedIndex].value:'PMS';
+  var spr=document.getElementById('Spr');
+  if(spr) spr.value=fmt(PRICES[prod])+'/L (locked by MD)';
+  var o=parseFloat(document.getElementById('So').value)||0;
+  var c=parseFloat(document.getElementById('Sc').value)||0;
+  var L=Math.max(0,c-o);
+  var sl=document.getElementById('Sl');if(sl) sl.value=L?L.toFixed(3):'';
+  var sa=document.getElementById('Sa');if(sa) sa.value=L?fmt(Math.round(L*PRICES[prod])):'';
+}
+
+/* === LOGIN / NAV === */
+function selR(r,el){
+  document.querySelectorAll('.ro,.admin-ro').forEach(function(x){x.classList.remove('sg','sp','sco','sb2','sa');});
+  var cls={ceo:'sg',md:'sp',mktg:'sco',csm:'sp',acc:'sb2',mgr:'sa',att:'sa',admin:'sg'}[r]||'sg';
+  el.classList.add(cls);
+  ROLE=r;
+  document.getElementById('Lrl').textContent=RL[r]||r;
+}
+function doLogin(){
+  UN=(document.getElementById('Ln').value||'').trim()||RL[ROLE].split(' ')[0];
+  document.getElementById('LV').style.display='none';
+  var m=document.getElementById('MV'); m.style.display='flex';
+  document.getElementById('RB').textContent=UN+' \u00b7 '+(ROLE==='admin'?'Admin':RL[ROLE].split(' ').pop());
+  var bc=BAR[ROLE]||'#1a6e3c';
+  document.getElementById('TOPBAR').style.background=bc;
+  document.getElementById('TOOLBAR').style.background=bc;
+  var ndot=document.getElementById('NDOT');
+  ndot.style.borderColor=bc.indexOf('gradient')>=0?'#1a6e3c':bc;
+  var un=NOTIFS.filter(function(n){return n.u;}).length+countUnread(ROLE);
+  ndot.style.display=un>0?'block':'none';
+  buildNav();
+  goScr((NAVDEF[ROLE]||[])[0]?NAVDEF[ROLE][0].id:'home');
+}
+function doLogout(){
+  document.getElementById('MV').style.display='none';
+  document.getElementById('LV').style.display='block';
+  TAB={};CHAT_PEER=null;dipM=[];recM=[];maintM=[];
+}
+function buildNav(){
+  var n=document.getElementById('BN'); n.innerHTML='';
+  (NAVDEF[ROLE]||[]).forEach(function(x){
+    var d=document.createElement('div');
+    d.className='ni';d.id='NI-'+x.id;
+    var badge='';
+    if(x.id==='msgs'){var u=countUnread(ROLE);if(u>0)badge='<div class="nbg">'+u+'</div>';}
+    d.innerHTML='<i class="ti '+x.i+'"></i><span>'+x.l+'</span>'+badge;
+    d.onclick=function(){goScr(x.id);};
+    n.appendChild(d);
+  });
+}
+var TITLES={home:'Overview',users:'User management',depts:'Department manager',audit:'Audit log',settings:'System settings',ops:'Operations',mktg:'Marketing',tanks:'Tank dipping',acct:'Accounting',corp:'Corporate services',branches:'Branches',maint:'Maintenance',sales:'Sales',msgs:'Messages',budget:'Budget & Expenses',exp:'Expense approvals',exprpt:'Expense reports'};
+function goScr(id){
+  SCR=id; CHAT_PEER=null;
+  document.getElementById('ST').textContent=TITLES[id]||id;
+  document.querySelectorAll('.ni').forEach(function(x){x.classList.remove('on');});
+  var ni=document.getElementById('NI-'+id); if(ni) ni.classList.add('on');
+  document.getElementById('BD').innerHTML='';
+  if(R[id]) R[id]();
+}
+
+/* === MESSAGING === */
+function openChat(peer){
+  CHAT_PEER=peer;
+  var key=chatKey(ROLE,peer);
+  if(!MSGS[key]) MSGS[key]=[];
+  MSGS[key].forEach(function(m){if(m.to===ROLE) m.read=true;});
+  buildNav();
+  var u=UINFO[peer]||{};
+  document.getElementById('ST').textContent=u.name||peer;
+  var ms=MSGS[key];
+  var mhtml='';
+  if(ms.length){ms.forEach(function(m){mhtml+=renderMsg(m);});}
+  else{mhtml='<div style="text-align:center;padding:20px;font-size:12px;color:#6b6b6b">No messages yet. Start the conversation.</div>';}
+  var chips=getQChips();
+  var chipHtml='';
+  chips.forEach(function(q){chipHtml+='<button class="qchip" onclick="qSend(\''+q.id+'\')">'+q.label+'</button>';});
+  document.getElementById('BD').innerHTML=
+    '<div style="display:flex;align-items:center;gap:9px;padding:8px 0 10px;border-bottom:.5px solid #e5e5e3;margin-bottom:10px;cursor:pointer" onclick="goScr(\'msgs\')">'
+    +'<i class="ti ti-arrow-left" style="font-size:20px;color:var(--g)"></i>'
+    +avt(peer)
+    +'<div><div style="font-size:13px;font-weight:600">'+(u.name||peer)+'</div><div style="font-size:11px;color:'+(u.online?'#27500A':'#9b9b99')+'">'+(u.online?'Online':'Away')+' &middot; '+(u.role||'')+'</div></div>'
+    +'</div>'
+    +'<div class="msgs-wrap" id="CMsgs">'+mhtml+'</div>'
+    +'<div class="qchips">'+chipHtml+'</div>'
+    +'<div class="cin-row">'
+    +'<button class="cadd" onclick="showAttach()"><i class="ti ti-paperclip"></i></button>'
+    +'<input class="cin" id="CI" placeholder="Type a message\u2026" onkeydown="if(event.key===\'Enter\')sendMsg()">'
+    +'<button class="csend" onclick="sendMsg()"><i class="ti ti-send"></i></button>'
+    +'</div>';
+  setTimeout(function(){var el=document.getElementById('CMsgs');if(el)el.scrollTop=el.scrollHeight;},50);
+}
+function renderMsg(m){
+  var mine=m.from===ROLE;
+  if(m.type==='txt'){
+    if(mine) return '<div class="mm"><div class="bm">'+m.body+'</div><div class="mts">'+m.ts+' <i class="ti ti-checks" style="font-size:11px;color:#90CAF9"></i></div></div>';
+    return '<div class="mt">'+avt(m.from,true)+'<div><div class="bt2">'+m.body+'</div><div class="mts">'+m.ts+'</div></div></div>';
+  }
+  if(m.type==='req'){
+    var card='<div class="breq"><div style="font-weight:700;margin-bottom:4px">&#128230; '+m.body+'</div><div class="rcard">'
+      +'<div style="margin-bottom:2px"><strong>Product:</strong> '+m.req.product+' &middot; <strong>Qty:</strong> '+Number(m.req.qty).toLocaleString()+'</div>'
+      +'<div style="margin-bottom:2px"><strong>Supplier:</strong> '+m.req.sup+'</div>'
+      +'<div><strong>Reason:</strong> '+m.req.reason+'</div></div>'
+      +(!mine?'<div style="display:flex;gap:5px;margin-top:7px"><button style="flex:1;padding:5px;border-radius:7px;background:rgba(255,255,255,.25);color:#fff;border:none;cursor:pointer;font-size:11px;font-family:inherit" onclick="approveReq()">\u2713 Approve</button><button style="flex:1;padding:5px;border-radius:7px;background:rgba(0,0,0,.2);color:#fff;border:none;cursor:pointer;font-size:11px;font-family:inherit" onclick="declineReq()">\u2717 Decline</button></div>':'')
+      +'</div>';
+    if(mine) return '<div class="mm">'+card+'<div class="mts">'+m.ts+'</div></div>';
+    return '<div class="mt">'+avt(m.from,true)+'<div>'+card+'<div class="mts">'+m.ts+'</div></div></div>';
+  }
+  if(m.type==='alert'){
+    var acard='<div class="balrt"><div style="font-weight:700;margin-bottom:4px">&#128680; '+m.body+'</div><div class="rcard">'
+      +'<div style="margin-bottom:2px"><strong>'+m.alrt.title+'</strong></div>'
+      +'<div style="margin-bottom:2px">Priority: '+m.alrt.pri+'</div>'
+      +'<div>'+m.alrt.detail+'</div></div></div>';
+    if(mine) return '<div class="mm">'+acard+'<div class="mts">'+m.ts+'</div></div>';
+    return '<div class="mt">'+avt(m.from,true)+'<div>'+acard+'<div class="mts">'+m.ts+'</div></div></div>';
+  }
+  return '';
+}
+function getQChips(){
+  var q={admin:[{id:'status',label:'All systems OK'},{id:'noted',label:'Noted'}],ceo:[{id:'approve',label:'\u2713 Approved'},{id:'noted',label:'Noted'}],md:[{id:'approve',label:'\u2713 Approved'},{id:'prices',label:'Prices updated'},{id:'noted',label:'Noted'}],csm:[{id:'filing',label:'Filing today'},{id:'noted',label:'Noted'}],acc:[{id:'logged',label:'Logged in books'},{id:'noted',label:'Noted'}],mgr:[{id:'dip',label:'Dip done'},{id:'req',label:'Send request'},{id:'noted',label:'Noted'}],att:[{id:'done',label:'Done sir/ma'},{id:'req',label:'Request product'},{id:'issue',label:'Report issue'}]};
+  return q[ROLE]||[];
+}
+function qSend(id){
+  if(id==='req'){showPurchaseForm();return;}
+  if(id==='issue'){showAlertForm();return;}
+  var t={approve:'Request approved. Please proceed.',noted:'Noted, thank you.',filing:'Filing on ELPS portal today.',logged:'Logged in books. Reference number issued.',prices:'Prices updated and synced to all forms.',dip:'Dip completed. All tanks recorded.',done:'Done, sir/ma.','All systems OK':'All systems operational.'};
+  var body=t[id]||id;
+  var key=chatKey(ROLE,CHAT_PEER);
+  if(!MSGS[key]) MSGS[key]=[];
+  MSGS[key].push({id:Date.now(),from:ROLE,to:CHAT_PEER,type:'txt',body:body,ts:new Date().toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit'}),read:false});
+  openChat(CHAT_PEER);
+}
+function sendMsg(){
+  var inp=document.getElementById('CI'); if(!inp) return;
+  var body=(inp.value||'').trim(); if(!body) return;
+  var key=chatKey(ROLE,CHAT_PEER);
+  if(!MSGS[key]) MSGS[key]=[];
+  MSGS[key].push({id:Date.now(),from:ROLE,to:CHAT_PEER,type:'txt',body:body,ts:new Date().toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit'}),read:false});
+  inp.value='';
+  openChat(CHAT_PEER);
+}
+function approveReq(){
+  var key=chatKey(ROLE,CHAT_PEER);if(!MSGS[key])MSGS[key]=[];
+  MSGS[key].push({id:Date.now(),from:ROLE,to:CHAT_PEER,type:'txt',body:'\u2705 Request approved. Please proceed with proper documentation.',ts:new Date().toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit'}),read:false});
+  toast('Approved — reply sent');openChat(CHAT_PEER);
+}
+function declineReq(){
+  var key=chatKey(ROLE,CHAT_PEER);if(!MSGS[key])MSGS[key]=[];
+  MSGS[key].push({id:Date.now(),from:ROLE,to:CHAT_PEER,type:'txt',body:'\u274C Request declined. Please provide further justification.',ts:new Date().toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit'}),read:false});
+  toast('Declined — reply sent','warn');openChat(CHAT_PEER);
+}
+function showAttach(){
+  var menu=document.createElement('div');
+  menu.style.cssText='position:fixed;bottom:90px;right:20px;background:#fff;border:.5px solid #e5e5e3;border-radius:12px;padding:8px;z-index:999;min-width:180px;box-shadow:0 4px 20px rgba(0,0,0,.14)';
+  menu.innerHTML='<div style="font-size:11px;font-weight:600;color:#6b6b6b;padding:4px 8px 6px">Send as</div>'
+    +'<div onclick="this.parentNode.remove();showPurchaseForm()" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:12px"><i class="ti ti-package" style="font-size:16px;color:var(--b)"></i>Purchase request</div>'
+    +'<div onclick="this.parentNode.remove();showAlertForm()" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:12px"><i class="ti ti-alert-triangle" style="font-size:16px;color:var(--r)"></i>Maintenance alert</div>'
+    +'<div onclick="this.parentNode.remove();sendFile()" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:12px"><i class="ti ti-photo" style="font-size:16px;color:#27500A"></i>Photo / document</div>'
+    +'<div onclick="this.parentNode.remove()" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:12px;color:#6b6b6b"><i class="ti ti-x" style="font-size:16px"></i>Cancel</div>';
+  document.body.appendChild(menu);
+  setTimeout(function(){if(menu.parentNode)menu.parentNode.removeChild(menu);},4000);
+}
+function sendFile(){
+  var key=chatKey(ROLE,CHAT_PEER);if(!MSGS[key])MSGS[key]=[];
+  MSGS[key].push({id:Date.now(),from:ROLE,to:CHAT_PEER,type:'txt',body:'&#128206; Shared: delivery_receipt.pdf',ts:new Date().toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit'}),read:false});
+  openChat(CHAT_PEER);
+}
+function showPurchaseForm(){
+  var peer=CHAT_PEER; var u=UINFO[peer]||{};
+  document.getElementById('BD').innerHTML=
+    '<div style="display:flex;align-items:center;gap:9px;padding:8px 0 10px;border-bottom:.5px solid #e5e5e3;margin-bottom:10px;cursor:pointer" onclick="openChat(\''+peer+'\')">'
+    +'<i class="ti ti-arrow-left" style="font-size:20px;color:var(--g)"></i>'
+    +'<div><div style="font-size:13px;font-weight:600">Purchase Request</div>'
+    +'<div style="font-size:11px;color:#6b6b6b">Sending to '+(u.name||peer)+'</div></div></div>'
+    +'<div class="card"><div class="dh" style="background:var(--b)"><i class="ti ti-package"></i><span>New product purchase request</span></div>'
+    +'<div class="ir"><label>Product</label><select id="Rqp"><option value="PMS">PMS (Petrol)</option><option value="AGO" selected>AGO (Diesel)</option><option value="DPK">DPK (Kerosene)</option><option value="LPG">LPG (kg)</option><option value="Engine oil">Engine oil</option></select></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px"><div class="ir"><label>Quantity</label><input type="number" id="Rqq" placeholder="0"></div><div class="ir"><label>Supplier</label><input id="Rqs" placeholder="NNPCL, Ardova\u2026"></div></div>'
+    +'<div class="ir"><label>Reason for request</label><textarea id="Rqr" placeholder="Why is this needed?"></textarea></div>'
+    +'<div class="ir"><label>Urgency</label><select id="Rqu"><option>Normal</option><option>Urgent</option><option>Critical</option></select></div>'
+    +'<button class="btn btnp fw" onclick="submitReq(\''+peer+'\')"><i class="ti ti-send"></i> Send request</button>'
+    +'<button class="btn fw" onclick="openChat(\''+peer+'\')"><i class="ti ti-x"></i> Cancel</button></div>';
+}
+function submitReq(peer){
+  var prod=document.getElementById('Rqp').value;
+  var qty=parseFloat(document.getElementById('Rqq').value)||0;
+  var reason=(document.getElementById('Rqr').value||'').trim();
+  if(!qty||!reason){toast('Fill in all fields','err');return;}
+  var key=chatKey(ROLE,peer);if(!MSGS[key])MSGS[key]=[];
+  MSGS[key].push({id:Date.now(),from:ROLE,to:peer,type:'req',body:'Product purchase request',req:{product:prod,qty:qty,sup:document.getElementById('Rqs').value||'TBD',reason:reason},ts:new Date().toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit'}),read:false});
+  toast('Request sent');openChat(peer);
+}
+function showAlertForm(){
+  var peer=CHAT_PEER; var u=UINFO[peer]||{};
+  document.getElementById('BD').innerHTML=
+    '<div style="display:flex;align-items:center;gap:9px;padding:8px 0 10px;border-bottom:.5px solid #e5e5e3;margin-bottom:10px;cursor:pointer" onclick="openChat(\''+peer+'\')">'
+    +'<i class="ti ti-arrow-left" style="font-size:20px;color:var(--g)"></i>'
+    +'<div><div style="font-size:13px;font-weight:600">Send Alert</div>'
+    +'<div style="font-size:11px;color:#6b6b6b">Sending to '+(u.name||peer)+'</div></div></div>'
+    +'<div class="card"><div class="dh" style="background:var(--r)"><i class="ti ti-alert-triangle"></i><span>Operations / maintenance alert</span></div>'
+    +'<div class="ir"><label>Alert title</label><input id="Alt" placeholder="e.g. Pump #2 fault"></div>'
+    +'<div class="ir"><label>Priority</label><select id="Alp"><option>Urgent</option><option>High</option><option>Medium</option></select></div>'
+    +'<div class="ir"><label>Details</label><textarea id="Ald" placeholder="Describe the situation clearly\u2026"></textarea></div>'
+    +'<button class="btn btnr fw" onclick="submitAlert(\''+peer+'\')"><i class="ti ti-send"></i> Send alert</button>'
+    +'<button class="btn fw" onclick="openChat(\''+peer+'\')"><i class="ti ti-x"></i> Cancel</button></div>';
+}
+function submitAlert(peer){
+  var title=(document.getElementById('Alt').value||'').trim();
+  if(!title){toast('Enter alert title','err');return;}
+  var key=chatKey(ROLE,peer);if(!MSGS[key])MSGS[key]=[];
+  MSGS[key].push({id:Date.now(),from:ROLE,to:peer,type:'alert',body:'Operations alert',alrt:{title:title,pri:document.getElementById('Alp').value||'Urgent',detail:document.getElementById('Ald').value||title},ts:new Date().toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit'}),read:false});
+  toast('Alert sent','warn');openChat(peer);
+}
+
+/* === SCREENS === */
+var R = {};
+
+R.home = function(){
+  if(ROLE==='admin'){
+    var html='<div class="admin-banner">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+      +'<div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center"><i class="ti ti-shield-lock" style="font-size:22px;color:#FFD700"></i></div>'
+      +'<div><div style="font-size:15px;font-weight:700">'+UN+' &mdash; System Administrator</div><div style="font-size:11px;opacity:.7">Full access &middot; PetroTrack NG v12.0.1</div></div></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px">';
+    [['ti-users','8','Staff'],['ti-building-store','3','Branches'],['ti-layout-grid','8','Depts'],['ti-activity','Live','System'],['ti-database','247MB','Database'],['ti-cloud','Daily','Backup']].forEach(function(x){
+      html+='<div style="background:rgba(255,255,255,.12);border-radius:7px;padding:8px;text-align:center"><i class="ti '+x[0]+'" style="font-size:16px;margin-bottom:4px;display:block;color:rgba(255,255,255,.8)"></i><div style="font-size:13px;font-weight:700">'+x[1]+'</div><div style="font-size:9px;opacity:.65;margin-top:1px">'+x[2]+'</div></div>';
+    });
+    html+='</div></div>';
+    html+='<div class="al ar"><i class="ti ti-alert-triangle" style="flex-shrink:0"></i> 3 unread notifications — NMDPRA expiry, AGO short delivery, failed login attempt.</div>';
+    html+='<div class="stl">Admin quick actions</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">';
+    [['ti-users','#185FA5','Manage users','users'],['ti-layout-grid','#4527a0','Departments','depts'],['ti-list-details','#BA7517','Audit log','audit'],['ti-settings','#1a6e3c','System settings','settings']].forEach(function(x){
+      html+='<div class="card" style="cursor:pointer;text-align:center;padding:14px 10px" onclick="goScr(\''+x[3]+'\')" ><i class="ti '+x[0]+'" style="font-size:22px;color:'+x[1]+';display:block;margin-bottom:6px"></i><div style="font-size:12px;font-weight:600">'+x[2]+'</div></div>';
+    });
+    html+='</div><div class="stl">Latest audit events</div><div class="card">';
+    AUDIT.slice(0,4).forEach(function(a){
+      html+='<div class="cr"><div><div class="cv">'+a.action+'</div><div class="cl">'+a.user+' &middot; '+fdt(a.ts)+'</div></div></div>';
+    });
+    html+='</div><div class="al ai"><i class="ti ti-info-circle" style="flex-shrink:0"></i> As Admin you have full access. Use the navigation below or tap the tiles above.</div>';
+    document.getElementById('BD').innerHTML=html;
+    return;
+  }
+  /* other roles home */
+  var ld=DIPS[0];
+  var rev=SALES.reduce(function(a,s){return a+s.L*s.price;},0);
+  var tv=0;
+  TANKS.forEach(function(t){var L=ld?mmL(t,ld.rd[t.id]||0):t.op;tv+=L*PRICES[t.prod];});
+  var unrd=countUnread(ROLE);
+  var snap='';
+  TANKS.forEach(function(t){
+    var L=ld?mmL(t,ld.rd[t.id]||0):t.op;
+    var p=Math.round((L/t.cap)*100);
+    var c=p<30?'#791F1F':p<50?'#633806':'#27500A';
+    snap+='<div class="cr"><span class="cl">'+t.name+'</span><div style="text-align:right"><div class="cv" style="color:'+c+'">'+L.toLocaleString()+'L</div><div class="pb" style="width:70px"><div class="pf" style="width:'+p+'%;background:'+c+'"></div></div></div></div>';
+  });
+  var dailyExp=periodExpSum('daily','approved');
+  var dailyNet=rev-dailyExp;
+  var pendingAppr=EXPENSES.filter(function(e){return e.status==='pending';}).length;
+  var cb=currentBudget(); var used=budgetMonthUsed();
+  var expMc=(['ceo','md','acc'].indexOf(ROLE)>=0);
+  var html='<div style="font-size:13px;font-weight:600;margin-bottom:10px">Good day, '+UN+'!</div>'
+    +'<div class="mg">'
+    +'<div class="mc"><div class="ml">Today gross revenue</div><div class="mv">'+fmt(rev)+'</div></div>'
+    +(expMc?'<div class="mc"><div class="ml">Today approved expenses</div><div class="mv" style="font-size:15px;color:#791F1F">'+fmt(dailyExp)+'</div></div>':'<div class="mc"><div class="ml">Stock value</div><div class="mv" style="font-size:15px">NGN '+(tv/1e6).toFixed(1)+'M</div></div>')
+    +(expMc?'<div class="mc" style="cursor:pointer" onclick="goScr(\'exprpt\')"><div class="ml">Today net revenue</div><div class="mv" style="color:'+(dailyNet>=0?'#27500A':'#791F1F')+'">'+fmt(dailyNet)+'</div></div>':'<div class="mc"><div class="ml">Unread msgs</div><div class="mv" style="color:'+(unrd>0?'#791F1F':'#27500A')+'">'+unrd+'</div></div>')
+    +(ROLE==='acc'?'<div class="mc" style="cursor:pointer" onclick="goScr(\'exp\')"><div class="ml">Pending approvals</div><div class="mv" style="color:'+(pendingAppr>0?'#791F1F':'#27500A')+'">'+pendingAppr+'</div></div>':'<div class="mc"><div class="ml">Open maintenance</div><div class="mv" style="color:#791F1F">'+MAINT.filter(function(m){return m.st==='Open';}).length+'</div></div>')
+    +'</div>'
+    +(ROLE==='acc'&&pendingAppr>0?'<div class="al ar" style="cursor:pointer" onclick="goScr(\'exp\')"><i class="ti ti-receipt" style="flex-shrink:0"></i> '+pendingAppr+' expense'+(pendingAppr>1?'s':'')+' awaiting your approval. <strong>Tap to review &rarr;</strong></div>':'')
+    +(ROLE==='mgr'&&cb?'<div class="al" style="background:#EEEDFE;color:#3C3489;cursor:pointer" onclick="goScr(\'budget\')"><i class="ti ti-wallet" style="flex-shrink:0"></i> June budget: '+fmt(used)+' used of '+fmt(cb.total)+' approved. Tap to manage.</div>':'')
+    +(unrd>0?'<div class="al ai" style="cursor:pointer" onclick="goScr(\'msgs\')"><i class="ti ti-messages" style="flex-shrink:0"></i> You have '+unrd+' unread message'+(unrd>1?'s':'')+'. <strong>Tap to view &rarr;</strong></div>':'')
+    +'<div class="stl">Tank levels</div><div class="card">'+snap+'</div>'
+    +'<button class="btn btnp" onclick="goScr(\'msgs\')"><i class="ti ti-messages"></i> Open messages</button>'
+    +(expMc?'<button class="btn" style="margin-top:6px" onclick="goScr(\'exprpt\')"><i class="ti ti-report-analytics"></i> Expense reports</button>':'');
+  document.getElementById('BD').innerHTML=html;
+};
+
+R.users = function(){
+  var B=document.getElementById('BD');
+  var bar=tbar('users',[{id:'list',label:'All users'},{id:'add',label:'Add user'},{id:'roles',label:'Role access'}]);
+  if(TAB['users']==='list'||!TAB['users']){
+    var html=bar+'<div class="mg"><div class="mc"><div class="ml">Total staff</div><div class="mv">'+STAFF.length+'</div></div><div class="mc"><div class="ml">Active</div><div class="mv" style="color:#27500A">'+STAFF.filter(function(s){return s.st==='Active';}).length+'</div></div></div><div class="card">';
+    STAFF.forEach(function(s){
+      var c={C:'#1a6e3c',M:'#4527a0',A:'#185FA5',S:'#BA7517',P:'#633806'}[s.role[0]]||'#888';
+      html+='<div class="li"><div class="avt" style="background:'+c+';width:32px;height:32px;font-size:11px">'+ini(s.name)+'</div>'
+        +'<div class="lib"><div class="lit">'+s.name+'</div><div class="lis">'+s.role+' &middot; '+s.email+'</div></div>'
+        +'<div style="text-align:right"><span class="badge '+(s.st==='Active'?'bg':'br')+'">'+s.st+'</span>'
+        +'<div style="display:flex;gap:4px;margin-top:4px;justify-content:flex-end">'
+        +'<button class="btn" style="padding:3px 7px;font-size:10px" onclick="editUser('+s.id+')"><i class="ti ti-edit" style="font-size:11px"></i></button>'
+        +'<button class="btn" style="padding:3px 7px;font-size:10px" onclick="toggleUser('+s.id+')"><i class="ti ti-switch-2" style="font-size:11px"></i></button>'
+        +'</div></div></div>';
+    });
+    html+='</div>';
+    B.innerHTML=html;
+  } else if(TAB['users']==='add'){
+    B.innerHTML=bar+'<div class="card"><div class="dh" style="background:var(--g)"><i class="ti ti-user-plus"></i><span>Add new user</span></div>'
+      +'<div class="ir"><label>Full name</label><input id="Un" placeholder="e.g. John Emeka"></div>'
+      +'<div class="ir"><label>Email / Staff ID</label><input id="Ue" placeholder="john@petrotrack.ng"></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'
+      +'<div class="ir"><label>Role</label><select id="Ur"><option>CEO</option><option>Managing Director</option><option>Marketing Manager</option><option>Corp. Services Mgr</option><option>Accountant</option><option>Station Manager</option><option>Pump Attendant</option></select></div>'
+      +'<div class="ir"><label>Monthly salary (NGN)</label><input type="number" id="Us" placeholder="120000"></div>'
+      +'</div>'
+      +'<div class="ir"><label>Access level</label><select id="Ul"><option>Standard</option><option>Extended</option><option>Restricted</option></select></div>'
+      +'<button class="btn btnp fw" onclick="addUser()"><i class="ti ti-check"></i> Create user account</button></div>';
+  } else {
+    var rhtml=bar+'<div class="al ai"><i class="ti ti-info-circle" style="flex-shrink:0"></i> Role access controls which screens each user can see and what actions they can perform.</div>';
+    [['CEO','All panels including Market Intel, Performance, Department Manager','#1a6e3c'],
+     ['Managing Director','Operations, Marketing, Branches, Tanks, Accounts, Sales, Messaging','#4527a0'],
+     ['Marketing Manager','Campaigns, Loyalty, Sales, Messaging (limited intel)','#D85A30'],
+     ['Corp. Services Mgr','Corporate, Branches (view), Tanks (view), Maintenance, Messaging','#0F6E56'],
+     ['Accountant','Branches, Tanks inventory, Accounting, Sales, Messaging','#185FA5'],
+     ['Station Manager','Tank dipping, Product receipts, Maintenance, Sales, Messaging','#BA7517'],
+     ['Pump Attendant','Sales (price locked), Report issue, Messaging only','#633806']
+    ].forEach(function(x){
+      rhtml+='<div class="card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><div style="width:10px;height:10px;border-radius:50%;background:'+x[2]+'"></div><div style="font-size:12px;font-weight:600">'+x[0]+'</div></div><div style="font-size:11px;color:#6b6b6b">'+x[1]+'</div></div>';
+    });
+    B.innerHTML=rhtml;
+  }
+};
+
+R.depts = function(){
+  var B=document.getElementById('BD');
+  var bar=tbar('depts',[{id:'all',label:'All panels'},{id:'create',label:'Create panel'}]);
+  if(TAB['depts']==='all'||!TAB['depts']){
+    var html=bar+'<div class="mg"><div class="mc"><div class="ml">Total panels</div><div class="mv">'+DEPTS.length+'</div></div><div class="mc"><div class="ml">Custom panels</div><div class="mv">'+DEPTS.filter(function(d){return !d.sys;}).length+'</div></div></div>';
+    DEPTS.forEach(function(d){
+      html+='<div class="card"><div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">'
+        +'<div style="width:34px;height:34px;border-radius:8px;background:'+d.col.bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti '+d.icon+'" style="color:'+d.col.fg+';font-size:16px"></i></div>'
+        +'<div style="flex:1"><div style="display:flex;align-items:center;justify-content:space-between"><div class="cv">'+d.name+'</div><span class="badge '+(d.sys?'bg':'bb')+'">'+(d.sys?'System':'Custom')+'</span></div>'
+        +'<div style="font-size:10px;color:#6b6b6b">'+d.roles.length+' role'+(d.roles.length!==1?'s':'')+'</div></div></div>'
+        +'<div style="display:flex;gap:6px">'
+        +'<button class="btn" style="flex:1;padding:5px 8px;font-size:11px" onclick="editDept(\''+d.id+'\')"><i class="ti ti-edit" style="font-size:12px"></i> Edit</button>'
+        +(!d.sys?'<button class="btn btnr" style="flex:1;padding:5px 8px;font-size:11px" onclick="deleteDept(\''+d.id+'\')"><i class="ti ti-trash" style="font-size:12px"></i> Delete</button>'
+          :'<button class="btn" style="flex:1;padding:5px 8px;font-size:11px;opacity:.4;cursor:default"><i class="ti ti-lock" style="font-size:12px"></i> Core</button>')
+        +'</div></div>';
+    });
+    B.innerHTML=html;
+  } else {
+    B.innerHTML=bar+'<div class="al ai"><i class="ti ti-info-circle" style="flex-shrink:0"></i> New panels appear in assigned roles\' navigation immediately.</div>'
+      +'<div class="card"><div class="dh" style="background:var(--g)"><i class="ti ti-plus"></i><span>New department panel</span></div>'
+      +'<div class="ir"><label>Panel name</label><input id="DPn" placeholder="e.g. Safety &amp; HSE, IT, Procurement"></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'
+      +'<div class="ir"><label>Icon</label><select id="DPi"><option value="ti-shield">Shield / Safety</option><option value="ti-device-laptop">IT / Systems</option><option value="ti-leaf">Environment / HSE</option><option value="ti-certificate">Legal / Compliance</option><option value="ti-users">Human Resources</option><option value="ti-truck">Logistics</option><option value="ti-cash">Finance</option><option value="ti-phone">Customer care</option></select></div>'
+      +'<div class="ir"><label>Colour</label><select id="DPc"><option value="0">Green</option><option value="1">Purple</option><option value="2">Blue</option><option value="3">Amber</option><option value="4">Teal</option><option value="5">Gray</option></select></div>'
+      +'</div>'
+      +'<div class="ir"><label>Nav label (max 10 chars)</label><input id="DPl" placeholder="Safety, IT, Legal\u2026" maxlength="10"></div>'
+      +'<div class="ir"><label>Who can access?</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px" id="role-checks"></div></div>'
+      +'<button class="btn btnp fw" onclick="createDept()"><i class="ti ti-check"></i> Create department</button></div>';
+    var rc=document.getElementById('role-checks');
+    Object.keys(RL).filter(function(k){return k!=='admin';}).forEach(function(k){
+      var lbl=document.createElement('label');
+      lbl.style.cssText='display:flex;align-items:center;gap:5px;font-size:11px;padding:5px 8px;border:.5px solid #d4d4d2;border-radius:7px;cursor:pointer';
+      lbl.innerHTML='<input type="checkbox" id="RC-'+k+'" style="width:auto"> '+RL[k].split(' ').pop();
+      rc.appendChild(lbl);
+    });
+  }
+};
+
+R.audit = function(){
+  var B=document.getElementById('BD');
+  var bar=tbar('audit',[{id:'log',label:'Activity log'},{id:'logins',label:'Login history'},{id:'prices',label:'Price changes'}]);
+  if(TAB['audit']==='log'||!TAB['audit']){
+    var html=bar+'<div class="card">';
+    AUDIT.forEach(function(a){
+      html+='<div class="cr"><div><div class="cv">'+a.action+'</div><div class="cl">'+a.user+' &middot; '+fdt(a.ts)+'</div><div style="font-size:10px;color:#9b9b99;margin-top:1px">'+a.detail+'</div></div></div>';
+    });
+    html+='</div>';
+    B.innerHTML=html;
+  } else if(TAB['audit']==='logins'){
+    var logins=[
+      {user:'Adaeze Obi (MD)',time:'06:02',device:'iPhone 15 Pro &middot; Lagos',ok:true},
+      {user:'Chukwuma Adeyemi (Mgr)',time:'05:48',device:'Samsung A54 &middot; Abuja',ok:true},
+      {user:'Emeka Okafor (Att)',time:'06:28',device:'Tecno Spark &middot; Abuja',ok:true},
+      {user:'Unknown (Blocked)',time:'05:12',device:'IP: 41.58.120.x',ok:false,note:'Failed login &mdash; 5 attempts &mdash; IP blocked'}
+    ];
+    var lhtml=bar+'<div class="card">';
+    logins.forEach(function(l){
+      lhtml+='<div class="cr"><div><div class="cv" style="color:'+(l.ok?'#1a1a1a':'#791F1F')+'">'+l.user+'</div><div class="cl">'+l.time+' today &middot; '+l.device+'</div>'+(l.note?'<div style="font-size:10px;color:#791F1F">'+l.note+'</div>':'')+'</div><span class="badge '+(l.ok?'bg':'br')+'">'+(l.ok?'OK':'BLOCKED')+'</span></div>';
+    });
+    lhtml+='</div>';
+    B.innerHTML=lhtml;
+  } else {
+    var priceLog=[
+      {prod:'PMS',old:815,nw:830,by:'Adaeze Obi (MD)',ts:'2025-06-10T06:30'},
+      {prod:'AGO',old:1020,nw:1050,by:'Adaeze Obi (MD)',ts:'2025-06-05T07:15'},
+      {prod:'LPG',old:1150,nw:1200,by:'Adaeze Obi (MD)',ts:'2025-05-28T09:00'}
+    ];
+    var phtml=bar+'<div class="card">';
+    priceLog.forEach(function(p){
+      phtml+='<div class="cr"><div><div class="cv">'+p.prod+' &mdash; NGN '+p.old.toLocaleString()+' &rarr; <span style="color:#27500A">NGN '+p.nw.toLocaleString()+'</span></div><div class="cl">'+p.by+' &middot; '+fdt(p.ts)+'</div></div></div>';
+    });
+    phtml+='</div>';
+    B.innerHTML=phtml;
+  }
+};
+
+R.settings = function(){
+  var B=document.getElementById('BD');
+  var bar=tbar('settings',[{id:'gen',label:'General'},{id:'notif',label:'Notifications'},{id:'backup',label:'Backup'},{id:'sec',label:'Security'}]);
+  var s=SYSSET;
+  if(TAB['settings']==='gen'||!TAB['settings']){
+    B.innerHTML=bar+'<div class="card"><div class="dh" style="background:var(--g)"><i class="ti ti-building"></i><span>Company information</span></div>'
+      +'<div class="ir"><label>Company name</label><input id="Cn" value="'+s.co+'"></div>'
+      +'<div class="ir"><label>Registered address</label><input id="Ca" value="'+s.addr+'"></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'
+      +'<div class="ir"><label>TIN</label><input id="Ct" value="'+s.tin+'"></div>'
+      +'<div class="ir"><label>RC number</label><input id="Cr" value="'+s.rc+'"></div>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'
+      +'<div class="ir"><label>VAT rate (%)</label><input type="number" id="Cv" value="'+s.vat+'"></div>'
+      +'<div class="ir"><label>Session timeout (min)</label><input type="number" id="Cs" value="'+s.timeout+'"></div>'
+      +'</div>'
+      +'<button class="btn btnp fw" onclick="saveSettings()"><i class="ti ti-device-floppy"></i> Save changes</button></div>'
+      +'<div class="card">'
+      +'<div class="cr"><span class="cl">App version</span><span class="cv">'+s.version+'</span></div>'
+      +'<div class="cr"><span class="cl">Database size</span><span class="cv">'+s.dbSize+'</span></div>'
+      +'<div class="cr"><span class="cl">Last backup</span><span class="cv">'+fdt(s.lastBackup)+'</span></div>'
+      +'</div>';
+  } else if(TAB['settings']==='notif'){
+    B.innerHTML=bar+'<div class="card">'
+      +'<div class="cr"><span class="cl">SMS notifications</span><div style="display:flex;gap:7px;align-items:center"><span class="cv">'+(s.sms?'Enabled':'Disabled')+'</span><button class="btn" style="padding:4px 10px;font-size:11px" onclick="SYSSET.sms=!SYSSET.sms;toast(\'SMS \'+(SYSSET.sms?\'enabled\':\'disabled\'));R.settings&&R.settings();">'+(s.sms?'Disable':'Enable')+'</button></div></div>'
+      +'<div class="cr"><span class="cl">Email notifications</span><div style="display:flex;gap:7px;align-items:center"><span class="cv">'+(s.email?'Enabled':'Disabled')+'</span><button class="btn" style="padding:4px 10px;font-size:11px" onclick="SYSSET.email=!SYSSET.email;toast(\'Email \'+(SYSSET.email?\'enabled\':\'disabled\'));R.settings&&R.settings();">'+(s.email?'Disable':'Enable')+'</button></div></div>'
+      +'<div class="cr"><span class="cl">Maintenance alerts</span><span class="badge bg">Always on</span></div>'
+      +'<div class="cr"><span class="cl">Price change alerts</span><span class="badge bg">Always on</span></div>'
+      +'<div class="cr"><span class="cl">Compliance expiry alerts</span><span class="badge bg">Always on</span></div>'
+      +'</div>';
+  } else if(TAB['settings']==='backup'){
+    B.innerHTML=bar+'<div class="card">'
+      +'<div class="cr"><span class="cl">Backup schedule</span><span class="cv">'+s.backup+'</span></div>'
+      +'<div class="cr"><span class="cl">Last backup</span><span class="cv">'+fdt(s.lastBackup)+'</span></div>'
+      +'<div class="cr"><span class="cl">Database size</span><span class="cv">'+s.dbSize+'</span></div>'
+      +'<div class="cr"><span class="cl">Storage</span><span class="cv">Cloud &mdash; AWS S3</span></div>'
+      +'</div>'
+      +'<button class="btn btnp fw" onclick="toast(\'Manual backup initiated &mdash; ETA 2 minutes\')"><i class="ti ti-cloud-upload"></i> Run manual backup now</button>'
+      +'<button class="btn fw" onclick="toast(\'Data export queued &mdash; email link incoming\',\'info\')"><i class="ti ti-download"></i> Export all data as CSV</button>';
+  } else {
+    B.innerHTML=bar+'<div class="card">'
+      +'<div class="cr"><span class="cl">Session timeout</span><span class="cv">'+s.timeout+' minutes</span></div>'
+      +'<div class="cr"><span class="cl">Failed login lockout</span><span class="cv">After 5 attempts</span></div>'
+      +'<div class="cr"><span class="cl">Password expiry</span><span class="cv">Every 90 days</span></div>'
+      +'<div class="cr"><span class="cl">2-factor authentication</span><span class="badge bg">Enabled</span></div>'
+      +'<div class="cr"><span class="cl">Audit trail</span><span class="badge bg">Active</span></div>'
+      +'</div>'
+      +'<button class="btn fw" onclick="toast(\'Password reset emails sent to all 8 users\',\'info\')"><i class="ti ti-key"></i> Force password reset &mdash; all users</button>'
+      +'<button class="btn fw" onclick="toast(\'All active sessions terminated\',\'warn\')"><i class="ti ti-logout"></i> Terminate all active sessions</button>';
+  }
+};
+
+R.msgs = function(){
+  var peers=Object.keys(UINFO).filter(function(u){return u!==ROLE;});
+  var threads=[];
+  Object.keys(MSGS).forEach(function(k){
+    var pts=k.split('_');
+    if(pts.indexOf(ROLE)>=0){
+      var other=pts.filter(function(p){return p!==ROLE;})[0];
+      var ms=MSGS[k];
+      if(ms&&ms.length){
+        var last=ms[ms.length-1];
+        var unrd=ms.filter(function(m){return m.to===ROLE&&!m.read;}).length;
+        threads.push({key:k,other:other,last:last,unrd:unrd});
+      }
+    }
+  });
+  threads.sort(function(a,b){return b.last.ts.localeCompare(a.last.ts);});
+  var html='<div class="stl">Conversations</div>';
+  if(!threads.length) html+='<div style="text-align:center;padding:16px;color:#6b6b6b;font-size:12px">No messages yet.</div>';
+  threads.forEach(function(th){
+    var u=UINFO[th.other]||{};
+    var lm=th.last;
+    var prev=lm.type==='txt'?lm.body:lm.type==='req'?'&#128230; Purchase request':lm.type==='alert'?'&#128680; '+(lm.alrt?lm.alrt.title:'Alert'):'Message';
+    html+='<div class="cli" onclick="openChat(\''+th.other+'\')">'
+      +avt(th.other)
+      +'<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span style="font-size:12px;font-weight:600">'+(u.name||th.other)+'</span><span style="font-size:10px;color:#9b9b99">'+lm.ts+'</span></div>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:11px;color:#6b6b6b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:190px">'+(lm.from===ROLE?'You: ':'')+prev.slice(0,38)+(prev.length>38?'\u2026':'')+'</span>'
+      +(th.unrd>0?'<div class="unread-dot">'+th.unrd+'</div>':'')
+      +'</div></div></div>';
+  });
+  html+='<div class="stl">All staff</div>';
+  peers.forEach(function(uid){
+    var u=UINFO[uid];
+    html+='<div class="cli" onclick="openChat(\''+uid+'\')">'
+      +avt(uid)
+      +'<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span style="font-size:12px;font-weight:600">'+u.name+'</span><span style="font-size:10px;color:'+(u.online?'#27500A':'#9b9b99')+'">'+(u.online?'&#9679; Online':'&#9675; Away')+'</span></div><div style="font-size:11px;color:#6b6b6b">'+u.role+'</div></div>'
+      +'<button class="btn" style="padding:4px 10px;font-size:11px;flex-shrink:0" onclick="event.stopPropagation();openChat(\''+uid+'\')"><i class="ti ti-send" style="font-size:12px"></i></button>'
+      +'</div>';
+  });
+  document.getElementById('BD').innerHTML=html;
+};
+
+R.ops = function(){
+  var html='<div class="al av"><i class="ti ti-info-circle" style="flex-shrink:0"></i> Prices here auto-fill all attendant sales forms instantly across all branches.</div>'
+    +'<div class="card"><div class="dh" style="background:#4527a0"><i class="ti ti-gas-station"></i><span>Pump prices &mdash; all branches</span></div>';
+  Object.keys(PRICES).forEach(function(k){
+    var labels={PMS:'Petrol',AGO:'Diesel',DPK:'Kerosene',LPG:'LPG/kg'};
+    html+='<div class="cr"><span class="cl">'+k+' &mdash; '+labels[k]+'</span><div style="display:flex;align-items:center;gap:6px"><span class="cv" id="P-'+k+'">'+fmt(PRICES[k])+'/L</span><button class="btn" style="padding:3px 8px;font-size:11px" onclick="editP(\''+k+'\')"><i class="ti ti-edit" style="font-size:11px"></i></button></div></div>';
+  });
+  html+='</div>';
+  html+='<div class="stl">Current shifts</div><div class="card">'
+    +'<div class="li"><div class="lic" style="background:#EAF3DE"><i class="ti ti-user-check" style="color:#27500A"></i></div><div class="lib"><div class="lit">Emeka Okafor</div><div class="lis">Pump #1 &middot; PMS &middot; 6am&ndash;2pm</div></div><span class="badge bg">Active</span></div>'
+    +'<div class="li"><div class="lic" style="background:#EAF3DE"><i class="ti ti-user-check" style="color:#27500A"></i></div><div class="lib"><div class="lit">Bello Abubakar</div><div class="lis">Pump #2 &middot; PMS &middot; 6am&ndash;2pm</div></div><span class="badge bg">Active</span></div>'
+    +'</div>';
+  document.getElementById('BD').innerHTML=html;
+};
+
+R.tanks = function(){
+  var canE=ROLE==='mgr';
+  var tabs=[];
+  if(canE){tabs.push({id:'dip',label:'Record dip'});tabs.push({id:'recv',label:'Receive product'});}
+  tabs.push({id:'log',label:'Dip log'});
+  tabs.push({id:'inv',label:'Inventory'});
+  if(!TAB['tanks']) TAB['tanks']=tabs[0].id;
+  var bar=tbar('tanks',tabs);
+  var B=document.getElementById('BD');
+
+  if(TAB['tanks']==='dip'){
+    var html=bar+'<div class="card"><div class="dh" style="background:var(--g)"><i class="ti ti-cylinder"></i><span>Underground dip readings (mm)</span></div>'
+      +'<div class="ir"><label>Dipped by</label><input id="Dby" value="'+UN+'"></div>';
+    TANKS.forEach(function(t){
+      var tc=t.prod==='PMS'?'#3B6D11':t.prod==='AGO'?'#BA7517':'#185FA5';
+      html+='<div style="background:#f5f5f3;border-radius:8px;padding:8px 10px;margin-bottom:7px">'
+        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><div style="width:8px;height:8px;border-radius:50%;background:'+tc+'"></div><span style="font-size:11px;font-weight:500">'+t.name+'</span></div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+        +'<div class="ir" style="margin:0"><label>Dip (mm)</label><input type="number" id="D-'+t.id+'" placeholder="0&ndash;'+t.dip+'" oninput="aL(\''+t.id+'\')"></div>'
+        +'<div class="ir" style="margin:0"><label>Litres (auto)</label><input id="DL-'+t.id+'" readonly></div>'
+        +'</div></div>';
+    });
+    html+='<div style="background:#E1F5EE;border-radius:8px;padding:9px 10px;margin:7px 0;border:.5px solid #9FE1CB">'
+      +'<div style="font-size:11px;font-weight:600;color:#085041;margin-bottom:6px">LPG &mdash; rotor gauge (%)</div>';
+    LPGT.forEach(function(t){
+      html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:5px">'
+        +'<div class="ir" style="margin:0"><label style="color:#085041">'+t.name+' (%)</label><input type="number" id="LP-'+t.id+'" placeholder="0&ndash;100" oninput="aK(\''+t.id+'\')"></div>'
+        +'<div class="ir" style="margin:0"><label style="color:#085041">kg (auto)</label><input id="LK-'+t.id+'" readonly></div>'
+        +'</div>';
+    });
+    html+='</div><div class="ir"><label>Observations</label><textarea id="Dobs" placeholder="Anomalies, leaks\u2026"></textarea></div>'
+      +'<div id="MG-dip" style="margin-bottom:6px"></div>'
+      +'<div class="upz" onclick="addM(\'dip\')"><i class="ti ti-photo-up"></i><span>Attach photo or video evidence</span></div>'
+      +'<button class="btn btnp fw" onclick="subDip()"><i class="ti ti-device-floppy"></i> Submit dip report</button></div>';
+    B.innerHTML=html;
+  } else if(TAB['tanks']==='recv'){
+    B.innerHTML=bar+'<div class="card"><div class="dh" style="background:var(--b)"><i class="ti ti-truck"></i><span>Product delivery receipt</span></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'
+      +'<div class="ir"><label>Supplier</label><input id="Rs" placeholder="NNPCL, Ardova\u2026"></div>'
+      +'<div class="ir"><label>Product</label><select id="Rp"><option value="PMS">PMS</option><option value="AGO" selected>AGO</option><option value="DPK">DPK</option></select></div>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'
+      +'<div class="ir"><label>Ordered (L)</label><input type="number" id="R-o" oninput="cRV()"></div>'
+      +'<div class="ir"><label>Received (L)</label><input type="number" id="R-r" oninput="cRV()"></div>'
+      +'</div>'
+      +'<div class="ir"><label>Variance (auto)</label><input id="R-v" readonly></div>'
+      +'<div id="R-al"></div>'
+      +'<div class="ir"><label>Status</label><select id="Rst"><option value="ok">Normal</option><option value="short">Short delivery</option><option value="spill">Spill</option><option value="seal">Tampered seal</option></select></div>'
+      +'<div class="ir"><label>Notes</label><textarea id="Rn" placeholder="Describe any issues\u2026"></textarea></div>'
+      +'<div id="MG-rec" style="margin-bottom:6px"></div>'
+      +'<div class="upz" onclick="addM(\'rec\')"><i class="ti ti-video-plus"></i><span>Photograph seal, meter, or dispute</span></div>'
+      +'<button class="btn btnp fw" onclick="subRec()"><i class="ti ti-device-floppy"></i> Save delivery record</button></div>';
+  } else if(TAB['tanks']==='log'){
+    var lhtml=bar;
+    DIPS.slice(0,3).forEach(function(d,i){
+      var rw='';
+      TANKS.forEach(function(t){
+        var L=mmL(t,d.rd[t.id]||0);
+        var p=Math.round((L/t.cap)*100);
+        var c=p<30?'#791F1F':p<50?'#633806':'#27500A';
+        rw+='<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:.5px solid #e5e5e3"><span style="font-size:11px;color:#6b6b6b">'+t.name+'</span><span style="font-size:11px;font-weight:500;color:'+c+'">'+L.toLocaleString()+'L &middot; '+p+'%</span></div>';
+      });
+      if(d.lpg) LPGT.forEach(function(t){
+        var kg=rotK(t,d.lpg[t.id]||0);
+        rw+='<div style="display:flex;justify-content:space-between;padding:2px 0"><span style="font-size:11px;color:#085041">'+t.name+'</span><span style="font-size:11px;font-weight:500;color:#085041">'+kg.toLocaleString()+'kg</span></div>';
+      });
+      lhtml+='<div class="card anim" style="border-left:2px solid #3B6D11;border-radius:0 12px 12px 0;margin-bottom:8px">'
+        +'<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div><div style="font-size:12px;font-weight:500">'+fdt(d.dt)+'</div><div style="font-size:10px;color:#6b6b6b">By: '+d.by+'</div></div><span class="badge '+(i===0?'bg':'bgr')+'">'+(i===0?'Latest':'Prev')+'</span></div>'
+        +rw
+        +(d.obs?'<div style="margin-top:4px;font-size:10px;background:#FAEEDA;color:#633806;padding:3px 7px;border-radius:4px">'+d.obs+'</div>':'')
+        +'</div>';
+    });
+    RECS.slice(0,2).forEach(function(r){
+      var v=r.rec-r.ord;
+      var sc={ok:'bg',short:'br',spill:'ba',seal:'ba'}[r.st]||'bgr';
+      var sl={ok:'Normal',short:'Short delivery',spill:'Spill',seal:'Seal issue'}[r.st]||r.st;
+      lhtml+='<div class="card anim" style="border-left:2px solid var(--b);border-radius:0 12px 12px 0;margin-bottom:8px">'
+        +'<div style="display:flex;justify-content:space-between;margin-bottom:4px"><div style="font-size:12px;font-weight:500">'+r.sup+'</div><span class="badge '+sc+'">'+sl+'</span></div>'
+        +'<div style="font-size:10px;color:#6b6b6b;margin-bottom:4px">'+fdt(r.dt)+' &middot; '+r.prod+' &middot; '+r.wb+'</div>'
+        +'<div class="cr"><span class="cl">Ordered</span><span class="cv">'+r.ord.toLocaleString()+'L</span></div>'
+        +'<div class="cr"><span class="cl">Received</span><span class="cv">'+r.rec.toLocaleString()+'L</span></div>'
+        +'<div class="cr"><span class="cl">Variance</span><span class="cv" style="color:'+(v<0?'#791F1F':'#27500A')+'">'+(v>=0?'+':'')+v.toLocaleString()+'L</span></div>'
+        +(r.media&&r.media.length?'<div style="margin-top:4px">'+r.media.map(function(m){return '<span class="mchip"><i class="ti '+(m.t==='vid'?'ti-video':'ti-photo')+'" style="font-size:10px"></i>'+m.n+'</span>';}).join('')+'</div>':'')
+        +'</div>';
+    });
+    B.innerHTML=lhtml;
+  } else {
+    var ld=DIPS[0];var tv=0;
+    var ihtml=bar;
+    TANKS.forEach(function(t){
+      var a=ld?mmL(t,ld.rd[t.id]||0):t.op;
+      var bk=t.op+t.rv-t.sl;
+      var vv=a-bk;
+      var p=Math.round((a/t.cap)*100);
+      var bc=p<30?'#A32D2D':p<50?'#BA7517':'#3B6D11';
+      var val=a*PRICES[t.prod];
+      tv+=val;
+      var vbadge=Math.abs(vv)<150?'vok':Math.abs(vv)<500?'vw':'vbad';
+      var vtxt=vv>100?'Excess +'+Math.abs(vv):vv<-100?'Shortage '+vv:'Balanced';
+      ihtml+='<div class="card">'
+        +'<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px"><div style="width:8px;height:8px;border-radius:50%;background:'+bc+'"></div><span style="font-size:12px;font-weight:500">'+t.name+'</span>'
+        +'<span class="badge" style="margin-left:auto;background:'+(p<30?'#FCEBEB':p<50?'#FAEEDA':'#EAF3DE')+';color:'+bc+'">'+p+'%</span></div>'
+        +'<div class="pb" style="margin-bottom:6px"><div class="pf" style="width:'+p+'%;background:'+bc+'"></div></div>'
+        +'<div class="cr"><span class="cl">Actual (dip)</span><span class="cv">'+a.toLocaleString()+'L</span></div>'
+        +'<div class="cr"><span class="cl">Book stock</span><span class="cv">'+bk.toLocaleString()+'L</span></div>'
+        +'<div class="cr"><span class="cl">Variance</span><span><span class="vb '+vbadge+'">'+vtxt+'</span></span></div>'
+        +'<div class="cr"><span class="cl">Value</span><span class="cv" style="color:#27500A">'+fmt(Math.round(val))+'</span></div>'
+        +'</div>';
+    });
+    LPGT.forEach(function(t){
+      var a=ld&&ld.lpg?rotK(t,ld.lpg[t.id]||0):t.op;
+      var p=Math.round((a/t.cap)*100);
+      var val=a*PRICES.LPG;tv+=val;
+      ihtml+='<div class="card">'
+        +'<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px"><i class="ti ti-flame" style="font-size:14px;color:#085041"></i><span style="font-size:12px;font-weight:500">'+t.name+'</span><span class="badge" style="margin-left:auto;background:#E1F5EE;color:#085041">'+p+'%</span></div>'
+        +'<div class="pb" style="margin-bottom:6px"><div class="pf" style="width:'+p+'%;background:#0F6E56"></div></div>'
+        +'<div class="cr"><span class="cl">Actual</span><span class="cv">'+a.toLocaleString()+'kg</span></div>'
+        +'<div class="cr"><span class="cl">Value</span><span class="cv" style="color:#085041">'+fmt(Math.round(val))+'</span></div>'
+        +'</div>';
+    });
+    var shorts=TANKS.filter(function(t){var a=ld?mmL(t,ld.rd[t.id]||0):t.op;return a-(t.op+t.rv-t.sl)<-150;});
+    if(shorts.length) ihtml+='<div class="al ar"><i class="ti ti-alert-triangle" style="flex-shrink:0"></i> Shortage on '+shorts.map(function(t){return t.name;}).join(', ')+'.</div>';
+    else ihtml+='<div class="al ag"><i class="ti ti-circle-check" style="flex-shrink:0"></i> All tanks balanced.</div>';
+    ihtml+='<div class="card"><div class="cr"><span class="cl" style="font-weight:600">Total stock value</span><span class="cv" style="color:#27500A;font-size:14px">'+fmt(Math.round(tv))+'</span></div></div>';
+    B.innerHTML=ihtml;
+  }
+};
+
+R.acct = function(){
+  var rev=SALES.reduce(function(a,s){return a+s.L*s.price;},0);
+  var html='<div class="mg"><div class="mc"><div class="ml">This month</div><div class="mv">NGN 18.4M</div></div><div class="mc"><div class="ml">Today</div><div class="mv" style="font-size:16px">'+fmt(rev)+'</div></div></div>'
+    +'<div class="card">'
+    +'<div class="cr"><span class="cl">PMS sales</span><span class="cv">NGN 10,240,000</span></div>'
+    +'<div class="cr"><span class="cl">AGO sales</span><span class="cv">NGN 5,820,000</span></div>'
+    +'<div class="cr"><span class="cl">DPK sales</span><span class="cv">NGN 1,440,000</span></div>'
+    +'<div class="cr"><span class="cl" style="font-weight:600">Total</span><span class="cv" style="color:#27500A">NGN 17,980,000</span></div>'
+    +'</div>'
+    +'<div class="card">'
+    +'<div class="cr"><span class="cl">VAT payable (7.5%)</span><span class="cv" style="color:#791F1F">NGN 1,150,000</span></div>'
+    +'<div class="cr"><span class="cl">PAYE (staff)</span><span class="cv">NGN 216,000</span></div>'
+    +'<div class="cr"><span class="cl">CIT provision (30%)</span><span class="cv">NGN 840,000</span></div>'
+    +'</div>'
+    +'<div class="card">'
+    +'<div class="cr" style="cursor:pointer"><span class="cl">P&amp;L statement</span><i class="ti ti-chevron-right" style="color:#9b9b99"></i></div>'
+    +'<div class="cr" style="cursor:pointer"><span class="cl">FIRS VAT return</span><i class="ti ti-chevron-right" style="color:#9b9b99"></i></div>'
+    +'<div class="cr" style="cursor:pointer"><span class="cl">Full monthly report</span><i class="ti ti-chevron-right" style="color:#9b9b99"></i></div>'
+    +'</div>';
+  document.getElementById('BD').innerHTML=html;
+};
+
+R.corp = function(){
+  var expCount=DOCS.filter(function(d){return (new Date(d.exp)-new Date('2025-06-10'))/864e5<0;}).length;
+  var exp30=DOCS.filter(function(d){var dv=(new Date(d.exp)-new Date('2025-06-10'))/864e5;return dv>=0&&dv<=30;}).length;
+  var html=(expCount>0?'<div class="al ar"><i class="ti ti-alert-triangle" style="flex-shrink:0"></i> '+expCount+' compliance document'+(expCount>1?'s':'')+' expired &mdash; urgent.</div>':'')
+    +(exp30>0?'<div class="al aw"><i class="ti ti-clock" style="flex-shrink:0"></i> '+exp30+' document'+(exp30>1?'s':'')+' expiring within 30 days.</div>':'')
+    +'<div class="stl">Compliance documents &mdash; by urgency</div><div class="card">';
+  var sorted=DOCS.slice().sort(function(a,b){return new Date(a.exp)-new Date(b.exp);});
+  sorted.forEach(function(d){
+    var dv=(new Date(d.exp)-new Date('2025-06-10'))/864e5;
+    var st=dv<0?{l:'Expired',c:'br',ic:'#791F1F'}:dv<=30?{l:Math.round(dv)+'d left',c:'ba',ic:'#633806'}:{l:'Valid',c:'bg',ic:'#27500A'};
+    html+='<div class="cr"><div><div class="cv" style="color:'+st.ic+'">'+d.name+'</div><div class="cl">'+d.iss+' &middot; Expires '+fd(d.exp)+'</div></div><span class="badge '+st.c+'">'+st.l+'</span></div>';
+  });
+  html+='</div><button class="btn btnv fw" onclick="toast(\'Document entry form ready\')"><i class="ti ti-plus"></i> Add document</button>';
+  document.getElementById('BD').innerHTML=html;
+};
+
+R.branches = function(){
+  var canC=['ceo','md','admin'].indexOf(ROLE)>=0;
+  var totalRev=BRANCHES.reduce(function(a,b){return a+b.rev;},0);
+  var html=(!canC?'<div class="al ai"><i class="ti ti-eye" style="flex-shrink:0"></i> View only. CEO, MD and Admin can create or modify branches.</div>':'')
+    +'<div class="mg"><div class="mc"><div class="ml">Total revenue</div><div class="mv" style="font-size:15px">NGN '+(totalRev/1e6).toFixed(1)+'M</div></div><div class="mc"><div class="ml">Branches</div><div class="mv">'+BRANCHES.length+'</div><div class="ms">'+BRANCHES.filter(function(b){return b.st==='Active';}).length+' active</div></div></div>';
+  BRANCHES.forEach(function(b){
+    var lc={Active:'#3B6D11',Pending:'#BA7517',Suspended:'#888'}[b.st]||'#888';
+    html+='<div class="card" style="border-left:3px solid '+lc+'">'
+      +'<div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">'
+      +'<div style="width:34px;height:34px;border-radius:8px;background:'+(b.st==='Pending'?'#E6F1FB':'#EAF3DE')+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-building-store" style="font-size:16px;color:'+(b.st==='Pending'?'#0C447C':'#27500A')+'"></i></div>'
+      +'<div style="flex:1"><div style="display:flex;align-items:center;justify-content:space-between"><div class="cv">'+b.name+'</div><span class="badge '+(b.st==='Active'?'bg':'ba')+'">'+b.st+'</span></div>'
+      +'<div style="font-size:10px;color:#6b6b6b">'+(b.mgr||'No manager')+' &middot; '+b.pumps+' pumps &middot; '+b.tanks+' tanks</div></div></div>'
+      +'<div class="cr"><span class="cl">Monthly revenue</span><span class="cv" style="color:'+(b.rev>0?'#27500A':'#9b9b99')+'">'+(b.rev>0?fmt(b.rev):'Pending')+'</span></div>'
+      +(canC?'<div style="display:flex;gap:6px;margin-top:7px"><button class="btn" style="flex:1;padding:5px 8px;font-size:11px" onclick="editBranch(\''+b.id+'\')"><i class="ti ti-edit" style="font-size:12px"></i> Edit</button></div>':'')
+      +'</div>';
+  });
+  if(canC) html+='<button class="btn btnp fw" onclick="addBranch()"><i class="ti ti-building-plus"></i> Create branch</button>';
+  document.getElementById('BD').innerHTML=html;
+};
+
+R.maint = function(){
+  var open=MAINT.filter(function(m){return m.st==='Open';});
+  var done=MAINT.filter(function(m){return m.st==='Done';});
+  var html='';
+  if(open.length){
+    html+='<div class="stl">Open ('+open.length+')</div>';
+    open.forEach(function(m){
+      var pb={Urgent:'br',Medium:'ba',Low:'bg'}[m.pri]||'bgr';
+      var mb={Urgent:'#FCEBEB',Medium:'#FAEEDA',Low:'#EAF3DE'}[m.pri]||'#F1EFE8';
+      var mc={Urgent:'#791F1F',Medium:'#633806',Low:'#27500A'}[m.pri]||'#444441';
+      html+='<div class="card"><div style="display:flex;align-items:flex-start;gap:8px"><div class="lic" style="background:'+mb+'"><i class="ti ti-tool" style="color:'+mc+'"></i></div><div class="lib"><div class="lit">'+m.title+'</div><div class="lis">By: '+m.by+' &middot; '+fd(m.date)+'</div></div><span class="badge '+pb+'">'+m.pri+'</span></div></div>';
+    });
+  }
+  if(done.length){
+    html+='<div class="stl">Completed</div>';
+    done.forEach(function(m){
+      html+='<div class="card"><div style="display:flex;align-items:flex-start;gap:8px"><div class="lic" style="background:#EAF3DE"><i class="ti ti-circle-check" style="color:#27500A"></i></div><div class="lib"><div class="lit">'+m.title+'</div><div class="lis">Done &middot; '+fd(m.date)+(m.cost?' &middot; NGN '+m.cost.toLocaleString():'')+'</div></div><span class="badge bg">Done</span></div></div>';
+    });
+  }
+  if(['mgr','att'].indexOf(ROLE)>=0){
+    html+='<div class="card"><div class="dh" style="background:var(--g)"><i class="ti ti-plus"></i><span>New request</span></div>'
+      +'<div class="ir"><label>Issue / equipment</label><input id="Mi" placeholder="e.g. Pump #2 nozzle\u2026"></div>'
+      +'<div class="ir"><label>Priority</label><select id="Mp"><option>Urgent</option><option>Medium</option><option>Low</option></select></div>'
+      +'<div id="MG-maint" style="margin-bottom:6px"></div>'
+      +'<div class="upz" onclick="addM(\'maint\')"><i class="ti ti-camera"></i><span>Attach photo or video</span></div>'
+      +'<button class="btn btnp fw" onclick="subMaint()"><i class="ti ti-send"></i> Submit request</button></div>';
+  }
+  document.getElementById('BD').innerHTML=html;
+};
+
+R.sales = function(){
+  var canE=['mgr','att'].indexOf(ROLE)>=0;
+  var rev=SALES.reduce(function(a,s){return a+s.L*s.price;},0);
+  var html='<div class="mg"><div class="mc"><div class="ml">Today sales</div><div class="mv">'+fmt(rev)+'</div><div class="ms">'+SALES.reduce(function(a,s){return a+s.L;},0).toLocaleString()+'L</div></div><div class="mc"><div class="ml">Entries</div><div class="mv">'+SALES.length+'</div></div></div>'
+    +'<div class="card">';
+  SALES.forEach(function(s){
+    html+='<div class="cr"><div><div class="cv">'+s.pump+'</div><div class="cl">By: '+s.by+' &middot; '+fdt(s.dt)+'</div></div><div style="text-align:right"><div style="font-size:12px;font-weight:500">'+s.L+'L &middot; '+fmt(s.L*s.price)+'</div></div></div>';
+  });
+  html+='</div>';
+  if(canE){
+    html+='<div class="card"><div class="dh" style="background:var(--g)"><i class="ti ti-plus"></i><span>Record sales entry</span></div>'
+      +'<div class="ir"><label>Pump</label><select id="Sp" onchange="cSales()"><option value="PMS">Pump #1 &ndash; PMS</option><option value="PMS">Pump #2 &ndash; PMS</option><option value="AGO">Pump #3 &ndash; AGO</option><option value="DPK">Pump #4 &ndash; DPK</option></select></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+      +'<div class="ir"><label>Opening meter</label><input type="number" id="So" step="0.001" oninput="cSales()"></div>'
+      +'<div class="ir"><label>Closing meter</label><input type="number" id="Sc" step="0.001" oninput="cSales()"></div>'
+      +'</div>'
+      +'<div class="ir"><label>Price/L (locked by MD)</label><input id="Spr" readonly value="'+fmt(PRICES.PMS)+'/L (locked)"></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+      +'<div class="ir"><label>Litres (auto)</label><input id="Sl" readonly></div>'
+      +'<div class="ir"><label>Amount</label><input id="Sa" readonly></div>'
+      +'</div>'
+      +'<button class="btn btnp fw" onclick="subSales()"><i class="ti ti-check"></i> Submit entry</button></div>';
+  }
+  document.getElementById('BD').innerHTML=html;
+};
+
+R.mktg = function(){
+  var canI=['ceo','md','admin'].indexOf(ROLE)>=0;
+  var html='<div class="mg"><div class="mc"><div class="ml">Market PMS avg</div><div class="mv" style="color:#791F1F">NGN 905</div><div class="ms">Abuja</div></div><div class="mc"><div class="ml">Our price</div><div class="mv" style="color:#27500A">'+fmt(PRICES.PMS)+'</div><div class="ms">gap: NGN '+(905-PRICES.PMS)+'</div></div></div>'
+    +(canI?'<div class="al aco"><i class="ti ti-chart-line" style="flex-shrink:0"></i> Market avg NGN 905/L. Our price '+fmt(PRICES.PMS)+'/L &mdash; gap NGN '+(905-PRICES.PMS)+'. Review pricing in Operations.</div>':'')
+    +'<div class="stl">Active campaigns</div>'
+    +'<div class="card"><div class="cr"><span class="cl">Ramadan loyalty drive</span><div><span class="badge bg">2.8x ROI</span> <span class="badge bg">Active</span></div></div><div class="cr"><span class="cl">Corporate fleet discount</span><div><span class="badge bg">5.4x ROI</span> <span class="badge bgr">Completed</span></div></div></div>'
+    +(canI?'<div class="stl">Competitor stations (3.5km radius)</div><div class="card">'
+      +'<div class="cr"><div><div class="cv" style="color:#791F1F">NNPCL &mdash; Maitama</div><div class="cl">0.8km away</div></div><div style="text-align:right"><div style="font-size:11px;font-weight:500">PMS NGN 945</div><div style="font-size:10px;color:#6b6b6b">AGO NGN 1,820</div></div></div>'
+      +'<div class="cr"><div><div class="cv">TotalEnergies &mdash; Wuse II</div><div class="cl">1.4km away</div></div><div style="text-align:right"><div style="font-size:11px;font-weight:500">PMS NGN 910</div><div style="font-size:10px;color:#6b6b6b">AGO NGN 1,810</div></div></div>'
+      +'<div class="cr"><div><div class="cv" style="color:var(--co)">PetroTrack HQ</div><div class="cl">Our station</div></div><div style="text-align:right"><div style="font-size:11px;font-weight:500;color:var(--co)">PMS '+fmt(PRICES.PMS)+'</div><div style="font-size:10px;color:var(--co)">AGO '+fmt(PRICES.AGO)+'</div></div></div>'
+      +'</div>':'');
+  document.getElementById('BD').innerHTML=html;
+};
+
+/* === ACTIONS === */
+function editP(k){
+  var n=prompt('New price for '+k+' (NGN):',PRICES[k]);
+  if(n&&!isNaN(n)&&parseInt(n)>0){
+    PRICES[k]=parseInt(n);
+    var el=document.getElementById('P-'+k);if(el)el.textContent=fmt(PRICES[k])+'/L';
+    pushN(k+' price updated',k+' set to '+fmt(PRICES[k])+'/L by '+UN+'. Synced to all attendant forms.');
+    toast(k+' updated &mdash; synced to all attendants');
+    AUDIT.unshift({id:Date.now(),action:'Price update',user:UN+' ('+RL[ROLE]+')',detail:k+' set to NGN '+PRICES[k].toLocaleString()+'/L',ts:ts()});
+  }
+}
+function editUser(id){
+  var s=STAFF.filter(function(x){return x.id==id;})[0];if(!s)return;
+  var n=prompt('Edit name:',s.name);if(n&&n.trim()){s.name=n.trim();AUDIT.unshift({id:Date.now(),action:'User updated',user:UN+' (Admin)',detail:n.trim()+' profile edited',ts:ts()});}
+  toast('User updated');R.users&&R.users();
+}
+function toggleUser(id){
+  var s=STAFF.filter(function(x){return x.id==id;})[0];if(!s)return;
+  s.st=s.st==='Active'?'Suspended':'Active';
+  AUDIT.unshift({id:Date.now(),action:'User account '+s.st.toLowerCase(),user:UN+' (Admin)',detail:s.name+' account '+s.st.toLowerCase(),ts:ts()});
+  toast(s.name+' account '+s.st.toLowerCase(),s.st==='Suspended'?'warn':'ok');
+  R.users&&R.users();
+}
+function addUser(){
+  var n=(document.getElementById('Un').value||'').trim();if(!n){toast('Enter full name','err');return;}
+  var r=document.getElementById('Ur').value||'Pump Attendant';
+  STAFF.push({id:Date.now(),name:n,role:r,sal:parseInt(document.getElementById('Us').value)||100000,st:'Active',email:(document.getElementById('Ue').value||n.split(' ')[0].toLowerCase()+'@petrotrack.ng')});
+  AUDIT.unshift({id:Date.now(),action:'User created',user:UN+' (Admin)',detail:n+' added as '+r+' &mdash; credentials sent by email',ts:ts()});
+  toast('User account created &mdash; credentials sent to email');TAB['users']='list';R.users&&R.users();
+}
+function editDept(id){
+  var d=DEPTS.filter(function(x){return x.id===id;})[0];if(!d)return;
+  var n=prompt('Rename panel:',d.name);if(n&&n.trim()){d.name=n.trim();toast('Panel renamed');}
+  R.depts&&R.depts();
+}
+function deleteDept(id){
+  var d=DEPTS.filter(function(x){return x.id===id;})[0];if(!d||d.sys){toast('System panels cannot be deleted','warn');return;}
+  if(confirm('Delete "'+d.name+'"? This cannot be undone.')){
+    DEPTS.splice(DEPTS.findIndex(function(x){return x.id===id;}),1);
+    toast('Panel deleted','warn');R.depts&&R.depts();
+  }
+}
+function createDept(){
+  var nm=(document.getElementById('DPn').value||'').trim();if(!nm){toast('Enter panel name','err');return;}
+  var CP=[{bg:'#EAF3DE',fg:'#27500A'},{bg:'#EEEDFE',fg:'#3C3489'},{bg:'#E6F1FB',fg:'#0C447C'},{bg:'#FAEEDA',fg:'#633806'},{bg:'#E1F5EE',fg:'#085041'},{bg:'#F1EFE8',fg:'#444441'}];
+  var ci=parseInt(document.getElementById('DPc').value||'0');
+  var roles=[];
+  Object.keys(RL).filter(function(k){return k!=='admin';}).forEach(function(k){
+    var el=document.getElementById('RC-'+k);if(el&&el.checked)roles.push(k);
+  });
+  if(!roles.length){toast('Select at least one role','err');return;}
+  DEPTS.push({id:'d-'+Date.now(),name:nm,icon:document.getElementById('DPi').value||'ti-folder',col:CP[ci],roles:roles,sys:false});
+  AUDIT.unshift({id:Date.now(),action:'Department created',user:UN+' (Admin)',detail:'"'+nm+'" panel created &mdash; visible to '+roles.length+' roles',ts:ts()});
+  toast('"'+nm+'" created &mdash; live for '+roles.length+' roles');TAB['depts']='all';R.depts&&R.depts();
+}
+function saveSettings(){
+  var cn=document.getElementById('Cn');if(cn)SYSSET.co=cn.value;
+  var vat=parseFloat(document.getElementById('Cv').value);if(vat)SYSSET.vat=vat;
+  AUDIT.unshift({id:Date.now(),action:'Settings updated',user:UN+' (Admin)',detail:'Company settings and system configuration modified',ts:ts()});
+  toast('System settings saved successfully');
+}
+function addBranch(){
+  var n=prompt('Branch name:');if(!n)return;
+  BRANCHES.push({id:'B'+Date.now(),name:n,st:'Pending',rev:0,mgr:prompt('Branch manager name:','')||'',pumps:parseInt(prompt('No. of pumps:','4')||'4'),tanks:parseInt(prompt('No. of tanks:','4')||'4')});
+  toast('Branch "'+n+'" created');R.branches&&R.branches();
+}
+function editBranch(id){
+  var b=BRANCHES.filter(function(x){return x.id===id;})[0];if(!b)return;
+  var n=prompt('Edit branch name:',b.name);if(n&&n.trim()){b.name=n.trim();toast('Updated');R.branches&&R.branches();}
+}
+function subDip(){
+  var by=(document.getElementById('Dby').value||'').trim();if(!by){toast('Enter your name','err');return;}
+  var rd={};var ok=true;
+  TANKS.forEach(function(t){var v=parseFloat(document.getElementById('D-'+t.id).value);if(!v)ok=false;rd[t.id]=v||0;});
+  if(!ok){toast('Enter readings for all 4 tanks','err');return;}
+  var lpg={};LPGT.forEach(function(t){lpg[t.id]=parseFloat(document.getElementById('LP-'+t.id).value)||0;});
+  DIPS.unshift({id:Date.now(),dt:ts(),by:by,rd:rd,lpg:lpg,obs:document.getElementById('Dobs').value||'',media:dipM.slice()});
+  dipM=[];
+  AUDIT.unshift({id:Date.now(),action:'Dip submitted',user:by+' ('+RL[ROLE]+')',detail:'All tanks dipped.',ts:ts()});
+  pushN('Dip report submitted','All tanks dipped by '+by+'.');
+  toast('Dip report saved &mdash; visible to all authorised roles');
+  setTimeout(function(){TAB['tanks']='log';R.tanks&&R.tanks();},700);
+}
+function subRec(){
+  var sup=(document.getElementById('Rs').value||'').trim();if(!sup){toast('Enter supplier name','err');return;}
+  var rec={id:Date.now(),dt:ts(),sup:sup,prod:document.getElementById('Rp').value,wb:'WB-'+Date.now(),ord:parseFloat(document.getElementById('R-o').value)||0,rec:parseFloat(document.getElementById('R-r').value)||0,st:document.getElementById('Rst').value||'ok',notes:document.getElementById('Rn').value||'',media:recM.slice()};
+  RECS.unshift(rec);recM=[];
+  if(rec.st!=='ok') pushN('Delivery issue &mdash; '+rec.prod,sup+': '+rec.st+'.');
+  toast('Delivery record saved');
+  setTimeout(function(){TAB['tanks']='log';R.tanks&&R.tanks();},700);
+}
+function subMaint(){
+  var t=(document.getElementById('Mi').value||'').trim();if(!t){toast('Enter issue','err');return;}
+  MAINT.unshift({id:Date.now(),title:t,pri:document.getElementById('Mp').value||'Medium',by:UN,date:new Date().toISOString().slice(0,10),st:'Open',media:maintM.slice()});
+  maintM=[];
+  pushN('Maintenance request',t+' &mdash; '+document.getElementById('Mp').value);
+  toast('Request submitted');
+  setTimeout(function(){R.maint&&R.maint();},700);
+}
+function subSales(){
+  var sel=document.getElementById('Sp');
+  var prod=sel?sel.options[sel.selectedIndex].value:'PMS';
+  var o=parseFloat(document.getElementById('So').value)||0;
+  var c=parseFloat(document.getElementById('Sc').value)||0;
+  if(!c||c<=o){toast('Enter valid meter readings','err');return;}
+  var L=Math.round((c-o)*1000)/1000;
+  SALES.push({id:Date.now(),pump:sel?sel.options[sel.selectedIndex].text:'Pump',by:UN,L:L,price:PRICES[prod]||830,dt:ts()});
+  toast('Entry saved &mdash; '+L+'L &middot; '+fmt(Math.round(L*PRICES[prod])));
+  R.sales&&R.sales();
+}
+/* ═══ EXPENSE / BUDGET HELPERS ═══ */
+var REF_DATE='2025-06-10';
+function periodRange(p){
+  var to=new Date(REF_DATE+'T23:59');
+  var from;
+  if(p==='daily'){from=new Date(REF_DATE+'T00:00');}
+  else if(p==='weekly'){from=new Date('2025-06-04T00:00');}
+  else if(p==='monthly'){from=new Date('2025-06-01T00:00');}
+  else if(p==='quarterly'){from=new Date('2025-04-01T00:00');}
+  else{from=new Date('2025-01-01T00:00');}
+  return{from:from,to:to};
+}
+function expFilter(fromDt,toDt,status){
+  return EXPENSES.filter(function(e){
+    var d=new Date(e.dt);
+    if(status&&e.status!==status)return false;
+    if(fromDt&&d<fromDt)return false;
+    if(toDt&&d>toDt)return false;
+    return true;
+  });
+}
+function expSum(arr){return arr.reduce(function(a,e){return a+e.amt;},0);}
+function periodExpSum(p,status){
+  var r=periodRange(p);
+  return expSum(expFilter(r.from,r.to,status||'approved'));
+}
+function currentBudget(){
+  return BUDGETS.filter(function(b){return b.month===6&&b.year===2025;})[0]||null;
+}
+function budgetMonthUsed(){
+  var r=periodRange('monthly');
+  return expSum(expFilter(r.from,r.to,'approved'));
+}
+function expByCat(p){
+  var r=periodRange(p||'yearly');
+  var arr=expFilter(r.from,r.to,'approved');
+  var m={};
+  arr.forEach(function(e){m[e.cat]=(m[e.cat]||0)+e.amt;});
+  return m;
+}
+var CAT_COL={'Generator fuel':'#BA7517','Maintenance & repairs':'#A32D2D','Utilities (EKEDC/water)':'#185FA5','Staff welfare':'#1a6e3c','Office supplies':'#4527a0','Security & guarding':'#0F6E56','Transport & logistics':'#633806','FIRS / regulatory fees':'#D85A30','Miscellaneous':'#9b9b99'};
+
+/* ═══ R.budget — Station Manager ═══ */
+R.budget=function(){
+  var tabs=[{id:'summary',label:'Summary'},{id:'record',label:'Record expense'},{id:'request',label:'Budget request'},{id:'log',label:'Expense log'}];
+  var bar=tbar('budget',tabs);
+  var B=document.getElementById('BD');
+  var tab=TAB['budget']||'summary';
+  if(tab==='record'){
+    B.innerHTML=bar
+      +'<div class="card"><div class="dh" style="background:var(--co)"><i class="ti ti-receipt"></i><span>Record daily expense</span></div>'
+      +'<div class="ir"><label>Date &amp; time</label><input type="datetime-local" id="Edt" value="'+REF_DATE+'T12:00"></div>'
+      +'<div class="ir"><label>Category</label><select id="Ecat">'
+      +EXP_CATS.map(function(c){return '<option>'+c+'</option>';}).join('')
+      +'</select></div>'
+      +'<div class="ir"><label>Description</label><input id="Edesc" placeholder="Describe the expense clearly..."></div>'
+      +'<div class="ir"><label>Amount (NGN)</label><input type="number" id="Eamt" placeholder="0.00" step="0.01"></div>'
+      +'<div class="ir"><label>Vendor / supplier</label><input id="Even" placeholder="e.g. AutoFix Nigeria, EKEDC..."></div>'
+      +'<div class="al ai"><i class="ti ti-info-circle" style="flex-shrink:0"></i> Submitted expenses go to the Accountant for review before being deducted from revenue.</div>'
+      +'<button class="btn btnp fw" onclick="subExpense()"><i class="ti ti-send"></i> Submit for approval</button></div>';
+    return;
+  }
+  if(tab==='request'){
+    var cb=currentBudget();
+    if(cb){
+      var used=budgetMonthUsed();var eff=cb.correctedTotal||cb.total;
+      var pct=Math.round((used/eff)*100);var bc=budgetStatusColor(cb.status);
+      var h=bar+'<div class="card" style="border-left:3px solid '+bc+'">'
+        +'<div class="dh" style="background:var(--g)"><i class="ti ti-wallet"></i><span>'+cb.label+' — '+budgetStatusLabel(cb.status)+'</span></div>'
+        +'<div class="cr"><span class="cl">Submitted amount</span><span class="cv">'+fmt(cb.total)+'</span></div>'
+        +(cb.correctedTotal?'<div class="cr"><span class="cl" style="color:#BA7517">Accountant corrected to</span><span class="cv" style="color:#BA7517">'+fmt(cb.correctedTotal)+'</span></div>':'')
+        +(cb.status==='fully_approved'?'<div class="cr"><span class="cl">Expenses used (MTD)</span><span class="cv" style="color:#791F1F">'+fmt(used)+'</span></div>':'')
+        +(cb.status==='fully_approved'?'<div class="cr"><span class="cl">Remaining balance</span><span class="cv" style="color:'+(eff-used>0?'#27500A':'#791F1F')+'">'+fmt(eff-used)+'</span></div>':'')
+        +(cb.status==='fully_approved'?'<div style="margin:6px 0 4px"><div class="pb"><div class="pf" style="width:'+Math.min(pct,100)+'%;background:'+(pct>90?'#A32D2D':pct>70?'#BA7517':'#1a6e3c')+'"></div></div><div style="font-size:9px;color:var(--color-text-tertiary);margin-top:1px">'+pct+'% of budget used</div></div>':'')
+        +'</div>'
+        +'<div class="stl">Approval trail</div><div class="card">';
+      cb.workflow.forEach(function(w){
+        var ic={submit:'ti-send',forward:'ti-arrow-right',correct_forward:'ti-edit',approve:'ti-circle-check',reject:'ti-circle-x'}[w.action]||'ti-point';
+        var wc={approve:'#27500A',reject:'#791F1F',forward:'#185FA5',correct_forward:'#BA7517',submit:'#633806'}[w.action]||'#888';
+        h+='<div style="display:flex;gap:7px;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary)">'
+          +'<i class="ti '+ic+'" style="font-size:13px;color:'+wc+';flex-shrink:0;margin-top:1px"></i>'
+          +'<div><div style="font-size:11px;font-weight:500;color:'+wc+'">'+w.stage+'</div>'
+          +'<div style="font-size:10px;color:var(--color-text-secondary)">'+w.by+' &middot; '+fd(w.dt)+'</div>'
+          +(w.note?'<div style="font-size:10px;color:var(--color-text-tertiary);font-style:italic">'+w.note+'</div>':'')+'</div></div>';
+      });
+      h+='</div>';
+      if(cb.status==='fully_approved'){
+        var activeItems=cb.correctedItems&&cb.correctedItems.length?cb.correctedItems:cb.items;
+        h+='<div class="stl">Approved line items</div><div class="card">';
+        activeItems.forEach(function(it){var c=CAT_COL[it.cat]||'#888';h+='<div class="cr"><span class="cl" style="color:'+c+'">'+it.cat+'</span><span class="cv">'+fmt(it.amt)+'</span></div>';});
+        h+='</div>';
+      }
+      B.innerHTML=h;
+    } else {
+      B.innerHTML=bar+'<div class="al ai"><i class="ti ti-info-circle" style="flex-shrink:0"></i> No approved budget for this month yet. Submit a budget request for Accountant approval.</div>'
+        +'<div class="card"><div class="dh" style="background:var(--b)"><i class="ti ti-wallet"></i><span>Submit monthly budget request</span></div>'
+        +'<div class="ir"><label>Month</label><select id="Bmo"><option value="7">July 2025</option><option value="8">August 2025</option></select></div>'
+        +'<div class="stl">Budget line items</div>'
+        +EXP_CATS.map(function(c){return '<div class="ir"><label>'+c+' (NGN)</label><input type="number" id="BI-'+c.replace(/[^a-z0-9]/gi,'')+'\" placeholder="0"></div>';}).join('')
+        +'<button class="btn btnp fw" onclick="subBudget()"><i class="ti ti-send"></i> Submit budget request</button></div>';
+    }
+    return;
+  }
+  if(tab==='log'){
+    var myExp=EXPENSES.slice().sort(function(a,b){return new Date(b.dt)-new Date(a.dt);});
+    var h=bar;
+    if(!myExp.length){h+='<div style="text-align:center;padding:20px;color:var(--color-text-secondary);font-size:12px">No expenses recorded yet.</div>';}
+    else{
+      h+='<div class="card">';
+      myExp.forEach(function(e){
+        var sc={approved:'bg',pending:'ba',rejected:'br'}[e.status]||'bgr';
+        var c=CAT_COL[e.cat]||'#888';
+        h+='<div class="cr"><div><div class="cv" style="color:'+c+'">'+e.cat+'</div><div class="cl">'+e.desc+'</div><div style="font-size:10px;color:var(--color-text-tertiary)">'+fd(e.dt)+'</div></div>'
+          +'<div style="text-align:right"><div style="font-size:12px;font-weight:500">'+fmt(e.amt)+'</div><span class="badge '+sc+'">'+e.status+'</span></div></div>';
+      });
+      h+='</div>';
+    }
+    B.innerHTML=h;
+    return;
+  }
+  /* summary tab */
+  var cb2=currentBudget(); var used2=budgetMonthUsed();
+  var dailyE=periodExpSum('daily','approved');
+  var weeklyE=periodExpSum('weekly','approved');
+  var monthlyE=periodExpSum('monthly','approved');
+  var pending=EXPENSES.filter(function(e){return e.status==='pending';});
+  var h=bar;
+  h+='<div style="background:linear-gradient(135deg,#2c1810,var(--co));border-radius:12px;padding:14px;margin-bottom:10px;color:#fff">'
+    +'<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">'
+    +'<div style="width:36px;height:36px;border-radius:9px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center"><i class="ti ti-wallet" style="font-size:18px;color:#FFD700"></i></div>'
+    +'<div><div style="font-size:13px;font-weight:500">Budget & Expense Tracker</div><div style="font-size:10px;opacity:.7">Station Manager — HQ Abuja</div></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+    +'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:9px 10px"><div style="font-size:9px;opacity:.7;margin-bottom:2px">Today approved</div><div style="font-size:16px;font-weight:500">'+fmt(dailyE)+'</div></div>'
+    +'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:9px 10px"><div style="font-size:9px;opacity:.7;margin-bottom:2px">This week</div><div style="font-size:16px;font-weight:500">'+fmt(weeklyE)+'</div></div>'
+    +'</div></div>';
+  if(cb2){
+    var utilPct=Math.round((used2/cb2.total)*100);
+    h+='<div class="card"><div class="dh" style="background:var(--g)"><i class="ti ti-calendar-check"></i><span>June 2025 budget utilisation</span></div>'
+      +'<div class="cr"><span class="cl">Total approved budget</span><span class="cv">'+fmt(cb2.total)+'</span></div>'
+      +'<div class="cr"><span class="cl">Approved spend (MTD)</span><span class="cv" style="color:#791F1F">'+fmt(used2)+'</span></div>'
+      +'<div class="cr"><span class="cl">Remaining</span><span class="cv" style="color:'+(cb2.total-used2>0?'#27500A':'#791F1F')+'">'+fmt(cb2.total-used2)+'</span></div>'
+      +'<div style="margin-top:6px"><div class="pb"><div class="pf" style="width:'+Math.min(utilPct,100)+'%;background:'+(utilPct>90?'#A32D2D':utilPct>70?'#BA7517':'#1a6e3c')+'"></div></div>'
+      +'<div style="font-size:10px;color:var(--color-text-secondary);margin-top:2px">'+utilPct+'% of monthly budget used</div></div></div>';
+  }
+  if(pending.length){
+    h+='<div class="stl">Pending accountant approval ('+pending.length+')</div><div class="card">';
+    pending.forEach(function(e){
+      h+='<div class="cr"><div><div class="cv">'+e.cat+'</div><div class="cl">'+e.desc+'</div></div><div style="text-align:right"><div class="cv">'+fmt(e.amt)+'</div><span class="badge ba">Pending</span></div></div>';
+    });
+    h+='</div>';
+  }
+  h+='<button class="btn btnp fw" onclick="TAB[\'budget\']=\'record\';R.budget()"><i class="ti ti-plus"></i> Record new expense</button>';
+  B.innerHTML=h;
+};
+
+/* ═══ R.exp — Accountant expense approvals ═══ */
+R.exp=function(){
+  var tabs=[{id:'pending',label:'Pending'},{id:'approved',label:'Approved'},{id:'rejected',label:'Rejected'},{id:'budgets',label:'Budget requests'}];
+  var bar=tbar('exp',tabs);
+  var B=document.getElementById('BD');
+  var tab=TAB['exp']||'pending';
+  var arr=EXPENSES.filter(function(e){return e.status===tab;});
+  if(tab==='budgets'){
+    var h=bar;
+    var submitted=BUDGETS.filter(function(b){return b.status==='submitted';});
+    if(submitted.length) h+='<div class="al ar"><i class="ti ti-clock" style="flex-shrink:0"></i> '+submitted.length+' budget request'+(submitted.length>1?'s':'')+' awaiting your review.</div>';
+    if(!BUDGETS.length){h+='<div style="text-align:center;padding:20px;color:var(--color-text-secondary);font-size:12px">No budget requests submitted yet.</div>';}
+    BUDGETS.slice().reverse().forEach(function(b){
+      var sc=budgetStatusBadge(b.status);var bc=budgetStatusColor(b.status);
+      var eff=b.correctedTotal||b.total;
+      h+='<div class="card" style="border-left:3px solid '+bc+'">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">'
+        +'<div><div class="cv">'+b.label+'</div><div style="font-size:10px;color:'+bc+'">'+budgetStatusLabel(b.status)+'</div></div>'
+        +'<span class="badge '+sc+'">'+b.status.replace(/_/g,' ')+'</span></div>'
+        +'<div class="cr"><span class="cl">Submitted by</span><span class="cv">'+b.byName+'</span></div>'
+        +'<div class="cr"><span class="cl">Original amount</span><span class="cv">'+fmt(b.total)+'</span></div>'
+        +(b.correctedTotal?'<div class="cr"><span class="cl" style="color:#BA7517">Corrected to</span><span class="cv" style="color:#BA7517">'+fmt(b.correctedTotal)+'</span></div>':'')
+        +'<div class="stl" style="margin-top:7px;margin-bottom:4px">Workflow trail</div>';
+      b.workflow.forEach(function(w){
+        var ic={submit:'ti-send',forward:'ti-arrow-right',correct_forward:'ti-edit',approve:'ti-circle-check',reject:'ti-circle-x'}[w.action]||'ti-point';
+        var wc={approve:'#27500A',reject:'#791F1F',forward:'#185FA5',correct_forward:'#BA7517',submit:'#633806'}[w.action]||'#888';
+        h+='<div style="display:flex;gap:7px;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary)">'
+          +'<i class="ti '+ic+'" style="font-size:12px;color:'+wc+';flex-shrink:0;margin-top:1px"></i>'
+          +'<div><div style="font-size:11px;font-weight:500;color:'+wc+'">'+w.stage+'</div>'
+          +'<div style="font-size:10px;color:var(--color-text-secondary)">'+w.by+' &middot; '+fd(w.dt)+'</div>'
+          +(w.note?'<div style="font-size:10px;color:var(--color-text-tertiary);font-style:italic">'+w.note+'</div>':'')+'</div></div>';
+      });
+      if(b.status==='submitted'){
+        h+='<div style="display:flex;gap:5px;margin-top:8px">'
+          +'<button class="btn btnp" style="flex:1;padding:5px;font-size:11px" onclick="accForwardBudget('+b.id+')"><i class="ti ti-send"></i> Accept &amp; forward</button>'
+          +'<button class="btn btnb" style="flex:1;padding:5px;font-size:11px" onclick="accCorrectBudget('+b.id+')"><i class="ti ti-edit"></i> Correct &amp; forward</button>'
+          +'<button class="btn btnr" style="flex:1;padding:5px;font-size:11px" onclick="accRejectBudget('+b.id+')"><i class="ti ti-x"></i> Reject</button></div>';
+      }
+      h+='</div>';
+    });
+    B.innerHTML=h;
+    return;
+  }
+  var h=bar;
+  if(!arr.length){h+='<div style="text-align:center;padding:20px;color:var(--color-text-secondary);font-size:12px">No '+(tab==='pending'?'expenses awaiting approval.':tab+' expenses.')+' </div>';}
+  else{
+    if(tab==='pending') h+='<div class="al ai"><i class="ti ti-info-circle" style="flex-shrink:0"></i> Approved expenses are automatically deducted from daily sales revenue.</div>';
+    arr.slice().sort(function(a,b){return new Date(b.dt)-new Date(a.dt);}).forEach(function(e){
+      var c=CAT_COL[e.cat]||'#888';
+      h+='<div class="card" style="border-left:3px solid '+c+'">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px"><div><div class="cv" style="color:'+c+'">'+e.cat+'</div><div class="cl">'+e.desc+'</div></div><div class="cv" style="color:#791F1F">'+fmt(e.amt)+'</div></div>'
+        +'<div class="cr"><span class="cl">Submitted by</span><span class="cv">'+e.byName+'</span></div>'
+        +'<div class="cr"><span class="cl">Date</span><span class="cv">'+fd(e.dt)+'</span></div>'
+        +(tab==='pending'?'<div style="display:flex;gap:6px;margin-top:7px"><button class="btn btnp" style="flex:1;padding:6px;font-size:11px" onclick="approveExp('+e.id+')"><i class="ti ti-check"></i> Approve</button><button class="btn btnr" style="flex:1;padding:6px;font-size:11px" onclick="rejectExp('+e.id+')"><i class="ti ti-x"></i> Reject</button></div>':'')
+        +(tab==='approved'?'<div class="cr"><span class="cl">Approved by</span><span class="cv">'+e.approvedBy+'</span></div>':'')
+        +(tab==='rejected'&&e.rejectReason?'<div style="margin-top:5px;font-size:10px;color:#791F1F;background:#FCEBEB;padding:4px 7px;border-radius:5px">Reason: '+e.rejectReason+'</div>':'')
+        +'</div>';
+    });
+  }
+  B.innerHTML=h;
+};
+
+/* ═══ R.exprpt — CEO / MD / Accountant expense reports ═══ */
+R.exprpt=function(){
+  var showBudgets=['ceo','md'].indexOf(ROLE)>=0;
+  var tabs=showBudgets?[{id:'summary',label:'Summary'},{id:'breakdown',label:'By category'},{id:'budgets',label:'Budgets'},{id:'log',label:'Full log'}]:[{id:'summary',label:'Summary'},{id:'breakdown',label:'By category'},{id:'log',label:'Full log'}];
+  var bar=tbar('exprpt',tabs);
+  var B=document.getElementById('BD');
+  var tab=TAB['exprpt']||'summary';
+  if(tab==='log'){
+    var sorted=EXPENSES.filter(function(e){return e.status==='approved';}).slice().sort(function(a,b){return new Date(b.dt)-new Date(a.dt);});
+    var h=bar;
+    h+='<div class="al ai"><i class="ti ti-download" style="flex-shrink:0"></i> Showing all approved expenses. Use browser print to export.</div>';
+    h+='<div class="card">';
+    sorted.forEach(function(e){
+      var c=CAT_COL[e.cat]||'#888';
+      h+='<div class="cr"><div><div class="cv" style="color:'+c+'">'+e.cat+'</div><div class="cl">'+e.desc+'</div><div style="font-size:10px;color:var(--color-text-tertiary)">'+fd(e.dt)+' &middot; Approved: '+e.approvedBy+'</div></div><div style="text-align:right;flex-shrink:0"><div class="cv">'+fmt(e.amt)+'</div></div></div>';
+    });
+    h+='</div>';
+    h+='<button class="btn fw" onclick="window.print()"><i class="ti ti-printer"></i> Print / export report</button>';
+    B.innerHTML=h;
+    return;
+  }
+  if(tab==='breakdown'){
+    var periods=['daily','weekly','monthly','quarterly','yearly'];
+    var pLabels={daily:'Today',weekly:'This week',monthly:'June 2025',quarterly:'Q2 2025',yearly:'2025 YTD'};
+    var sel=TAB['exprpt_period']||'monthly';
+    var h=bar+'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">';
+    periods.forEach(function(p){h+='<button class="tab '+(sel===p?'on':'')+'" onclick="TAB[\'exprpt_period\']=\''+p+'\';R.exprpt()">'+pLabels[p]+'</button>';});
+    h+='</div>';
+    var cm=expByCat(sel);
+    var tot=Object.keys(cm).reduce(function(a,k){return a+cm[k];},0);
+    var cats=Object.keys(cm).sort(function(a,b){return cm[b]-cm[a];});
+    if(!cats.length){h+='<div style="text-align:center;padding:20px;color:var(--color-text-secondary);font-size:12px">No approved expenses in this period.</div>';}
+    else{
+      h+='<div class="card"><div class="cr"><span class="cl" style="font-weight:500">Total ('+pLabels[sel]+')</span><span class="cv" style="color:#791F1F;font-size:13px">'+fmt(tot)+'</span></div></div>';
+      h+='<div class="card">';
+      cats.forEach(function(cat){
+        var pct=Math.round((cm[cat]/tot)*100);
+        var c=CAT_COL[cat]||'#888';
+        h+='<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:'+c+';font-weight:500">'+cat+'</span><span style="font-size:11px;font-weight:500">'+fmt(cm[cat])+'</span></div>'
+          +'<div style="height:5px;background:var(--color-background-secondary);border-radius:3px"><div style="height:100%;border-radius:3px;background:'+c+';width:'+pct+'%"></div></div>'
+          +'<div style="font-size:9px;color:var(--color-text-tertiary);margin-top:1px">'+pct+'% of period spend</div></div>';
+      });
+      h+='</div>';
+    }
+    B.innerHTML=h;
+    return;
+  }
+  if(tab==='budgets'){
+    var h=bar;
+    var myB=BUDGETS.filter(function(b){
+      if(ROLE==='md') return ['acc_forwarded','md_approved','md_rejected','fully_approved','ceo_rejected'].indexOf(b.status)>=0;
+      if(ROLE==='ceo') return ['acc_forwarded','md_approved','fully_approved','ceo_rejected'].indexOf(b.status)>=0;
+      return true;
+    });
+    var pending=myB.filter(function(b){return (ROLE==='md'&&b.status==='acc_forwarded')||(ROLE==='ceo'&&b.status==='md_approved');});
+    if(pending.length) h+='<div class="al ar"><i class="ti ti-clock" style="flex-shrink:0"></i> '+pending.length+' budget'+(pending.length>1?'s':'')+' awaiting your approval.</div>';
+    if(!myB.length){h+='<div style="text-align:center;padding:20px;color:var(--color-text-secondary);font-size:12px">No budgets forwarded for your review yet.</div>';}
+    myB.slice().reverse().forEach(function(b){
+      var sc=budgetStatusBadge(b.status);var bc=budgetStatusColor(b.status);
+      var eff=b.correctedTotal||b.total;
+      var canMD=ROLE==='md'&&b.status==='acc_forwarded';
+      var canCEO=ROLE==='ceo'&&b.status==='md_approved';
+      h+='<div class="card" style="border-left:3px solid '+bc+'">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">'
+        +'<div><div class="cv">'+b.label+'</div><div style="font-size:10px;color:'+bc+'">'+budgetStatusLabel(b.status)+'</div></div>'
+        +'<span class="badge '+sc+'">'+b.status.replace(/_/g,' ')+'</span></div>'
+        +'<div class="cr"><span class="cl">Submitted by</span><span class="cv">'+b.byName+'</span></div>'
+        +'<div class="cr"><span class="cl">Budget amount</span><span class="cv">'+fmt(eff)+'</span></div>'
+        +(b.correctedTotal?'<div class="cr"><span class="cl" style="color:#BA7517">Accountant corrected from</span><span class="cv" style="color:#BA7517">'+fmt(b.total)+'</span></div>':'')
+        +'<div class="stl" style="margin-top:7px;margin-bottom:4px">Approval trail</div>';
+      b.workflow.forEach(function(w){
+        var ic={submit:'ti-send',forward:'ti-arrow-right',correct_forward:'ti-edit',approve:'ti-circle-check',reject:'ti-circle-x'}[w.action]||'ti-point';
+        var wc={approve:'#27500A',reject:'#791F1F',forward:'#185FA5',correct_forward:'#BA7517',submit:'#633806'}[w.action]||'#888';
+        h+='<div style="display:flex;gap:7px;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary)">'
+          +'<i class="ti '+ic+'" style="font-size:12px;color:'+wc+';flex-shrink:0;margin-top:1px"></i>'
+          +'<div><div style="font-size:11px;font-weight:500;color:'+wc+'">'+w.stage+'</div>'
+          +'<div style="font-size:10px;color:var(--color-text-secondary)">'+w.by+' &middot; '+fd(w.dt)+'</div>'
+          +(w.note?'<div style="font-size:10px;color:var(--color-text-tertiary);font-style:italic">'+w.note+'</div>':'')+'</div></div>';
+      });
+      if(canMD) h+='<div style="display:flex;gap:6px;margin-top:8px"><button class="btn btnp" style="flex:1;padding:7px;font-size:11px" onclick="mdApproveBudget('+b.id+')"><i class="ti ti-circle-check"></i> Approve</button><button class="btn btnr" style="flex:1;padding:7px;font-size:11px" onclick="mdRejectBudget('+b.id+')"><i class="ti ti-x"></i> Reject</button></div>';
+      if(canCEO) h+='<div style="display:flex;gap:6px;margin-top:8px"><button class="btn btnp" style="flex:1;padding:7px;font-size:11px" onclick="ceoApproveBudget('+b.id+')"><i class="ti ti-circle-check"></i> Final approval</button><button class="btn btnr" style="flex:1;padding:7px;font-size:11px" onclick="ceoRejectBudget('+b.id+')"><i class="ti ti-x"></i> Reject</button></div>';
+      h+='</div>';
+    });
+    B.innerHTML=h;return;
+  }
+  /* summary tab */
+  var periods2=['daily','weekly','monthly','quarterly','yearly'];
+  var pLabels2={daily:'Today (10 Jun)',weekly:'This week',monthly:'June 2025',quarterly:'Q2 2025 (Apr–Jun)',yearly:'2025 Year to date'};
+  var SALES_REP={daily:1276400,weekly:8934800,monthly:17980000,quarterly:53940000,yearly:107880000};
+  var h=bar;
+  h+='<div class="card"><div class="dh" style="background:var(--b)"><i class="ti ti-report-analytics"></i><span>Revenue vs expenses — all periods</span></div>';
+  periods2.forEach(function(p){
+    var exp=periodExpSum(p,'approved');
+    var rev=SALES_REP[p];
+    var net=rev-exp;
+    var pct=rev>0?Math.round((exp/rev)*100):0;
+    var isYearly=p==='yearly';
+    h+='<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:0.5px solid var(--color-border-tertiary)">'
+      +'<div style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">'+pLabels2[p]+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">'
+      +'<div style="background:var(--color-background-secondary);border-radius:7px;padding:7px 8px"><div style="font-size:9px;color:var(--color-text-secondary)">Gross sales</div><div style="font-size:'+(isYearly?'11':'12')+'px;font-weight:500;color:#27500A">'+fmt(rev)+'</div></div>'
+      +'<div style="background:#FCEBEB;border-radius:7px;padding:7px 8px"><div style="font-size:9px;color:#791F1F">Expenses</div><div style="font-size:'+(isYearly?'11':'12')+'px;font-weight:500;color:#791F1F">'+fmt(exp)+'</div></div>'
+      +'<div style="background:'+(net>=0?'#EAF3DE':'#FCEBEB')+';border-radius:7px;padding:7px 8px"><div style="font-size:9px;color:'+(net>=0?'#27500A':'#791F1F')+'">Net revenue</div><div style="font-size:'+(isYearly?'11':'12')+'px;font-weight:500;color:'+(net>=0?'#27500A':'#791F1F')+'">'+fmt(net)+'</div></div>'
+      +'</div>'
+      +'<div style="margin-top:4px"><div style="height:4px;background:var(--color-background-secondary);border-radius:2px"><div style="height:100%;border-radius:2px;background:'+(pct>30?'#A32D2D':'#BA7517')+';width:'+Math.min(pct,100)+'%"></div></div>'
+      +'<div style="font-size:9px;color:var(--color-text-tertiary);margin-top:1px">Expenses = '+pct+'% of gross</div></div></div>';
+  });
+  h+='</div>';
+  h+='<button class="btn fw" onclick="TAB[\'exprpt\']=\'breakdown\';R.exprpt()"><i class="ti ti-chart-donut"></i> View category breakdown</button>';
+  h+='<button class="btn fw" onclick="TAB[\'exprpt\']=\'log\';R.exprpt()"><i class="ti ti-list-details"></i> Full expense log</button>';
+  B.innerHTML=h;
+};
+
+/* ═══ ACTION FUNCTIONS ═══ */
+function subExpense(){
+  var dt=(document.getElementById('Edt').value||'').trim();
+  var cat=document.getElementById('Ecat').value;
+  var desc=(document.getElementById('Edesc').value||'').trim();
+  var amt=parseFloat(document.getElementById('Eamt').value)||0;
+  var ven=(document.getElementById('Even').value||'').trim();
+  if(!desc||!amt){toast('Enter description and amount','err');return;}
+  var cb=currentBudget();
+  EXPENSES.unshift({id:Date.now(),dt:dt||REF_DATE+'T12:00',cat:cat,desc:desc+(ven?' — '+ven:''),amt:amt,by:ROLE,byName:UN,status:'pending',budgetId:cb?cb.id:null});
+  AUDIT.unshift({action:'Expense submitted',user:UN+' ('+RL[ROLE]+')',detail:cat+' — '+desc+' — '+fmt(amt)+' — pending approval',ts:ts()});
+  toast('Submitted for Accountant approval');
+  TAB['budget']='log';
+  R.budget();
+}
+function subBudget(){
+  var total=0;
+  var items=EXP_CATS.map(function(c){var v=parseFloat((document.getElementById('BI-'+c.replace(/[^a-z0-9]/gi,''))||{}).value)||0;total+=v;return{cat:c,amt:v};}).filter(function(i){return i.amt>0;});
+  if(!total){toast('Enter at least one budget line item','err');return;}
+  var mo=parseInt((document.getElementById('Bmo').value||'9'));
+  var note=(document.getElementById('Bnote')?document.getElementById('Bnote').value||'':'');
+  var labels={9:'September',10:'October',11:'November',12:'December'};
+  var lab=(labels[mo]||'Month')+' 2025';
+  BUDGETS.push({id:Date.now(),month:mo,year:2025,label:lab,by:ROLE,byName:UN,items:items,correctedItems:[],total:total,correctedTotal:0,status:'submitted',
+    workflow:[{stage:'Submitted',by:UN,role:ROLE,dt:ts(),action:'submit',note:note||lab+' operating budget request.'}]});
+  AUDIT.unshift({action:'Budget request submitted',user:UN+' ('+RL[ROLE]+')',detail:lab+' — '+fmt(total),ts:ts()});
+  toast('Budget submitted to Accountant for review');
+  TAB['budget']='request';
+  R.budget();
+}
+function approveExp(id){
+  var e=EXPENSES.filter(function(x){return x.id===id;})[0];
+  if(!e)return;
+  e.status='approved'; e.approvedBy=UN; e.approvedDt=ts();
+  AUDIT.unshift({action:'Expense approved',user:UN+' ('+RL[ROLE]+')',detail:e.cat+' — '+e.desc+' — '+fmt(e.amt),ts:ts()});
+  toast('Expense approved — deducted from revenue');
+  R.exp();
+}
+function rejectExp(id){
+  var e=EXPENSES.filter(function(x){return x.id===id;})[0];
+  if(!e)return;
+  var reason=prompt('Reason for rejection (optional):','');
+  e.status='rejected'; e.rejectReason=reason||''; e.rejectedDt=ts();
+  AUDIT.unshift({action:'Expense rejected',user:UN+' ('+RL[ROLE]+')',detail:e.cat+' — '+e.desc+' — '+fmt(e.amt),ts:ts()});
+  toast('Expense rejected','warn');
+  R.exp();
+}
+/* ═══ BUDGET WORKFLOW ACTIONS ═══ */
+function budgetStatusLabel(s){var m={submitted:'Awaiting Accountant review',acc_forwarded:'Forwarded to MD & CEO',acc_rejected:'Rejected by Accountant',md_approved:'MD approved — awaiting CEO',md_rejected:'Rejected by MD',fully_approved:'Fully approved',ceo_rejected:'Rejected by CEO'};return m[s]||s;}
+function budgetStatusColor(s){if(s==='fully_approved')return '#27500A';if(s==='submitted'||s==='acc_forwarded'||s==='md_approved')return '#BA7517';if(s==='acc_rejected'||s==='md_rejected'||s==='ceo_rejected')return '#791F1F';return '#888';}
+function budgetStatusBadge(s){if(s==='fully_approved')return 'bg';if(s==='submitted'||s==='acc_forwarded'||s==='md_approved')return 'ba';if(s==='acc_rejected'||s==='md_rejected'||s==='ceo_rejected')return 'br';return 'bgr';}
+function accForwardBudget(id){
+  var b=BUDGETS.filter(function(x){return x.id===id;})[0];if(!b)return;
+  var note=(prompt('Notes for MD and CEO:','')||'').trim();
+  b.status='acc_forwarded';
+  b.workflow.push({stage:'Accountant reviewed',by:UN,role:ROLE,dt:ts(),action:'forward',note:note||'Reviewed and forwarded to MD and CEO for final approval.'});
+  AUDIT.unshift({action:'Budget forwarded by Accountant',user:UN+' ('+RL[ROLE]+')',detail:b.label+' — forwarded to MD and CEO',ts:ts()});
+  var msg='Budget '+b.label+' ('+fmt(b.total)+') reviewed by Accountant and forwarded for your final approval. '+(note||'');
+  var k1=chatKey('acc','md');if(!MSGS[k1])MSGS[k1]=[];MSGS[k1].push({from:'acc',to:'md',type:'txt',body:msg,ts:ts().slice(11,16),read:false});
+  var k2=chatKey('acc','ceo');if(!MSGS[k2])MSGS[k2]=[];MSGS[k2].push({from:'acc',to:'ceo',type:'txt',body:msg,ts:ts().slice(11,16),read:false});
+  buildNav();toast('Budget forwarded to MD and CEO');R.exp();
+}
+function accCorrectBudget(id){
+  var b=BUDGETS.filter(function(x){return x.id===id;})[0];if(!b)return;
+  TAB['exp']='correct_'+id;
+  var h=tbar('exp',[{id:'budgets',label:'Budget requests'}]);
+  h+='<div class="al ai"><i class="ti ti-pencil" style="flex-shrink:0"></i> Edit any line item below. Corrections will be documented in the approval trail.</div>';
+  h+='<div class="card"><div class="dh" style="background:var(--b)"><i class="ti ti-edit"></i><span>Correct &amp; forward — '+b.label+'</span></div>';
+  b.items.forEach(function(it){h+='<div class="ir"><label>'+it.cat+' (NGN)</label><input type="number" id="CORR-'+it.cat.replace(/[^a-z0-9]/gi,'')+'" value="'+it.amt+'"></div>';});
+  h+='<div class="ir"><label>Accountant correction notes</label><input id="CORR-NOTE" placeholder="Explain corrections made..."></div>';
+  h+='<div style="display:flex;gap:7px"><button class="btn btnp" style="flex:1" onclick="saveCorrection('+id+')"><i class="ti ti-send"></i> Save &amp; forward to MD/CEO</button><button class="btn" style="flex:1" onclick="TAB[\'exp\']=\'budgets\';R.exp()">Cancel</button></div></div>';
+  document.getElementById('BD').innerHTML=h;
+}
+function saveCorrection(id){
+  var b=BUDGETS.filter(function(x){return x.id===id;})[0];if(!b)return;
+  var corr=[];var tot=0;
+  b.items.forEach(function(it){var el=document.getElementById('CORR-'+it.cat.replace(/[^a-z0-9]/gi,''));var v=el?parseFloat(el.value)||0:it.amt;tot+=v;corr.push({cat:it.cat,amt:v});});
+  var note=(document.getElementById('CORR-NOTE').value||'').trim();
+  b.correctedItems=corr;b.correctedTotal=tot;b.status='acc_forwarded';
+  b.workflow.push({stage:'Accountant corrected & forwarded',by:UN,role:ROLE,dt:ts(),action:'correct_forward',note:note||'Items reviewed and corrected before forwarding.'});
+  AUDIT.unshift({action:'Budget corrected & forwarded',user:UN+' ('+RL[ROLE]+')',detail:b.label+' corrected to '+fmt(tot)+' — forwarded to MD/CEO',ts:ts()});
+  var msg='Budget '+b.label+' reviewed and corrected by Accountant. Corrected total: '+fmt(tot)+'. '+(note||'')+' Awaiting your final approval.';
+  var k1=chatKey('acc','md');if(!MSGS[k1])MSGS[k1]=[];MSGS[k1].push({from:'acc',to:'md',type:'txt',body:msg,ts:ts().slice(11,16),read:false});
+  var k2=chatKey('acc','ceo');if(!MSGS[k2])MSGS[k2]=[];MSGS[k2].push({from:'acc',to:'ceo',type:'txt',body:msg,ts:ts().slice(11,16),read:false});
+  buildNav();toast('Corrected budget forwarded to MD and CEO');TAB['exp']='budgets';R.exp();
+}
+function accRejectBudget(id){
+  var b=BUDGETS.filter(function(x){return x.id===id;})[0];if(!b)return;
+  var reason=prompt('Reason for rejection (required):','')||'';
+  if(!reason){toast('Please provide a reason','err');return;}
+  b.status='acc_rejected';
+  b.workflow.push({stage:'Accountant rejected',by:UN,role:ROLE,dt:ts(),action:'reject',note:reason});
+  AUDIT.unshift({action:'Budget rejected by Accountant',user:UN+' ('+RL[ROLE]+')',detail:b.label+' — '+reason,ts:ts()});
+  var k=chatKey('acc','mgr');if(!MSGS[k])MSGS[k]=[];
+  MSGS[k].push({from:'acc',to:'mgr',type:'txt',body:'Your '+b.label+' budget request has been rejected. Reason: '+reason+'. Please revise and resubmit.',ts:ts().slice(11,16),read:false});
+  buildNav();toast('Budget rejected — Station Manager notified','warn');R.exp();
+}
+function mdApproveBudget(id){
+  var b=BUDGETS.filter(function(x){return x.id===id;})[0];if(!b)return;
+  var note=prompt('Notes for CEO:','')||'';
+  b.status='md_approved';
+  b.workflow.push({stage:'MD approved',by:UN,role:ROLE,dt:ts(),action:'approve',note:note||'Approved by MD. Forwarded to CEO for final sign-off.'});
+  AUDIT.unshift({action:'Budget approved by MD',user:UN+' ('+RL[ROLE]+')',detail:b.label,ts:ts()});
+  var eff=b.correctedTotal||b.total;
+  var k=chatKey('md','ceo');if(!MSGS[k])MSGS[k]=[];
+  MSGS[k].push({from:'md',to:'ceo',type:'txt',body:'I have approved the '+b.label+' budget ('+fmt(eff)+'). Forwarding to you for final approval. '+(note||''),ts:ts().slice(11,16),read:false});
+  buildNav();toast('Budget approved — CEO notified for final sign-off');R.exprpt();
+}
+function mdRejectBudget(id){
+  var b=BUDGETS.filter(function(x){return x.id===id;})[0];if(!b)return;
+  var reason=prompt('Reason for rejection:','')||'';
+  if(!reason){toast('Please provide a reason','err');return;}
+  b.status='md_rejected';
+  b.workflow.push({stage:'MD rejected',by:UN,role:ROLE,dt:ts(),action:'reject',note:reason});
+  AUDIT.unshift({action:'Budget rejected by MD',user:UN+' ('+RL[ROLE]+')',detail:b.label+' — '+reason,ts:ts()});
+  var k=chatKey('md','acc');if(!MSGS[k])MSGS[k]=[];
+  MSGS[k].push({from:'md',to:'acc',type:'txt',body:'The '+b.label+' budget has been rejected. Reason: '+reason+'. Please liaise with Station Manager and revise.',ts:ts().slice(11,16),read:false});
+  buildNav();toast('Budget rejected — Accountant notified','warn');R.exprpt();
+}
+function ceoApproveBudget(id){
+  var b=BUDGETS.filter(function(x){return x.id===id;})[0];if(!b)return;
+  var note=prompt('Final approval note:','')||'';
+  b.status='fully_approved';var eff=b.correctedTotal||b.total;
+  b.workflow.push({stage:'CEO final approval',by:UN,role:ROLE,dt:ts(),action:'approve',note:note||'Final approval granted. Budget is now active.'});
+  AUDIT.unshift({action:'Budget fully approved by CEO',user:UN+' ('+RL[ROLE]+')',detail:b.label+' — '+fmt(eff),ts:ts()});
+  var k=chatKey('ceo','mgr');if(!MSGS[k])MSGS[k]=[];
+  MSGS[k].push({from:'ceo',to:'mgr',type:'txt',body:'Your '+b.label+' budget ('+fmt(eff)+') has been fully approved. Budget is now active — proceed with planned activities. '+(note||''),ts:ts().slice(11,16),read:false});
+  var k2=chatKey('ceo','acc');if(!MSGS[k2])MSGS[k2]=[];
+  MSGS[k2].push({from:'ceo',to:'acc',type:'txt',body:b.label+' budget fully approved ('+fmt(eff)+'). Please update your records accordingly.',ts:ts().slice(11,16),read:false});
+  buildNav();toast('Final approval granted — all parties notified');R.exprpt();
+}
+function ceoRejectBudget(id){
+  var b=BUDGETS.filter(function(x){return x.id===id;})[0];if(!b)return;
+  var reason=prompt('Reason for rejection:','')||'';
+  if(!reason){toast('Please provide a reason','err');return;}
+  b.status='ceo_rejected';
+  b.workflow.push({stage:'CEO rejected',by:UN,role:ROLE,dt:ts(),action:'reject',note:reason});
+  AUDIT.unshift({action:'Budget rejected by CEO',user:UN+' ('+RL[ROLE]+')',detail:b.label+' — '+reason,ts:ts()});
+  var k=chatKey('ceo','acc');if(!MSGS[k])MSGS[k]=[];
+  MSGS[k].push({from:'ceo',to:'acc',type:'txt',body:'The '+b.label+' budget was rejected. Reason: '+reason+'. Please work with Station Manager to revise and resubmit.',ts:ts().slice(11,16),read:false});
+  buildNav();toast('Budget rejected — Accountant notified','warn');R.exprpt();
+}
+
+</script>
+</body>
+</html>

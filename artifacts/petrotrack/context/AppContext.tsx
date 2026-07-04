@@ -1,0 +1,403 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+
+export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
+
+export interface Tank {
+  id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK';
+  cap: number; dip: number; op: number; rv: number; sl: number;
+}
+export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; }
+export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; }
+export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; }
+export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
+export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; }
+export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; }
+export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
+export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
+export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; }
+export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
+export interface Budget { id: number; month: number; year: number; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
+export interface NavItem { id: string; icon: string; label: string; }
+export interface UserInfo { name: string; color: string; initials: string; role: string; online: boolean; }
+export interface Department { id: string; name: string; icon: string; col: { bg: string; fg: string }; roles: string[]; sys: boolean; }
+export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; }
+export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; }
+export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
+
+export const ROLE_LABELS: Record<string, string> = {
+  admin: 'Administrator', ceo: 'Chief Executive Officer', md: 'Managing Director',
+  mktg: 'Marketing Manager', csm: 'Corp. Services Mgr', acc: 'Accountant',
+  mgr: 'Station Manager', att: 'Pump Attendant',
+};
+
+export const ROLE_COLORS: Record<string, string> = {
+  admin: '#0a2318', ceo: '#1a6e3c', md: '#4527a0', mktg: '#D85A30',
+  csm: '#0F6E56', acc: '#185FA5', mgr: '#BA7517', att: '#633806',
+};
+
+export const UINFO: Record<string, UserInfo> = {
+  admin: { name: 'System Admin', color: '#0a2318', initials: 'SA', role: 'Admin', online: true },
+  ceo: { name: 'Amaka Osei', color: '#1a6e3c', initials: 'AO', role: 'CEO', online: true },
+  md: { name: 'Adaeze Obi', color: '#4527a0', initials: 'AD', role: 'MD', online: true },
+  mktg: { name: 'Funmi Adesanya', color: '#D85A30', initials: 'FA', role: 'Mktg', online: false },
+  csm: { name: 'Ngozi Eze', color: '#0F6E56', initials: 'NE', role: 'CSM', online: true },
+  acc: { name: 'Grace Adeyemi', color: '#185FA5', initials: 'GA', role: 'Acct', online: true },
+  mgr: { name: 'Chukwuma Adeyemi', color: '#BA7517', initials: 'CA', role: 'Mgr', online: true },
+  att: { name: 'Emeka Okafor', color: '#633806', initials: 'EO', role: 'Att', online: true },
+};
+
+export const NAVDEF: Record<string, NavItem[]> = {
+  admin: [
+    { id: 'home', icon: 'shield-checkmark', label: 'Admin' },
+    { id: 'users', icon: 'people', label: 'Users' },
+    { id: 'depts', icon: 'grid', label: 'Depts' },
+    { id: 'audit', icon: 'list', label: 'Audit' },
+    { id: 'settings', icon: 'settings', label: 'Settings' },
+  ],
+  ceo: [
+    { id: 'home', icon: 'home', label: 'Home' },
+    { id: 'tanks', icon: 'water', label: 'Tanks' },
+    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
+    { id: 'acct', icon: 'calculator', label: 'Accounts' },
+    { id: 'mktg', icon: 'megaphone', label: 'Mktg' },
+  ],
+  md: [
+    { id: 'ops', icon: 'construct', label: 'Ops' },
+    { id: 'branches', icon: 'business', label: 'Branches' },
+    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
+    { id: 'exprpt', icon: 'analytics', label: 'Reports' },
+    { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+  ],
+  mktg: [
+    { id: 'mktg', icon: 'megaphone', label: 'Marketing' },
+    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
+    { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+  ],
+  csm: [
+    { id: 'corp', icon: 'briefcase', label: 'Corporate' },
+    { id: 'branches', icon: 'business', label: 'Branches' },
+    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
+    { id: 'maint', icon: 'build', label: 'Maintain' },
+  ],
+  acc: [
+    { id: 'acct', icon: 'calculator', label: 'Accounts' },
+    { id: 'exp', icon: 'receipt', label: 'Expenses' },
+    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
+    { id: 'exprpt', icon: 'analytics', label: 'Reports' },
+    { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+  ],
+  mgr: [
+    { id: 'tanks', icon: 'water', label: 'Tank Dip' },
+    { id: 'budget', icon: 'wallet', label: 'Budget' },
+    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
+    { id: 'maint', icon: 'build', label: 'Maintain' },
+    { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+  ],
+  att: [
+    { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
+    { id: 'maint', icon: 'build', label: 'Report' },
+  ],
+};
+
+export const SCREEN_ROUTES: Record<string, string> = {
+  home: '/(app)/home', users: '/(app)/users', depts: '/(app)/departments',
+  audit: '/(app)/audit', settings: '/(app)/system-settings', ops: '/(app)/operations',
+  tanks: '/(app)/tanks', acct: '/(app)/accounts', corp: '/(app)/corporate',
+  branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
+  msgs: '/(app)/messages', budget: '/(app)/budget', exp: '/(app)/expenses',
+  exprpt: '/(app)/reports', mktg: '/(app)/marketing',
+};
+
+export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
+export function mmToLiters(tank: Tank, mm: number) { if (!mm || !tank.dip) return 0; return Math.round((mm / tank.dip) * tank.cap); }
+export function pctToKg(lpg: LPGTank, pct: number) { return Math.round((pct / 100) * lpg.cap); }
+export function fmt(n: number) { return '₦' + n.toLocaleString(); }
+export function fmtDate(dt: string) {
+  try { const d = new Date(dt); return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return dt; }
+}
+export function fmtDateTime(dt: string) {
+  try { const d = new Date(dt); return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }); } catch { return dt; }
+}
+function genId() { return Date.now() + Math.floor(Math.random() * 10000); }
+function nowTs() { return new Date().toISOString(); }
+function nowTime() { return new Date().toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }); }
+
+const INIT_TANKS: Tank[] = [
+  { id: 'T1', name: 'PMS Tank 1', prod: 'PMS', cap: 25000, dip: 2500, op: 18200, rv: 0, sl: 1600 },
+  { id: 'T2', name: 'PMS Tank 2', prod: 'PMS', cap: 25000, dip: 2500, op: 15800, rv: 0, sl: 0 },
+  { id: 'T3', name: 'AGO Tank 3', prod: 'AGO', cap: 30000, dip: 3000, op: 12600, rv: 0, sl: 520 },
+  { id: 'T4', name: 'DPK Tank 4', prod: 'DPK', cap: 20000, dip: 2000, op: 16200, rv: 0, sl: 120 },
+];
+const INIT_LPG: LPGTank[] = [
+  { id: 'L1', name: 'LPG Tank 1', cap: 5000, op: 3200, rv: 0, sl: 400 },
+  { id: 'L2', name: 'LPG Tank 2', cap: 3000, op: 1840, rv: 0, sl: 0 },
+];
+const INIT_DIPS: DipRecord[] = [
+  { id: 1, dt: '2025-06-10T05:50', by: 'Chukwuma Adeyemi', rd: { T1: 1456, T2: 1264, T3: 1260, T4: 1620 }, lpg: { L1: 64, L2: 58 }, obs: 'T3 water sheen noted.' },
+];
+const INIT_RECS: Delivery[] = [
+  { id: 1, dt: '2025-06-09T10:30', sup: 'NNPCL Abuja', prod: 'AGO', wb: 'WB-2025-041', ord: 20000, rec: 19600, st: 'short', notes: '400L short delivery.' },
+];
+const INIT_MAINT: MaintenanceItem[] = [
+  { id: 1, title: 'Pump #3 nozzle leak', pri: 'Urgent', by: 'Emeka', date: '2025-06-07', st: 'Open' },
+  { id: 2, title: 'Generator oil service', pri: 'Medium', by: 'Bello', date: '2025-06-05', st: 'Open' },
+  { id: 3, title: 'Pump #1 calibration', pri: 'Low', by: 'Chukwuma', date: '2025-05-28', st: 'Done', cost: 42000 },
+];
+const INIT_SALES: SalesEntry[] = [
+  { id: 1, pump: 'Pump #1 PMS', by: 'Emeka', L: 880, price: 830, dt: '2025-06-10T07:30' },
+  { id: 2, pump: 'Pump #3 AGO', by: 'Bello', L: 520, price: 1050, dt: '2025-06-10T08:15' },
+];
+const INIT_STAFF: Staff[] = [
+  { id: 1, name: 'Amaka Osei', role: 'CEO', sal: 1200000, st: 'Active', email: 'ceo@petrotrack.ng' },
+  { id: 2, name: 'Adaeze Obi', role: 'Managing Director', sal: 650000, st: 'Active', email: 'md@petrotrack.ng' },
+  { id: 3, name: 'Funmi Adesanya', role: 'Marketing Manager', sal: 420000, st: 'Active', email: 'mktg@petrotrack.ng' },
+  { id: 4, name: 'Ngozi Eze', role: 'Corp. Services Mgr', sal: 380000, st: 'Active', email: 'csm@petrotrack.ng' },
+  { id: 5, name: 'Grace Adeyemi', role: 'Accountant', sal: 250000, st: 'Active', email: 'acc@petrotrack.ng' },
+  { id: 6, name: 'Chukwuma Adeyemi', role: 'Station Manager', sal: 280000, st: 'Active', email: 'mgr@petrotrack.ng' },
+  { id: 7, name: 'Emeka Okafor', role: 'Pump Attendant', sal: 120000, st: 'Active', email: 'emeka@petrotrack.ng' },
+  { id: 8, name: 'Bello Abubakar', role: 'Pump Attendant', sal: 120000, st: 'Active', email: 'bello@petrotrack.ng' },
+];
+const INIT_BRANCHES: Branch[] = [
+  { id: 'HQ', name: 'HQ — Abuja CBD', st: 'Active', rev: 18400000, mgr: 'Adaeze Obi', pumps: 4, tanks: 4 },
+  { id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 11200000, mgr: 'Chukwuma Adeyemi', pumps: 3, tanks: 3 },
+  { id: 'B2', name: 'Lugbe Branch', st: 'Pending', rev: 0, mgr: '', pumps: 2, tanks: 2 },
+];
+const INIT_DOCS: ComplianceDoc[] = [
+  { id: 1, name: 'NESREA Env. Permit', cat: 'Permit', iss: 'NESREA', exp: '2025-06-05', ref: 'NESREA/EI/0567' },
+  { id: 2, name: 'NMDPRA Retail Licence', cat: 'Licence', iss: 'NMDPRA', exp: '2025-06-20', ref: 'NMD/R/ABJ/0234' },
+  { id: 3, name: 'Fire Safety Certificate', cat: 'Certificate', iss: 'FSCE Abuja', exp: '2025-08-10', ref: 'FSCE/2024/441' },
+  { id: 4, name: 'CAC Registration', cat: 'Registration', iss: 'CAC Nigeria', exp: '2026-03-01', ref: 'RC-0987654' },
+];
+const INIT_EXPENSES: Expense[] = [
+  { id: 1, dt: '2025-06-10T07:15', cat: 'Generator fuel', desc: 'AGO for gen set — 50L offload', amt: 52500, by: 'mgr', byName: 'Chukwuma Adeyemi', status: 'approved', approvedBy: 'Grace Adeyemi', approvedDt: '2025-06-10T09:00', budgetId: 1 },
+  { id: 2, dt: '2025-06-10T09:00', cat: 'Security & guarding', desc: 'Daily security allowance — 3 guards', amt: 9000, by: 'mgr', byName: 'Chukwuma Adeyemi', status: 'approved', approvedBy: 'Grace Adeyemi', approvedDt: '2025-06-10T09:30', budgetId: 1 },
+  { id: 3, dt: '2025-06-10T11:30', cat: 'Office supplies', desc: 'Printer paper, receipt books, pens', amt: 14500, by: 'mgr', byName: 'Chukwuma Adeyemi', status: 'pending', budgetId: 1 },
+  { id: 4, dt: '2025-06-10T14:00', cat: 'Staff welfare', desc: 'Staff lunch — 8 persons', amt: 16000, by: 'mgr', byName: 'Chukwuma Adeyemi', status: 'pending', budgetId: 1 },
+];
+const INIT_BUDGETS: Budget[] = [
+  {
+    id: 1, month: 6, year: 2025, label: 'June 2025', by: 'mgr', byName: 'Chukwuma Adeyemi',
+    items: [{ cat: 'Generator fuel', amt: 150000 }, { cat: 'Security & guarding', amt: 189000 }, { cat: 'Utilities', amt: 120000 }, { cat: 'Staff welfare', amt: 48000 }, { cat: 'Maintenance & repairs', amt: 85000 }, { cat: 'Office supplies', amt: 20000 }, { cat: 'Transport', amt: 15000 }, { cat: 'Miscellaneous', amt: 10000 }],
+    total: 637000, status: 'fully_approved',
+    workflow: [
+      { stage: 'Submitted', by: 'Chukwuma Adeyemi', role: 'mgr', dt: '2025-05-28T09:00', action: 'submit', note: 'June 2025 monthly operating budget request.' },
+      { stage: 'Accountant reviewed', by: 'Grace Adeyemi', role: 'acc', dt: '2025-05-30T14:00', action: 'forward', note: 'Reviewed — no corrections needed. Forwarded to MD and CEO.' },
+      { stage: 'MD approved', by: 'Adaeze Obi', role: 'md', dt: '2025-05-31T10:00', action: 'approve', note: 'Approved. Ensure all expenses are properly documented.' },
+      { stage: 'CEO final approval', by: 'Amaka Osei', role: 'ceo', dt: '2025-05-31T15:30', action: 'approve', note: 'Final approval granted. Station Manager may proceed.' },
+    ],
+  },
+  {
+    id: 2, month: 7, year: 2025, label: 'July 2025', by: 'mgr', byName: 'Chukwuma Adeyemi',
+    items: [{ cat: 'Generator fuel', amt: 165000 }, { cat: 'Security & guarding', amt: 189000 }, { cat: 'Utilities', amt: 130000 }, { cat: 'Staff welfare', amt: 52000 }, { cat: 'Maintenance & repairs', amt: 90000 }, { cat: 'Office supplies', amt: 22000 }, { cat: 'Transport', amt: 18000 }, { cat: 'Miscellaneous', amt: 12000 }],
+    total: 678000, status: 'acc_forwarded',
+    workflow: [
+      { stage: 'Submitted', by: 'Chukwuma Adeyemi', role: 'mgr', dt: '2025-06-08T09:00', action: 'submit', note: 'July 2025 budget — generator fuel increased due to NNPCL price hike.' },
+      { stage: 'Accountant reviewed', by: 'Grace Adeyemi', role: 'acc', dt: '2025-06-09T14:00', action: 'forward', note: 'Reviewed. Miscellaneous corrected from ₦12,000 to ₦8,000. Forwarded to MD and CEO.' },
+    ],
+  },
+  {
+    id: 3, month: 8, year: 2025, label: 'August 2025', by: 'mgr', byName: 'Chukwuma Adeyemi',
+    items: [{ cat: 'Generator fuel', amt: 170000 }, { cat: 'Security & guarding', amt: 200000 }, { cat: 'Utilities', amt: 135000 }, { cat: 'Staff welfare', amt: 55000 }, { cat: 'Maintenance & repairs', amt: 95000 }, { cat: 'Office supplies', amt: 25000 }, { cat: 'Transport', amt: 20000 }, { cat: 'Miscellaneous', amt: 15000 }],
+    total: 715000, status: 'submitted',
+    workflow: [
+      { stage: 'Submitted', by: 'Chukwuma Adeyemi', role: 'mgr', dt: '2025-06-10T11:00', action: 'submit', note: 'August 2025 budget. Security increased — new contract with Omega Guard Services.' },
+    ],
+  },
+];
+const INIT_AUDIT: AuditEntry[] = [
+  { id: 1, action: 'User login', user: 'Adaeze Obi (MD)', detail: 'Successful — Abuja', ts: '2025-06-10T06:02' },
+  { id: 2, action: 'Price update', user: 'Adaeze Obi (MD)', detail: 'PMS set to ₦830/L — synced all forms', ts: '2025-06-10T06:30' },
+  { id: 3, action: 'Dip submitted', user: 'Chukwuma Adeyemi (Mgr)', detail: 'All 6 tanks dipped. T3 anomaly flagged.', ts: '2025-06-10T05:52' },
+  { id: 4, action: 'Short delivery', user: 'Chukwuma Adeyemi (Mgr)', detail: 'AGO WB-2025-041 — 400L dispute raised', ts: '2025-06-10T09:47' },
+  { id: 5, action: 'Sales entry', user: 'Emeka Okafor (Att)', detail: 'Pump #1 PMS — 880L', ts: '2025-06-10T07:30' },
+  { id: 6, action: 'Message sent', user: 'Ngozi Eze (CSM)', detail: 'Compliance alert to CEO — NMDPRA licence', ts: '2025-06-10T13:02' },
+  { id: 7, action: 'Maintenance request', user: 'Emeka Okafor (Att)', detail: 'Pump #3 nozzle leak — Urgent', ts: '2025-06-07T10:30' },
+];
+const INIT_DEPTS: Department[] = [
+  { id: 'd1', name: 'Operations', icon: 'construct', col: { bg: '#EAF3DE', fg: '#27500A' }, roles: ['md', 'mgr'], sys: true },
+  { id: 'd2', name: 'Tank Dipping', icon: 'water', col: { bg: '#E6F1FB', fg: '#0C447C' }, roles: ['ceo', 'md', 'csm', 'acc', 'mgr'], sys: true },
+  { id: 'd3', name: 'Accounting', icon: 'calculator', col: { bg: '#EEEDFE', fg: '#3C3489' }, roles: ['ceo', 'md', 'csm', 'acc'], sys: true },
+  { id: 'd4', name: 'Corporate Services', icon: 'briefcase', col: { bg: '#E1F5EE', fg: '#085041' }, roles: ['ceo', 'csm'], sys: true },
+  { id: 'd5', name: 'Marketing & Market Intel', icon: 'megaphone', col: { bg: '#FAECE7', fg: '#712B13' }, roles: ['ceo', 'md'], sys: true },
+  { id: 'd6', name: 'Branches', icon: 'business', col: { bg: '#EAF3DE', fg: '#27500A' }, roles: ['ceo', 'md', 'csm', 'acc', 'mgr'], sys: true },
+  { id: 'd7', name: 'Maintenance', icon: 'build', col: { bg: '#FAEEDA', fg: '#633806' }, roles: ['ceo', 'md', 'csm', 'acc', 'mgr', 'att'], sys: true },
+  { id: 'd8', name: 'Sales', icon: 'bar-chart', col: { bg: '#E6F1FB', fg: '#0C447C' }, roles: ['ceo', 'md', 'csm', 'acc', 'mgr', 'att'], sys: true },
+];
+const INIT_MSGS: Record<string, Message[]> = {
+  'acc-mgr': [
+    { id: 1, from: 'mgr', to: 'acc', type: 'txt', body: 'Please approve June gen fuel expense — ₦52,500.', ts: '08:15', read: true },
+    { id: 2, from: 'acc', to: 'mgr', type: 'txt', body: 'Reviewed. Approved — within budget. Receipt logged.', ts: '09:02', read: true },
+  ],
+  'ceo-md': [
+    { id: 3, from: 'md', to: 'ceo', type: 'req', body: 'Product purchase request', req: { product: 'AGO', qty: 20000, sup: 'NNPCL Abuja', reason: 'Tank 3 at 42% — reorder level reached.' }, ts: '07:50', read: true },
+    { id: 4, from: 'ceo', to: 'md', type: 'txt', body: '✅ Request approved. Please proceed with proper documentation.', ts: '08:30', read: true },
+  ],
+  'ceo-csm': [
+    { id: 5, from: 'csm', to: 'ceo', type: 'alert', body: 'Operations alert', alrt: { title: 'NMDPRA licence expiry', pri: 'Urgent', detail: 'NMDPRA Retail Licence expires in 10 days. Renewal on ELPS portal required.' }, ts: '13:02', read: false },
+  ],
+  'att-mgr': [
+    { id: 6, from: 'att', to: 'mgr', type: 'txt', body: 'Pump #3 nozzle still leaking. Getting worse.', ts: '06:50', read: true },
+    { id: 7, from: 'mgr', to: 'att', type: 'txt', body: 'Noted. Maintenance request submitted. Do not use that pump.', ts: '07:05', read: true },
+  ],
+};
+
+interface AppContextType {
+  role: Role | null; userName: string;
+  login: (role: Role, name: string) => void; logout: () => void;
+  prices: Prices; tanks: Tank[]; lpgTanks: LPGTank[];
+  dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
+  sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
+  docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
+  messages: Record<string, Message[]>; audit: AuditEntry[]; departments: Department[];
+  updatePrice: (prod: string, price: number) => void;
+  addDip: (dip: Omit<DipRecord, 'id'>) => void;
+  addDelivery: (rec: Omit<Delivery, 'id'>) => void;
+  addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
+  addSales: (entry: Omit<SalesEntry, 'id'>) => void;
+  sendMessage: (to: Role, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => void;
+  markRead: (peer: Role) => void;
+  approveExpense: (id: number) => void;
+  rejectExpense: (id: number) => void;
+  addStaff: (s: Omit<Staff, 'id'>) => void;
+  toggleStaff: (id: number) => void;
+  addBranch: (b: Omit<Branch, 'id'>) => void;
+  addAudit: (entry: Omit<AuditEntry, 'id' | 'ts'>) => void;
+  getConversation: (peer: Role) => Message[];
+  unreadCount: () => number;
+}
+
+const AppContext = createContext<AppContextType | null>(null);
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [role, setRole] = useState<Role | null>(null);
+  const [userName, setUserName] = useState('');
+  const [prices, setPrices] = useState<Prices>({ PMS: 830, AGO: 1050, DPK: 700, LPG: 1200 });
+  const [tanks] = useState<Tank[]>(INIT_TANKS);
+  const [lpgTanks] = useState<LPGTank[]>(INIT_LPG);
+  const [dips, setDips] = useState<DipRecord[]>(INIT_DIPS);
+  const [deliveries, setDeliveries] = useState<Delivery[]>(INIT_RECS);
+  const [maintenance, setMaintenance] = useState<MaintenanceItem[]>(INIT_MAINT);
+  const [sales, setSales] = useState<SalesEntry[]>(INIT_SALES);
+  const [staff, setStaff] = useState<Staff[]>(INIT_STAFF);
+  const [branches, setBranches] = useState<Branch[]>(INIT_BRANCHES);
+  const [docs] = useState<ComplianceDoc[]>(INIT_DOCS);
+  const [expenses, setExpenses] = useState<Expense[]>(INIT_EXPENSES);
+  const [budgets] = useState<Budget[]>(INIT_BUDGETS);
+  const [messages, setMessages] = useState<Record<string, Message[]>>(INIT_MSGS);
+  const [audit, setAudit] = useState<AuditEntry[]>(INIT_AUDIT);
+  const [departments] = useState<Department[]>(INIT_DEPTS);
+
+  useEffect(() => {
+    AsyncStorage.getItem('auth').then(v => {
+      if (v) { const { r, n } = JSON.parse(v); setRole(r); setUserName(n); }
+    });
+  }, []);
+
+  const login = useCallback((r: Role, n: string) => {
+    setRole(r); setUserName(n);
+    AsyncStorage.setItem('auth', JSON.stringify({ r, n }));
+  }, []);
+
+  const logout = useCallback(() => {
+    setRole(null); setUserName('');
+    AsyncStorage.removeItem('auth');
+  }, []);
+
+  const updatePrice = useCallback((prod: string, price: number) => {
+    setPrices(p => ({ ...p, [prod]: price }));
+    setAudit(a => [{ id: genId(), action: 'Price update', user: userName, detail: `${prod} set to ₦${price}/L`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addDip = useCallback((dip: Omit<DipRecord, 'id'>) => {
+    setDips(d => [{ ...dip, id: genId() }, ...d]);
+    setAudit(a => [{ id: genId(), action: 'Dip submitted', user: userName, detail: 'All tanks dipped.', ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addDelivery = useCallback((rec: Omit<Delivery, 'id'>) => {
+    setDeliveries(d => [{ ...rec, id: genId() }, ...d]);
+    setAudit(a => [{ id: genId(), action: 'Delivery recorded', user: userName, detail: `${rec.prod} — ${rec.rec}L from ${rec.sup}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addMaintenance = useCallback((item: Omit<MaintenanceItem, 'id'>) => {
+    setMaintenance(m => [{ ...item, id: genId() }, ...m]);
+    setAudit(a => [{ id: genId(), action: 'Maintenance request', user: userName, detail: item.title, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addSales = useCallback((entry: Omit<SalesEntry, 'id'>) => {
+    setSales(s => [...s, { ...entry, id: genId() }]);
+    setAudit(a => [{ id: genId(), action: 'Sales entry', user: userName, detail: `${entry.pump} — ${entry.L}L`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const sendMessage = useCallback((to: Role, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => {
+    if (!role) return;
+    const key = chatKey(role, to);
+    const newMsg: Message = { ...msg, id: genId(), from: role, ts: nowTime(), read: false };
+    setMessages(m => ({ ...m, [key]: [...(m[key] || []), newMsg] }));
+  }, [role]);
+
+  const markRead = useCallback((peer: Role) => {
+    if (!role) return;
+    const key = chatKey(role, peer);
+    setMessages(m => ({
+      ...m,
+      [key]: (m[key] || []).map(msg => msg.to === role ? { ...msg, read: true } : msg),
+    }));
+  }, [role]);
+
+  const approveExpense = useCallback((id: number) => {
+    setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : x));
+  }, [userName]);
+
+  const rejectExpense = useCallback((id: number) => {
+    setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'rejected' } : x));
+  }, []);
+
+  const addStaff = useCallback((s: Omit<Staff, 'id'>) => {
+    setStaff(st => [...st, { ...s, id: genId() }]);
+    setAudit(a => [{ id: genId(), action: 'User created', user: userName, detail: `${s.name} added as ${s.role}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const toggleStaff = useCallback((id: number) => {
+    setStaff(st => st.map(s => s.id === id ? { ...s, st: s.st === 'Active' ? 'Suspended' : 'Active' } : s));
+  }, []);
+
+  const addBranch = useCallback((b: Omit<Branch, 'id'>) => {
+    setBranches(br => [...br, { ...b, id: `B${genId()}` }]);
+  }, []);
+
+  const addAudit = useCallback((entry: Omit<AuditEntry, 'id' | 'ts'>) => {
+    setAudit(a => [{ ...entry, id: genId(), ts: nowTs() }, ...a]);
+  }, []);
+
+  const getConversation = useCallback((peer: Role): Message[] => {
+    if (!role) return [];
+    return messages[chatKey(role, peer)] || [];
+  }, [role, messages]);
+
+  const unreadCount = useCallback((): number => {
+    if (!role) return 0;
+    return Object.values(messages).reduce((sum, msgs) => {
+      return sum + msgs.filter(m => m.to === role && !m.read).length;
+    }, 0);
+  }, [role, messages]);
+
+  return (
+    <AppContext.Provider value={{
+      role, userName, login, logout, prices, tanks, lpgTanks, dips, deliveries,
+      maintenance, sales, staff, branches, docs, expenses, budgets, messages,
+      audit, departments, updatePrice, addDip, addDelivery, addMaintenance, addSales,
+      sendMessage, markRead, approveExpense, rejectExpense, addStaff, toggleStaff,
+      addBranch, addAudit, getConversation, unreadCount,
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export function useApp() {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
+}
