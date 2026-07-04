@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "PetroTrack NG",
-    "slug": "petrotrack",
+    "name": "Petrack",
+    "slug": "petrack",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "petrotrack",
+    "scheme": "petrack",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -14,9 +14,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.petrack.app"
     },
-    "android": {},
+    "android": {
+      "package": "com.petrack.app"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
