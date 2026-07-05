@@ -12,6 +12,7 @@ export default function UsersScreen() {
   const { role, staff, addStaff, toggleStaff } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
+  const isAdmin = role === 'admin';
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', role: 'Station Manager', email: '', sal: '' });
   const [search, setSearch] = useState('');
@@ -27,11 +28,11 @@ export default function UsersScreen() {
 
   return (
     <ScreenLayout title="Users"
-      rightAction={
+      rightAction={isAdmin ? (
         <TouchableOpacity onPress={() => setShowForm(true)} style={styles.headerBtn}>
           <Ionicons name="add" size={20} color="#fff" />
         </TouchableOpacity>
-      }
+      ) : undefined}
     >
       <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
         <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -45,7 +46,17 @@ export default function UsersScreen() {
           />
         </View>
       </View>
+
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {!isAdmin && (
+          <View style={[styles.readonlyBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
+            <Text style={[styles.readonlyText, { color: colors.textMuted }]}>
+              View only — only System Admin can add or suspend users
+            </Text>
+          </View>
+        )}
+
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.statNum, { color: roleColor }]}>{staff.filter(s => s.st === 'Active').length}</Text>
@@ -75,55 +86,64 @@ export default function UsersScreen() {
               <View style={[styles.stBadge, { backgroundColor: s.st === 'Active' ? colors.successBg : colors.warningBg }]}>
                 <Text style={[styles.stText, { color: s.st === 'Active' ? colors.success : colors.warning }]}>{s.st}</Text>
               </View>
-              <TouchableOpacity onPress={() => Alert.alert('Confirm', `${s.st === 'Active' ? 'Suspend' : 'Activate'} ${s.name}?`, [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Confirm', onPress: () => toggleStaff(s.id) },
-              ])} style={[styles.toggleBtn, { borderColor: colors.border }]}>
-                <Ionicons name={s.st === 'Active' ? 'pause' : 'play'} size={12} color={colors.textMuted} />
-              </TouchableOpacity>
+              {isAdmin && (
+                <TouchableOpacity
+                  onPress={() => Alert.alert('Confirm', `${s.st === 'Active' ? 'Suspend' : 'Activate'} ${s.name}?`, [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Confirm', onPress: () => toggleStaff(s.id) },
+                  ])}
+                  style={[styles.toggleBtn, { borderColor: colors.border }]}
+                >
+                  <Ionicons name={s.st === 'Active' ? 'pause' : 'play'} size={12} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         ))}
         <View style={{ height: 16 }} />
       </ScrollView>
 
-      <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowForm(false)}>
-          <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Staff Member</Text>
-            {[{ key: 'name', label: 'Full Name *' }, { key: 'email', label: 'Email Address *', kb: 'email-address' as const }, { key: 'sal', label: 'Monthly Salary (₦)', kb: 'numeric' as const }].map(f => (
-              <TextInput key={f.key} style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                placeholder={f.label} placeholderTextColor={colors.textSubtle}
-                keyboardType={f.kb} value={(form as any)[f.key]}
-                onChangeText={v => setForm(fr => ({ ...fr, [f.key]: v }))} />
-            ))}
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Role</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {ROLE_OPTIONS.map(r => (
-                  <TouchableOpacity key={r} onPress={() => setForm(f => ({ ...f, role: r }))} style={[styles.roleBtn, { backgroundColor: form.role === r ? roleColor : colors.surface, borderColor: form.role === r ? roleColor : colors.border }]}>
-                    <Text style={{ color: form.role === r ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{r}</Text>
-                  </TouchableOpacity>
-                ))}
+      {isAdmin && (
+        <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowForm(false)}>
+            <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Staff Member</Text>
+              {[{ key: 'name', label: 'Full Name *' }, { key: 'email', label: 'Email Address *', kb: 'email-address' as const }, { key: 'sal', label: 'Monthly Salary (₦)', kb: 'numeric' as const }].map(f => (
+                <TextInput key={f.key} style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder={f.label} placeholderTextColor={colors.textSubtle}
+                  keyboardType={f.kb} value={(form as any)[f.key]}
+                  onChangeText={v => setForm(fr => ({ ...fr, [f.key]: v }))} />
+              ))}
+              <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Role</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {ROLE_OPTIONS.map(r => (
+                    <TouchableOpacity key={r} onPress={() => setForm(f => ({ ...f, role: r }))} style={[styles.roleBtn, { backgroundColor: form.role === r ? roleColor : colors.surface, borderColor: form.role === r ? roleColor : colors.border }]}>
+                      <Text style={{ color: form.role === r ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{r}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
+                  <Text style={styles.submitBtnText}>Add Staff</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowForm(false)}>
+                  <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                </TouchableOpacity>
               </View>
-            </ScrollView>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
-                <Text style={styles.submitBtnText}>Add Staff</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowForm(false)}>
-                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
             </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </ScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { padding: 16 },
+  readonlyBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
+  readonlyText: { flex: 1, fontSize: 12 },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, marginBottom: 4 },
   searchInput: { flex: 1, fontSize: 14 },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
