@@ -3,15 +3,16 @@ import React, { useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { KPI, ROLE_COLORS, ROLE_LABELS, TASK_CAN_ASSIGN, Task, TaskPriority, TaskStatus, UINFO, fmtDate, useApp } from '@/context/AppContext';
+import { KPI, ROLE_COLORS, ROLE_LABELS, TASK_CAN_ASSIGN, Task, TaskCadence, TaskPriority, TaskStatus, UINFO, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 type TabId = 'mine' | 'assigned' | 'kpis';
+type CadenceFilter = 'all' | TaskCadence;
 
 const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string; icon: string }> = {
-  commenced:  { label: 'Commenced',  color: '#185FA5', bg: '#E6F1FB', icon: 'play-circle'       },
-  progressing:{ label: 'Progressing',color: '#BA7517', bg: '#FAEEDA', icon: 'time'              },
-  completed:  { label: 'Completed',  color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle'  },
+  commenced:   { label: 'Commenced',   color: '#185FA5', bg: '#E6F1FB', icon: 'play-circle'      },
+  progressing: { label: 'Progressing', color: '#BA7517', bg: '#FAEEDA', icon: 'time'             },
+  completed:   { label: 'Completed',   color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle' },
 };
 
 const PRI_META: Record<TaskPriority, { color: string; bg: string }> = {
@@ -20,7 +21,22 @@ const PRI_META: Record<TaskPriority, { color: string; bg: string }> = {
   Low:    { color: '#27500A', bg: '#EAF3DE' },
 };
 
-const PERIODS = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Annual', 'Per request'];
+const CADENCE_META: Record<TaskCadence, { label: string; icon: string; color: string; bg: string }> = {
+  daily:     { label: 'Daily',     icon: 'sunny-outline',    color: '#D85A30', bg: '#FAECE7' },
+  weekly:    { label: 'Weekly',    icon: 'calendar-outline', color: '#185FA5', bg: '#E6F1FB' },
+  monthly:   { label: 'Monthly',   icon: 'calendar',         color: '#4527a0', bg: '#EEEDFE' },
+  quarterly: { label: 'Quarterly', icon: 'layers-outline',   color: '#0F6E56', bg: '#E1F5EE' },
+};
+
+const CADENCE_FILTERS: { id: CadenceFilter; label: string }[] = [
+  { id: 'all',       label: 'All'       },
+  { id: 'daily',     label: 'Daily'     },
+  { id: 'weekly',    label: 'Weekly'    },
+  { id: 'monthly',   label: 'Monthly'   },
+  { id: 'quarterly', label: 'Quarterly' },
+];
+
+const KPI_PERIODS = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Annual', 'Per request'];
 
 export default function TasksScreen() {
   const { role, userName, tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi } = useApp();
@@ -29,21 +45,37 @@ export default function TasksScreen() {
   const isMd = role === 'md';
 
   const [tab, setTab] = useState<TabId>('mine');
+  const [cadenceFilter, setCadenceFilter] = useState<CadenceFilter>('all');
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showKpiForm, setShowKpiForm] = useState(false);
-  const [taskForm, setTaskForm] = useState({ title: '', desc: '', assignedTo: '' as string, priority: 'Medium' as TaskPriority, dueDate: '' });
-  const [kpiForm, setKpiForm] = useState({ title: '', target: '', unit: '', period: 'Monthly', assignedTo: '' as string, assignedToName: '' });
+
+  const [taskForm, setTaskForm] = useState({
+    title: '', desc: '', assignedTo: '' as string,
+    priority: 'Medium' as TaskPriority,
+    cadence: 'daily' as TaskCadence,
+    target: '', targetUnit: '', dueDate: '',
+  });
+  const [kpiForm, setKpiForm] = useState({
+    title: '', target: '', unit: '', period: 'Monthly',
+    assignedTo: '' as string, assignedToName: '',
+  });
 
   const assignableRoles: string[] = role ? TASK_CAN_ASSIGN[role] ?? [] : [];
   const canAssign = assignableRoles.length > 0;
-  const myTasks = tasks.filter(t => t.assignedTo === role);
-  const assignedByMe = tasks.filter(t => t.assignedBy === role);
+
+  const myTasksAll    = tasks.filter(t => t.assignedTo === role);
+  const assignedByAll = tasks.filter(t => t.assignedBy === role);
+  const myTasks    = cadenceFilter === 'all' ? myTasksAll    : myTasksAll.filter(t => t.cadence === cadenceFilter);
+  const assignedBy = cadenceFilter === 'all' ? assignedByAll : assignedByAll.filter(t => t.cadence === cadenceFilter);
 
   const tabs: { id: TabId; label: string }[] = [
-    { id: 'mine', label: `My Tasks (${myTasks.length})` },
-    { id: 'assigned', label: `Assigned (${assignedByMe.length})` },
+    { id: 'mine',     label: `My Tasks (${myTasksAll.length})` },
+    { id: 'assigned', label: `Assigned (${assignedByAll.length})` },
     ...(isMd ? [{ id: 'kpis' as TabId, label: `KPIs (${kpis.length})` }] : []),
   ];
+
+  function openTaskForm() { setShowTaskForm(true); }
+  function openKpiForm()  { setShowKpiForm(true); }
 
   function handleAssignTask() {
     if (!role || !taskForm.title || !taskForm.assignedTo) {
@@ -56,9 +88,12 @@ export default function TasksScreen() {
       assignedTo: taskForm.assignedTo as any,
       assignedToName: info?.name ?? taskForm.assignedTo,
       status: 'commenced', priority: taskForm.priority,
+      cadence: taskForm.cadence,
+      target: taskForm.target || undefined,
+      targetUnit: taskForm.targetUnit || undefined,
       dueDate: taskForm.dueDate,
     });
-    setTaskForm({ title: '', desc: '', assignedTo: '', priority: 'Medium', dueDate: '' });
+    setTaskForm({ title: '', desc: '', assignedTo: '', priority: 'Medium', cadence: 'daily', target: '', targetUnit: '', dueDate: '' });
     setShowTaskForm(false);
   }
 
@@ -80,11 +115,10 @@ export default function TasksScreen() {
     const idx = order.indexOf(task.status);
     if (idx < order.length - 1) {
       const next = order[idx + 1];
-      Alert.alert(
-        'Update Status',
-        `Mark as "${STATUS_META[next].label}"?`,
-        [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm', onPress: () => updateTaskStatus(task.id, next) }]
-      );
+      Alert.alert('Update Status', `Mark as "${STATUS_META[next].label}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: () => updateTaskStatus(task.id, next) },
+      ]);
     }
   }
 
@@ -102,56 +136,74 @@ export default function TasksScreen() {
     ]);
   }
 
-  function renderTaskCard(task: Task, isOwn: boolean) {
-    const sm = STATUS_META[task.status];
-    const pm = PRI_META[task.priority];
-    const isCompleted = task.status === 'completed';
+  function renderTaskCard(task: Task, isAssignedToMe: boolean) {
+    const sm  = STATUS_META[task.status];
+    const pm  = PRI_META[task.priority];
+    const cm  = CADENCE_META[task.cadence];
+    const done = task.status === 'completed';
     return (
       <View key={task.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={styles.cardTop}>
-          <View style={{ flex: 1, gap: 4 }}>
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-              <View style={[styles.badge, { backgroundColor: pm.bg }]}>
-                <Text style={[styles.badgeText, { color: pm.color }]}>{task.priority}</Text>
-              </View>
-              <View style={[styles.badge, { backgroundColor: sm.bg }]}>
-                <Ionicons name={sm.icon as any} size={10} color={sm.color} />
-                <Text style={[styles.badgeText, { color: sm.color }]}>{sm.label}</Text>
-              </View>
-            </View>
-            <Text style={[styles.cardTitle, { color: colors.text, opacity: isCompleted ? 0.55 : 1 }]} numberOfLines={2}>
-              {task.title}
-            </Text>
-            <Text style={[styles.cardDesc, { color: colors.textMuted }]} numberOfLines={2}>{task.desc}</Text>
+        {/* Top row: badges + trash */}
+        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <View style={[styles.badge, { backgroundColor: cm.bg }]}>
+            <Ionicons name={cm.icon as any} size={10} color={cm.color} />
+            <Text style={[styles.badgeText, { color: cm.color }]}>{cm.label}</Text>
           </View>
-          {(isOwn ? task.assignedBy === role : false) && (
-            <TouchableOpacity onPress={() => handleDeleteTask(task)} style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}>
-              <Ionicons name="trash-outline" size={13} color={colors.error} />
-            </TouchableOpacity>
-          )}
-          {!isOwn && (
-            <TouchableOpacity onPress={() => handleDeleteTask(task)} style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}>
-              <Ionicons name="trash-outline" size={13} color={colors.error} />
-            </TouchableOpacity>
-          )}
+          <View style={[styles.badge, { backgroundColor: pm.bg }]}>
+            <Text style={[styles.badgeText, { color: pm.color }]}>{task.priority}</Text>
+          </View>
+          <View style={[styles.badge, { backgroundColor: sm.bg }]}>
+            <Ionicons name={sm.icon as any} size={10} color={sm.color} />
+            <Text style={[styles.badgeText, { color: sm.color }]}>{sm.label}</Text>
+          </View>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            onPress={() => handleDeleteTask(task)}
+            style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
+          >
+            <Ionicons name="trash-outline" size={12} color={colors.error} />
+          </TouchableOpacity>
         </View>
 
-        <View style={[styles.cardMeta, { borderTopColor: colors.border }]}>
+        {/* Title + desc */}
+        <Text style={[styles.cardTitle, { color: colors.text, opacity: done ? 0.5 : 1 }]} numberOfLines={2}>
+          {task.title}
+        </Text>
+        {!!task.desc && (
+          <Text style={[styles.cardDesc, { color: colors.textMuted }]} numberOfLines={2}>{task.desc}</Text>
+        )}
+
+        {/* Target row */}
+        {task.target ? (
+          <View style={[styles.targetRow, { backgroundColor: roleColor + '0D', borderColor: roleColor + '25' }]}>
+            <Ionicons name="flag-outline" size={12} color={roleColor} />
+            <Text style={[styles.targetLabel, { color: roleColor }]}>Target:</Text>
+            <Text style={[styles.targetVal, { color: roleColor }]}>{task.target}{task.targetUnit ? ` ${task.targetUnit}` : ''}</Text>
+            {task.dueDate ? (
+              <>
+                <View style={[styles.targetDivider, { backgroundColor: roleColor + '40' }]} />
+                <Ionicons name="calendar-outline" size={11} color={colors.textMuted} />
+                <Text style={[styles.targetDue, { color: colors.textMuted }]}>by {fmtDate(task.dueDate)}</Text>
+              </>
+            ) : null}
+          </View>
+        ) : task.dueDate ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name={isOwn ? 'person-outline' : 'arrow-forward-circle-outline'} size={12} color={colors.textSubtle} />
-            <Text style={[styles.metaText, { color: colors.textMuted }]}>
-              {isOwn ? `From: ${task.assignedByName}` : `To: ${task.assignedToName}`}
-            </Text>
+            <Ionicons name="calendar-outline" size={12} color={colors.textSubtle} />
+            <Text style={[styles.metaText, { color: colors.textMuted }]}>Due: {fmtDate(task.dueDate)}</Text>
           </View>
-          {task.dueDate ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Ionicons name="calendar-outline" size={12} color={colors.textSubtle} />
-              <Text style={[styles.metaText, { color: colors.textMuted }]}>Due: {fmtDate(task.dueDate)}</Text>
-            </View>
-          ) : null}
+        ) : null}
+
+        {/* Assigned from/to */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Ionicons name={isAssignedToMe ? 'person-outline' : 'arrow-forward-circle-outline'} size={12} color={colors.textSubtle} />
+          <Text style={[styles.metaText, { color: colors.textMuted }]}>
+            {isAssignedToMe ? `From: ${task.assignedByName}` : `To: ${task.assignedToName}`}
+          </Text>
         </View>
 
-        {isOwn && !isCompleted && (
+        {/* Status controls */}
+        {isAssignedToMe && !done && (
           <View style={styles.statusBtns}>
             {(['commenced', 'progressing', 'completed'] as TaskStatus[]).map(s => {
               const m = STATUS_META[s];
@@ -169,10 +221,10 @@ export default function TasksScreen() {
           </View>
         )}
 
-        {!isOwn && task.status !== 'completed' && (
+        {!isAssignedToMe && task.status !== 'completed' && (
           <TouchableOpacity
             onPress={() => handleNextStatus(task)}
-            style={[styles.advanceBtn, { backgroundColor: roleColor + '15', borderColor: roleColor + '30' }]}
+            style={[styles.advanceBtn, { backgroundColor: roleColor + '12', borderColor: roleColor + '28' }]}
           >
             <Ionicons name="arrow-forward" size={13} color={roleColor} />
             <Text style={[styles.advanceBtnText, { color: roleColor }]}>Advance to next stage</Text>
@@ -183,21 +235,23 @@ export default function TasksScreen() {
   }
 
   function renderKpiCard(kpi: KPI) {
-    const assigneeColor = ROLE_COLORS[kpi.assignedTo] || colors.primary;
+    const ac = ROLE_COLORS[kpi.assignedTo] || colors.primary;
     return (
       <View key={kpi.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={styles.cardTop}>
-          <View style={{ flex: 1, gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <View style={{ flex: 1, gap: 6 }}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>{kpi.title}</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
-              <View style={[styles.kpiTargetBox, { backgroundColor: assigneeColor + '12' }]}>
-                <Text style={[styles.kpiTargetVal, { color: assigneeColor }]}>{kpi.target} {kpi.unit}</Text>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+              <View style={[styles.kpiTargetBox, { backgroundColor: ac + '12' }]}>
+                <Ionicons name="flag" size={11} color={ac} />
+                <Text style={[styles.kpiTargetVal, { color: ac }]}>{kpi.target} {kpi.unit}</Text>
               </View>
               <View style={[styles.badge, { backgroundColor: colors.background }]}>
+                <Ionicons name="refresh-outline" size={10} color={colors.textMuted} />
                 <Text style={[styles.badgeText, { color: colors.textMuted }]}>{kpi.period}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Ionicons name="person-outline" size={12} color={colors.textSubtle} />
               <Text style={[styles.metaText, { color: colors.textMuted }]}>{kpi.assignedToName}</Text>
             </View>
@@ -206,27 +260,98 @@ export default function TasksScreen() {
             onPress={() => handleDeleteKpi(kpi)}
             style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
           >
-            <Ionicons name="trash-outline" size={13} color={colors.error} />
+            <Ionicons name="trash-outline" size={12} color={colors.error} />
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
-  const rightAction = (
-    <TouchableOpacity
-      onPress={() => tab === 'kpis' ? setShowKpiForm(true) : setShowTaskForm(true)}
-      style={styles.headerBtn}
-    >
-      <Ionicons name="add" size={20} color="#fff" />
-    </TouchableOpacity>
-  );
+  function renderCadenceFilter() {
+    const taskList = tab === 'mine' ? myTasksAll : assignedByAll;
+    const counts: Record<string, number> = { all: taskList.length };
+    for (const c of ['daily', 'weekly', 'monthly', 'quarterly'] as TaskCadence[]) {
+      counts[c] = taskList.filter(t => t.cadence === c).length;
+    }
+    return (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterRow}>
+        {CADENCE_FILTERS.map(f => {
+          const active = cadenceFilter === f.id;
+          const cm = f.id !== 'all' ? CADENCE_META[f.id as TaskCadence] : null;
+          const fColor = cm ? cm.color : roleColor;
+          return (
+            <TouchableOpacity
+              key={f.id}
+              onPress={() => setCadenceFilter(f.id)}
+              style={[styles.filterPill, {
+                backgroundColor: active ? fColor : colors.surface,
+                borderColor: active ? fColor : colors.border,
+              }]}
+            >
+              {cm && <Ionicons name={cm.icon as any} size={11} color={active ? '#fff' : fColor} />}
+              <Text style={[styles.filterPillText, { color: active ? '#fff' : colors.textMuted }]}>
+                {f.label}
+              </Text>
+              <Text style={[styles.filterCount, { color: active ? 'rgba(255,255,255,0.8)' : colors.textSubtle }]}>
+                {counts[f.id] ?? 0}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    );
+  }
 
-  const showRightAction = tab === 'kpis' || (tab !== 'mine' && canAssign) || (tab === 'mine' && canAssign);
+  function renderGrouped(list: Task[], isAssignedToMe: boolean) {
+    if (list.length === 0) {
+      return (
+        <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name={isAssignedToMe ? 'checkmark-done-circle-outline' : 'list-circle-outline'} size={36} color={colors.textSubtle} />
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+            {cadenceFilter === 'all'
+              ? (isAssignedToMe ? 'No tasks assigned to you' : "You haven't assigned any tasks yet")
+              : `No ${cadenceFilter} tasks`}
+          </Text>
+          {!isAssignedToMe && canAssign && (
+            <TouchableOpacity onPress={openTaskForm} style={[styles.emptyAction, { backgroundColor: roleColor }]}>
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Assign a Task</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      );
+    }
+    return (
+      <>
+        {(['commenced', 'progressing', 'completed'] as TaskStatus[]).map(s => {
+          const group = list.filter(t => t.status === s);
+          if (!group.length) return null;
+          const sm = STATUS_META[s];
+          return (
+            <View key={s} style={{ marginBottom: 4 }}>
+              <View style={styles.groupHeader}>
+                <View style={[styles.groupDot, { backgroundColor: sm.color }]} />
+                <Text style={[styles.groupLabel, { color: sm.color }]}>{sm.label} · {group.length}</Text>
+              </View>
+              {group.map(t => renderTaskCard(t, isAssignedToMe))}
+            </View>
+          );
+        })}
+      </>
+    );
+  }
+
+  const showAddBtn = tab === 'kpis' ? isMd : canAssign;
 
   return (
-    <ScreenLayout title="Tasks & KPIs" rightAction={canAssign || isMd ? rightAction : undefined}>
-      {/* Tabs */}
+    <ScreenLayout
+      title="Tasks & KPIs"
+      rightAction={showAddBtn ? (
+        <TouchableOpacity onPress={tab === 'kpis' ? openKpiForm : openTaskForm} style={styles.headerBtn}>
+          <Ionicons name="add" size={20} color="#fff" />
+        </TouchableOpacity>
+      ) : undefined}
+    >
+      {/* Main tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll} contentContainerStyle={styles.tabRow}>
         {tabs.map(t => (
           <TouchableOpacity
@@ -241,73 +366,17 @@ export default function TasksScreen() {
         ))}
       </ScrollView>
 
+      {/* Cadence filter (tasks tabs only) */}
+      {tab !== 'kpis' && renderCadenceFilter()}
+
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {tab === 'mine' && (
-          <>
-            {myTasks.length === 0 ? (
-              <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons name="checkmark-done-circle-outline" size={36} color={colors.textSubtle} />
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>No tasks assigned to you</Text>
-              </View>
-            ) : (
-              <>
-                {(['commenced', 'progressing', 'completed'] as TaskStatus[]).map(s => {
-                  const group = myTasks.filter(t => t.status === s);
-                  if (!group.length) return null;
-                  const sm = STATUS_META[s];
-                  return (
-                    <View key={s} style={{ marginBottom: 4 }}>
-                      <View style={styles.groupHeader}>
-                        <View style={[styles.groupDot, { backgroundColor: sm.color }]} />
-                        <Text style={[styles.groupLabel, { color: sm.color }]}>{sm.label} · {group.length}</Text>
-                      </View>
-                      {group.map(t => renderTaskCard(t, true))}
-                    </View>
-                  );
-                })}
-              </>
-            )}
-          </>
-        )}
-
-        {tab === 'assigned' && (
-          <>
-            {assignedByMe.length === 0 ? (
-              <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons name="list-circle-outline" size={36} color={colors.textSubtle} />
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>You haven't assigned any tasks yet</Text>
-                {canAssign && (
-                  <TouchableOpacity onPress={() => setShowTaskForm(true)} style={[styles.emptyAction, { backgroundColor: roleColor }]}>
-                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Assign a Task</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : (
-              <>
-                {(['commenced', 'progressing', 'completed'] as TaskStatus[]).map(s => {
-                  const group = assignedByMe.filter(t => t.status === s);
-                  if (!group.length) return null;
-                  const sm = STATUS_META[s];
-                  return (
-                    <View key={s} style={{ marginBottom: 4 }}>
-                      <View style={styles.groupHeader}>
-                        <View style={[styles.groupDot, { backgroundColor: sm.color }]} />
-                        <Text style={[styles.groupLabel, { color: sm.color }]}>{sm.label} · {group.length}</Text>
-                      </View>
-                      {group.map(t => renderTaskCard(t, false))}
-                    </View>
-                  );
-                })}
-              </>
-            )}
-          </>
-        )}
-
+        {tab === 'mine'     && renderGrouped(myTasks, true)}
+        {tab === 'assigned' && renderGrouped(assignedBy, false)}
         {tab === 'kpis' && (
           <>
-            {/* Summary chips */}
-            <View style={styles.kpiSummaryRow}>
-              {['mgr', 'acc', 'csm', 'mktg', 'att'].map(r => {
+            {/* Role summary chips */}
+            <View style={styles.kpiChipRow}>
+              {(['mgr', 'acc', 'csm', 'mktg', 'att'] as const).map(r => {
                 const count = kpis.filter(k => k.assignedTo === r).length;
                 if (!count) return null;
                 const c = ROLE_COLORS[r] || colors.primary;
@@ -319,28 +388,24 @@ export default function TasksScreen() {
                 );
               })}
             </View>
-
             {kpis.length === 0 ? (
               <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Ionicons name="analytics-outline" size={36} color={colors.textSubtle} />
                 <Text style={[styles.emptyText, { color: colors.textMuted }]}>No KPIs set yet</Text>
-                <TouchableOpacity onPress={() => setShowKpiForm(true)} style={[styles.emptyAction, { backgroundColor: roleColor }]}>
+                <TouchableOpacity onPress={openKpiForm} style={[styles.emptyAction, { backgroundColor: roleColor }]}>
                   <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Add KPI</Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              kpis.map(k => renderKpiCard(k))
-            )}
+            ) : kpis.map(k => renderKpiCard(k))}
           </>
         )}
-
         <View style={{ height: 24 }} />
       </ScrollView>
 
-      {/* Assign Task Modal */}
+      {/* ── Assign Task Modal ── */}
       <Modal visible={showTaskForm} transparent animationType="slide" onRequestClose={() => setShowTaskForm(false)}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowTaskForm(false)}>
-          <View style={[styles.sheet, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true} keyboardShouldPersistTaps="handled">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Assign Task</Text>
 
             <TextInput
@@ -354,53 +419,93 @@ export default function TasksScreen() {
               multiline numberOfLines={3} value={taskForm.desc}
               onChangeText={v => setTaskForm(f => ({ ...f, desc: v }))}
             />
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Due date (YYYY-MM-DD)" placeholderTextColor={colors.textSubtle}
-              value={taskForm.dueDate} onChangeText={v => setTaskForm(f => ({ ...f, dueDate: v }))}
-            />
 
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Priority</Text>
+            {/* Cadence */}
+            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Cadence *</Text>
             <View style={styles.chipRow}>
-              {(['High', 'Medium', 'Low'] as TaskPriority[]).map(p => (
-                <TouchableOpacity
-                  key={p}
-                  onPress={() => setTaskForm(f => ({ ...f, priority: p }))}
-                  style={[styles.chip, {
-                    backgroundColor: taskForm.priority === p ? PRI_META[p].bg : colors.surface,
-                    borderColor: taskForm.priority === p ? PRI_META[p].color : colors.border,
-                  }]}
-                >
-                  <Text style={[styles.chipText, { color: taskForm.priority === p ? PRI_META[p].color : colors.textMuted }]}>{p}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Assign to *</Text>
-            <View style={styles.chipRow}>
-              {assignableRoles.map(r => {
-                const info = UINFO[r];
-                const rc = ROLE_COLORS[r] || colors.primary;
-                const active = taskForm.assignedTo === r;
+              {(['daily', 'weekly', 'monthly', 'quarterly'] as TaskCadence[]).map(c => {
+                const cm = CADENCE_META[c];
+                const active = taskForm.cadence === c;
                 return (
                   <TouchableOpacity
-                    key={r}
-                    onPress={() => setTaskForm(f => ({ ...f, assignedTo: r }))}
-                    style={[styles.assigneeChip, { backgroundColor: active ? rc + '18' : colors.surface, borderColor: active ? rc : colors.border }]}
+                    key={c}
+                    onPress={() => setTaskForm(f => ({ ...f, cadence: c }))}
+                    style={[styles.cadenceChip, { backgroundColor: active ? cm.color : colors.surface, borderColor: active ? cm.color : colors.border }]}
                   >
-                    <View style={[styles.assigneeAvatar, { backgroundColor: active ? rc : colors.textSubtle }]}>
-                      <Text style={styles.assigneeAvatarText}>{info?.initials ?? r.slice(0, 2).toUpperCase()}</Text>
-                    </View>
-                    <View>
-                      <Text style={[styles.assigneeName, { color: active ? rc : colors.text }]}>{info?.name ?? r}</Text>
-                      <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
-                    </View>
+                    <Ionicons name={cm.icon as any} size={13} color={active ? '#fff' : cm.color} />
+                    <Text style={[styles.chipText, { color: active ? '#fff' : colors.textMuted }]}>{cm.label}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            {/* Priority */}
+            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Priority</Text>
+            <View style={styles.chipRow}>
+              {(['High', 'Medium', 'Low'] as TaskPriority[]).map(p => {
+                const pm = PRI_META[p];
+                const active = taskForm.priority === p;
+                return (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => setTaskForm(f => ({ ...f, priority: p }))}
+                    style={[styles.chip, { backgroundColor: active ? pm.bg : colors.surface, borderColor: active ? pm.color : colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: active ? pm.color : colors.textMuted }]}>{p}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Target */}
+            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Target (optional)</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                style={[styles.input, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                placeholder="Value (e.g. 5000000)" placeholderTextColor={colors.textSubtle}
+                keyboardType="default" value={taskForm.target}
+                onChangeText={v => setTaskForm(f => ({ ...f, target: v }))}
+              />
+              <TextInput
+                style={[styles.input, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                placeholder="Unit (e.g. ₦, %)" placeholderTextColor={colors.textSubtle}
+                value={taskForm.targetUnit}
+                onChangeText={v => setTaskForm(f => ({ ...f, targetUnit: v }))}
+              />
+            </View>
+
+            {/* Due date */}
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="Completion date (YYYY-MM-DD)" placeholderTextColor={colors.textSubtle}
+              value={taskForm.dueDate} onChangeText={v => setTaskForm(f => ({ ...f, dueDate: v }))}
+            />
+
+            {/* Assign to */}
+            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Assign to *</Text>
+            {assignableRoles.map(r => {
+              const info = UINFO[r];
+              const rc = ROLE_COLORS[r] || colors.primary;
+              const active = taskForm.assignedTo === r;
+              return (
+                <TouchableOpacity
+                  key={r}
+                  onPress={() => setTaskForm(f => ({ ...f, assignedTo: r }))}
+                  style={[styles.assigneeRow, { backgroundColor: active ? rc + '10' : colors.surface, borderColor: active ? rc : colors.border }]}
+                >
+                  <View style={[styles.assigneeAvatar, { backgroundColor: active ? rc : colors.textSubtle }]}>
+                    <Text style={styles.assigneeAvatarText}>{info?.initials ?? r.slice(0, 2).toUpperCase()}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.assigneeName, { color: active ? rc : colors.text }]}>{info?.name ?? r}</Text>
+                    <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
+                  </View>
+                  {active && <Ionicons name="checkmark-circle" size={18} color={rc} />}
+                </TouchableOpacity>
+              );
+            })}
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 32 }}>
               <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAssignTask}>
                 <Text style={styles.submitBtnText}>Assign Task</Text>
               </TouchableOpacity>
@@ -408,20 +513,20 @@ export default function TasksScreen() {
                 <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
         </TouchableOpacity>
       </Modal>
 
-      {/* Add KPI Modal (MD only) */}
+      {/* ── Add KPI Modal (MD only) ── */}
       <Modal visible={showKpiForm} transparent animationType="slide" onRequestClose={() => setShowKpiForm(false)}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowKpiForm(false)}>
-          <View style={[styles.sheet, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true} keyboardShouldPersistTaps="handled">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Set KPI / Target</Text>
 
             {[
-              { key: 'title', label: 'KPI Title *' },
+              { key: 'title',  label: 'KPI Title *' },
               { key: 'target', label: 'Target value (e.g. 15000000)' },
-              { key: 'unit', label: 'Unit (e.g. ₦, %, hours)' },
+              { key: 'unit',   label: 'Unit (e.g. ₦, %, hours)' },
             ].map(f => (
               <TextInput
                 key={f.key}
@@ -433,48 +538,42 @@ export default function TasksScreen() {
             ))}
 
             <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Period</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {PERIODS.map(p => (
-                  <TouchableOpacity
-                    key={p}
-                    onPress={() => setKpiForm(f => ({ ...f, period: p }))}
-                    style={[styles.chip, {
-                      backgroundColor: kpiForm.period === p ? roleColor + '18' : colors.surface,
-                      borderColor: kpiForm.period === p ? roleColor : colors.border,
-                    }]}
-                  >
-                    <Text style={[styles.chipText, { color: kpiForm.period === p ? roleColor : colors.textMuted }]}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Assign to *</Text>
             <View style={styles.chipRow}>
-              {(['md', 'mktg', 'csm', 'acc', 'mgr', 'att'] as const).map(r => {
-                const info = UINFO[r];
-                const rc = ROLE_COLORS[r] || colors.primary;
-                const active = kpiForm.assignedTo === r;
-                return (
-                  <TouchableOpacity
-                    key={r}
-                    onPress={() => setKpiForm(f => ({ ...f, assignedTo: r, assignedToName: info?.name ?? r }))}
-                    style={[styles.assigneeChip, { backgroundColor: active ? rc + '18' : colors.surface, borderColor: active ? rc : colors.border }]}
-                  >
-                    <View style={[styles.assigneeAvatar, { backgroundColor: active ? rc : colors.textSubtle }]}>
-                      <Text style={styles.assigneeAvatarText}>{info?.initials ?? r.slice(0, 2).toUpperCase()}</Text>
-                    </View>
-                    <View>
-                      <Text style={[styles.assigneeName, { color: active ? rc : colors.text }]}>{info?.name ?? r}</Text>
-                      <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {KPI_PERIODS.map(p => (
+                <TouchableOpacity
+                  key={p}
+                  onPress={() => setKpiForm(f => ({ ...f, period: p }))}
+                  style={[styles.chip, { backgroundColor: kpiForm.period === p ? roleColor + '18' : colors.surface, borderColor: kpiForm.period === p ? roleColor : colors.border }]}
+                >
+                  <Text style={[styles.chipText, { color: kpiForm.period === p ? roleColor : colors.textMuted }]}>{p}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Assign to *</Text>
+            {(['md', 'mktg', 'csm', 'acc', 'mgr', 'att'] as const).map(r => {
+              const info = UINFO[r];
+              const rc = ROLE_COLORS[r] || colors.primary;
+              const active = kpiForm.assignedTo === r;
+              return (
+                <TouchableOpacity
+                  key={r}
+                  onPress={() => setKpiForm(f => ({ ...f, assignedTo: r, assignedToName: info?.name ?? r }))}
+                  style={[styles.assigneeRow, { backgroundColor: active ? rc + '10' : colors.surface, borderColor: active ? rc : colors.border }]}
+                >
+                  <View style={[styles.assigneeAvatar, { backgroundColor: active ? rc : colors.textSubtle }]}>
+                    <Text style={styles.assigneeAvatarText}>{info?.initials ?? r.slice(0, 2).toUpperCase()}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.assigneeName, { color: active ? rc : colors.text }]}>{info?.name ?? r}</Text>
+                    <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
+                  </View>
+                  {active && <Ionicons name="checkmark-circle" size={18} color={rc} />}
+                </TouchableOpacity>
+              );
+            })}
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 32 }}>
               <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAddKpi}>
                 <Text style={styles.submitBtnText}>Set KPI</Text>
               </TouchableOpacity>
@@ -482,7 +581,7 @@ export default function TasksScreen() {
                 <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
         </TouchableOpacity>
       </Modal>
     </ScreenLayout>
@@ -494,19 +593,27 @@ const styles = StyleSheet.create({
   tabRow: { paddingHorizontal: 16, flexDirection: 'row', gap: 4 },
   tabBtn: { paddingHorizontal: 12, paddingVertical: 10 },
   tabLabel: { fontSize: 13 },
+  filterScroll: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e5e5e3' },
+  filterRow: { paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', gap: 6 },
+  filterPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
+  filterPillText: { fontSize: 12, fontWeight: '600' },
+  filterCount: { fontSize: 11, fontWeight: '700' },
   scroll: { padding: 16 },
   groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: 4 },
   groupDot: { width: 8, height: 8, borderRadius: 4 },
   groupLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
-  card: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10, gap: 10 },
-  cardTop: { flexDirection: 'row', gap: 10 },
+  card: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10, gap: 8 },
   cardTitle: { fontSize: 15, fontWeight: '700', lineHeight: 20 },
   cardDesc: { fontSize: 12, lineHeight: 17 },
-  cardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  targetRow: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1, flexWrap: 'wrap' },
+  targetLabel: { fontSize: 11, fontWeight: '600' },
+  targetVal: { fontSize: 12, fontWeight: '800' },
+  targetDivider: { width: 1, height: 12, marginHorizontal: 2 },
+  targetDue: { fontSize: 11 },
   metaText: { fontSize: 11 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
   badgeText: { fontSize: 10, fontWeight: '700' },
-  iconBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, flexShrink: 0 },
+  iconBtn: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   statusBtns: { flexDirection: 'row', gap: 6 },
   statusBtn: { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
   statusBtnText: { fontSize: 11, fontWeight: '600' },
@@ -515,26 +622,28 @@ const styles = StyleSheet.create({
   emptyBox: { alignItems: 'center', gap: 10, padding: 32, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed' },
   emptyText: { fontSize: 14, textAlign: 'center' },
   emptyAction: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, marginTop: 4 },
-  kpiSummaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  kpiChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   kpiChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
   kpiChipText: { fontSize: 11, fontWeight: '600' },
   kpiChipCount: { fontSize: 12, fontWeight: '800' },
-  kpiTargetBox: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  kpiTargetBox: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   kpiTargetVal: { fontSize: 14, fontWeight: '800' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 10, maxHeight: '88%' },
-  sheetTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingTop: 24, maxHeight: '90%' },
+  sheetTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, marginBottom: 10 },
   textArea: { height: 80, textAlignVertical: 'top' },
-  inputLabel: { fontSize: 12, fontWeight: '500' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
+  inputLabel: { fontSize: 12, fontWeight: '600', marginBottom: 6 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
+  cadenceChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
   chipText: { fontSize: 12, fontWeight: '600' },
-  assigneeChip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1 },
-  assigneeAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  assigneeAvatarText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  assigneeName: { fontSize: 12, fontWeight: '600' },
-  assigneeRole: { fontSize: 10 },
+  assigneeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
+  assigneeAvatar: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  assigneeAvatarText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  assigneeName: { fontSize: 13, fontWeight: '600' },
+  assigneeRole: { fontSize: 11, marginTop: 1 },
+  headerBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   submitBtn: { alignItems: 'center', paddingVertical: 13, borderRadius: 12 },
   submitBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   cancelBtn: { alignItems: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: '#e5e5e3' },
