@@ -6,7 +6,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, fmt, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG'];
+const PRODUCTS = ['PMS', 'AGO', 'LPG', 'Lube Oil', 'Others'];
 const SUPPLIERS = ['NNPCL Abuja', 'Total Energies', 'Ardova PLC', 'MRS Oil Nigeria', 'Conoil'];
 const ST_MAP = {
   ok:    { label: 'OK',         color: '#27500A', bg: '#EAF3DE' },
@@ -16,7 +16,7 @@ const ST_MAP = {
 };
 
 const PROD_COLORS: Record<string, string> = {
-  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#633806',
+  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11', Others: '#4a4a4a',
 };
 
 export default function ReceivingScreen() {
