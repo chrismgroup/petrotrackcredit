@@ -87,6 +87,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'home', icon: 'shield-checkmark', label: 'Admin' },
     { id: 'users', icon: 'people', label: 'Users' },
     { id: 'depts', icon: 'grid', label: 'Depts' },
+    { id: 'branches', icon: 'business', label: 'Branches' },
     { id: 'audit', icon: 'list', label: 'Audit' },
     { id: 'settings', icon: 'settings', label: 'Settings' },
   ],
