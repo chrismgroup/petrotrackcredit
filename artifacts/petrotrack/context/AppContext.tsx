@@ -53,7 +53,7 @@ export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
 };
 export interface Department { id: string; name: string; icon: string; col: { bg: string; fg: string }; roles: string[]; sys: boolean; }
-export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; 'Lube Oil': number; Others: number; }
+export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; 'Lube Oil': number; }
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; }
 export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
@@ -449,7 +449,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [branchId, setBranchId] = useState<string | null>(null);
   const [staffId, setStaffId] = useState<number | null>(null);
   const [mgrPerms, setMgrPerms] = useState<Record<string, MgrPermissions>>(INIT_MGR_PERMS);
-  const [prices, setPrices] = useState<Prices>({ PMS: 830, AGO: 1050, DPK: 700, LPG: 1200, 'Lube Oil': 4500, Others: 0 });
+  const [prices, setPrices] = useState<Prices>({ PMS: 830, AGO: 1050, DPK: 700, LPG: 1200, 'Lube Oil': 4500 });
   const [priceHistory, setPriceHistory] = useState<PriceChange[]>(INIT_PRICE_HISTORY);
   const [tanks, setTanks] = useState<Tank[]>(INIT_TANKS);
   const [lpgTanks, setLpgTanks] = useState<LPGTank[]>(INIT_LPG);
