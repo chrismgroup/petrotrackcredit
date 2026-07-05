@@ -11,7 +11,7 @@ const PATH_MAP: Record<string, string> = {
   home: 'home', users: 'users', depts: 'departments', audit: 'audit',
   settings: 'system-settings', ops: 'operations', tanks: 'tanks', acct: 'accounts',
   corp: 'corporate', branches: 'branches', maint: 'maintenance', sales: 'sales',
-  msgs: 'messages', budget: 'budget', exp: 'expenses', exprpt: 'reports', mktg: 'marketing',
+  msgs: 'messages', budget: 'budget', exp: 'expenses', exprpt: 'reports', mktg: 'marketing', shift: 'shift',
 };
 
 export function TabBar() {
