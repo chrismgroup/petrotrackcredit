@@ -1,6 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Easing, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert, Animated, Easing, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
+} from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, useApp } from '@/context/AppContext';
@@ -14,31 +17,47 @@ const PROD_META: Record<string, { color: string; icon: string; unit: string }> =
   'Lube Oil':{ color: '#fbbf24', icon: 'flask-outline',  unit: 'per litre' },
 };
 
-function RunningPrice({ target, textStyle }: { target: number; textStyle?: any }) {
+// ─── Counting price with end-of-count bounce ───────────────────────────────
+function RunningPrice({ target, color }: { target: number; color: string }) {
   const [displayed, setDisplayed] = useState(0);
-  const fromRef  = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fromRef    = useRef(0);
+  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const bounceAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    const from = fromRef.current;
-    const to   = target;
-    let step   = 0;
-    const STEPS = 24, MS = 26;
+    const from  = fromRef.current;
+    const to    = target;
+    let   step  = 0;
+    const STEPS = 26, MS = 25;
     timerRef.current = setInterval(() => {
       step++;
       const ease = 1 - Math.pow(1 - step / STEPS, 3);
       const v    = Math.round(from + (to - from) * ease);
       fromRef.current = v;
       setDisplayed(v);
-      if (step >= STEPS) { fromRef.current = to; setDisplayed(to); clearInterval(timerRef.current!); }
+      if (step >= STEPS) {
+        fromRef.current = to;
+        setDisplayed(to);
+        clearInterval(timerRef.current!);
+        // small bounce at end
+        Animated.sequence([
+          Animated.timing(bounceAnim, { toValue: 1.06, duration: 100, useNativeDriver: true }),
+          Animated.spring(bounceAnim,  { toValue: 1,   useNativeDriver: true, friction: 4 }),
+        ]).start();
+      }
     }, MS);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [target]);
 
-  return <Text style={textStyle}>₦{displayed.toLocaleString()}</Text>;
+  return (
+    <Animated.Text style={[styles.cardPrice, { color: '#fff', transform: [{ scale: bounceAnim }] }]}>
+      ₦{displayed.toLocaleString()}
+    </Animated.Text>
+  );
 }
 
+// ─── Pulsing live dot ──────────────────────────────────────────────────────
 function PulseDot({ color = '#4ade80' }: { color?: string }) {
   const scale   = useRef(new Animated.Value(1)).current;
   const opacity = useRef(new Animated.Value(0.9)).current;
@@ -46,12 +65,12 @@ function PulseDot({ color = '#4ade80' }: { color?: string }) {
     Animated.loop(
       Animated.parallel([
         Animated.sequence([
-          Animated.timing(scale,   { toValue: 1.5, duration: 800, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
-          Animated.timing(scale,   { toValue: 1,   duration: 800, useNativeDriver: true, easing: Easing.in(Easing.ease)  }),
+          Animated.timing(scale,   { toValue: 1.6, duration: 900, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
+          Animated.timing(scale,   { toValue: 1,   duration: 900, useNativeDriver: true, easing: Easing.in(Easing.ease)  }),
         ]),
         Animated.sequence([
-          Animated.timing(opacity, { toValue: 0.2, duration: 800, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 0.9, duration: 800, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0.15, duration: 900, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0.9,  duration: 900, useNativeDriver: true }),
         ]),
       ])
     ).start();
@@ -63,6 +82,98 @@ function PulseDot({ color = '#4ade80' }: { color?: string }) {
   );
 }
 
+// ─── Shimmer sweep (white highlight travelling left→right) ──────────────────
+function Shimmer() {
+  const x = useRef(new Animated.Value(-80)).current;
+  useEffect(() => {
+    function run() {
+      x.setValue(-80);
+      Animated.timing(x, { toValue: 220, duration: 900, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }).start(() => {
+        setTimeout(run, 3200);
+      });
+    }
+    const id = setTimeout(run, 400);
+    return () => clearTimeout(id);
+  }, []);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.shimmer, { transform: [{ translateX: x }] }]}
+    />
+  );
+}
+
+// ─── Animated product card ──────────────────────────────────────────────────
+function BoardCard({ prod, price, meta, index }: {
+  prod: string; price: number; meta: { color: string; icon: string; unit: string }; index: number;
+}) {
+  const slideAnim = useRef(new Animated.Value(40)).current;
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const flashAnim = useRef(new Animated.Value(0)).current;
+  const prevPrice = useRef<number | null>(null);
+
+  // Staggered entrance
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(slideAnim, { toValue: 0, delay: index * 75, useNativeDriver: true, friction: 7, tension: 70 }),
+      Animated.timing(fadeAnim,  { toValue: 1, delay: index * 75, duration: 350, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  // Flash on price change (skip first render)
+  useEffect(() => {
+    if (prevPrice.current !== null && prevPrice.current !== price) {
+      Animated.sequence([
+        Animated.timing(flashAnim, { toValue: 1,   duration: 80,  useNativeDriver: true }),
+        Animated.timing(flashAnim, { toValue: 0.6, duration: 120, useNativeDriver: true }),
+        Animated.timing(flashAnim, { toValue: 1,   duration: 80,  useNativeDriver: true }),
+        Animated.timing(flashAnim, { toValue: 0,   duration: 500, useNativeDriver: true }),
+      ]).start();
+    }
+    prevPrice.current = price;
+  }, [price]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.boardCard,
+        { borderColor: meta.color + '28', transform: [{ translateY: slideAnim }], opacity: fadeAnim },
+      ]}
+    >
+      {/* Flash overlay */}
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.cardFlash, { backgroundColor: meta.color, opacity: flashAnim }]}
+      />
+
+      {/* Shimmer */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Shimmer />
+      </View>
+
+      {/* Left accent bar */}
+      <View style={[styles.cardAccent, { backgroundColor: meta.color }]} />
+
+      <View style={styles.cardInner}>
+        {/* Product row */}
+        <View style={styles.cardProdRow}>
+          <View style={[styles.cardIconWrap, { backgroundColor: meta.color + '22' }]}>
+            <Ionicons name={meta.icon as any} size={13} color={meta.color} />
+          </View>
+          <Text style={[styles.cardProdName, { color: meta.color }]}>{prod}</Text>
+        </View>
+
+        {/* Animated price */}
+        <RunningPrice target={price} color={meta.color} />
+
+        {/* Unit */}
+        <Text style={[styles.cardUnit, { color: meta.color + 'aa' }]}>{meta.unit}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─── Main screen ────────────────────────────────────────────────────────────
 export default function OperationsScreen() {
   const { role, prices, updatePrice, tanks, dips } = useApp();
   const colors    = useColors();
@@ -94,17 +205,17 @@ export default function OperationsScreen() {
     Alert.alert('Price Updated', `${prod} updated to ₦${val.toLocaleString()}/L`);
   }
 
-  const boardEntries = Object.entries(prices).filter(([p]) => p !== 'Others' && p !== 'DPK');
-  const manageEntries = Object.entries(prices).filter(([p]) => p !== 'Others');
+  const boardEntries   = Object.entries(prices).filter(([p]) => p !== 'Others' && p !== 'DPK');
+  const manageEntries  = Object.entries(prices).filter(([p]) => p !== 'Others');
   const lastDip = dips[0];
 
   return (
     <ScreenLayout title="Operations">
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* ── PRICE BOARD ── */}
+        {/* ── LIVE PRICE BOARD ── */}
         <View style={styles.board}>
-          {/* Board header bar */}
+          {/* Header bar */}
           <View style={styles.boardTopBar}>
             <View style={styles.boardTopLeft}>
               <PulseDot color="#4ade80" />
@@ -118,38 +229,19 @@ export default function OperationsScreen() {
             </View>
           </View>
 
-          {/* Thin colored gradient bar across the top */}
+          {/* Rainbow accent stripe */}
           <View style={styles.boardRainbow}>
             {boardEntries.map(([prod]) => (
               <View key={prod} style={[styles.boardRainbowSlice, { backgroundColor: (PROD_META[prod]?.color ?? '#888') + 'cc' }]} />
             ))}
           </View>
 
-          {/* Product cards grid */}
+          {/* Animated product cards */}
           <View style={styles.boardGrid}>
-            {boardEntries.map(([prod, price]) => {
+            {boardEntries.map(([prod, price], i) => {
               const meta = PROD_META[prod] ?? { color: '#aaa', icon: 'pricetag-outline', unit: 'per litre' };
               return (
-                <View key={prod} style={[styles.boardCard, { borderColor: meta.color + '28' }]}>
-                  {/* Left accent bar */}
-                  <View style={[styles.cardAccent, { backgroundColor: meta.color }]} />
-
-                  <View style={styles.cardInner}>
-                    {/* Product row */}
-                    <View style={styles.cardProdRow}>
-                      <View style={[styles.cardIconWrap, { backgroundColor: meta.color + '22' }]}>
-                        <Ionicons name={meta.icon as any} size={13} color={meta.color} />
-                      </View>
-                      <Text style={[styles.cardProdName, { color: meta.color }]}>{prod}</Text>
-                    </View>
-
-                    {/* Price */}
-                    <RunningPrice target={price as number} textStyle={[styles.cardPrice, { color: '#fff' }]} />
-
-                    {/* Unit */}
-                    <Text style={[styles.cardUnit, { color: meta.color + 'aa' }]}>{meta.unit}</Text>
-                  </View>
-                </View>
+                <BoardCard key={prod} prod={prod} price={price as number} meta={meta} index={i} />
               );
             })}
           </View>
@@ -255,9 +347,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.04)',
     flexDirection: 'row',
     overflow: 'hidden',
+    position: 'relative',
+  },
+  cardFlash: { ...StyleSheet.absoluteFillObject, borderRadius: 14, zIndex: 1 },
+  shimmer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 50,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    transform: [{ skewX: '-15deg' }],
   },
   cardAccent: { width: 3, borderRadius: 3 },
-  cardInner: { flex: 1, padding: 12, gap: 4 },
+  cardInner: { flex: 1, padding: 12, gap: 4, zIndex: 2 },
   cardProdRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   cardIconWrap: { width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   cardProdName: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
