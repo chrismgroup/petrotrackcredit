@@ -16,7 +16,7 @@ export default function BranchesScreen() {
   const { role, branches, addBranch } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
-  const canAdd = role === 'admin' || role === 'csm' || role === 'md';
+  const canAdd = role === 'admin';
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', mgr: '', pumps: '2', tanks: '2' });
 
@@ -39,6 +39,14 @@ export default function BranchesScreen() {
       ) : undefined}
     >
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {!canAdd && (
+          <View style={[styles.readonlyBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
+            <Text style={[styles.readonlyText, { color: colors.textMuted }]}>
+              View only — only System Admin can create branches
+            </Text>
+          </View>
+        )}
         <View style={styles.metricsRow}>
           <View style={[styles.metricCard, { backgroundColor: roleColor + '12', borderColor: roleColor + '33' }]}>
             <Text style={[styles.metricValue, { color: roleColor }]}>{fmt(totalRev)}</Text>
@@ -125,6 +133,8 @@ export default function BranchesScreen() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 16 },
+  readonlyBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
+  readonlyText: { flex: 1, fontSize: 12 },
   metricsRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   metricCard: { flex: 1, padding: 14, borderRadius: 12, borderWidth: 1 },
   metricValue: { fontSize: 18, fontWeight: '700' },
