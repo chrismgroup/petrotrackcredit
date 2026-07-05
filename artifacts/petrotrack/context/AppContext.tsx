@@ -8,6 +8,7 @@ export interface Tank {
   cap: number; dip: number; op: number; rv: number; sl: number;
 }
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; }
+export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG'; active: boolean; }
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; }
 export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
@@ -129,6 +130,13 @@ function genId() { return Date.now() + Math.floor(Math.random() * 10000); }
 function nowTs() { return new Date().toISOString(); }
 function nowTime() { return new Date().toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }); }
 
+const INIT_PUMPS: Pump[] = [
+  { id: 'P1', name: 'Pump #1 PMS', prod: 'PMS', active: true },
+  { id: 'P2', name: 'Pump #2 PMS', prod: 'PMS', active: true },
+  { id: 'P3', name: 'Pump #3 AGO', prod: 'AGO', active: true },
+  { id: 'P4', name: 'Pump #4 DPK', prod: 'DPK', active: true },
+  { id: 'P5', name: 'LPG Pump', prod: 'LPG', active: true },
+];
 const INIT_TANKS: Tank[] = [
   { id: 'T1', name: 'PMS Tank 1', prod: 'PMS', cap: 25000, dip: 2500, op: 18200, rv: 0, sl: 1600 },
   { id: 'T2', name: 'PMS Tank 2', prod: 'PMS', cap: 25000, dip: 2500, op: 15800, rv: 0, sl: 0 },
@@ -268,13 +276,17 @@ const INIT_MSGS: Record<string, Message[]> = {
 interface AppContextType {
   role: Role | null; userName: string;
   login: (role: Role, name: string) => void; logout: () => void;
-  prices: Prices; tanks: Tank[]; lpgTanks: LPGTank[];
+  prices: Prices; tanks: Tank[]; lpgTanks: LPGTank[]; pumps: Pump[];
   dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
   sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
   messages: Record<string, Message[]>; audit: AuditEntry[]; departments: Department[];
   companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[]; shiftReports: ShiftReport[];
   updatePrice: (prod: string, price: number) => void;
+  updateTank: (id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip'>>) => void;
+  updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap'>>) => void;
+  updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active'>>) => void;
+  updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal'>>) => void;
   addExpense: (exp: Omit<Expense, 'id' | 'dt' | 'status'>) => void;
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
   addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
@@ -304,8 +316,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<Role | null>(null);
   const [userName, setUserName] = useState('');
   const [prices, setPrices] = useState<Prices>({ PMS: 830, AGO: 1050, DPK: 700, LPG: 1200 });
-  const [tanks] = useState<Tank[]>(INIT_TANKS);
-  const [lpgTanks] = useState<LPGTank[]>(INIT_LPG);
+  const [tanks, setTanks] = useState<Tank[]>(INIT_TANKS);
+  const [lpgTanks, setLpgTanks] = useState<LPGTank[]>(INIT_LPG);
+  const [pumps, setPumps] = useState<Pump[]>(INIT_PUMPS);
   const [dips, setDips] = useState<DipRecord[]>(INIT_DIPS);
   const [deliveries, setDeliveries] = useState<Delivery[]>(INIT_RECS);
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>(INIT_MAINT);
@@ -341,6 +354,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updatePrice = useCallback((prod: string, price: number) => {
     setPrices(p => ({ ...p, [prod]: price }));
     setAudit(a => [{ id: genId(), action: 'Price update', user: userName, detail: `${prod} set to ₦${price}/L`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updateTank = useCallback((id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip'>>) => {
+    setTanks(t => t.map(tank => tank.id === id ? { ...tank, ...updates } : tank));
+    setAudit(a => [{ id: genId(), action: 'Tank configuration updated', user: userName, detail: `Tank ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updateLpgTank = useCallback((id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap'>>) => {
+    setLpgTanks(t => t.map(tank => tank.id === id ? { ...tank, ...updates } : tank));
+    setAudit(a => [{ id: genId(), action: 'LPG tank configuration updated', user: userName, detail: `LPG Tank ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updatePump = useCallback((id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active'>>) => {
+    setPumps(p => p.map(pump => pump.id === id ? { ...pump, ...updates } : pump));
+    setAudit(a => [{ id: genId(), action: 'Pump configuration updated', user: userName, detail: `Pump ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updateStaff = useCallback((id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal'>>) => {
+    setStaff(s => s.map(m => m.id === id ? { ...m, ...updates } : m));
+    setAudit(a => [{ id: genId(), action: 'Staff record updated', user: userName, detail: `Staff ID ${id} updated`, ts: nowTs() }, ...a]);
   }, [userName]);
 
   const addDip = useCallback((dip: Omit<DipRecord, 'id'>) => {
@@ -454,10 +487,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      role, userName, login, logout, prices, tanks, lpgTanks, dips, deliveries,
+      role, userName, login, logout, prices, tanks, lpgTanks, pumps, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
-      updatePrice, addExpense, addDip, addDelivery, addMaintenance, addSales,
+      updatePrice, updateTank, updateLpgTank, updatePump, updateStaff,
+      addExpense, addDip, addDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, addBranch, addAudit, getConversation, unreadCount,

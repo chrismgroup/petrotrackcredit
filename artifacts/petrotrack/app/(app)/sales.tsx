@@ -6,20 +6,16 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const PUMPS = ['Pump #1 PMS', 'Pump #2 PMS', 'Pump #3 AGO', 'Pump #4 DPK', 'LPG Pump'];
-const PUMP_PRODS: Record<string, string> = {
-  'Pump #1 PMS': 'PMS', 'Pump #2 PMS': 'PMS',
-  'Pump #3 AGO': 'AGO', 'Pump #4 DPK': 'DPK', 'LPG Pump': 'LPG',
-};
-
 export default function SalesScreen() {
-  const { role, sales, addSales, prices, userName } = useApp();
+  const { role, sales, addSales, prices, userName, pumps } = useApp();
+  const activePumps = pumps.filter(p => p.active);
+  const PUMP_PRODS = Object.fromEntries(activePumps.map(p => [p.name, p.prod]));
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
   const canRecord = role === 'att' || role === 'mgr' || role === 'admin';
   const isAtt = role === 'att';
 
-  const [pump, setPump] = useState(PUMPS[0]);
+  const [pump, setPump] = useState(() => activePumps[0]?.name || '');
   const [openMeter, setOpenMeter] = useState('');
   const [closeMeter, setCloseMeter] = useState('');
   const [posAmt, setPosAmt] = useState('');
@@ -139,9 +135,9 @@ export default function SalesScreen() {
             <Text style={[styles.formLabel, { color: colors.textMuted }]}>Select Pump</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                {PUMPS.map(p => (
-                  <TouchableOpacity key={p} onPress={() => setPump(p)} style={[styles.pumpBtn, { backgroundColor: pump === p ? roleColor : colors.background, borderColor: pump === p ? roleColor : colors.border }]}>
-                    <Text style={{ color: pump === p ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{p}</Text>
+                {activePumps.map(p => (
+                  <TouchableOpacity key={p.name} onPress={() => setPump(p.name)} style={[styles.pumpBtn, { backgroundColor: pump === p.name ? roleColor : colors.background, borderColor: pump === p.name ? roleColor : colors.border }]}>
+                    <Text style={{ color: pump === p.name ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{p.name}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
