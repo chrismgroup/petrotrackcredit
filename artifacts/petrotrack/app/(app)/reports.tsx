@@ -27,8 +27,16 @@ function periodRange(p: Period): { from: Date; to: Date } {
   return { from, to };
 }
 
+// Match a pump/source label to a product name
+function matchesProd(pump: string, prod: string): boolean {
+  const p = pump.toLowerCase();
+  if (prod === 'Lube Oil') return p.includes('lube');
+  if (prod === 'Others')   return p.includes('other');
+  return p.includes(prod.toLowerCase());
+}
+
 export default function ReportsScreen() {
-  const { role, expenses, sales, branches, deliveries, prices } = useApp();
+  const { role, expenses, sales, branches, deliveries, prices, priceHistory } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
   const [period, setPeriod] = useState<Period>('Monthly');
@@ -48,30 +56,53 @@ export default function ReportsScreen() {
   const scaledNet = scaledRev - scaledExp;
   const margin = scaledRev > 0 ? Math.round((scaledNet / scaledRev) * 100) : 0;
 
-  // P&L per product
-  const pnlByProd = useMemo(() => {
-    const prods = ['PMS', 'AGO', 'DPK', 'LPG'];
-    return prods.map(prod => {
-      // Sales revenue for this product
-      const prodSales = sales.filter(s => s.pump.includes(prod));
-      const totalVolumeSold = prodSales.reduce((s, e) => s + e.L, 0);
-      const sellPrice = (prices as any)[prod] ?? 0;
-      const salesRevenue = Math.round(totalVolumeSold * scale * sellPrice);
+  // Build dynamic product list from all deliveries + sales
+  const allProds = useMemo(() => {
+    const set = new Set<string>();
+    deliveries.forEach(d => { if (d.costPrice) set.add(d.prod); });
+    // Also detect products from pump names
+    const KNOWN_PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil', 'Others'];
+    sales.forEach(s => {
+      const match = KNOWN_PRODS.find(p => matchesProd(s.pump, p));
+      if (match) set.add(match);
+    });
+    // Order: standard products first, then extras
+    const order = ['PMS', 'AGO', 'LPG', 'Lube Oil', 'Others', 'DPK'];
+    return [...order.filter(p => set.has(p)), ...[...set].filter(p => !order.includes(p))];
+  }, [sales, deliveries]);
 
-      // Cost of goods: deliveries for this product with cost price
+  // P&L per product — revenue uses ACTUAL recorded sale prices (not current price)
+  const pnlByProd = useMemo(() => {
+    return allProds.map(prod => {
+      // Sales: use actual price at time of each sale (sale.price is already recorded)
+      const prodSalesEntries = sales.filter(s => matchesProd(s.pump, prod));
+      const totalVolumeSold = prodSalesEntries.reduce((s, e) => s + e.L, 0);
+      // Revenue = Σ(litres × actual price at time of sale) — accurate across price changes
+      const actualRevenue = prodSalesEntries.reduce((s, e) => s + e.L * e.price, 0);
+      const salesRevenue = Math.round(actualRevenue * scale);
+      // Avg actual sell price (weighted, for display)
+      const avgSellPrice = totalVolumeSold > 0 ? Math.round(actualRevenue / totalVolumeSold) : ((prices as any)[prod] ?? 0);
+      const currentSellPrice = (prices as any)[prod] ?? 0;
+
+      // Cost of goods: deliveries with cost price recorded
       const prodDelivs = deliveries.filter(d => d.prod === prod && d.costPrice);
       const totalVolumeReceived = prodDelivs.reduce((s, d) => s + d.rec, 0);
       const totalCostOfGoods = prodDelivs.reduce((s, d) => s + d.rec * (d.costPrice ?? 0), 0);
       const avgCostPerL = totalVolumeReceived > 0 ? totalCostOfGoods / totalVolumeReceived : 0;
-      // Scale cost proportionally to period
       const scaledCOGS = Math.round(avgCostPerL * totalVolumeSold * scale);
 
       const grossProfit = salesRevenue - scaledCOGS;
       const grossMargin = salesRevenue > 0 ? Math.round((grossProfit / salesRevenue) * 100) : null;
 
-      return { prod, totalVolumeSold, sellPrice, salesRevenue, avgCostPerL: Math.round(avgCostPerL), scaledCOGS, grossProfit, grossMargin, hasCostData: prodDelivs.length > 0 };
+      return {
+        prod, totalVolumeSold, avgSellPrice, currentSellPrice,
+        salesRevenue, avgCostPerL: Math.round(avgCostPerL),
+        scaledCOGS, grossProfit, grossMargin,
+        hasCostData: prodDelivs.length > 0,
+        priceChanges: priceHistory.filter(h => h.prod === prod).slice(0, 3),
+      };
     }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0);
-  }, [sales, deliveries, prices, scale]);
+  }, [allProds, sales, deliveries, prices, priceHistory, scale]);
 
   const totalSalesRevPnl = pnlByProd.reduce((s, p) => s + p.salesRevenue, 0);
   const totalCOGS = pnlByProd.reduce((s, p) => s + p.scaledCOGS, 0);
@@ -232,29 +263,39 @@ export default function ReportsScreen() {
                     )}
                   </View>
 
-                  {/* Revenue vs Cost vs Profit grid */}
+                  {/* Stats grid: volume, avg actual sell price, avg cost */}
                   <View style={styles.plGrid}>
                     <View style={styles.plGridItem}>
                       <Text style={[styles.plGridLabel, { color: colors.textMuted }]}>Volume Sold</Text>
                       <Text style={[styles.plGridVal, { color: colors.text }]}>{(p.totalVolumeSold * scale).toLocaleString()} L</Text>
                     </View>
                     <View style={styles.plGridItem}>
-                      <Text style={[styles.plGridLabel, { color: colors.textMuted }]}>Sell Price</Text>
-                      <Text style={[styles.plGridVal, { color: pc }]}>₦{p.sellPrice.toLocaleString()}/L</Text>
+                      <Text style={[styles.plGridLabel, { color: colors.textMuted }]}>Avg Sell Price</Text>
+                      <Text style={[styles.plGridVal, { color: pc }]}>₦{p.avgSellPrice.toLocaleString()}/L</Text>
                     </View>
                     <View style={styles.plGridItem}>
-                      <Text style={[styles.plGridLabel, { color: colors.textMuted }]}>Cost Price</Text>
+                      <Text style={[styles.plGridLabel, { color: colors.textMuted }]}>Avg Cost Price</Text>
                       <Text style={[styles.plGridVal, { color: colors.text }]}>
                         {p.hasCostData ? `₦${p.avgCostPerL.toLocaleString()}/L` : '—'}
                       </Text>
                     </View>
                   </View>
 
+                  {/* Current price if different from avg (price changed during period) */}
+                  {p.currentSellPrice > 0 && p.currentSellPrice !== p.avgSellPrice && (
+                    <View style={[styles.priceChangedNote, { backgroundColor: '#FFF8E7', borderColor: '#f0c84a33' }]}>
+                      <Ionicons name="swap-horizontal-outline" size={12} color="#BA7517" />
+                      <Text style={[styles.priceChangedText, { color: '#BA7517' }]}>
+                        Current price ₦{p.currentSellPrice.toLocaleString()}/L — avg differs because price changed during period
+                      </Text>
+                    </View>
+                  )}
+
                   {/* Revenue vs COGS vs Gross profit */}
                   {[
-                    { label: 'Sales Revenue',   value: p.salesRevenue, color: '#185FA5', icon: 'cash-outline'         },
-                    { label: 'Cost of Goods',   value: p.scaledCOGS,   color: '#791F1F', icon: 'pricetag-outline'     },
-                    { label: 'Gross Profit',    value: p.grossProfit,  color: profitable ? '#27500A' : '#791F1F', icon: profitable ? 'trending-up' : 'trending-down' },
+                    { label: 'Sales Revenue (at actual prices)', value: p.salesRevenue, color: '#185FA5', icon: 'cash-outline' },
+                    { label: 'Cost of Goods Sold',               value: p.scaledCOGS,   color: '#791F1F', icon: 'pricetag-outline' },
+                    { label: 'Gross Profit',                     value: p.grossProfit,  color: profitable ? '#27500A' : '#791F1F', icon: profitable ? 'trending-up' : 'trending-down' },
                   ].map(row => (
                     <View key={row.label} style={[styles.plRowItem, { borderTopColor: colors.border }]}>
                       <Ionicons name={row.icon as any} size={13} color={row.color} />
@@ -263,11 +304,28 @@ export default function ReportsScreen() {
                     </View>
                   ))}
 
+                  {/* Price change mini-log for this product */}
+                  {p.priceChanges.length > 0 && (
+                    <View style={[styles.miniHistoryBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      <Text style={[styles.miniHistoryTitle, { color: colors.textMuted }]}>Recent price changes</Text>
+                      {p.priceChanges.map(ch => (
+                        <View key={ch.id} style={styles.miniHistoryRow}>
+                          <Text style={[styles.miniHistoryChange, { color: colors.text }]}>
+                            ₦{ch.oldPrice.toLocaleString()} → ₦{ch.newPrice.toLocaleString()}/L
+                          </Text>
+                          <Text style={[styles.miniHistoryMeta, { color: colors.textSubtle }]}>
+                            {fmtDate(ch.dt)} · {ch.by}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
                   {!p.hasCostData && (
                     <View style={[styles.noCostNote, { backgroundColor: colors.background, borderColor: colors.border }]}>
                       <Ionicons name="information-circle-outline" size={13} color={colors.textMuted} />
                       <Text style={[styles.noCostNoteText, { color: colors.textMuted }]}>
-                        No cost price recorded for this product — use the Receive tab to add deliveries with cost price
+                        No cost price recorded — go to Receive tab to add deliveries with cost price
                       </Text>
                     </View>
                   )}
@@ -468,4 +526,11 @@ const styles = StyleSheet.create({
   plFinalLabel: { fontSize: 14, fontWeight: '700' },
   plFinalSub: { fontSize: 10, marginTop: 3 },
   plFinalVal: { fontSize: 22, fontWeight: '900', marginLeft: 'auto' },
+  priceChangedNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, padding: 8, borderRadius: 8, borderWidth: 1 },
+  priceChangedText: { flex: 1, fontSize: 11, lineHeight: 15 },
+  miniHistoryBox: { borderRadius: 8, borderWidth: 1, padding: 8, gap: 5 },
+  miniHistoryTitle: { fontSize: 10, fontWeight: '600', marginBottom: 2 },
+  miniHistoryRow: { gap: 1 },
+  miniHistoryChange: { fontSize: 12, fontWeight: '700' },
+  miniHistoryMeta: { fontSize: 10 },
 });

@@ -6,8 +6,8 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const PROD_COLORS: Record<string, string> = { PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56' };
-const PROD_ICONS: Record<string, string> = { PMS: 'water', AGO: 'cube', DPK: 'flame', LPG: 'cloud' };
+const PROD_COLORS: Record<string, string> = { PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11', Others: '#4a4a4a' };
+const PROD_ICONS: Record<string, string> = { PMS: 'water', AGO: 'cube', DPK: 'flame', LPG: 'cloud', 'Lube Oil': 'flask', Others: 'ellipsis-horizontal-circle' };
 
 export default function OperationsScreen() {
   const { role, prices, updatePrice, tanks, dips } = useApp();

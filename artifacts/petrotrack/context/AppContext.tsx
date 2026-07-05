@@ -53,7 +53,8 @@ export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
 };
 export interface Department { id: string; name: string; icon: string; col: { bg: string; fg: string }; roles: string[]; sys: boolean; }
-export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; }
+export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; 'Lube Oil': number; Others: number; }
+export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; }
 export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
 export interface CompanyFile { id: number; name: string; cat: string; by: string; dt: string; size: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'img' | 'mp4' | 'other'; }
@@ -229,6 +230,13 @@ const INIT_RECS: Delivery[] = [
   { id: 2, dt: '2025-06-05T08:00', sup: 'NNPCL Abuja', prod: 'PMS', wb: 'WB-2025-038', ord: 33000, rec: 33000, st: 'ok', notes: '', costPrice: 775, receivedBy: 'Grace Adeyemi' },
   { id: 3, dt: '2025-05-28T11:20', sup: 'Total Energies', prod: 'DPK', wb: 'WB-2025-031', ord: 15000, rec: 15000, st: 'ok', notes: '', costPrice: 640, receivedBy: 'Grace Adeyemi' },
   { id: 4, dt: '2025-06-01T09:00', sup: 'Ardova PLC', prod: 'LPG', wb: 'WB-2025-035', ord: 5000, rec: 5000, st: 'ok', notes: '', costPrice: 1050, receivedBy: 'Grace Adeyemi' },
+  { id: 5, dt: '2025-05-20T14:00', sup: 'Total Energies', prod: 'Lube Oil', wb: 'WB-2025-028', ord: 500, rec: 500, st: 'ok', notes: 'Engine oil 5L packs — 100 units', costPrice: 3200, receivedBy: 'Grace Adeyemi' },
+];
+const INIT_PRICE_HISTORY: PriceChange[] = [
+  { id: 1, prod: 'PMS',  oldPrice: 785,  newPrice: 830,  by: 'Adaeze Obi', dt: '2025-06-01T09:00' },
+  { id: 2, prod: 'AGO',  oldPrice: 980,  newPrice: 1050, by: 'Adaeze Obi', dt: '2025-06-01T09:00' },
+  { id: 3, prod: 'LPG',  oldPrice: 1150, newPrice: 1200, by: 'Adaeze Obi', dt: '2025-05-28T09:00' },
+  { id: 4, prod: 'PMS',  oldPrice: 750,  newPrice: 785,  by: 'Adaeze Obi', dt: '2025-05-01T08:00' },
 ];
 const INIT_MAINT: MaintenanceItem[] = [
   { id: 1, title: 'Pump #3 nozzle leak', pri: 'Urgent', by: 'Emeka', date: '2025-06-07', st: 'Open' },
@@ -377,7 +385,7 @@ interface AppContextType {
   navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
   login: (role: Role, name: string, staffId?: number, branchId?: string) => void; logout: () => void;
   updateMgrPerms: (branchId: string, perms: Partial<MgrPermissions>) => void;
-  prices: Prices; tanks: Tank[]; lpgTanks: LPGTank[]; pumps: Pump[];
+  prices: Prices; priceHistory: PriceChange[]; tanks: Tank[]; lpgTanks: LPGTank[]; pumps: Pump[];
   dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
   sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
@@ -441,7 +449,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [branchId, setBranchId] = useState<string | null>(null);
   const [staffId, setStaffId] = useState<number | null>(null);
   const [mgrPerms, setMgrPerms] = useState<Record<string, MgrPermissions>>(INIT_MGR_PERMS);
-  const [prices, setPrices] = useState<Prices>({ PMS: 830, AGO: 1050, DPK: 700, LPG: 1200 });
+  const [prices, setPrices] = useState<Prices>({ PMS: 830, AGO: 1050, DPK: 700, LPG: 1200, 'Lube Oil': 4500, Others: 0 });
+  const [priceHistory, setPriceHistory] = useState<PriceChange[]>(INIT_PRICE_HISTORY);
   const [tanks, setTanks] = useState<Tank[]>(INIT_TANKS);
   const [lpgTanks, setLpgTanks] = useState<LPGTank[]>(INIT_LPG);
   const [pumps, setPumps] = useState<Pump[]>(INIT_PUMPS);
@@ -487,9 +496,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const updatePrice = useCallback((prod: string, price: number) => {
+    const oldPrice = (prices as any)[prod] ?? 0;
     setPrices(p => ({ ...p, [prod]: price }));
-    setAudit(a => [{ id: genId(), action: 'Price update', user: userName, detail: `${prod} set to ₦${price}/L`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    setPriceHistory(h => [{ id: genId(), prod, oldPrice, newPrice: price, by: userName, dt: nowTs() }, ...h]);
+    setAudit(a => [{ id: genId(), action: 'Price update', user: userName, detail: `${prod}: ₦${oldPrice} → ₦${price}/L`, ts: nowTs() }, ...a]);
+  }, [userName, prices]);
 
   const addTank = useCallback((t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => {
     const id = `T${Date.now()}`;
@@ -731,7 +742,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       role, userName, branchId, staffId, navItems, mgrPerms,
       login, logout, updateMgrPerms,
-      prices, tanks, lpgTanks, pumps, dips, deliveries,
+      prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
       updatePrice, addTank, addLpgTank, addPump,
