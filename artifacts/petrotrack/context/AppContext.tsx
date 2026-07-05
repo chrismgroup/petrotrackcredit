@@ -11,7 +11,7 @@ export interface LPGTank { id: string; name: string; cap: number; op: number; rv
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; }
 export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
-export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; }
+export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
@@ -92,6 +92,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
   mgr: [
     { id: 'tanks', icon: 'water', label: 'Tanks' },
     { id: 'exp', icon: 'receipt', label: 'Expenses' },
+    { id: 'budget', icon: 'wallet', label: 'Budget' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'maint', icon: 'build', label: 'Maintain' },
     { id: 'sales', icon: 'bar-chart', label: 'Sales' },
