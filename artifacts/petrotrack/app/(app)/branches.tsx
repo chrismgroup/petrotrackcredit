@@ -7,16 +7,17 @@ import { ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const ST_STYLES: Record<string, { color: string; bg: string }> = {
-  Active: { color: '#27500A', bg: '#EAF3DE' },
-  Pending: { color: '#BA7517', bg: '#FAEEDA' },
+  Active:    { color: '#27500A', bg: '#EAF3DE' },
+  Pending:   { color: '#BA7517', bg: '#FAEEDA' },
   Suspended: { color: '#791F1F', bg: '#FCEBEB' },
 };
 
 export default function BranchesScreen() {
-  const { role, branches, addBranch } = useApp();
+  const { role, branches, addBranch, updateBranch, deleteBranch } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
-  const canAdd = role === 'admin';
+  const isAdmin = role === 'admin';
+  const canAdd = isAdmin;
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', mgr: '', pumps: '2', tanks: '2' });
 
@@ -30,8 +31,32 @@ export default function BranchesScreen() {
     setShowForm(false);
   }
 
+  function handleSuspend(b: typeof branches[number]) {
+    const nextSt = b.st === 'Suspended' ? 'Active' : 'Suspended';
+    Alert.alert(
+      `${nextSt === 'Suspended' ? 'Suspend' : 'Activate'} Branch`,
+      `${nextSt === 'Suspended' ? 'Suspend' : 'Activate'} "${b.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: () => updateBranch(b.id, { st: nextSt }) },
+      ]
+    );
+  }
+
+  function handleDelete(b: typeof branches[number]) {
+    Alert.alert(
+      'Delete Branch',
+      `Permanently remove "${b.name}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteBranch(b.id) },
+      ]
+    );
+  }
+
   return (
-    <ScreenLayout title="Branches"
+    <ScreenLayout
+      title="Branches"
       rightAction={canAdd ? (
         <TouchableOpacity onPress={() => setShowForm(true)} style={styles.headerBtn}>
           <Ionicons name="add" size={20} color="#fff" />
@@ -39,14 +64,15 @@ export default function BranchesScreen() {
       ) : undefined}
     >
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {!canAdd && (
+        {!isAdmin && (
           <View style={[styles.readonlyBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
             <Text style={[styles.readonlyText, { color: colors.textMuted }]}>
-              View only — only System Admin can create branches
+              View only — only System Admin can create, suspend or delete branches
             </Text>
           </View>
         )}
+
         <View style={styles.metricsRow}>
           <View style={[styles.metricCard, { backgroundColor: roleColor + '12', borderColor: roleColor + '33' }]}>
             <Text style={[styles.metricValue, { color: roleColor }]}>{fmt(totalRev)}</Text>
@@ -61,7 +87,7 @@ export default function BranchesScreen() {
         {branches.map(b => {
           const st = ST_STYLES[b.st] || ST_STYLES.Pending;
           return (
-            <View key={b.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View key={b.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: b.st === 'Suspended' ? colors.warningBorder : colors.border }]}>
               <View style={styles.cardHeader}>
                 <View style={[styles.branchIcon, { backgroundColor: roleColor + '18' }]}>
                   <Ionicons name="business" size={20} color={roleColor} />
@@ -74,12 +100,14 @@ export default function BranchesScreen() {
                   <Text style={[styles.stText, { color: st.color }]}>{b.st}</Text>
                 </View>
               </View>
+
               {b.mgr ? (
                 <View style={styles.infoRow}>
                   <Ionicons name="person-outline" size={13} color={colors.textMuted} />
                   <Text style={[styles.infoText, { color: colors.textMuted }]}>Manager: {b.mgr}</Text>
                 </View>
               ) : null}
+
               <View style={styles.statsRow}>
                 <View style={[styles.statItem, { backgroundColor: colors.background }]}>
                   <Ionicons name="water" size={14} color={roleColor} />
@@ -96,6 +124,34 @@ export default function BranchesScreen() {
                   </View>
                 )}
               </View>
+
+              {isAdmin && (
+                <View style={styles.adminActions}>
+                  <TouchableOpacity
+                    onPress={() => handleSuspend(b)}
+                    style={[styles.actionBtn, {
+                      backgroundColor: b.st === 'Suspended' ? colors.successBg : colors.warningBg,
+                      borderColor: b.st === 'Suspended' ? colors.successBorder : colors.warningBorder,
+                    }]}
+                  >
+                    <Ionicons
+                      name={b.st === 'Suspended' ? 'play' : 'pause'}
+                      size={12}
+                      color={b.st === 'Suspended' ? colors.success : colors.warning}
+                    />
+                    <Text style={[styles.actionBtnText, { color: b.st === 'Suspended' ? colors.success : colors.warning }]}>
+                      {b.st === 'Suspended' ? 'Activate' : 'Suspend'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleDelete(b)}
+                    style={[styles.actionBtn, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}
+                  >
+                    <Ionicons name="trash-outline" size={12} color={colors.error} />
+                    <Text style={[styles.actionBtnText, { color: colors.error }]}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           );
         })}
@@ -107,14 +163,18 @@ export default function BranchesScreen() {
           <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Add Branch</Text>
             {[
-              { key: 'name', label: 'Branch Name *' }, { key: 'mgr', label: 'Manager Name' },
+              { key: 'name', label: 'Branch Name *' },
+              { key: 'mgr', label: 'Manager Name' },
               { key: 'pumps', label: 'Pump Count', kb: 'numeric' as const },
               { key: 'tanks', label: 'Tank Count', kb: 'numeric' as const },
             ].map(f => (
-              <TextInput key={f.key} style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              <TextInput
+                key={f.key}
+                style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
                 placeholder={f.label} placeholderTextColor={colors.textSubtle}
                 keyboardType={f.kb} value={(form as any)[f.key]}
-                onChangeText={v => setForm(fr => ({ ...fr, [f.key]: v }))} />
+                onChangeText={v => setForm(fr => ({ ...fr, [f.key]: v }))}
+              />
             ))}
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
@@ -151,6 +211,9 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: 6 },
   statItem: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8 },
   statVal: { fontSize: 12, fontWeight: '600' },
+  adminActions: { flexDirection: 'row', gap: 8, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e5e5e3' },
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  actionBtnText: { fontSize: 12, fontWeight: '600' },
   headerBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 10 },

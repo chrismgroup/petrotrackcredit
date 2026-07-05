@@ -362,7 +362,10 @@ interface AppContextType {
   rejectExpense: (id: number) => void;
   addStaff: (s: Omit<Staff, 'id'>) => void;
   toggleStaff: (id: number) => void;
+  deleteStaff: (id: number) => void;
   addBranch: (b: Omit<Branch, 'id'>) => void;
+  updateBranch: (id: string, updates: Partial<Pick<Branch, 'st' | 'mgr'>>) => void;
+  deleteBranch: (id: string) => void;
   addAudit: (entry: Omit<AuditEntry, 'id' | 'ts'>) => void;
   deleteTank: (id: string) => void;
   deleteLpgTank: (id: string) => void;
@@ -533,9 +536,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setStaff(st => st.map(s => s.id === id ? { ...s, st: s.st === 'Active' ? 'Suspended' : 'Active' } : s));
   }, []);
 
+  const deleteStaff = useCallback((id: number) => {
+    setStaff(st => st.filter(s => s.id !== id));
+    setAudit(a => [{ id: genId(), action: 'User deleted', user: userName, detail: `Staff ID ${id} removed`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const addBranch = useCallback((b: Omit<Branch, 'id'>) => {
     setBranches(br => [...br, { ...b, id: `B${genId()}` }]);
-  }, []);
+    setAudit(a => [{ id: genId(), action: 'Branch created', user: userName, detail: b.name, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updateBranch = useCallback((id: string, updates: Partial<Pick<Branch, 'st' | 'mgr'>>) => {
+    setBranches(br => br.map(b => b.id === id ? { ...b, ...updates } : b));
+    setAudit(a => [{ id: genId(), action: 'Branch updated', user: userName, detail: `Branch ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteBranch = useCallback((id: string) => {
+    setBranches(br => br.filter(b => b.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Branch deleted', user: userName, detail: `Branch ${id} removed`, ts: nowTs() }, ...a]);
+  }, [userName]);
 
   const deleteTank = useCallback((id: string) => {
     setTanks(t => t.filter(tank => tank.id !== id));
@@ -638,7 +657,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addExpense, addDip, approveDip, rejectDip, addDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
-      addStaff, toggleStaff, addBranch, addAudit, getConversation, unreadCount,
+      addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, deleteDepartment,
       rolePermissions, updateRolePermissions,
