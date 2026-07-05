@@ -6,18 +6,36 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, Tank, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, INIT_ROLE_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_LABELS as ROLE_LABELS_CTX, RolePermissions, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'managers' | 'system';
+type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'managers' | 'roles' | 'system';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'company',  label: 'Company',  icon: 'business' },
   { id: 'tanks',    label: 'Tanks',    icon: 'water' },
   { id: 'pumps',    label: 'Pumps',    icon: 'speedometer' },
   { id: 'staff',    label: 'Staff',    icon: 'people' },
   { id: 'managers', label: 'Managers', icon: 'construct' },
+  { id: 'roles',    label: 'Roles',    icon: 'shield-checkmark' },
   { id: 'system',   label: 'System',   icon: 'settings' },
 ];
+
+const ROLE_PERM_LABELS: { key: keyof RolePermissions; label: string; icon: string }[] = [
+  { key: 'canViewSales',       label: 'View Sales',          icon: 'bar-chart' },
+  { key: 'canViewExpenses',    label: 'View Expenses',       icon: 'receipt' },
+  { key: 'canViewMaintenance', label: 'View Maintenance',    icon: 'build' },
+  { key: 'canViewBudget',      label: 'View Budget',         icon: 'wallet' },
+  { key: 'canViewTanks',       label: 'View Tanks',          icon: 'water' },
+  { key: 'canViewReports',     label: 'View Reports',        icon: 'analytics' },
+  { key: 'canApproveExpenses', label: 'Approve Expenses',    icon: 'checkmark-circle' },
+  { key: 'canApproveDips',     label: 'Approve Dip Records', icon: 'checkmark-done' },
+  { key: 'canManageStaff',     label: 'Manage Staff',        icon: 'people' },
+  { key: 'canManageBranches',  label: 'Manage Branches',     icon: 'business' },
+  { key: 'canViewAudit',       label: 'View Audit Log',      icon: 'list' },
+  { key: 'canViewMessages',    label: 'Messages / Chat',     icon: 'chatbubbles' },
+];
+
+const ROLE_OPTS_DISPLAY = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'] as const;
 
 const MGR_PERM_LABELS: { key: keyof MgrPermissions; label: string; icon: string; sub?: string }[] = [
   { key: 'canDip',         label: 'Tank Dipping',      icon: 'water' },
@@ -50,6 +68,8 @@ export default function SystemSettingsScreen() {
     role, tanks, lpgTanks, pumps, staff, branches, mgrPerms, updateMgrPerms,
     addTank, addLpgTank, addPump, addStaff,
     updateTank, updateLpgTank, updatePump, updateStaff,
+    deleteTank, deleteLpgTank, deletePump,
+    rolePermissions, updateRolePermissions,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -346,6 +366,17 @@ export default function SystemSettingsScreen() {
                       <View style={[styles.prodPill, { backgroundColor: PROD_COLORS[tank.prod] + '22', borderColor: PROD_COLORS[tank.prod] + '55' }]}>
                         <Text style={[styles.prodPillText, { color: PROD_COLORS[tank.prod] }]}>{tank.prod}</Text>
                       </View>
+                      {isAdmin && (
+                        <TouchableOpacity
+                          onPress={() => Alert.alert('Delete Tank', `Remove "${tank.name}"? This cannot be undone.`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => deleteTank(tank.id) },
+                          ])}
+                          style={styles.deleteIconBtn}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      )}
                     </View>
                     <FieldInput label="Tank Name" value={e.name} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, name: v } }))} placeholder="e.g. Main PMS Storage Tank" />
                     <View style={styles.twoCol}>
@@ -411,6 +442,17 @@ export default function SystemSettingsScreen() {
                       <View style={[styles.prodPill, { backgroundColor: '#0F6E5622', borderColor: '#0F6E5655' }]}>
                         <Text style={[styles.prodPillText, { color: '#0F6E56' }]}>LPG</Text>
                       </View>
+                      {isAdmin && (
+                        <TouchableOpacity
+                          onPress={() => Alert.alert('Delete LPG Tank', `Remove "${tank.name}"? This cannot be undone.`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => deleteLpgTank(tank.id) },
+                          ])}
+                          style={styles.deleteIconBtn}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      )}
                     </View>
                     <FieldInput label="Tank Name" value={e.name} onChangeText={v => setLpgEdits(l => ({ ...l, [tank.id]: { ...e, name: v } }))} />
                     <FieldInput label="Capacity (kg)" value={e.cap} onChangeText={v => setLpgEdits(l => ({ ...l, [tank.id]: { ...e, cap: v } }))} keyboardType="numeric" />
@@ -470,6 +512,17 @@ export default function SystemSettingsScreen() {
                         <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 0 }]}>Active</Text>
                         <Switch value={e.active} onValueChange={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, active: v } }))} trackColor={{ true: roleColor, false: colors.border }} thumbColor="#fff" disabled={!isAdmin} />
                       </View>
+                      {isAdmin && (
+                        <TouchableOpacity
+                          onPress={() => Alert.alert('Delete Pump', `Remove "${pump.name}"? This cannot be undone.`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => deletePump(pump.id) },
+                          ])}
+                          style={styles.deleteIconBtn}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      )}
                     </View>
                     <FieldInput label="Pump Name" value={e.name} onChangeText={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, name: v } }))} placeholder="e.g. Forecourt Pump A" />
                     <ProdPicker value={e.prod} onChange={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, prod: v } }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
@@ -622,6 +675,62 @@ export default function SystemSettingsScreen() {
             </>
           )}
 
+          {/* ── ROLES ── */}
+          {activeTab === 'roles' && (
+            <>
+              <View style={[styles.banner, { backgroundColor: '#0a2318' }]}>
+                <Ionicons name="shield-checkmark" size={22} color="#4CAF50" />
+                <View>
+                  <Text style={styles.bannerTitle}>Role Permissions</Text>
+                  <Text style={styles.bannerSub}>Configure module access per system role</Text>
+                </View>
+              </View>
+
+              {!isAdmin && (
+                <View style={[styles.lockBanner, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}>
+                  <Ionicons name="lock-closed" size={16} color={colors.error} />
+                  <Text style={[styles.lockText, { color: colors.error }]}>View only — System Admin can make changes.</Text>
+                </View>
+              )}
+
+              {ROLE_OPTS_DISPLAY.map(r => {
+                const perms = rolePermissions[r] ?? INIT_ROLE_PERMS[r];
+                const enabledCount = ROLE_PERM_LABELS.filter(p => perms[p.key]).length;
+                const rColor = ROLE_COLORS[r] || roleColor;
+                return (
+                  <View key={r} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 14 }]}>
+                    <View style={[styles.mgrHeader, { borderBottomColor: colors.border }]}>
+                      <View style={[styles.mgrBadge, { backgroundColor: rColor + '22' }]}>
+                        <Text style={[styles.mgrBadgeText, { color: rColor }]}>{r.toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.cardHeader, { color: colors.text, marginBottom: 2 }]}>{ROLE_LABELS_CTX[r] ?? r}</Text>
+                        <Text style={[styles.subLabel, { color: colors.textMuted }]}>
+                          {enabledCount}/{ROLE_PERM_LABELS.length} permissions enabled
+                        </Text>
+                      </View>
+                    </View>
+                    {ROLE_PERM_LABELS.map(({ key, label, icon }, idx) => (
+                      <View key={key} style={[styles.permRow, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                        <View style={[styles.permIcon, { backgroundColor: perms[key] ? rColor + '22' : colors.border + '55' }]}>
+                          <Ionicons name={icon as any} size={15} color={perms[key] ? rColor : colors.textMuted} />
+                        </View>
+                        <Text style={[styles.permLabel, { color: perms[key] ? colors.text : colors.textMuted }]}>{label}</Text>
+                        <Switch
+                          value={perms[key]}
+                          onValueChange={v => isAdmin && updateRolePermissions(r, { [key]: v })}
+                          thumbColor={perms[key] ? rColor : '#aaa'}
+                          trackColor={{ false: colors.border, true: rColor + '55' }}
+                          disabled={!isAdmin}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                );
+              })}
+            </>
+          )}
+
           {/* ── SYSTEM ── */}
           {activeTab === 'system' && (
             <>
@@ -717,6 +826,7 @@ const styles = StyleSheet.create({
   saveBtnText:   { color: '#fff', fontSize: 15, fontWeight: '700' },
   dangerBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 14, borderWidth: 1, marginTop: 8 },
   dangerBtnText: { fontSize: 14, fontWeight: '600' },
+  deleteIconBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
   subLabel:      { fontSize: 11 },
   mgrHeader:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 12, marginBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   mgrBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
