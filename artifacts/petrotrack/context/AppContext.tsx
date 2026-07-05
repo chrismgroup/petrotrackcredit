@@ -26,6 +26,7 @@ export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req'
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
 export interface CompanyFile { id: number; name: string; cat: string; by: string; dt: string; size: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'img' | 'mp4' | 'other'; }
 export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video'; name: string; dt: string; by: string; }
+export interface ShiftReport { id: number; dt: string; by: string; byName: string; entries: number; totalSales: number; totalPOS: number; expectedCash: number; actualCash: number; variance: number; status: 'submitted' | 'reviewed' | 'flagged'; note: string; }
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrator', ceo: 'Chief Executive Officer', md: 'Managing Director',
@@ -99,6 +100,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
   ],
   att: [
     { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+    { id: 'shift', icon: 'calculator', label: 'Shift' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'maint', icon: 'build', label: 'Report' },
   ],
@@ -110,7 +112,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   tanks: '/(app)/tanks', acct: '/(app)/accounts', corp: '/(app)/corporate',
   branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
   msgs: '/(app)/messages', budget: '/(app)/budget', exp: '/(app)/expenses',
-  exprpt: '/(app)/reports', mktg: '/(app)/marketing',
+  exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
@@ -172,6 +174,11 @@ const INIT_DOCS: ComplianceDoc[] = [
   { id: 2, name: 'NMDPRA Retail Licence', cat: 'Licence', iss: 'NMDPRA', exp: '2025-06-20', ref: 'NMD/R/ABJ/0234' },
   { id: 3, name: 'Fire Safety Certificate', cat: 'Certificate', iss: 'FSCE Abuja', exp: '2025-08-10', ref: 'FSCE/2024/441' },
   { id: 4, name: 'CAC Registration', cat: 'Registration', iss: 'CAC Nigeria', exp: '2026-03-01', ref: 'RC-0987654' },
+];
+const INIT_SHIFTS: ShiftReport[] = [
+  { id: 1, dt: '2025-06-08T18:04', by: 'att', byName: 'Emeka Okonkwo', entries: 12, totalSales: 498600, totalPOS: 125000, expectedCash: 373600, actualCash: 373600, variance: 0, status: 'reviewed', note: '' },
+  { id: 2, dt: '2025-06-09T18:11', by: 'att', byName: 'Emeka Okonkwo', entries: 9, totalSales: 312400, totalPOS: 80000, expectedCash: 232400, actualCash: 230000, variance: -2400, status: 'flagged', note: 'Short by ₦2,400 — one POS terminal disconnected mid-shift, investigating' },
+  { id: 3, dt: '2025-06-10T17:55', by: 'att', byName: 'Emeka Okonkwo', entries: 11, totalSales: 421800, totalPOS: 95000, expectedCash: 326800, actualCash: 326800, variance: 0, status: 'submitted', note: '' },
 ];
 const INIT_COMPANY_FILES: CompanyFile[] = [
   { id: 1, name: 'Corporate_Policy_Manual_2025.pdf', cat: 'Policy', by: 'Ngozi Eze', dt: '2025-05-01T09:00', size: '2.4 MB', fileType: 'pdf' },
@@ -266,11 +273,14 @@ interface AppContextType {
   sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
   messages: Record<string, Message[]>; audit: AuditEntry[]; departments: Department[];
-  companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[];
+  companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[]; shiftReports: ShiftReport[];
   updatePrice: (prod: string, price: number) => void;
   addExpense: (exp: Omit<Expense, 'id' | 'dt' | 'status'>) => void;
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
   addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
+  addShiftReport: (r: Omit<ShiftReport, 'id' | 'dt' | 'status'>) => void;
+  reviewShift: (id: number) => void;
+  flagShift: (id: number) => void;
   addDip: (dip: Omit<DipRecord, 'id'>) => void;
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
@@ -310,6 +320,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [departments] = useState<Department[]>(INIT_DEPTS);
   const [companyFiles, setCompanyFiles] = useState<CompanyFile[]>(INIT_COMPANY_FILES);
   const [deliveryEvidences, setDeliveryEvidences] = useState<DeliveryEvidence[]>(INIT_DELIVERY_EVIDENCE);
+  const [shiftReports, setShiftReports] = useState<ShiftReport[]>(INIT_SHIFTS);
 
   useEffect(() => {
     AsyncStorage.getItem('auth').then(v => {
@@ -408,6 +419,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Delivery evidence added', user: userName, detail: `${ev.name} for delivery #${ev.delivId}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const addShiftReport = useCallback((r: Omit<ShiftReport, 'id' | 'dt' | 'status'>) => {
+    const status: ShiftReport['status'] = r.variance < 0 ? 'flagged' : 'submitted';
+    setShiftReports(s => [...s, { ...r, id: genId(), dt: nowTs(), status }]);
+    setAudit(a => [{ id: genId(), action: 'Shift report submitted', user: userName, detail: `${r.byName} — variance: ₦${r.variance.toLocaleString()}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const reviewShift = useCallback((id: number) => {
+    setShiftReports(s => s.map(r => r.id === id ? { ...r, status: 'reviewed' } : r));
+  }, []);
+
+  const flagShift = useCallback((id: number) => {
+    setShiftReports(s => s.map(r => r.id === id ? { ...r, status: 'flagged' } : r));
+  }, []);
+
   const addSystemNotification = useCallback((from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => {
     if (!role) return;
     const key = chatKey(from, role);
@@ -431,9 +456,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       role, userName, login, logout, prices, tanks, lpgTanks, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
-      audit, departments, companyFiles, deliveryEvidences,
+      audit, departments, companyFiles, deliveryEvidences, shiftReports,
       updatePrice, addExpense, addDip, addDelivery, addMaintenance, addSales,
-      addCompanyFile, addDeliveryEvidence,
+      addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, addBranch, addAudit, getConversation, unreadCount,
     }}>
