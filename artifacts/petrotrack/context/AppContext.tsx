@@ -24,10 +24,12 @@ export interface UserInfo { name: string; color: string; initials: string; role:
 export interface MgrPermissions {
   canDip: boolean; canSales: boolean; canExpenses: boolean;
   canMaintenance: boolean; canBudget: boolean; canChat: boolean;
+  canPetrolTanks: boolean; canLpgTanks: boolean;
 }
 export const DEFAULT_MGR_PERMS: MgrPermissions = {
   canDip: true, canSales: true, canExpenses: true,
   canMaintenance: true, canBudget: true, canChat: true,
+  canPetrolTanks: true, canLpgTanks: true,
 };
 export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
