@@ -59,12 +59,6 @@ export default function TanksScreen() {
 
       {activeTab === 0 && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {!canEdit && (
-            <View style={[styles.lockBanner, { backgroundColor: colors.warningBg, borderColor: colors.warningBorder }]}>
-              <Ionicons name="lock-closed" size={15} color={colors.warning} />
-              <Text style={[styles.lockText, { color: colors.warning }]}>Only the Station Manager can record tank dips.</Text>
-            </View>
-          )}
           <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>
           {tanks.map(t => {
             const mm = parseFloat(readings[t.id] || '');

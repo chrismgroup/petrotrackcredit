@@ -61,7 +61,6 @@ export const NAVDEF: Record<string, NavItem[]> = {
   ],
   ceo: [
     { id: 'home', icon: 'home', label: 'Home' },
-    { id: 'tanks', icon: 'water', label: 'Tanks' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'acct', icon: 'calculator', label: 'Accounts' },
     { id: 'mktg', icon: 'megaphone', label: 'Mktg' },
