@@ -228,6 +228,7 @@ const INIT_RECS: Delivery[] = [
   { id: 1, dt: '2025-06-09T10:30', sup: 'NNPCL Abuja', prod: 'AGO', wb: 'WB-2025-041', ord: 20000, rec: 19600, st: 'short', notes: '400L short delivery.', costPrice: 980, receivedBy: 'Grace Adeyemi' },
   { id: 2, dt: '2025-06-05T08:00', sup: 'NNPCL Abuja', prod: 'PMS', wb: 'WB-2025-038', ord: 33000, rec: 33000, st: 'ok', notes: '', costPrice: 775, receivedBy: 'Grace Adeyemi' },
   { id: 3, dt: '2025-05-28T11:20', sup: 'Total Energies', prod: 'DPK', wb: 'WB-2025-031', ord: 15000, rec: 15000, st: 'ok', notes: '', costPrice: 640, receivedBy: 'Grace Adeyemi' },
+  { id: 4, dt: '2025-06-01T09:00', sup: 'Ardova PLC', prod: 'LPG', wb: 'WB-2025-035', ord: 5000, rec: 5000, st: 'ok', notes: '', costPrice: 1050, receivedBy: 'Grace Adeyemi' },
 ];
 const INIT_MAINT: MaintenanceItem[] = [
   { id: 1, title: 'Pump #3 nozzle leak', pri: 'Urgent', by: 'Emeka', date: '2025-06-07', st: 'Open' },
@@ -237,6 +238,9 @@ const INIT_MAINT: MaintenanceItem[] = [
 const INIT_SALES: SalesEntry[] = [
   { id: 1, pump: 'Pump #1 PMS', by: 'Emeka', L: 880, price: 830, dt: '2025-06-10T07:30' },
   { id: 2, pump: 'Pump #3 AGO', by: 'Bello', L: 520, price: 1050, dt: '2025-06-10T08:15' },
+  { id: 3, pump: 'Pump #2 PMS', by: 'Chukwuma', L: 640, price: 830, dt: '2025-06-10T09:00' },
+  { id: 4, pump: 'Pump #4 DPK', by: 'Ibrahim', L: 310, price: 700, dt: '2025-06-10T09:45' },
+  { id: 5, pump: 'LPG Pump',    by: 'Emeka',    L: 180, price: 1200, dt: '2025-06-10T10:30' },
 ];
 const INIT_STAFF: Staff[] = [
   { id: 1, name: 'Amaka Osei', role: 'CEO', sal: 1200000, st: 'Active', email: 'ceo@petrotrack.ng' },
