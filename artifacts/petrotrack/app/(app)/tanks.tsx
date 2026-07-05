@@ -23,14 +23,14 @@ export default function TanksScreen() {
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
   const [delForm, setDelForm] = useState({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
 
-  const canEdit = role === 'mgr' || role === 'att' || role === 'admin';
+  const canEdit = role === 'mgr';
 
   function handleDipSubmit() {
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
     for (const t of tanks) { rd[t.id] = parseFloat(readings[t.id] || '0') || 0; }
     for (const l of lpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
-    addDip({ dt: new Date().toISOString(), by: 'Current User', rd, lpg, obs });
+    addDip({ dt: new Date().toISOString(), by: userName, rd, lpg, obs });
     setReadings({}); setLpgReadings({}); setObs('');
     Alert.alert('Dip Submitted', 'Tank readings recorded successfully.');
   }
@@ -59,6 +59,12 @@ export default function TanksScreen() {
 
       {activeTab === 0 && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          {!canEdit && (
+            <View style={[styles.lockBanner, { backgroundColor: colors.warningBg, borderColor: colors.warningBorder }]}>
+              <Ionicons name="lock-closed" size={15} color={colors.warning} />
+              <Text style={[styles.lockText, { color: colors.warning }]}>Only the Station Manager can record tank dips.</Text>
+            </View>
+          )}
           <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>
           {tanks.map(t => {
             const mm = parseFloat(readings[t.id] || '');
@@ -345,6 +351,8 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   calcResult: { fontSize: 13, fontWeight: '600' },
   obsInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 13, marginBottom: 16, minHeight: 80, textAlignVertical: 'top' },
+  lockBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
+  lockText: { flex: 1, fontSize: 13, fontWeight: '600' },
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12, marginBottom: 16 },
   submitBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   evidenceSection: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 6 },
