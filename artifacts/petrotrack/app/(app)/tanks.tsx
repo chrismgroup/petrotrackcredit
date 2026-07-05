@@ -11,9 +11,12 @@ import { useColors } from '@/hooks/useColors';
 const TABS = ['Dip Form', 'Log & Delivery', 'Inventory'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
+const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
+const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
+const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, addDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms } = useApp();
+  const { role, tanks, lpgTanks, dips, deliveries, addDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const [activeTab, setActiveTab] = useState(0);
@@ -24,6 +27,8 @@ export default function TanksScreen() {
   const [delForm, setDelForm] = useState({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
 
   const canEdit = role === 'mgr';
+  const isMD = role === 'md';
+  const hasPendingDip = canEdit && dips.some(d => d.by === userName && d.status === 'pending');
 
   const perms = role === 'mgr' ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const visibleTanks    = role === 'mgr' && !perms.canPetrolTanks ? [] : tanks;
@@ -130,7 +135,13 @@ export default function TanksScreen() {
             editable={canEdit}
           />
 
-          {canEdit && (
+          {canEdit && hasPendingDip && (
+            <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517' }]}>
+              <Ionicons name="time" size={16} color="#BA7517" />
+              <Text style={[styles.pendingText, { color: '#BA7517' }]}>You have a dip record awaiting MD approval. Submit another after it is resolved.</Text>
+            </View>
+          )}
+          {canEdit && !hasPendingDip && (
             <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor }]} onPress={handleDipSubmit} activeOpacity={0.85}>
               <Ionicons name="save" size={18} color="#fff" />
               <Text style={styles.submitBtnText}>Submit Dip Record</Text>
@@ -188,27 +199,79 @@ export default function TanksScreen() {
 
       {activeTab === 1 && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Records</Text>
-          {dips.map(dip => (
-            <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={styles.logHeader}>
-                <Text style={[styles.logDate, { color: colors.text }]}>{fmtDateTime(dip.dt)}</Text>
-                <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
-              </View>
-              <View style={styles.readingsGrid}>
-                {Object.entries(dip.rd).map(([tid, mm]) => {
-                  const tank = tanks.find(t => t.id === tid);
-                  return (
-                    <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                      <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{tank?.name.replace('Tank ', 'T')}</Text>
-                      <Text style={[styles.readingVal, { color: roleColor }]}>{mm}mm</Text>
-                    </View>
-                  );
-                })}
-              </View>
-              {dip.obs ? <Text style={[styles.dipObs, { color: colors.warning }]}>⚠ {dip.obs}</Text> : null}
+          {isMD && dips.some(d => d.status === 'pending') && (
+            <View style={[styles.mdBanner, { backgroundColor: '#4527a018', borderColor: '#4527a0' }]}>
+              <Ionicons name="alert-circle" size={16} color="#4527a0" />
+              <Text style={[styles.mdBannerText, { color: '#4527a0' }]}>
+                {dips.filter(d => d.status === 'pending').length} dip record{dips.filter(d => d.status === 'pending').length > 1 ? 's' : ''} awaiting your approval
+              </Text>
             </View>
-          ))}
+          )}
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Records</Text>
+          {dips.map(dip => {
+            const sc = DIP_STATUS_COLOR[dip.status] || '#888';
+            const isPending = dip.status === 'pending';
+            return (
+              <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: isPending ? sc + '66' : colors.border, borderWidth: isPending ? 1.5 : 1 }]}>
+                <View style={styles.logHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.logDate, { color: colors.text }]}>{fmtDateTime(dip.dt)}</Text>
+                    <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
+                  </View>
+                  <View style={[styles.dipStatusBadge, { backgroundColor: sc + '18' }]}>
+                    <Ionicons name={DIP_STATUS_ICON[dip.status] as any} size={11} color={sc} />
+                    <Text style={[styles.dipStatusText, { color: sc }]}>{DIP_STATUS_LABEL[dip.status]}</Text>
+                  </View>
+                </View>
+                <View style={styles.readingsGrid}>
+                  {Object.entries(dip.rd).map(([tid, mm]) => {
+                    const tank = tanks.find(t => t.id === tid);
+                    return (
+                      <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                        <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{tank?.name.replace('Tank ', 'T')}</Text>
+                        <Text style={[styles.readingVal, { color: roleColor }]}>{mm}mm</Text>
+                      </View>
+                    );
+                  })}
+                  {Object.entries(dip.lpg).map(([lid, pct]) => {
+                    const lt = lpgTanks.find(l => l.id === lid);
+                    return (
+                      <View key={lid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                        <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{lt?.name.replace('LPG Tank ', 'L')}</Text>
+                        <Text style={[styles.readingVal, { color: colors.teal }]}>{pct}%</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+                {dip.obs ? <Text style={[styles.dipObs, { color: colors.warning }]}>⚠ {dip.obs}</Text> : null}
+                {dip.approvedBy && (
+                  <Text style={[styles.approvedByText, { color: colors.textMuted }]}>
+                    {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
+                  </Text>
+                )}
+                {isMD && isPending && (
+                  <View style={styles.mdActions}>
+                    <TouchableOpacity
+                      style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
+                      onPress={() => { approveDip(dip.id); Alert.alert('Approved', 'Dip record has been approved.'); }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="checkmark" size={15} color="#fff" />
+                      <Text style={styles.mdActionText}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.rejectBtn, { borderColor: '#A32D2D' }]}
+                      onPress={() => { rejectDip(dip.id); Alert.alert('Rejected', 'Dip record has been rejected.'); }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="close" size={15} color="#A32D2D" />
+                      <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            );
+          })}
 
           <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>Delivery Records</Text>
           {deliveries.map(rec => {
@@ -377,6 +440,17 @@ const styles = StyleSheet.create({
   lockText: { flex: 1, fontSize: 13, fontWeight: '600' },
   noBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', marginBottom: 12 },
   noBannerText: { flex: 1, fontSize: 12 },
+  pendingBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
+  pendingText: { flex: 1, fontSize: 12, lineHeight: 18 },
+  mdBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
+  mdBannerText: { flex: 1, fontSize: 13, fontWeight: '600' },
+  dipStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  dipStatusText: { fontSize: 10, fontWeight: '700' },
+  approvedByText: { fontSize: 11, marginTop: 4 },
+  mdActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  approveBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10 },
+  rejectBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, borderWidth: 1.5 },
+  mdActionText: { fontSize: 13, fontWeight: '700', color: '#fff' },
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12, marginBottom: 16 },
   submitBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   evidenceSection: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 6 },

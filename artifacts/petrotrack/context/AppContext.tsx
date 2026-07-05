@@ -9,7 +9,7 @@ export interface Tank {
 }
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG'; active: boolean; }
-export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; }
+export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
 export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; }
@@ -178,7 +178,8 @@ const INIT_LPG: LPGTank[] = [
   { id: 'L2', name: 'LPG Tank 2', cap: 3000, op: 1840, rv: 0, sl: 0 },
 ];
 const INIT_DIPS: DipRecord[] = [
-  { id: 1, dt: '2025-06-10T05:50', by: 'Chukwuma Adeyemi', rd: { T1: 1456, T2: 1264, T3: 1260, T4: 1620 }, lpg: { L1: 64, L2: 58 }, obs: 'T3 water sheen noted.' },
+  { id: 1, dt: '2025-06-10T05:50', by: 'Chukwuma Adeyemi', rd: { T1: 1456, T2: 1264, T3: 1260, T4: 1620 }, lpg: { L1: 64, L2: 58 }, obs: 'T3 water sheen noted.', status: 'approved', approvedBy: 'Adaeze Obi', approvedDt: '2025-06-10T08:00' },
+  { id: 2, dt: '2025-06-11T06:10', by: 'Ibrahim Sule', rd: { T1: 1380, T2: 1180, T3: 1100 }, lpg: {}, obs: '', status: 'pending' },
 ];
 const INIT_RECS: Delivery[] = [
   { id: 1, dt: '2025-06-09T10:30', sup: 'NNPCL Abuja', prod: 'AGO', wb: 'WB-2025-041', ord: 20000, rec: 19600, st: 'short', notes: '400L short delivery.' },
@@ -331,6 +332,8 @@ interface AppContextType {
   reviewShift: (id: number) => void;
   flagShift: (id: number) => void;
   addDip: (dip: Omit<DipRecord, 'id'>) => void;
+  approveDip: (id: number) => void;
+  rejectDip: (id: number) => void;
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
@@ -441,8 +444,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const addDip = useCallback((dip: Omit<DipRecord, 'id'>) => {
-    setDips(d => [{ ...dip, id: genId() }, ...d]);
-    setAudit(a => [{ id: genId(), action: 'Dip submitted', user: userName, detail: 'All tanks dipped.', ts: nowTs() }, ...a]);
+    const status = dip.status ?? 'pending';
+    setDips(d => [{ ...dip, id: genId(), status }, ...d]);
+    setAudit(a => [{ id: genId(), action: 'Dip submitted', user: userName, detail: 'All tanks dipped — awaiting MD approval.', ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const approveDip = useCallback((id: number) => {
+    setDips(d => d.map(rec => rec.id === id ? { ...rec, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : rec));
+    setAudit(a => [{ id: genId(), action: 'Dip approved', user: userName, detail: `Dip record #${id} approved.`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const rejectDip = useCallback((id: number) => {
+    setDips(d => d.map(rec => rec.id === id ? { ...rec, status: 'rejected', approvedBy: userName, approvedDt: nowTs() } : rec));
+    setAudit(a => [{ id: genId(), action: 'Dip rejected', user: userName, detail: `Dip record #${id} rejected.`, ts: nowTs() }, ...a]);
   }, [userName]);
 
   const addDelivery = useCallback((rec: Omit<Delivery, 'id'>) => {
@@ -565,7 +579,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
-      addExpense, addDip, addDelivery, addMaintenance, addSales,
+      addExpense, addDip, approveDip, rejectDip, addDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, addBranch, addAudit, getConversation, unreadCount,
