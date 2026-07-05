@@ -66,6 +66,11 @@ export interface KPI { id: number; title: string; target: string; unit: string; 
 export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video'; name: string; dt: string; by: string; }
 export interface ShiftReport { id: number; dt: string; by: string; byName: string; entries: number; totalSales: number; totalPOS: number; expectedCash: number; actualCash: number; variance: number; status: 'submitted' | 'reviewed' | 'flagged'; note: string; }
 
+export type HRDocType   = 'contract' | 'promotion' | 'guarantor' | 'biodata';
+export type HRDocStatus = 'pending' | 'submitted' | 'approved' | 'n/a';
+export interface HRDoc { type: HRDocType; status: HRDocStatus; date?: string; note?: string; }
+export interface HREmployee { id: number; empId: string; serial: number; name: string; role: string; dept: string; phone: string; joinDate: string; status: 'active' | 'inactive'; docs: HRDoc[]; }
+
 export const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrator', ceo: 'Chief Executive Officer', md: 'Managing Director',
   mktg: 'Marketing Manager', csm: 'Corp. Services Mgr', acc: 'Accountant',
@@ -380,6 +385,23 @@ const INIT_MSGS: Record<string, Message[]> = {
   ],
 };
 
+function mkDocs(contract: HRDocStatus, promotion: HRDocStatus, guarantor: HRDocStatus, biodata: HRDocStatus, date?: string): HRDoc[] {
+  return [
+    { type: 'contract',  status: contract,   date },
+    { type: 'promotion', status: promotion,  date: promotion !== 'n/a' ? date : undefined },
+    { type: 'guarantor', status: guarantor,  date },
+    { type: 'biodata',   status: biodata,    date },
+  ];
+}
+const INIT_HR_EMPLOYEES: HREmployee[] = [
+  { id: 10001, empId: 'PTNG-0001', serial: 1, name: 'Emeka Okafor',     role: 'Pump Attendant',     dept: 'Operations',     phone: '+234 803 100 0001', joinDate: '2022-03-15', status: 'active', docs: mkDocs('approved', 'n/a',       'approved',  'approved',  '2022-03-15') },
+  { id: 10002, empId: 'PTNG-0002', serial: 2, name: 'Chukwuma Adeyemi', role: 'Station Manager',    dept: 'Operations',     phone: '+234 803 100 0002', joinDate: '2021-07-01', status: 'active', docs: mkDocs('approved', 'approved',   'approved',  'approved',  '2021-07-01') },
+  { id: 10003, empId: 'PTNG-0003', serial: 3, name: 'Grace Adeyemi',    role: 'Accountant',         dept: 'Finance',        phone: '+234 803 100 0003', joinDate: '2022-09-05', status: 'active', docs: mkDocs('approved', 'n/a',        'submitted', 'approved',  '2022-09-05') },
+  { id: 10004, empId: 'PTNG-0004', serial: 4, name: 'Funmi Adesanya',   role: 'Marketing Manager',  dept: 'Marketing',      phone: '+234 803 100 0004', joinDate: '2023-02-20', status: 'active', docs: mkDocs('approved', 'submitted',  'approved',  'pending',   '2023-02-20') },
+  { id: 10005, empId: 'PTNG-0005', serial: 5, name: 'Ngozi Eze',        role: 'Corp. Services Mgr', dept: 'Administration', phone: '+234 803 100 0005', joinDate: '2021-01-10', status: 'active', docs: mkDocs('approved', 'approved',   'approved',  'approved',  '2021-01-10') },
+  { id: 10006, empId: 'PTNG-0006', serial: 6, name: 'Adaeze Obi',       role: 'Managing Director',  dept: 'Management',     phone: '+234 803 100 0006', joinDate: '2020-06-01', status: 'active', docs: mkDocs('approved', 'approved',   'approved',  'approved',  '2020-06-01') },
+];
+
 interface AppContextType {
   role: Role | null; userName: string; branchId: string | null; staffId: number | null;
   navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
@@ -439,6 +461,10 @@ interface AppContextType {
   deleteTask: (id: number) => void;
   addKpi: (k: Omit<KPI, 'id' | 'createdAt'>) => void;
   deleteKpi: (id: number) => void;
+  hrEmployees: HREmployee[];
+  addHREmployee: (e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => void;
+  updateHRDocStatus: (empId: number, docType: HRDocType, status: HRDocStatus, note?: string) => void;
+  removeHREmployee: (id: number) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -472,6 +498,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [shiftReports, setShiftReports] = useState<ShiftReport[]>(INIT_SHIFTS);
   const [tasks, setTasks] = useState<Task[]>(INIT_TASKS);
   const [kpis, setKpis] = useState<KPI[]>(INIT_KPIS);
+  const [hrEmployees, setHrEmployees] = useState<HREmployee[]>(INIT_HR_EMPLOYEES);
 
   useEffect(() => {
     AsyncStorage.getItem('auth').then(v => {
@@ -712,6 +739,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setShiftReports(s => s.map(r => r.id === id ? { ...r, status: 'flagged' } : r));
   }, []);
 
+  const addHREmployee = useCallback((e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => {
+    setHrEmployees(prev => {
+      const serial = prev.length + 1;
+      const empId  = 'PTNG-' + String(serial).padStart(4, '0');
+      return [...prev, { ...e, id: genId(), empId, serial }];
+    });
+  }, []);
+
+  const updateHRDocStatus = useCallback((empId: number, docType: HRDocType, status: HRDocStatus, note?: string) => {
+    setHrEmployees(prev => prev.map(emp =>
+      emp.id === empId
+        ? { ...emp, docs: emp.docs.map(d => d.type === docType ? { ...d, status, date: nowTs(), note: note ?? d.note } : d) }
+        : emp
+    ));
+  }, []);
+
+  const removeHREmployee = useCallback((id: number) => {
+    setHrEmployees(prev => prev.filter(e => e.id !== id));
+  }, []);
+
   const addSystemNotification = useCallback((from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => {
     if (!role) return;
     const key = chatKey(from, role);
@@ -755,6 +802,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addDepartment, deleteDepartment,
       rolePermissions, updateRolePermissions,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
+      hrEmployees, addHREmployee, updateHRDocStatus, removeHREmployee,
     }}>
       {children}
     </AppContext.Provider>
