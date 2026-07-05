@@ -93,7 +93,8 @@ export default function ReportsScreen() {
     { prod: 'PMS', color: '#1a6e3c', L: sales.filter(s => s.pump.includes('PMS')).reduce((s, e) => s + e.L, 0), price: prices.PMS },
     { prod: 'AGO', color: '#185FA5', L: sales.filter(s => s.pump.includes('AGO')).reduce((s, e) => s + e.L, 0), price: prices.AGO },
     { prod: 'DPK', color: '#BA7517', L: sales.filter(s => s.pump.includes('DPK')).reduce((s, e) => s + e.L, 0), price: prices.DPK },
-  ].map(p => ({ ...p, scaledL: Math.round(p.L * scale), scaledRev: Math.round(p.L * scale * p.price) }));
+    { prod: 'LPG', color: '#633806', L: sales.filter(s => s.pump.includes('LPG')).reduce((s, e) => s + e.L, 0), price: prices.LPG },
+  ].filter(p => p.L > 0).map(p => ({ ...p, scaledL: Math.round(p.L * scale), scaledRev: Math.round(p.L * scale * p.price) }));
 
   const expItems = allApproved.slice().reverse();
 
