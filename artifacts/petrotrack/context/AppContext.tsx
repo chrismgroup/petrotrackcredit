@@ -10,7 +10,7 @@ export interface Tank {
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG'; active: boolean; }
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
-export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; }
+export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; }
@@ -138,6 +138,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
   acc: [
     { id: 'acct', icon: 'calculator', label: 'Accounts' },
     { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
+    { id: 'recv', icon: 'cube', label: 'Receive' },
     { id: 'exp', icon: 'receipt', label: 'Expenses' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'exprpt', icon: 'analytics', label: 'Reports' },
@@ -185,6 +186,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   msgs: '/(app)/messages', budget: '/(app)/budget', exp: '/(app)/expenses',
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
   tasks: '/(app)/tasks',
+  recv: '/(app)/receiving',
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
@@ -223,7 +225,9 @@ const INIT_DIPS: DipRecord[] = [
   { id: 2, dt: '2025-06-11T06:10', by: 'Ibrahim Sule', rd: { T1: 1380, T2: 1180, T3: 1100 }, lpg: {}, obs: '', status: 'pending' },
 ];
 const INIT_RECS: Delivery[] = [
-  { id: 1, dt: '2025-06-09T10:30', sup: 'NNPCL Abuja', prod: 'AGO', wb: 'WB-2025-041', ord: 20000, rec: 19600, st: 'short', notes: '400L short delivery.' },
+  { id: 1, dt: '2025-06-09T10:30', sup: 'NNPCL Abuja', prod: 'AGO', wb: 'WB-2025-041', ord: 20000, rec: 19600, st: 'short', notes: '400L short delivery.', costPrice: 980, receivedBy: 'Grace Adeyemi' },
+  { id: 2, dt: '2025-06-05T08:00', sup: 'NNPCL Abuja', prod: 'PMS', wb: 'WB-2025-038', ord: 33000, rec: 33000, st: 'ok', notes: '', costPrice: 775, receivedBy: 'Grace Adeyemi' },
+  { id: 3, dt: '2025-05-28T11:20', sup: 'Total Energies', prod: 'DPK', wb: 'WB-2025-031', ord: 15000, rec: 15000, st: 'ok', notes: '', costPrice: 640, receivedBy: 'Grace Adeyemi' },
 ];
 const INIT_MAINT: MaintenanceItem[] = [
   { id: 1, title: 'Pump #3 nozzle leak', pri: 'Urgent', by: 'Emeka', date: '2025-06-07', st: 'Open' },
