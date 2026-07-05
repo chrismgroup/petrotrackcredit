@@ -9,7 +9,7 @@ import { useColors } from '@/hooks/useColors';
 const ROLE_OPTIONS = ['CEO', 'Managing Director', 'Marketing Manager', 'Corp. Services Mgr', 'Accountant', 'Station Manager', 'Pump Attendant'];
 
 export default function UsersScreen() {
-  const { role, staff, addStaff, toggleStaff } = useApp();
+  const { role, staff, addStaff, toggleStaff, deleteStaff } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
   const isAdmin = role === 'admin';
@@ -17,7 +17,10 @@ export default function UsersScreen() {
   const [form, setForm] = useState({ name: '', role: 'Station Manager', email: '', sal: '' });
   const [search, setSearch] = useState('');
 
-  const filtered = staff.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.role.toLowerCase().includes(search.toLowerCase()));
+  const filtered = staff.filter(s =>
+    s.name.toLowerCase().includes(search.toLowerCase()) ||
+    s.role.toLowerCase().includes(search.toLowerCase())
+  );
 
   function handleAdd() {
     if (!form.name || !form.email) { Alert.alert('Required', 'Name and email are required.'); return; }
@@ -26,8 +29,25 @@ export default function UsersScreen() {
     setShowForm(false);
   }
 
+  function handleToggle(s: typeof staff[number]) {
+    Alert.alert(
+      'Confirm',
+      `${s.st === 'Active' ? 'Suspend' : 'Activate'} ${s.name}?`,
+      [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm', onPress: () => toggleStaff(s.id) }]
+    );
+  }
+
+  function handleDelete(s: typeof staff[number]) {
+    Alert.alert(
+      'Delete User',
+      `Permanently remove ${s.name} from the system? This cannot be undone.`,
+      [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => deleteStaff(s.id) }]
+    );
+  }
+
   return (
-    <ScreenLayout title="Users"
+    <ScreenLayout
+      title="Users"
       rightAction={isAdmin ? (
         <TouchableOpacity onPress={() => setShowForm(true)} style={styles.headerBtn}>
           <Ionicons name="add" size={20} color="#fff" />
@@ -52,7 +72,7 @@ export default function UsersScreen() {
           <View style={[styles.readonlyBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
             <Text style={[styles.readonlyText, { color: colors.textMuted }]}>
-              View only — only System Admin can add or suspend users
+              View only — only System Admin can add, suspend or delete users
             </Text>
           </View>
         )}
@@ -73,7 +93,10 @@ export default function UsersScreen() {
         </View>
 
         {filtered.map(s => (
-          <View key={s.id} style={[styles.userCard, { backgroundColor: colors.surface, borderColor: s.st === 'Active' ? colors.border : colors.warningBorder }]}>
+          <View
+            key={s.id}
+            style={[styles.userCard, { backgroundColor: colors.surface, borderColor: s.st === 'Active' ? colors.border : colors.warningBorder }]}
+          >
             <View style={[styles.avatar, { backgroundColor: s.st === 'Active' ? roleColor : colors.textSubtle }]}>
               <Text style={styles.avatarText}>{s.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}</Text>
             </View>
@@ -87,15 +110,20 @@ export default function UsersScreen() {
                 <Text style={[styles.stText, { color: s.st === 'Active' ? colors.success : colors.warning }]}>{s.st}</Text>
               </View>
               {isAdmin && (
-                <TouchableOpacity
-                  onPress={() => Alert.alert('Confirm', `${s.st === 'Active' ? 'Suspend' : 'Activate'} ${s.name}?`, [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Confirm', onPress: () => toggleStaff(s.id) },
-                  ])}
-                  style={[styles.toggleBtn, { borderColor: colors.border }]}
-                >
-                  <Ionicons name={s.st === 'Active' ? 'pause' : 'play'} size={12} color={colors.textMuted} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <TouchableOpacity
+                    onPress={() => handleToggle(s)}
+                    style={[styles.actionBtn, { borderColor: colors.border }]}
+                  >
+                    <Ionicons name={s.st === 'Active' ? 'pause' : 'play'} size={12} color={colors.textMuted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleDelete(s)}
+                    style={[styles.actionBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
+                  >
+                    <Ionicons name="trash-outline" size={12} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </View>
@@ -108,17 +136,28 @@ export default function UsersScreen() {
           <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowForm(false)}>
             <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Add Staff Member</Text>
-              {[{ key: 'name', label: 'Full Name *' }, { key: 'email', label: 'Email Address *', kb: 'email-address' as const }, { key: 'sal', label: 'Monthly Salary (₦)', kb: 'numeric' as const }].map(f => (
-                <TextInput key={f.key} style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              {[
+                { key: 'name', label: 'Full Name *' },
+                { key: 'email', label: 'Email Address *', kb: 'email-address' as const },
+                { key: 'sal', label: 'Monthly Salary (₦)', kb: 'numeric' as const },
+              ].map(f => (
+                <TextInput
+                  key={f.key}
+                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
                   placeholder={f.label} placeholderTextColor={colors.textSubtle}
                   keyboardType={f.kb} value={(form as any)[f.key]}
-                  onChangeText={v => setForm(fr => ({ ...fr, [f.key]: v }))} />
+                  onChangeText={v => setForm(fr => ({ ...fr, [f.key]: v }))}
+                />
               ))}
               <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Role</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                   {ROLE_OPTIONS.map(r => (
-                    <TouchableOpacity key={r} onPress={() => setForm(f => ({ ...f, role: r }))} style={[styles.roleBtn, { backgroundColor: form.role === r ? roleColor : colors.surface, borderColor: form.role === r ? roleColor : colors.border }]}>
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => setForm(f => ({ ...f, role: r }))}
+                      style={[styles.roleBtn, { backgroundColor: form.role === r ? roleColor : colors.surface, borderColor: form.role === r ? roleColor : colors.border }]}
+                    >
                       <Text style={{ color: form.role === r ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{r}</Text>
                     </TouchableOpacity>
                   ))}
@@ -158,7 +197,7 @@ const styles = StyleSheet.create({
   userEmail: { fontSize: 11, marginTop: 1 },
   stBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
   stText: { fontSize: 10, fontWeight: '700' },
-  toggleBtn: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  actionBtn: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   headerBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 10 },
