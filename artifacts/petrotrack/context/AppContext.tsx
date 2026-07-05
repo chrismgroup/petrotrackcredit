@@ -283,6 +283,9 @@ interface AppContextType {
   messages: Record<string, Message[]>; audit: AuditEntry[]; departments: Department[];
   companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[]; shiftReports: ShiftReport[];
   updatePrice: (prod: string, price: number) => void;
+  addTank: (t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => void;
+  addLpgTank: (t: Omit<LPGTank, 'id' | 'op' | 'rv' | 'sl'>) => void;
+  addPump: (p: Omit<Pump, 'id'>) => void;
   updateTank: (id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip'>>) => void;
   updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap'>>) => void;
   updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active'>>) => void;
@@ -354,6 +357,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updatePrice = useCallback((prod: string, price: number) => {
     setPrices(p => ({ ...p, [prod]: price }));
     setAudit(a => [{ id: genId(), action: 'Price update', user: userName, detail: `${prod} set to ₦${price}/L`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addTank = useCallback((t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => {
+    const id = `T${Date.now()}`;
+    setTanks(ts => [...ts, { ...t, id, dip: Math.round(t.cap / 10), op: 0, rv: 0, sl: 0 }]);
+    setAudit(a => [{ id: genId(), action: 'Tank added', user: userName, detail: `${t.name} (${t.prod}, ${t.cap.toLocaleString()}L)`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addLpgTank = useCallback((t: Omit<LPGTank, 'id' | 'op' | 'rv' | 'sl'>) => {
+    const id = `L${Date.now()}`;
+    setLpgTanks(ts => [...ts, { ...t, id, op: 0, rv: 0, sl: 0 }]);
+    setAudit(a => [{ id: genId(), action: 'LPG tank added', user: userName, detail: `${t.name} (${t.cap.toLocaleString()} kg)`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addPump = useCallback((p: Omit<Pump, 'id'>) => {
+    const id = `P${Date.now()}`;
+    setPumps(ps => [...ps, { ...p, id }]);
+    setAudit(a => [{ id: genId(), action: 'Pump added', user: userName, detail: `${p.name} (${p.prod})`, ts: nowTs() }, ...a]);
   }, [userName]);
 
   const updateTank = useCallback((id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip'>>) => {
@@ -490,7 +511,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       role, userName, login, logout, prices, tanks, lpgTanks, pumps, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
-      updatePrice, updateTank, updateLpgTank, updatePump, updateStaff,
+      updatePrice, addTank, addLpgTank, addPump,
+      updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, addDip, addDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
