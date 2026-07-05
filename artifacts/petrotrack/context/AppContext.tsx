@@ -57,6 +57,10 @@ export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; }
 export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
 export interface CompanyFile { id: number; name: string; cat: string; by: string; dt: string; size: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'img' | 'mp4' | 'other'; }
+export type TaskStatus = 'commenced' | 'progressing' | 'completed';
+export type TaskPriority = 'High' | 'Medium' | 'Low';
+export interface Task { id: number; title: string; desc: string; assignedBy: Role; assignedByName: string; assignedTo: Role; assignedToName: string; status: TaskStatus; priority: TaskPriority; dueDate: string; createdAt: string; }
+export interface KPI { id: number; title: string; target: string; unit: string; period: string; assignedTo: Role; assignedToName: string; createdAt: string; }
 export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video'; name: string; dt: string; by: string; }
 export interface ShiftReport { id: number; dt: string; by: string; byName: string; entries: number; totalSales: number; totalPOS: number; expectedCash: number; actualCash: number; variance: number; status: 'submitted' | 'reviewed' | 'flagged'; note: string; }
 
@@ -69,6 +73,17 @@ export const ROLE_LABELS: Record<string, string> = {
 export const ROLE_COLORS: Record<string, string> = {
   admin: '#0a2318', ceo: '#1a6e3c', md: '#4527a0', mktg: '#D85A30',
   csm: '#0F6E56', acc: '#185FA5', mgr: '#BA7517', att: '#633806',
+};
+
+export const TASK_CAN_ASSIGN: Record<string, Role[]> = {
+  ceo:   ['md'],
+  md:    ['mktg', 'csm', 'acc', 'mgr', 'att'],
+  csm:   ['mgr'],
+  acc:   ['mgr'],
+  mgr:   ['att'],
+  mktg:  [],
+  att:   [],
+  admin: [],
 };
 
 export const UINFO: Record<string, UserInfo> = {
@@ -93,12 +108,14 @@ export const NAVDEF: Record<string, NavItem[]> = {
   ],
   ceo: [
     { id: 'home', icon: 'home', label: 'Home' },
+    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'acct', icon: 'calculator', label: 'Accounts' },
     { id: 'mktg', icon: 'megaphone', label: 'Mktg' },
   ],
   md: [
     { id: 'ops', icon: 'construct', label: 'Ops' },
+    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
     { id: 'branches', icon: 'business', label: 'Branches' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'exprpt', icon: 'analytics', label: 'Reports' },
@@ -106,32 +123,35 @@ export const NAVDEF: Record<string, NavItem[]> = {
   ],
   mktg: [
     { id: 'mktg', icon: 'megaphone', label: 'Marketing' },
+    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'sales', icon: 'bar-chart', label: 'Sales' },
   ],
   csm: [
     { id: 'corp', icon: 'briefcase', label: 'Corporate' },
+    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
     { id: 'branches', icon: 'business', label: 'Branches' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'maint', icon: 'build', label: 'Maintain' },
   ],
   acc: [
     { id: 'acct', icon: 'calculator', label: 'Accounts' },
+    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
     { id: 'exp', icon: 'receipt', label: 'Expenses' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'exprpt', icon: 'analytics', label: 'Reports' },
-    { id: 'sales', icon: 'bar-chart', label: 'Sales' },
   ],
   mgr: [
     { id: 'tanks', icon: 'water', label: 'Tanks' },
+    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
     { id: 'exp', icon: 'receipt', label: 'Expenses' },
-    { id: 'budget', icon: 'wallet', label: 'Budget' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'maint', icon: 'build', label: 'Maintain' },
     { id: 'sales', icon: 'bar-chart', label: 'Sales' },
   ],
   att: [
     { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
     { id: 'shift', icon: 'calculator', label: 'Shift' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'maint', icon: 'build', label: 'Report' },
@@ -163,6 +183,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
   msgs: '/(app)/messages', budget: '/(app)/budget', exp: '/(app)/expenses',
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
+  tasks: '/(app)/tasks',
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
@@ -288,6 +309,21 @@ const INIT_BUDGETS: Budget[] = [
     ],
   },
 ];
+const INIT_TASKS: Task[] = [
+  { id: 1, title: 'Q3 Sales Target Review', desc: 'Compile and review Q3 sales performance across all branches and present findings.', assignedBy: 'ceo', assignedByName: 'Amaka Osei', assignedTo: 'md', assignedToName: 'Adaeze Obi', status: 'progressing', priority: 'High', dueDate: '2025-07-15', createdAt: '2025-06-01T09:00' },
+  { id: 2, title: 'Station Safety Inspection', desc: 'Conduct full HSE safety inspection of HQ station and file NESREA compliance report.', assignedBy: 'md', assignedByName: 'Adaeze Obi', assignedTo: 'mgr', assignedToName: 'Chukwuma Adeyemi', status: 'commenced', priority: 'High', dueDate: '2025-06-20', createdAt: '2025-06-10T07:00' },
+  { id: 3, title: 'June Payroll Processing', desc: 'Process June payroll for all staff members by month end. Confirm figures with HR.', assignedBy: 'md', assignedByName: 'Adaeze Obi', assignedTo: 'acc', assignedToName: 'Grace Adeyemi', status: 'commenced', priority: 'Medium', dueDate: '2025-06-30', createdAt: '2025-06-10T08:00' },
+  { id: 4, title: 'Pump #3 Nozzle Repair Follow-up', desc: 'Monitor repair progress with contractor, confirm fix and get sign-off sheet.', assignedBy: 'mgr', assignedByName: 'Chukwuma Adeyemi', assignedTo: 'att', assignedToName: 'Emeka Okafor', status: 'commenced', priority: 'High', dueDate: '2025-06-12', createdAt: '2025-06-10T10:00' },
+  { id: 5, title: 'NMDPRA Licence Renewal', desc: 'Initiate renewal on ELPS portal. Deadline in 10 days — escalate if portal unresponsive.', assignedBy: 'md', assignedByName: 'Adaeze Obi', assignedTo: 'csm', assignedToName: 'Ngozi Eze', status: 'progressing', priority: 'High', dueDate: '2025-06-20', createdAt: '2025-06-10T13:00' },
+  { id: 6, title: 'Marketing Campaign Report', desc: 'Prepare June digital campaign ROI report for MD review.', assignedBy: 'md', assignedByName: 'Adaeze Obi', assignedTo: 'mktg', assignedToName: 'Funmi Adesanya', status: 'commenced', priority: 'Medium', dueDate: '2025-06-25', createdAt: '2025-06-10T09:00' },
+];
+const INIT_KPIS: KPI[] = [
+  { id: 1, title: 'Monthly Revenue Target', target: '15,000,000', unit: '₦', period: 'Monthly', assignedTo: 'mgr', assignedToName: 'All Station Managers', createdAt: '2025-06-01T09:00' },
+  { id: 2, title: 'Expense Approval Turnaround', target: '24', unit: 'hours', period: 'Per request', assignedTo: 'acc', assignedToName: 'Grace Adeyemi', createdAt: '2025-06-01T09:00' },
+  { id: 3, title: 'Zero Safety Incidents', target: '0', unit: 'incidents', period: 'Monthly', assignedTo: 'mgr', assignedToName: 'All Station Managers', createdAt: '2025-06-01T09:00' },
+  { id: 4, title: 'NMDPRA Licence Compliance', target: '100', unit: '%', period: 'Annual', assignedTo: 'csm', assignedToName: 'Ngozi Eze', createdAt: '2025-06-01T09:00' },
+];
+
 const INIT_AUDIT: AuditEntry[] = [
   { id: 1, action: 'User login', user: 'Adaeze Obi (MD)', detail: 'Successful — Abuja', ts: '2025-06-10T06:02' },
   { id: 2, action: 'Price update', user: 'Adaeze Obi (MD)', detail: 'PMS set to ₦830/L — synced all forms', ts: '2025-06-10T06:30' },
@@ -377,6 +413,13 @@ interface AppContextType {
   updateRolePermissions: (role: string, perms: Partial<RolePermissions>) => void;
   getConversation: (peer: Role) => Message[];
   unreadCount: () => number;
+  tasks: Task[];
+  kpis: KPI[];
+  addTask: (t: Omit<Task, 'id' | 'createdAt'>) => void;
+  updateTaskStatus: (id: number, status: TaskStatus) => void;
+  deleteTask: (id: number) => void;
+  addKpi: (k: Omit<KPI, 'id' | 'createdAt'>) => void;
+  deleteKpi: (id: number) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -407,6 +450,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [companyFiles, setCompanyFiles] = useState<CompanyFile[]>(INIT_COMPANY_FILES);
   const [deliveryEvidences, setDeliveryEvidences] = useState<DeliveryEvidence[]>(INIT_DELIVERY_EVIDENCE);
   const [shiftReports, setShiftReports] = useState<ShiftReport[]>(INIT_SHIFTS);
+  const [tasks, setTasks] = useState<Task[]>(INIT_TASKS);
+  const [kpis, setKpis] = useState<KPI[]>(INIT_KPIS);
 
   useEffect(() => {
     AsyncStorage.getItem('auth').then(v => {
@@ -591,6 +636,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ ...entry, id: genId(), ts: nowTs() }, ...a]);
   }, []);
 
+  const addTask = useCallback((t: Omit<Task, 'id' | 'createdAt'>) => {
+    setTasks(ts => [...ts, { ...t, id: genId(), createdAt: nowTs() }]);
+    setAudit(a => [{ id: genId(), action: 'Task assigned', user: userName, detail: `"${t.title}" → ${t.assignedToName}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updateTaskStatus = useCallback((id: number, status: TaskStatus) => {
+    setTasks(ts => ts.map(t => t.id === id ? { ...t, status } : t));
+    setAudit(a => [{ id: genId(), action: 'Task status updated', user: userName, detail: `Task #${id} → ${status}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteTask = useCallback((id: number) => {
+    setTasks(ts => ts.filter(t => t.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Task deleted', user: userName, detail: `Task #${id} removed`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addKpi = useCallback((k: Omit<KPI, 'id' | 'createdAt'>) => {
+    setKpis(ks => [...ks, { ...k, id: genId(), createdAt: nowTs() }]);
+    setAudit(a => [{ id: genId(), action: 'KPI set', user: userName, detail: `"${k.title}" → ${k.assignedToName}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteKpi = useCallback((id: number) => {
+    setKpis(ks => ks.filter(k => k.id !== id));
+    setAudit(a => [{ id: genId(), action: 'KPI removed', user: userName, detail: `KPI #${id} deleted`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const addExpense = useCallback((exp: Omit<Expense, 'id' | 'dt' | 'status'>) => {
     setExpenses(e => [...e, { ...exp, id: genId(), dt: nowTs(), status: 'pending' }]);
     setAudit(a => [{ id: genId(), action: 'Expense submitted', user: userName, detail: `${exp.cat} — ₦${exp.amt.toLocaleString()}`, ts: nowTs() }, ...a]);
@@ -662,6 +732,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, deleteDepartment,
       rolePermissions, updateRolePermissions,
+      tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
     }}>
       {children}
     </AppContext.Provider>
