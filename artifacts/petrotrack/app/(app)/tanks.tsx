@@ -13,7 +13,7 @@ const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill:
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, addDip, addDelivery, prices } = useApp();
+  const { role, tanks, lpgTanks, dips, deliveries, addDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const [activeTab, setActiveTab] = useState(0);
@@ -195,25 +195,68 @@ export default function TanksScreen() {
           ))}
 
           <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>Delivery Records</Text>
-          {deliveries.map(rec => (
-            <View key={rec.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={styles.logHeader}>
-                <View>
-                  <Text style={[styles.logDate, { color: colors.text }]}>{rec.prod} — {rec.sup}</Text>
-                  <Text style={[styles.logBy, { color: colors.textMuted }]}>WB: {rec.wb} · {fmtDateTime(rec.dt)}</Text>
+          {deliveries.map(rec => {
+            const evidence = deliveryEvidences.filter(e => e.delivId === rec.id);
+            return (
+              <View key={rec.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.logHeader}>
+                  <View>
+                    <Text style={[styles.logDate, { color: colors.text }]}>{rec.prod} — {rec.sup}</Text>
+                    <Text style={[styles.logBy, { color: colors.textMuted }]}>WB: {rec.wb} · {fmtDateTime(rec.dt)}</Text>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[rec.st] + '22' }]}>
+                    <Text style={[styles.statusText, { color: STATUS_COLORS[rec.st] }]}>{STATUS_LABELS[rec.st]}</Text>
+                  </View>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[rec.st] + '22' }]}>
-                  <Text style={[styles.statusText, { color: STATUS_COLORS[rec.st] }]}>{STATUS_LABELS[rec.st]}</Text>
+                <View style={styles.deliveryStats}>
+                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Ordered: <Text style={{ color: colors.text, fontWeight: '600' }}>{rec.ord.toLocaleString()}L</Text></Text>
+                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Received: <Text style={{ color: roleColor, fontWeight: '700' }}>{rec.rec.toLocaleString()}L</Text></Text>
+                  {rec.ord !== rec.rec && <Text style={{ color: STATUS_COLORS[rec.st], fontSize: 12 }}>Diff: {(rec.rec - rec.ord).toLocaleString()}L</Text>}
+                </View>
+                {rec.notes ? <Text style={[styles.dipObs, { color: colors.textMuted }]}>{rec.notes}</Text> : null}
+
+                <View style={[styles.evidenceSection, { borderTopColor: colors.border }]}>
+                  <View style={styles.evidenceHeader}>
+                    <Ionicons name="camera" size={13} color={colors.textMuted} />
+                    <Text style={[styles.evidenceTitle, { color: colors.textMuted }]}>Delivery Evidence ({evidence.length})</Text>
+                    {canEdit && (
+                      <View style={styles.evidenceBtns}>
+                        <TouchableOpacity
+                          onPress={() => { const n = `WB-${rec.wb}_photo_${Date.now()}.jpg`; addDeliveryEvidence({ delivId: rec.id, type: 'photo', name: n, by: userName || 'Manager' }); Alert.alert('Photo Added', n); }}
+                          style={[styles.evidenceAddBtn, { backgroundColor: roleColor + '18', borderColor: roleColor + '44' }]}
+                        >
+                          <Ionicons name="camera" size={11} color={roleColor} />
+                          <Text style={[styles.evidenceAddText, { color: roleColor }]}>Photo</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => { const n = `WB-${rec.wb}_video_${Date.now()}.mp4`; addDeliveryEvidence({ delivId: rec.id, type: 'video', name: n, by: userName || 'Manager' }); Alert.alert('Video Added', n); }}
+                          style={[styles.evidenceAddBtn, { backgroundColor: '#8E44AD' + '18', borderColor: '#8E44AD' + '44' }]}
+                        >
+                          <Ionicons name="videocam" size={11} color="#8E44AD" />
+                          <Text style={[styles.evidenceAddText, { color: '#8E44AD' }]}>Video</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                  {evidence.length === 0 && (
+                    <Text style={[styles.evidenceEmpty, { color: colors.textSubtle }]}>No evidence attached — tap Photo or Video to upload</Text>
+                  )}
+                  {evidence.map(ev => (
+                    <View key={ev.id} style={[styles.evidenceItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      <Ionicons name={ev.type === 'photo' ? 'image' : 'videocam'} size={14} color={ev.type === 'photo' ? roleColor : '#8E44AD'} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.evidenceName, { color: colors.text }]} numberOfLines={1}>{ev.name}</Text>
+                        <Text style={[styles.evidenceMeta, { color: colors.textSubtle }]}>by {ev.by} · {fmtDateTime(ev.dt)}</Text>
+                      </View>
+                      <View style={[styles.evidenceTypeBadge, { backgroundColor: ev.type === 'photo' ? roleColor + '18' : '#8E44AD' + '18' }]}>
+                        <Text style={[styles.evidenceTypeText, { color: ev.type === 'photo' ? roleColor : '#8E44AD' }]}>{ev.type.toUpperCase()}</Text>
+                      </View>
+                    </View>
+                  ))}
                 </View>
               </View>
-              <View style={styles.deliveryStats}>
-                <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Ordered: <Text style={{ color: colors.text, fontWeight: '600' }}>{rec.ord.toLocaleString()}L</Text></Text>
-                <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Received: <Text style={{ color: roleColor, fontWeight: '700' }}>{rec.rec.toLocaleString()}L</Text></Text>
-                {rec.ord !== rec.rec && <Text style={{ color: STATUS_COLORS[rec.st], fontSize: 12 }}>Diff: {(rec.rec - rec.ord).toLocaleString()}L</Text>}
-              </View>
-              {rec.notes ? <Text style={[styles.dipObs, { color: colors.textMuted }]}>{rec.notes}</Text> : null}
-            </View>
-          ))}
+            );
+          })}
           <View style={{ height: 16 }} />
         </ScrollView>
       )}
@@ -304,6 +347,18 @@ const styles = StyleSheet.create({
   obsInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 13, marginBottom: 16, minHeight: 80, textAlignVertical: 'top' },
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12, marginBottom: 16 },
   submitBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  evidenceSection: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 6 },
+  evidenceHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  evidenceTitle: { flex: 1, fontSize: 12, fontWeight: '600' },
+  evidenceBtns: { flexDirection: 'row', gap: 6 },
+  evidenceAddBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1 },
+  evidenceAddText: { fontSize: 10, fontWeight: '700' },
+  evidenceItem: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderRadius: 8, borderWidth: 1 },
+  evidenceName: { fontSize: 11, fontWeight: '600' },
+  evidenceMeta: { fontSize: 10, marginTop: 1 },
+  evidenceTypeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  evidenceTypeText: { fontSize: 9, fontWeight: '700' },
+  evidenceEmpty: { fontSize: 11, fontStyle: 'italic', paddingVertical: 4 },
   cancelBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
   cancelBtnText: { fontSize: 14, fontWeight: '600' },
   addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', marginBottom: 16 },

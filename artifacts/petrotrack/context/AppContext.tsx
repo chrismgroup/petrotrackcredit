@@ -15,7 +15,7 @@ export interface SalesEntry { id: number; pump: string; by: string; L: number; p
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
-export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; }
+export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; }
 export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
 export interface Budget { id: number; month: number; year: number; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
 export interface NavItem { id: string; icon: string; label: string; }
@@ -24,6 +24,8 @@ export interface Department { id: string; name: string; icon: string; col: { bg:
 export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; }
 export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
+export interface CompanyFile { id: number; name: string; cat: string; by: string; dt: string; size: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'img' | 'mp4' | 'other'; }
+export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video'; name: string; dt: string; by: string; }
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrator', ceo: 'Chief Executive Officer', md: 'Managing Director',
@@ -88,8 +90,8 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'sales', icon: 'bar-chart', label: 'Sales' },
   ],
   mgr: [
-    { id: 'tanks', icon: 'water', label: 'Tank Dip' },
-    { id: 'budget', icon: 'wallet', label: 'Budget' },
+    { id: 'tanks', icon: 'water', label: 'Tanks' },
+    { id: 'exp', icon: 'receipt', label: 'Expenses' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'maint', icon: 'build', label: 'Maintain' },
     { id: 'sales', icon: 'bar-chart', label: 'Sales' },
@@ -169,6 +171,18 @@ const INIT_DOCS: ComplianceDoc[] = [
   { id: 2, name: 'NMDPRA Retail Licence', cat: 'Licence', iss: 'NMDPRA', exp: '2025-06-20', ref: 'NMD/R/ABJ/0234' },
   { id: 3, name: 'Fire Safety Certificate', cat: 'Certificate', iss: 'FSCE Abuja', exp: '2025-08-10', ref: 'FSCE/2024/441' },
   { id: 4, name: 'CAC Registration', cat: 'Registration', iss: 'CAC Nigeria', exp: '2026-03-01', ref: 'RC-0987654' },
+];
+const INIT_COMPANY_FILES: CompanyFile[] = [
+  { id: 1, name: 'Corporate_Policy_Manual_2025.pdf', cat: 'Policy', by: 'Ngozi Eze', dt: '2025-05-01T09:00', size: '2.4 MB', fileType: 'pdf' },
+  { id: 2, name: 'Employee_Handbook_v3.docx', cat: 'HR', by: 'Ngozi Eze', dt: '2025-04-15T14:30', size: '1.1 MB', fileType: 'docx' },
+  { id: 3, name: 'Q1_2025_Financial_Report.xlsx', cat: 'Finance', by: 'Grace Adeyemi', dt: '2025-04-05T10:00', size: '0.8 MB', fileType: 'xlsx' },
+  { id: 4, name: 'NNPCL_Dealership_Agreement.pdf', cat: 'Legal', by: 'Ngozi Eze', dt: '2025-03-20T11:00', size: '3.2 MB', fileType: 'pdf' },
+  { id: 5, name: 'HSE_Safety_Procedures.pdf', cat: 'Compliance', by: 'Ngozi Eze', dt: '2025-03-10T09:30', size: '1.8 MB', fileType: 'pdf' },
+];
+const INIT_DELIVERY_EVIDENCE: DeliveryEvidence[] = [
+  { id: 1, delivId: 1, type: 'photo', name: 'WB-2025-041_seal_intact.jpg', dt: '2025-06-09T10:35', by: 'Chukwuma Adeyemi' },
+  { id: 2, delivId: 1, type: 'photo', name: 'WB-2025-041_offload_start.jpg', dt: '2025-06-09T10:42', by: 'Chukwuma Adeyemi' },
+  { id: 3, delivId: 1, type: 'video', name: 'WB-2025-041_discharge_video.mp4', dt: '2025-06-09T11:00', by: 'Chukwuma Adeyemi' },
 ];
 const INIT_EXPENSES: Expense[] = [
   { id: 1, dt: '2025-06-10T07:15', cat: 'Generator fuel', desc: 'AGO for gen set — 50L offload', amt: 52500, by: 'mgr', byName: 'Chukwuma Adeyemi', status: 'approved', approvedBy: 'Grace Adeyemi', approvedDt: '2025-06-10T09:00', budgetId: 1 },
@@ -251,7 +265,11 @@ interface AppContextType {
   sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
   messages: Record<string, Message[]>; audit: AuditEntry[]; departments: Department[];
+  companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[];
   updatePrice: (prod: string, price: number) => void;
+  addExpense: (exp: Omit<Expense, 'id' | 'dt' | 'status'>) => void;
+  addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
+  addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
   addDip: (dip: Omit<DipRecord, 'id'>) => void;
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
@@ -289,6 +307,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Record<string, Message[]>>(INIT_MSGS);
   const [audit, setAudit] = useState<AuditEntry[]>(INIT_AUDIT);
   const [departments] = useState<Department[]>(INIT_DEPTS);
+  const [companyFiles, setCompanyFiles] = useState<CompanyFile[]>(INIT_COMPANY_FILES);
+  const [deliveryEvidences, setDeliveryEvidences] = useState<DeliveryEvidence[]>(INIT_DELIVERY_EVIDENCE);
 
   useEffect(() => {
     AsyncStorage.getItem('auth').then(v => {
@@ -372,6 +392,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ ...entry, id: genId(), ts: nowTs() }, ...a]);
   }, []);
 
+  const addExpense = useCallback((exp: Omit<Expense, 'id' | 'dt' | 'status'>) => {
+    setExpenses(e => [...e, { ...exp, id: genId(), dt: nowTs(), status: 'pending' }]);
+    setAudit(a => [{ id: genId(), action: 'Expense submitted', user: userName, detail: `${exp.cat} — ₦${exp.amt.toLocaleString()}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addCompanyFile = useCallback((file: Omit<CompanyFile, 'id' | 'dt'>) => {
+    setCompanyFiles(f => [...f, { ...file, id: genId(), dt: nowTs() }]);
+    setAudit(a => [{ id: genId(), action: 'File uploaded', user: userName, detail: `${file.name} (${file.cat})`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addDeliveryEvidence = useCallback((ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => {
+    setDeliveryEvidences(e => [...e, { ...ev, id: genId(), dt: nowTs() }]);
+    setAudit(a => [{ id: genId(), action: 'Delivery evidence added', user: userName, detail: `${ev.name} for delivery #${ev.delivId}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const addSystemNotification = useCallback((from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => {
     if (!role) return;
     const key = chatKey(from, role);
@@ -395,7 +430,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       role, userName, login, logout, prices, tanks, lpgTanks, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
-      audit, departments, updatePrice, addDip, addDelivery, addMaintenance, addSales,
+      audit, departments, companyFiles, deliveryEvidences,
+      updatePrice, addExpense, addDip, addDelivery, addMaintenance, addSales,
+      addCompanyFile, addDeliveryEvidence,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, addBranch, addAudit, getConversation, unreadCount,
     }}>
