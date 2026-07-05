@@ -21,6 +21,17 @@ export interface BudgetWorkflowStep { stage: string; by: string; role: string; d
 export interface Budget { id: number; month: number; year: number; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
 export interface NavItem { id: string; icon: string; label: string; }
 export interface UserInfo { name: string; color: string; initials: string; role: string; online: boolean; }
+export interface MgrPermissions {
+  canDip: boolean; canSales: boolean; canExpenses: boolean;
+  canMaintenance: boolean; canBudget: boolean; canChat: boolean;
+}
+export const DEFAULT_MGR_PERMS: MgrPermissions = {
+  canDip: true, canSales: true, canExpenses: true,
+  canMaintenance: true, canBudget: true, canChat: true,
+};
+export const MGR_BRANCH_NAMES: Record<string, string> = {
+  HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
+};
 export interface Department { id: string; name: string; icon: string; col: { bg: string; fg: string }; roles: string[]; sys: boolean; }
 export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; }
 export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; }
@@ -106,6 +117,24 @@ export const NAVDEF: Record<string, NavItem[]> = {
   ],
 };
 
+const MGR_NAV_ALL: NavItem[] = [
+  { id: 'tanks', icon: 'water', label: 'Tanks' },
+  { id: 'exp', icon: 'receipt', label: 'Expenses' },
+  { id: 'budget', icon: 'wallet', label: 'Budget' },
+  { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
+  { id: 'maint', icon: 'build', label: 'Maintain' },
+  { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+];
+const MGR_NAV_PERM: Record<string, keyof MgrPermissions> = {
+  tanks: 'canDip', exp: 'canExpenses', budget: 'canBudget',
+  msgs: 'canChat', maint: 'canMaintenance', sales: 'canSales',
+};
+const INIT_MGR_PERMS: Record<string, MgrPermissions> = {
+  HQ: { ...DEFAULT_MGR_PERMS },
+  B1: { ...DEFAULT_MGR_PERMS },
+  B2: { ...DEFAULT_MGR_PERMS },
+};
+
 export const SCREEN_ROUTES: Record<string, string> = {
   home: '/(app)/home', users: '/(app)/users', depts: '/(app)/departments',
   audit: '/(app)/audit', settings: '/(app)/system-settings', ops: '/(app)/operations',
@@ -167,14 +196,16 @@ const INIT_STAFF: Staff[] = [
   { id: 3, name: 'Funmi Adesanya', role: 'Marketing Manager', sal: 420000, st: 'Active', email: 'mktg@petrotrack.ng' },
   { id: 4, name: 'Ngozi Eze', role: 'Corp. Services Mgr', sal: 380000, st: 'Active', email: 'csm@petrotrack.ng' },
   { id: 5, name: 'Grace Adeyemi', role: 'Accountant', sal: 250000, st: 'Active', email: 'acc@petrotrack.ng' },
-  { id: 6, name: 'Chukwuma Adeyemi', role: 'Station Manager', sal: 280000, st: 'Active', email: 'mgr@petrotrack.ng' },
+  { id: 6, name: 'Chukwuma Adeyemi', role: 'Station Manager', sal: 280000, st: 'Active', email: 'mgr.hq@petrotrack.ng' },
+  { id: 9, name: 'Ibrahim Sule', role: 'Station Manager', sal: 280000, st: 'Active', email: 'mgr.maitama@petrotrack.ng' },
+  { id: 10, name: 'Chidinma Nwosu', role: 'Station Manager', sal: 280000, st: 'Active', email: 'mgr.lugbe@petrotrack.ng' },
   { id: 7, name: 'Emeka Okafor', role: 'Pump Attendant', sal: 120000, st: 'Active', email: 'emeka@petrotrack.ng' },
   { id: 8, name: 'Bello Abubakar', role: 'Pump Attendant', sal: 120000, st: 'Active', email: 'bello@petrotrack.ng' },
 ];
 const INIT_BRANCHES: Branch[] = [
-  { id: 'HQ', name: 'HQ — Abuja CBD', st: 'Active', rev: 18400000, mgr: 'Adaeze Obi', pumps: 4, tanks: 4 },
-  { id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 11200000, mgr: 'Chukwuma Adeyemi', pumps: 3, tanks: 3 },
-  { id: 'B2', name: 'Lugbe Branch', st: 'Pending', rev: 0, mgr: '', pumps: 2, tanks: 2 },
+  { id: 'HQ', name: 'HQ — Abuja CBD', st: 'Active', rev: 18400000, mgr: 'Chukwuma Adeyemi', pumps: 4, tanks: 4 },
+  { id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 11200000, mgr: 'Ibrahim Sule', pumps: 3, tanks: 3 },
+  { id: 'B2', name: 'Lugbe Branch', st: 'Active', rev: 5200000, mgr: 'Chidinma Nwosu', pumps: 2, tanks: 2 },
 ];
 const INIT_DOCS: ComplianceDoc[] = [
   { id: 1, name: 'NESREA Env. Permit', cat: 'Permit', iss: 'NESREA', exp: '2025-06-05', ref: 'NESREA/EI/0567' },
@@ -273,8 +304,10 @@ const INIT_MSGS: Record<string, Message[]> = {
 };
 
 interface AppContextType {
-  role: Role | null; userName: string;
-  login: (role: Role, name: string) => void; logout: () => void;
+  role: Role | null; userName: string; branchId: string | null; staffId: number | null;
+  navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
+  login: (role: Role, name: string, staffId?: number, branchId?: string) => void; logout: () => void;
+  updateMgrPerms: (branchId: string, perms: Partial<MgrPermissions>) => void;
   prices: Prices; tanks: Tank[]; lpgTanks: LPGTank[]; pumps: Pump[];
   dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
   sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
@@ -317,6 +350,9 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<Role | null>(null);
   const [userName, setUserName] = useState('');
+  const [branchId, setBranchId] = useState<string | null>(null);
+  const [staffId, setStaffId] = useState<number | null>(null);
+  const [mgrPerms, setMgrPerms] = useState<Record<string, MgrPermissions>>(INIT_MGR_PERMS);
   const [prices, setPrices] = useState<Prices>({ PMS: 830, AGO: 1050, DPK: 700, LPG: 1200 });
   const [tanks, setTanks] = useState<Tank[]>(INIT_TANKS);
   const [lpgTanks, setLpgTanks] = useState<LPGTank[]>(INIT_LPG);
@@ -339,19 +375,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem('auth').then(v => {
-      if (v) { const { r, n } = JSON.parse(v); setRole(r); setUserName(n); }
+      if (v) { const { r, n, sid, bid } = JSON.parse(v); setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null); }
     });
   }, []);
 
-  const login = useCallback((r: Role, n: string) => {
+  const login = useCallback((r: Role, n: string, sid?: number, bid?: string) => {
     setRole(r); setUserName(n);
-    AsyncStorage.setItem('auth', JSON.stringify({ r, n }));
+    setBranchId(bid ?? null); setStaffId(sid ?? null);
+    AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null }));
   }, []);
 
   const logout = useCallback(() => {
-    setRole(null); setUserName('');
+    setRole(null); setUserName(''); setBranchId(null); setStaffId(null);
     AsyncStorage.removeItem('auth');
   }, []);
+
+  const updateMgrPerms = useCallback((bid: string, perms: Partial<MgrPermissions>) => {
+    setMgrPerms(p => ({ ...p, [bid]: { ...(p[bid] ?? DEFAULT_MGR_PERMS), ...perms } }));
+    setAudit(a => [{ id: genId(), action: 'Manager permissions updated', user: userName, detail: `Branch ${bid}: ${JSON.stringify(perms)}`, ts: nowTs() }, ...a]);
+  }, [userName]);
 
   const updatePrice = useCallback((prod: string, price: number) => {
     setPrices(p => ({ ...p, [prod]: price }));
@@ -505,9 +547,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, 0);
   }, [role, messages]);
 
+  const navItems: NavItem[] = role === 'mgr'
+    ? MGR_NAV_ALL.filter(item => {
+        const key = MGR_NAV_PERM[item.id];
+        return !key || (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS)[key];
+      })
+    : (NAVDEF[role ?? 'att'] ?? []);
+
   return (
     <AppContext.Provider value={{
-      role, userName, login, logout, prices, tanks, lpgTanks, pumps, dips, deliveries,
+      role, userName, branchId, staffId, navItems, mgrPerms,
+      login, logout, updateMgrPerms,
+      prices, tanks, lpgTanks, pumps, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
       updatePrice, addTank, addLpgTank, addPump,

@@ -6,16 +6,26 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { Pump, ROLE_COLORS, Tank, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'system';
+type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'managers' | 'system';
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'company', label: 'Company', icon: 'business' },
-  { id: 'tanks',   label: 'Tanks',   icon: 'water' },
-  { id: 'pumps',   label: 'Pumps',   icon: 'speedometer' },
-  { id: 'staff',   label: 'Staff',   icon: 'people' },
-  { id: 'system',  label: 'System',  icon: 'settings' },
+  { id: 'company',  label: 'Company',  icon: 'business' },
+  { id: 'tanks',    label: 'Tanks',    icon: 'water' },
+  { id: 'pumps',    label: 'Pumps',    icon: 'speedometer' },
+  { id: 'staff',    label: 'Staff',    icon: 'people' },
+  { id: 'managers', label: 'Managers', icon: 'construct' },
+  { id: 'system',   label: 'System',   icon: 'settings' },
+];
+
+const MGR_PERM_LABELS: { key: keyof MgrPermissions; label: string; icon: string }[] = [
+  { key: 'canDip',         label: 'Tank Dipping',     icon: 'water' },
+  { key: 'canSales',       label: 'Sales Recording',  icon: 'bar-chart' },
+  { key: 'canExpenses',    label: 'Expenses',          icon: 'receipt' },
+  { key: 'canMaintenance', label: 'Maintenance',       icon: 'build' },
+  { key: 'canBudget',      label: 'Budget',            icon: 'wallet' },
+  { key: 'canChat',        label: 'Messages / Chat',   icon: 'chatbubbles' },
 ];
 
 const PROD_OPTS: Tank['prod'][] = ['PMS', 'AGO', 'DPK'];
@@ -35,7 +45,7 @@ const BLANK_STAFF = { name: '', email: '', role: 'att' as typeof ROLE_OPTS[numbe
 
 export default function SystemSettingsScreen() {
   const {
-    role, tanks, lpgTanks, pumps, staff,
+    role, tanks, lpgTanks, pumps, staff, branches, mgrPerms, updateMgrPerms,
     addTank, addLpgTank, addPump, addStaff,
     updateTank, updateLpgTank, updatePump, updateStaff,
   } = useApp();
@@ -554,6 +564,59 @@ export default function SystemSettingsScreen() {
             </>
           )}
 
+          {/* ── MANAGERS ── */}
+          {activeTab === 'managers' && (
+            <>
+              <View style={[styles.banner, { backgroundColor: '#3a1f00' }]}>
+                <Ionicons name="construct" size={22} color={ROLE_COLORS.mgr} />
+                <View>
+                  <Text style={styles.bannerTitle}>Branch Manager Permissions</Text>
+                  <Text style={styles.bannerSub}>Configure module access per station manager</Text>
+                </View>
+              </View>
+
+              {Object.entries(MGR_BRANCH_NAMES).map(([bid, branchName]) => {
+                const mgr = branches.find(b => b.id === bid);
+                const perms = mgrPerms[bid] ?? DEFAULT_MGR_PERMS;
+                const enabledCount = MGR_PERM_LABELS.filter(p => perms[p.key]).length;
+                return (
+                  <View key={bid} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 14 }]}>
+                    {/* Branch header */}
+                    <View style={[styles.mgrHeader, { borderBottomColor: colors.border }]}>
+                      <View style={[styles.mgrBadge, { backgroundColor: ROLE_COLORS.mgr + '22' }]}>
+                        <Ionicons name="location" size={14} color={ROLE_COLORS.mgr} />
+                        <Text style={[styles.mgrBadgeText, { color: ROLE_COLORS.mgr }]}>{bid}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.cardHeader, { color: colors.text, marginBottom: 2 }]}>{branchName}</Text>
+                        <Text style={[styles.subLabel, { color: colors.textMuted }]}>
+                          {mgr?.mgr || 'Unassigned'} · {enabledCount}/{MGR_PERM_LABELS.length} modules enabled
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Permission toggles */}
+                    {MGR_PERM_LABELS.map(({ key, label, icon }, idx) => (
+                      <View key={key} style={[styles.permRow, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                        <View style={[styles.permIcon, { backgroundColor: perms[key] ? ROLE_COLORS.mgr + '22' : colors.border + '55' }]}>
+                          <Ionicons name={icon as any} size={16} color={perms[key] ? ROLE_COLORS.mgr : colors.textMuted} />
+                        </View>
+                        <Text style={[styles.permLabel, { color: perms[key] ? colors.text : colors.textMuted }]}>{label}</Text>
+                        <Switch
+                          value={perms[key]}
+                          onValueChange={v => isAdmin && updateMgrPerms(bid, { [key]: v })}
+                          thumbColor={perms[key] ? ROLE_COLORS.mgr : '#aaa'}
+                          trackColor={{ false: colors.border, true: ROLE_COLORS.mgr + '55' }}
+                          disabled={!isAdmin}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                );
+              })}
+            </>
+          )}
+
           {/* ── SYSTEM ── */}
           {activeTab === 'system' && (
             <>
@@ -649,4 +712,11 @@ const styles = StyleSheet.create({
   saveBtnText:   { color: '#fff', fontSize: 15, fontWeight: '700' },
   dangerBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 14, borderWidth: 1, marginTop: 8 },
   dangerBtnText: { fontSize: 14, fontWeight: '600' },
+  subLabel:      { fontSize: 11 },
+  mgrHeader:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 12, marginBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  mgrBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  mgrBadgeText:  { fontSize: 11, fontWeight: '800' },
+  permRow:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
+  permIcon:      { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  permLabel:     { flex: 1, fontSize: 14 },
 });
