@@ -4,7 +4,7 @@ import React from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { NAVDEF, ROLE_COLORS, SCREEN_ROUTES, useApp } from '@/context/AppContext';
+import { ROLE_COLORS, SCREEN_ROUTES, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PATH_MAP: Record<string, string> = {
@@ -15,15 +15,13 @@ const PATH_MAP: Record<string, string> = {
 };
 
 export function TabBar() {
-  const { role, unreadCount } = useApp();
+  const { role, navItems, unreadCount } = useApp();
   const colors = useColors();
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
 
   if (!role) return null;
-
-  const navItems = NAVDEF[role] || [];
   const roleColor = ROLE_COLORS[role] || colors.primary;
   const unread = unreadCount();
 
