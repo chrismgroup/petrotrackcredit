@@ -6,7 +6,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, fmt, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const PRODUCTS = ['PMS', 'AGO', 'LPG', 'Lube Oil', 'Others'];
+const PRODUCTS = ['PMS', 'AGO', 'LPG', 'Lube Oil'];
 const SUPPLIERS = ['NNPCL Abuja', 'Total Energies', 'Ardova PLC', 'MRS Oil Nigeria', 'Conoil'];
 const ST_MAP = {
   ok:    { label: 'OK',         color: '#27500A', bg: '#EAF3DE' },

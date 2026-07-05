@@ -1,22 +1,80 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Animated, Easing, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const PROD_COLORS: Record<string, string> = { PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11', Others: '#4a4a4a' };
-const PROD_ICONS: Record<string, string> = { PMS: 'water', AGO: 'cube', DPK: 'flame', LPG: 'cloud', 'Lube Oil': 'flask', Others: 'ellipsis-horizontal-circle' };
+const PROD_COLORS: Record<string, string> = { PMS: '#27ae60', AGO: '#3498db', DPK: '#e67e22', LPG: '#1abc9c', 'Lube Oil': '#c0882e' };
+const PROD_ICONS: Record<string, string>  = { PMS: 'water', AGO: 'cube', DPK: 'flame', LPG: 'cloud', 'Lube Oil': 'flask' };
+
+// Animated rolling number that counts from its previous value to `target`
+function RunningPrice({ target, textStyle }: { target: number; textStyle?: any }) {
+  const [displayed, setDisplayed] = useState(0);
+  const fromRef   = useRef(0);
+  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    const from = fromRef.current;
+    const to   = target;
+    let   step = 0;
+    const STEPS = 22;
+    const MS    = 28;
+    timerRef.current = setInterval(() => {
+      step++;
+      const t    = step / STEPS;
+      const ease = 1 - Math.pow(1 - t, 3);
+      const v    = Math.round(from + (to - from) * ease);
+      fromRef.current = v;
+      setDisplayed(v);
+      if (step >= STEPS) {
+        fromRef.current = to;
+        setDisplayed(to);
+        clearInterval(timerRef.current!);
+      }
+    }, MS);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [target]);
+
+  return <Text style={textStyle}>₦{displayed.toLocaleString()}</Text>;
+}
+
+// Blinking dot for "LIVE" indicator
+function PulseDot() {
+  const opacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.15, duration: 700, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+        Animated.timing(opacity, { toValue: 1,    duration: 700, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+      ])
+    ).start();
+  }, []);
+  return <Animated.View style={[styles.pulseDot, { opacity }]} />;
+}
 
 export default function OperationsScreen() {
   const { role, prices, updatePrice, tanks, dips } = useApp();
-  const colors = useColors();
+  const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'md'] || colors.primary;
-  const canEdit = role === 'md' || role === 'admin';
+  const canEdit   = role === 'md' || role === 'admin';
 
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editVal, setEditVal] = useState('');
+  const [editing, setEditing]   = useState<string | null>(null);
+  const [editVal, setEditVal]   = useState('');
+  const [nowStr,  setNowStr]    = useState('');
+
+  // Live clock — updates every second
+  useEffect(() => {
+    function tick() {
+      const d = new Date();
+      setNowStr(d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   function handleEdit(prod: string) {
     setEditing(prod);
@@ -25,38 +83,63 @@ export default function OperationsScreen() {
 
   function handleSave(prod: string) {
     const val = parseFloat(editVal);
-    if (isNaN(val) || val < 100) { Alert.alert('Invalid', 'Enter a valid price.'); return; }
+    if (isNaN(val) || val < 100) { Alert.alert('Invalid', 'Enter a valid price above ₦100.'); return; }
     updatePrice(prod, val);
     setEditing(null);
-    Alert.alert('Price Updated', `${prod} price set to ₦${val}/L`);
+    Alert.alert('Price Updated', `${prod} set to ₦${val.toLocaleString()}/L`);
   }
 
+  // Only show products that have a price set (> 0) and aren't 'Others'/'DPK' unless > 0
+  const boardEntries = Object.entries(prices).filter(([prod]) => prod !== 'Others' && prod !== 'DPK');
+  const manageEntries = Object.entries(prices).filter(([prod]) => prod !== 'Others');
   const lastDip = dips[0];
 
   return (
     <ScreenLayout title="Operations">
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={[styles.priceBoard, { backgroundColor: '#0a2318' }]}>
-          <Text style={styles.boardTitle}>CURRENT PUMP PRICES</Text>
-          <View style={styles.priceGrid}>
-            {Object.entries(prices).map(([prod, price]) => (
-              <View key={prod} style={[styles.priceCell, { borderColor: 'rgba(255,255,255,0.1)' }]}>
-                <Text style={styles.priceProd}>{prod}</Text>
-                <Text style={styles.priceValue}>₦{price}</Text>
-                <Text style={styles.priceUnit}>per litre</Text>
-              </View>
-            ))}
+
+        {/* ── LIVE PRICE BOARD ── */}
+        <View style={styles.boardOuter}>
+          <View style={styles.boardHeader}>
+            <PulseDot />
+            <Text style={styles.boardLiveLabel}>LIVE</Text>
+            <Text style={styles.boardTitle}>CURRENT PUMP PRICES</Text>
+            <Text style={styles.boardClock}>{nowStr}</Text>
+          </View>
+
+          <View style={styles.boardGrid}>
+            {boardEntries.map(([prod, price], idx) => {
+              const col = PROD_COLORS[prod] || '#aaa';
+              const isLast = idx === boardEntries.length - 1;
+              return (
+                <View
+                  key={prod}
+                  style={[
+                    styles.boardCell,
+                    !isLast && styles.boardCellBorder,
+                    { flex: prod === 'Lube Oil' ? 1.3 : 1 },
+                  ]}
+                >
+                  <View style={[styles.boardProdPill, { backgroundColor: col + '28' }]}>
+                    <Text style={[styles.boardProdText, { color: col }]}>{prod}</Text>
+                  </View>
+                  <RunningPrice target={price as number} textStyle={[styles.boardPrice, { color: '#fff' }]} />
+                  <Text style={styles.boardUnit}>per litre</Text>
+                </View>
+              );
+            })}
           </View>
         </View>
 
+        {/* ── MANAGE PRICES ── */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Manage Prices</Text>
-        {Object.entries(prices).map(([prod, price]) => {
+        {manageEntries.map(([prod, price]) => {
           const isEditing = editing === prod;
           const col = PROD_COLORS[prod] || roleColor;
           return (
             <View key={prod} style={[styles.priceRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[styles.prodIcon, { backgroundColor: col + '18' }]}>
-                <Ionicons name={PROD_ICONS[prod] as any} size={18} color={col} />
+                <Ionicons name={(PROD_ICONS[prod] ?? 'pricetag') as any} size={18} color={col} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.prodName, { color: colors.text }]}>{prod}</Text>
@@ -69,7 +152,7 @@ export default function OperationsScreen() {
                     autoFocus
                   />
                 ) : (
-                  <Text style={[styles.currentPrice, { color: col }]}>₦{price}/L</Text>
+                  <Text style={[styles.currentPrice, { color: col }]}>₦{(price as number).toLocaleString()}/L</Text>
                 )}
               </View>
               {canEdit && (
@@ -93,13 +176,14 @@ export default function OperationsScreen() {
           );
         })}
 
+        {/* ── TANK SUMMARY ── */}
         {lastDip && (
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Latest Tank Summary</Text>
             {Object.entries(lastDip.rd).map(([tid, mm]) => {
               const tank = tanks.find(t => t.id === tid);
               if (!tank) return null;
-              const pct = Math.round((mm / tank.dip) * 100);
+              const pct      = Math.round((mm / tank.dip) * 100);
               const barColor = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary;
               return (
                 <View key={tid} style={[styles.tankRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -118,7 +202,7 @@ export default function OperationsScreen() {
             })}
           </>
         )}
-        <View style={{ height: 16 }} />
+        <View style={{ height: 20 }} />
       </ScrollView>
     </ScreenLayout>
   );
@@ -126,13 +210,21 @@ export default function OperationsScreen() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 16 },
-  priceBoard: { borderRadius: 16, padding: 20, marginBottom: 16 },
-  boardTitle: { color: 'rgba(255,255,255,0.5)', fontSize: 11, letterSpacing: 1, fontWeight: '700', marginBottom: 14, textAlign: 'center' },
-  priceGrid: { flexDirection: 'row', gap: 1 },
-  priceCell: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRightWidth: StyleSheet.hairlineWidth },
-  priceProd: { color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '700' },
-  priceValue: { color: '#fff', fontSize: 20, fontWeight: '700', marginTop: 2 },
-  priceUnit: { color: 'rgba(255,255,255,0.4)', fontSize: 9, marginTop: 1 },
+  // Board
+  boardOuter: { borderRadius: 18, backgroundColor: '#04150e', marginBottom: 20, overflow: 'hidden' },
+  boardHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  pulseDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4caf50', marginRight: 5 },
+  boardLiveLabel: { color: '#4caf50', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginRight: 8 },
+  boardTitle: { color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1, flex: 1 },
+  boardClock: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  boardGrid: { flexDirection: 'row', paddingVertical: 18, paddingHorizontal: 8 },
+  boardCell: { alignItems: 'center', gap: 5 },
+  boardCellBorder: { borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: 'rgba(255,255,255,0.1)' },
+  boardProdPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  boardProdText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  boardPrice: { fontSize: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  boardUnit: { color: 'rgba(255,255,255,0.3)', fontSize: 8, fontWeight: '600', letterSpacing: 0.5 },
+  // Manage
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
   prodIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
@@ -143,6 +235,7 @@ const styles = StyleSheet.create({
   cancelIconBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
   editBtnText: { fontSize: 12, fontWeight: '600' },
+  // Tanks
   tankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 6 },
   tankRowHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   tankName: { fontSize: 13, fontWeight: '600' },
