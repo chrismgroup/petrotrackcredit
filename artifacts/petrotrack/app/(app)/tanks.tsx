@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ROLE_COLORS, fmt, fmtDateTime, mmToLiters, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDateTime, mmToLiters, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const TABS = ['Dip Form', 'Log & Delivery', 'Inventory'];
@@ -13,7 +13,7 @@ const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill:
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, addDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName } = useApp();
+  const { role, tanks, lpgTanks, dips, deliveries, addDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const [activeTab, setActiveTab] = useState(0);
@@ -25,11 +25,15 @@ export default function TanksScreen() {
 
   const canEdit = role === 'mgr';
 
+  const perms = role === 'mgr' ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
+  const visibleTanks    = role === 'mgr' && !perms.canPetrolTanks ? [] : tanks;
+  const visibleLpgTanks = role === 'mgr' && !perms.canLpgTanks   ? [] : lpgTanks;
+
   function handleDipSubmit() {
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
-    for (const t of tanks) { rd[t.id] = parseFloat(readings[t.id] || '0') || 0; }
-    for (const l of lpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
+    for (const t of visibleTanks) { rd[t.id] = parseFloat(readings[t.id] || '0') || 0; }
+    for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
     addDip({ dt: new Date().toISOString(), by: userName, rd, lpg, obs });
     setReadings({}); setLpgReadings({}); setObs('');
     Alert.alert('Dip Submitted', 'Tank readings recorded successfully.');
@@ -59,8 +63,14 @@ export default function TanksScreen() {
 
       {activeTab === 0 && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>
-          {tanks.map(t => {
+          {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
+          {!perms.canPetrolTanks && role === 'mgr' && (
+            <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+              <Text style={[styles.noBannerText, { color: colors.textMuted }]}>Petroleum tank access not granted for this branch</Text>
+            </View>
+          )}
+          {visibleTanks.map(t => {
             const mm = parseFloat(readings[t.id] || '');
             const L = !isNaN(mm) ? mmToLiters(t, mm) : null;
             return (
@@ -86,8 +96,14 @@ export default function TanksScreen() {
             );
           })}
 
-          <Text style={[styles.formSection, { color: colors.text }]}>LPG Tanks</Text>
-          {lpgTanks.map(l => (
+          {visibleLpgTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>LPG Tanks</Text>}
+          {!perms.canLpgTanks && role === 'mgr' && (
+            <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+              <Text style={[styles.noBannerText, { color: colors.textMuted }]}>LPG tank access not granted for this branch</Text>
+            </View>
+          )}
+          {visibleLpgTanks.map(l => (
             <View key={l.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={[styles.dipCardTitle, { color: colors.text }]}>{l.name}</Text>
               <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Cap: {l.cap.toLocaleString()} kg</Text>
@@ -263,8 +279,14 @@ export default function TanksScreen() {
 
       {activeTab === 2 && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>
-          {tanks.map(t => {
+          {visibleTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>}
+          {!perms.canPetrolTanks && role === 'mgr' && (
+            <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+              <Text style={[styles.noBannerText, { color: colors.textMuted }]}>Petroleum tank access not granted</Text>
+            </View>
+          )}
+          {visibleTanks.map(t => {
             const stock = t.op + t.rv - t.sl;
             const pct = stockPct(t);
             const barColor = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary;
@@ -300,8 +322,14 @@ export default function TanksScreen() {
             );
           })}
 
-          <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>LPG Tanks</Text>
-          {lpgTanks.map(l => {
+          {visibleLpgTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>LPG Tanks</Text>}
+          {!perms.canLpgTanks && role === 'mgr' && (
+            <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+              <Text style={[styles.noBannerText, { color: colors.textMuted }]}>LPG tank access not granted</Text>
+            </View>
+          )}
+          {visibleLpgTanks.map(l => {
             const stock = l.op + l.rv - l.sl;
             const pct = Math.round((stock / l.cap) * 100);
             return (
@@ -347,6 +375,8 @@ const styles = StyleSheet.create({
   obsInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 13, marginBottom: 16, minHeight: 80, textAlignVertical: 'top' },
   lockBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
   lockText: { flex: 1, fontSize: 13, fontWeight: '600' },
+  noBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', marginBottom: 12 },
+  noBannerText: { flex: 1, fontSize: 12 },
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12, marginBottom: 16 },
   submitBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   evidenceSection: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 6 },

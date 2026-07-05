@@ -19,13 +19,15 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'system',   label: 'System',   icon: 'settings' },
 ];
 
-const MGR_PERM_LABELS: { key: keyof MgrPermissions; label: string; icon: string }[] = [
-  { key: 'canDip',         label: 'Tank Dipping',     icon: 'water' },
-  { key: 'canSales',       label: 'Sales Recording',  icon: 'bar-chart' },
-  { key: 'canExpenses',    label: 'Expenses',          icon: 'receipt' },
-  { key: 'canMaintenance', label: 'Maintenance',       icon: 'build' },
-  { key: 'canBudget',      label: 'Budget',            icon: 'wallet' },
-  { key: 'canChat',        label: 'Messages / Chat',   icon: 'chatbubbles' },
+const MGR_PERM_LABELS: { key: keyof MgrPermissions; label: string; icon: string; sub?: string }[] = [
+  { key: 'canDip',         label: 'Tank Dipping',      icon: 'water' },
+  { key: 'canPetrolTanks', label: 'Petroleum Tanks',   icon: 'flame',       sub: 'PMS · AGO · DPK visibility' },
+  { key: 'canLpgTanks',    label: 'LPG Tanks',         icon: 'thermometer', sub: 'Gas tank visibility' },
+  { key: 'canSales',       label: 'Sales Recording',   icon: 'bar-chart' },
+  { key: 'canExpenses',    label: 'Expenses',           icon: 'receipt' },
+  { key: 'canMaintenance', label: 'Maintenance',        icon: 'build' },
+  { key: 'canBudget',      label: 'Budget',             icon: 'wallet' },
+  { key: 'canChat',        label: 'Messages / Chat',    icon: 'chatbubbles' },
 ];
 
 const PROD_OPTS: Tank['prod'][] = ['PMS', 'AGO', 'DPK'];
@@ -596,12 +598,15 @@ export default function SystemSettingsScreen() {
                     </View>
 
                     {/* Permission toggles */}
-                    {MGR_PERM_LABELS.map(({ key, label, icon }, idx) => (
+                    {MGR_PERM_LABELS.map(({ key, label, icon, sub }, idx) => (
                       <View key={key} style={[styles.permRow, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
                         <View style={[styles.permIcon, { backgroundColor: perms[key] ? ROLE_COLORS.mgr + '22' : colors.border + '55' }]}>
                           <Ionicons name={icon as any} size={16} color={perms[key] ? ROLE_COLORS.mgr : colors.textMuted} />
                         </View>
-                        <Text style={[styles.permLabel, { color: perms[key] ? colors.text : colors.textMuted }]}>{label}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.permLabel, { color: perms[key] ? colors.text : colors.textMuted }]}>{label}</Text>
+                          {sub && <Text style={[styles.subLabel, { color: colors.textMuted, fontSize: 10, marginTop: 1 }]}>{sub}</Text>}
+                        </View>
                         <Switch
                           value={perms[key]}
                           onValueChange={v => isAdmin && updateMgrPerms(bid, { [key]: v })}
