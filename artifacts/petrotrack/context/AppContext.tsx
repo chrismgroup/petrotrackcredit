@@ -31,6 +31,24 @@ export const DEFAULT_MGR_PERMS: MgrPermissions = {
   canMaintenance: true, canBudget: true, canChat: true,
   canPetrolTanks: true, canLpgTanks: true,
 };
+
+export interface RolePermissions {
+  canViewSales: boolean; canViewExpenses: boolean; canViewMaintenance: boolean;
+  canViewBudget: boolean; canViewTanks: boolean; canViewReports: boolean;
+  canApproveExpenses: boolean; canApproveDips: boolean;
+  canManageStaff: boolean; canManageBranches: boolean;
+  canViewAudit: boolean; canViewMessages: boolean;
+}
+export const INIT_ROLE_PERMS: Record<string, RolePermissions> = {
+  admin: { canViewSales: true,  canViewExpenses: true,  canViewMaintenance: true,  canViewBudget: true,  canViewTanks: true,  canViewReports: true,  canApproveExpenses: true,  canApproveDips: true,  canManageStaff: true,  canManageBranches: true,  canViewAudit: true,  canViewMessages: true  },
+  ceo:   { canViewSales: true,  canViewExpenses: true,  canViewMaintenance: false, canViewBudget: true,  canViewTanks: false, canViewReports: true,  canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
+  md:    { canViewSales: true,  canViewExpenses: false, canViewMaintenance: false, canViewBudget: false, canViewTanks: true,  canViewReports: true,  canApproveExpenses: true,  canApproveDips: true,  canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
+  mktg:  { canViewSales: true,  canViewExpenses: false, canViewMaintenance: false, canViewBudget: false, canViewTanks: false, canViewReports: false, canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
+  csm:   { canViewSales: false, canViewExpenses: false, canViewMaintenance: true,  canViewBudget: false, canViewTanks: false, canViewReports: false, canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
+  acc:   { canViewSales: true,  canViewExpenses: true,  canViewMaintenance: false, canViewBudget: true,  canViewTanks: false, canViewReports: true,  canApproveExpenses: true,  canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
+  mgr:   { canViewSales: true,  canViewExpenses: true,  canViewMaintenance: true,  canViewBudget: true,  canViewTanks: true,  canViewReports: false, canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
+  att:   { canViewSales: true,  canViewExpenses: false, canViewMaintenance: true,  canViewBudget: false, canViewTanks: false, canViewReports: false, canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
+};
 export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
 };
@@ -346,6 +364,13 @@ interface AppContextType {
   toggleStaff: (id: number) => void;
   addBranch: (b: Omit<Branch, 'id'>) => void;
   addAudit: (entry: Omit<AuditEntry, 'id' | 'ts'>) => void;
+  deleteTank: (id: string) => void;
+  deleteLpgTank: (id: string) => void;
+  deletePump: (id: string) => void;
+  addDepartment: (d: Omit<Department, 'id' | 'sys'>) => void;
+  deleteDepartment: (id: string) => void;
+  rolePermissions: Record<string, RolePermissions>;
+  updateRolePermissions: (role: string, perms: Partial<RolePermissions>) => void;
   getConversation: (peer: Role) => Message[];
   unreadCount: () => number;
 }
@@ -373,7 +398,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [budgets] = useState<Budget[]>(INIT_BUDGETS);
   const [messages, setMessages] = useState<Record<string, Message[]>>(INIT_MSGS);
   const [audit, setAudit] = useState<AuditEntry[]>(INIT_AUDIT);
-  const [departments] = useState<Department[]>(INIT_DEPTS);
+  const [departments, setDepartments] = useState<Department[]>(INIT_DEPTS);
+  const [rolePermissions, setRolePermissions] = useState<Record<string, RolePermissions>>(INIT_ROLE_PERMS);
   const [companyFiles, setCompanyFiles] = useState<CompanyFile[]>(INIT_COMPANY_FILES);
   const [deliveryEvidences, setDeliveryEvidences] = useState<DeliveryEvidence[]>(INIT_DELIVERY_EVIDENCE);
   const [shiftReports, setShiftReports] = useState<ShiftReport[]>(INIT_SHIFTS);
@@ -511,6 +537,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setBranches(br => [...br, { ...b, id: `B${genId()}` }]);
   }, []);
 
+  const deleteTank = useCallback((id: string) => {
+    setTanks(t => t.filter(tank => tank.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Tank deleted', user: userName, detail: `Tank ${id} removed`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteLpgTank = useCallback((id: string) => {
+    setLpgTanks(t => t.filter(tank => tank.id !== id));
+    setAudit(a => [{ id: genId(), action: 'LPG tank deleted', user: userName, detail: `LPG Tank ${id} removed`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deletePump = useCallback((id: string) => {
+    setPumps(p => p.filter(pump => pump.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Pump deleted', user: userName, detail: `Pump ${id} removed`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const addDepartment = useCallback((d: Omit<Department, 'id' | 'sys'>) => {
+    setDepartments(ds => [...ds, { ...d, id: `dept${genId()}`, sys: false }]);
+    setAudit(a => [{ id: genId(), action: 'Department created', user: userName, detail: d.name, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteDepartment = useCallback((id: string) => {
+    setDepartments(ds => ds.filter(d => d.id !== id || d.sys));
+    setAudit(a => [{ id: genId(), action: 'Department deleted', user: userName, detail: `Department ${id} removed`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updateRolePermissions = useCallback((r: string, perms: Partial<RolePermissions>) => {
+    setRolePermissions(p => ({ ...p, [r]: { ...(p[r] ?? INIT_ROLE_PERMS[r]), ...perms } }));
+    setAudit(a => [{ id: genId(), action: 'Role permissions updated', user: userName, detail: `${r}: ${Object.keys(perms).join(', ')}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const addAudit = useCallback((entry: Omit<AuditEntry, 'id' | 'ts'>) => {
     setAudit(a => [{ ...entry, id: genId(), ts: nowTs() }, ...a]);
   }, []);
@@ -583,6 +639,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, addBranch, addAudit, getConversation, unreadCount,
+      deleteTank, deleteLpgTank, deletePump,
+      addDepartment, deleteDepartment,
+      rolePermissions, updateRolePermissions,
     }}>
       {children}
     </AppContext.Provider>
