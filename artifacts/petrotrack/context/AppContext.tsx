@@ -506,7 +506,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.deliveries)        setDeliveries(s.deliveries as Delivery[]);
       if (s.maintenance)       setMaintenance(s.maintenance as MaintenanceItem[]);
       if (s.audit)             setAudit(s.audit as AuditEntry[]);
-      if (s.messages)          setMessages(s.messages as Record<string, Message[]>);
+      if (s.messages && typeof s.messages === 'object' && !Array.isArray(s.messages)) {
+        const sanitized: Record<string, Message[]> = {};
+        for (const [k, v] of Object.entries(s.messages)) {
+          if (Array.isArray(v)) sanitized[k] = v as Message[];
+        }
+        setMessages(sanitized);
+      }
       if (s.tasks)             setTasks(s.tasks as Task[]);
       if (s.kpis)              setKpis(s.kpis as KPI[]);
       if (s.companyFiles)      setCompanyFiles(s.companyFiles as CompanyFile[]);
@@ -1053,6 +1059,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const unreadCount = useCallback((): number => {
     if (!role) return 0;
     return Object.values(messages).reduce((sum, msgs) => {
+      if (!Array.isArray(msgs)) return sum;
       return sum + msgs.filter(m => m.to === role && !m.read).length;
     }, 0);
   }, [role, messages]);
