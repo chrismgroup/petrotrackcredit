@@ -1,0 +1,1 @@
+- [DB persistence architecture](db-persistence.md) — app_state key-value table in PostgreSQL; mirrors AsyncStorage keys; stateApi utility in Expo calls /api/state
