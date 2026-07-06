@@ -440,10 +440,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       for (const [k, v] of pairs) if (v) s[k] = JSON.parse(v);
       if (s.auth) {
         const { r, n, sid, bid } = s.auth;
-        setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null);
-      } else {
-        setRole('admin'); setUserName('Solomon Okon');
-        AsyncStorage.setItem('auth', JSON.stringify({ r: 'admin', n: 'Solomon Okon', sid: null, bid: null }));
+        // Clear legacy auto-admin session (solomon.okon) — require explicit login
+        if (n === 'Solomon Okon' && !sid) {
+          AsyncStorage.removeItem('auth');
+        } else {
+          setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null);
+        }
       }
       if (s.companyInfo)       setCompanyInfo(s.companyInfo);
       if (s.tanks)             setTanks(s.tanks);
@@ -873,8 +875,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const validateCredentials = useCallback((username: string, password: string): UserAccount | null => {
-    if (username.toLowerCase() === 'solomon.okon' && password === 'Myfatherson123@') {
-      return { id: 0, empName: 'System Admin', username: 'solomon.okon', password: 'Myfatherson123@', role: 'admin', status: 'active', createdBy: 'system', createdAt: '' };
+    if (username.toLowerCase() === 'admin' && password === 'Myfatherson123@') {
+      return { id: 0, empName: 'System Admin', username: 'admin', password: 'Myfatherson123@', role: 'admin', status: 'active', createdBy: 'system', createdAt: '' };
     }
     return userAccounts.find(a => a.username === username && a.password === password && a.status === 'active') ?? null;
   }, [userAccounts]);
