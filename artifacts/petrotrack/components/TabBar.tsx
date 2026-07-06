@@ -11,11 +11,11 @@ const PATH_MAP: Record<string, string> = {
   home: 'home', users: 'users', depts: 'departments', audit: 'audit',
   settings: 'system-settings', ops: 'operations', tanks: 'tanks', acct: 'accounts',
   corp: 'corporate', branches: 'branches', maint: 'maintenance', sales: 'sales',
-  msgs: 'messages', budget: 'budget', exp: 'expenses', exprpt: 'reports', mktg: 'marketing', shift: 'shift',
+  budget: 'budget', exp: 'expenses', exprpt: 'reports', mktg: 'marketing', shift: 'shift',
 };
 
 export function TabBar() {
-  const { role, navItems, unreadCount } = useApp();
+  const { role, navItems } = useApp();
   const colors = useColors();
   const router = useRouter();
   const pathname = usePathname();
@@ -23,8 +23,6 @@ export function TabBar() {
 
   if (!role) return null;
   const roleColor = ROLE_COLORS[role] || colors.primary;
-  const unread = unreadCount();
-
   function isActive(id: string): boolean {
     const seg = PATH_MAP[id] || id;
     return pathname.includes(seg);
@@ -41,21 +39,13 @@ export function TabBar() {
     <View style={[styles.container, { borderTopColor: colors.border, paddingBottom: bottomPad, backgroundColor: colors.background }]}>
       {navItems.map(item => {
         const active = isActive(item.id);
-        const isMsgs = item.id === 'msgs';
         return (
           <TouchableOpacity key={item.id} style={styles.tab} onPress={() => navigate(item.id)} activeOpacity={0.7}>
-            <View style={styles.iconWrap}>
-              <Ionicons
-                name={(active ? item.icon : `${item.icon}-outline`) as any}
-                size={22}
-                color={active ? roleColor : colors.textMuted}
-              />
-              {isMsgs && unread > 0 && (
-                <View style={[styles.badge, { backgroundColor: '#E24B4A' }]}>
-                  <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
-                </View>
-              )}
-            </View>
+            <Ionicons
+              name={(active ? item.icon : `${item.icon}-outline`) as any}
+              size={22}
+              color={active ? roleColor : colors.textMuted}
+            />
             <Text style={[styles.label, { color: active ? roleColor : colors.textMuted, fontWeight: active ? '700' : '400' }]}>
               {item.label}
             </Text>
