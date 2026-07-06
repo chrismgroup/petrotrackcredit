@@ -11,7 +11,8 @@ import {
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const DIP_SUBTABS = ['Dip Form', 'Log & Delivery', 'Inventory'];
+const DIP_SUBTABS_ALL = ['Dip Form', 'Log & Delivery', 'Inventory'];
+const DIP_SUBTABS_MD  = ['Log & Delivery', 'Inventory'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
@@ -51,7 +52,8 @@ export default function OperationsScreen() {
   const [topTab, setTopTab] = useState<TopTab>(defaultTab);
 
   // ── Dip state ────────────────────────────────────────────────────────────
-  const [dipSubTab, setDipSubTab]     = useState(0);
+  // MD starts on "Log & Delivery" (content index 1); mgr starts on "Dip Form" (index 0)
+  const [dipSubTab, setDipSubTab]     = useState(isMD ? 1 : 0);
   const [readings, setReadings]       = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
@@ -158,14 +160,22 @@ export default function OperationsScreen() {
       {/* ═══════════════════════════════════════════════════════ TANK DIP ══ */}
       {topTab === 'dip' && (
         <>
-          <View style={[styles.subTabBar, { borderBottomColor: colors.border }]}>
-            {DIP_SUBTABS.map((t, i) => (
-              <TouchableOpacity key={t} onPress={() => setDipSubTab(i)}
-                style={[styles.subTabBtn, { borderBottomColor: i === dipSubTab ? roleColor : 'transparent' }]}>
-                <Text style={[styles.subTabLabel, { color: i === dipSubTab ? roleColor : colors.textMuted, fontWeight: i === dipSubTab ? '700' : '400' }]}>{t}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {(() => {
+            // MD sees only Log & Delivery (idx 1) and Inventory (idx 2) — no Dip Form
+            const dipTabItems = (isMD ? DIP_SUBTABS_MD : DIP_SUBTABS_ALL).map(
+              (label, vi) => ({ label, contentIdx: isMD ? vi + 1 : vi })
+            );
+            return (
+              <View style={[styles.subTabBar, { borderBottomColor: colors.border }]}>
+                {dipTabItems.map(({ label, contentIdx }) => (
+                  <TouchableOpacity key={label} onPress={() => setDipSubTab(contentIdx)}
+                    style={[styles.subTabBtn, { borderBottomColor: contentIdx === dipSubTab ? roleColor : 'transparent' }]}>
+                    <Text style={[styles.subTabLabel, { color: contentIdx === dipSubTab ? roleColor : colors.textMuted, fontWeight: contentIdx === dipSubTab ? '700' : '400' }]}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            );
+          })()}
 
           {/* Dip Form */}
           {dipSubTab === 0 && (
