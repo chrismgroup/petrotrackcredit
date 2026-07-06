@@ -463,7 +463,7 @@ interface AppContextType {
   toggleStaff: (id: number) => void;
   deleteStaff: (id: number) => void;
   addBranch: (b: Omit<Branch, 'id'>) => void;
-  updateBranch: (id: string, updates: Partial<Pick<Branch, 'st' | 'mgr'>>) => void;
+  updateBranch: (id: string, updates: Partial<Pick<Branch, 'st' | 'mgr' | 'name' | 'pumps' | 'tanks'>>) => void;
   deleteBranch: (id: string) => void;
   addAudit: (entry: Omit<AuditEntry, 'id' | 'ts'>) => void;
   deleteTank: (id: string) => void;
@@ -682,7 +682,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Branch created', user: userName, detail: b.name, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updateBranch = useCallback((id: string, updates: Partial<Pick<Branch, 'st' | 'mgr'>>) => {
+  const updateBranch = useCallback((id: string, updates: Partial<Pick<Branch, 'st' | 'mgr' | 'name' | 'pumps' | 'tanks'>>) => {
     setBranches(br => br.map(b => b.id === id ? { ...b, ...updates } : b));
     setAudit(a => [{ id: genId(), action: 'Branch updated', user: userName, detail: `Branch ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
   }, [userName]);
