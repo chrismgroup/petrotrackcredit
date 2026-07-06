@@ -528,6 +528,9 @@ interface AppContextType {
   addGeneratedLetter: (empId: number, letter: Omit<GeneratedLetter, 'id' | 'generatedAt'>) => void;
   roleAccess: Record<string, Record<string, boolean>>;
   updateRoleAccess: (role: string, moduleId: string, enabled: boolean) => void;
+  userAccess: Record<number, Record<string, boolean>>;
+  updateUserAccess: (staffId: number, moduleId: string, enabled: boolean) => void;
+  clearUserAccess: (staffId: number) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -539,6 +542,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [staffId, setStaffId] = useState<number | null>(null);
   const [mgrPerms, setMgrPerms] = useState<Record<string, MgrPermissions>>(INIT_MGR_PERMS);
   const [roleAccess, setRoleAccess] = useState<Record<string, Record<string, boolean>>>(defaultRoleAccess);
+  const [userAccess, setUserAccess] = useState<Record<number, Record<string, boolean>>>({});
   const [prices, setPrices] = useState<Prices>({ PMS: 830, AGO: 1050, DPK: 700, LPG: 1200, 'Lube Oil': 4500 });
   const [priceHistory, setPriceHistory] = useState<PriceChange[]>(INIT_PRICE_HISTORY);
   const [tanks, setTanks] = useState<Tank[]>(INIT_TANKS);
@@ -996,7 +1000,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
-  // Base nav from NAVDEF / mgrPerms, then filtered by admin-configured roleAccess
+  const updateUserAccess = useCallback((uid: number, moduleId: string, enabled: boolean) => {
+    setUserAccess(prev => ({
+      ...prev,
+      [uid]: { ...(prev[uid] ?? {}), [moduleId]: enabled },
+    }));
+  }, []);
+
+  const clearUserAccess = useCallback((uid: number) => {
+    setUserAccess(prev => {
+      const next = { ...prev };
+      delete next[uid];
+      return next;
+    });
+  }, []);
+
+  // Base nav from NAVDEF / mgrPerms, then filtered by role access, then by per-user overrides
   const baseNav: NavItem[] = role === 'mgr'
     ? MGR_NAV_ALL.filter(item => {
         const key = MGR_NAV_PERM[item.id];
@@ -1005,12 +1024,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     : (NAVDEF[role ?? 'att'] ?? []);
   const navItems: NavItem[] = role === 'admin'
     ? baseNav
-    : baseNav.filter(item => (roleAccess[role ?? 'att'] ?? {})[item.id] !== false);
+    : baseNav.filter(item => {
+        // Per-user override takes priority over role default
+        if (staffId !== null) {
+          const userLevel = (userAccess[staffId] ?? {})[item.id];
+          if (userLevel !== undefined) return userLevel;
+        }
+        return (roleAccess[role ?? 'att'] ?? {})[item.id] !== false;
+      });
 
   return (
     <AppContext.Provider value={{
       role, userName, branchId, staffId, navItems, mgrPerms,
-      login, logout, updateMgrPerms, roleAccess, updateRoleAccess,
+      login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
