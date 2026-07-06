@@ -31,13 +31,6 @@ const FILE_TYPE_ICONS: Record<string, { icon: string; color: string }> = {
   mp4:   { icon: 'videocam',      color: '#E67E22' },
   other: { icon: 'attach',        color: '#7F8C8D' },
 };
-const MOCK_FILE_NAMES: Record<string, string[]> = {
-  pdf:   ['Agreement_Signed.pdf', 'Policy_Update.pdf', 'Compliance_Cert.pdf', 'Annual_Report.pdf'],
-  docx:  ['Employee_Contract.docx', 'Memo_Board.docx', 'HR_Policy.docx'],
-  xlsx:  ['Budget_Q3.xlsx', 'Payroll_June.xlsx', 'Asset_Register.xlsx'],
-  img:   ['Site_Photo.jpg', 'Board_Certificate.png', 'Signage_Approval.jpg'],
-  other: ['Document_Scan.zip', 'Archive_2024.tar'],
-};
 const FILE_SIZES = ['0.4 MB', '0.8 MB', '1.1 MB', '1.6 MB', '2.2 MB', '3.4 MB'];
 
 // ── HR Staff helpers ───────────────────────────────────────────────────────
@@ -89,7 +82,7 @@ const DEPARTMENTS = ['Operations', 'Finance', 'Marketing', 'Administration', 'Ma
 type Tab = 'compliance' | 'files' | 'staff';
 
 export default function CorporateScreen() {
-  const { role, docs, companyFiles, addCompanyFile, hrEmployees, addHREmployee, updateHRDocStatus, removeHREmployee } = useApp();
+  const { role, userName, docs, companyFiles, addCompanyFile, hrEmployees, addHREmployee, updateHRDocStatus, removeHREmployee } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
   const canEdit   = role === 'csm' || role === 'admin';
@@ -98,8 +91,9 @@ export default function CorporateScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('staff');
 
   // File upload state
-  const [selCat,  setSelCat]  = useState(FILE_CATS[0]);
-  const [selType, setSelType] = useState<typeof FILE_TYPES[number]>('pdf');
+  const [selCat,    setSelCat]    = useState(FILE_CATS[0]);
+  const [selType,   setSelType]   = useState<typeof FILE_TYPES[number]>('pdf');
+  const [uploadName, setUploadName] = useState('');
 
   // Staff state
   const [search,      setSearch]      = useState('');
@@ -125,10 +119,13 @@ export default function CorporateScreen() {
   const pendingDocs = hrEmployees.reduce((n, e) => n + e.docs.filter(d => d.status === 'pending').length, 0);
 
   function handleUpload() {
-    const names = MOCK_FILE_NAMES[selType] || MOCK_FILE_NAMES.other;
-    const name  = names[Math.floor(Math.random() * names.length)];
-    const size  = FILE_SIZES[Math.floor(Math.random() * FILE_SIZES.length)];
-    addCompanyFile({ name, cat: selCat, by: role === 'csm' ? 'Ngozi Eze' : 'System Admin', size, fileType: selType });
+    const trimmed = uploadName.trim();
+    if (!trimmed) { Alert.alert('Required', 'Please enter a file name.'); return; }
+    const ext = selType === 'img' ? 'jpg' : selType === 'other' ? 'zip' : selType;
+    const name = trimmed.includes('.') ? trimmed : `${trimmed}.${ext}`;
+    const size = FILE_SIZES[Math.floor(Math.random() * FILE_SIZES.length)];
+    addCompanyFile({ name, cat: selCat, by: userName || 'System Admin', size, fileType: selType });
+    setUploadName('');
     Alert.alert('Uploaded', `${name} uploaded successfully to ${selCat}.`);
   }
 
@@ -465,6 +462,13 @@ export default function CorporateScreen() {
                   );
                 })}
               </View>
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>File Name</Text>
+              <TextInput
+                style={[styles.nameInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+                value={uploadName} onChangeText={setUploadName}
+                placeholder="e.g. Board_Resolution_July2026"
+                placeholderTextColor={colors.textSubtle}
+              />
               <TouchableOpacity onPress={handleUpload} style={[styles.uploadBtn, { backgroundColor: roleColor }]}>
                 <Ionicons name="cloud-upload" size={16} color="#fff" />
                 <Text style={styles.uploadBtnText}>Upload File</Text>
@@ -590,6 +594,7 @@ const styles = StyleSheet.create({
   typeRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   typeBtn:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
   typeBtnText:  { fontSize: 11, fontWeight: '700' },
+  nameInput:    { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, marginBottom: 12 },
   uploadBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10 },
   uploadBtnText:{ color: '#fff', fontSize: 14, fontWeight: '700' },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
