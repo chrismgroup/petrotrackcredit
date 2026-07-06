@@ -85,11 +85,11 @@ export const ROLE_COLORS: Record<string, string> = {
 };
 
 export const TASK_CAN_ASSIGN: Record<string, Role[]> = {
-  ceo:   ['md'],
-  md:    ['mktg', 'csm', 'acc', 'mgr', 'att'],
-  csm:   ['mgr'],
-  acc:   ['mgr'],
-  mgr:   ['att'],
+  ceo:   ['md', 'mktg', 'csm', 'acc', 'mgr', 'att'],
+  md:    [],
+  csm:   [],
+  acc:   [],
+  mgr:   [],
   mktg:  [],
   att:   [],
   admin: [],
