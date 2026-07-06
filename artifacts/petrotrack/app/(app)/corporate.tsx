@@ -42,10 +42,18 @@ const FILE_SIZES = ['0.4 MB', '0.8 MB', '1.1 MB', '1.6 MB', '2.2 MB', '3.4 MB'];
 
 // ── HR Staff helpers ───────────────────────────────────────────────────────
 const HR_DOC_META: Record<HRDocType, { label: string; icon: string; color: string }> = {
-  contract:  { label: 'Employment Contract', icon: 'document-text', color: '#2980B9' },
-  promotion: { label: 'Promotion Letter',    icon: 'ribbon',         color: '#8E44AD' },
-  guarantor: { label: 'Guarantor Form',      icon: 'people',         color: '#E67E22' },
-  biodata:   { label: 'Bio-Data Form',       icon: 'person',         color: '#27AE60' },
+  biodata:        { label: 'Bio-Data Form',        icon: 'person',           color: '#27AE60' },
+  contract:       { label: 'Appointment Letter',   icon: 'document-text',    color: '#2980B9' },
+  guarantor:      { label: 'Guarantor Form',       icon: 'people',           color: '#E67E22' },
+  nin:            { label: 'NIN / National ID',    icon: 'card',             color: '#8E44AD' },
+  passport_photo: { label: 'Passport Photo',       icon: 'image',            color: '#D85A30' },
+  certificate:    { label: 'Academic Certificate', icon: 'school',           color: '#0F6E56' },
+  nysc:           { label: 'NYSC Certificate',     icon: 'ribbon',           color: '#185FA5' },
+  medical:        { label: 'Medical Certificate',  icon: 'medkit',           color: '#E74C3C' },
+  reference:      { label: 'Reference Letter',     icon: 'mail',             color: '#4527a0' },
+  bank_details:   { label: 'Bank Details',         icon: 'wallet',           color: '#BA7517' },
+  tin:            { label: 'Tax ID (TIN)',          icon: 'receipt',          color: '#633806' },
+  pension:        { label: 'Pension Form (RSA)',    icon: 'shield-checkmark', color: '#1a6e3c' },
 };
 const STATUS_META: Record<HRDocStatus, { label: string; color: string; bg: string }> = {
   approved:  { label: 'Approved',   color: '#27500A', bg: '#EAF3DE' },
@@ -132,14 +140,13 @@ export default function CorporateScreen() {
       role: newRole.trim(),
       dept: newDept,
       phone: newPhone.trim() || '—',
+      email: '—', address: '—', dob: '—', nextOfKin: '—',
       joinDate: today,
       status: 'active',
-      docs: [
-        { type: 'contract',  status: 'pending' },
-        { type: 'promotion', status: 'n/a'     },
-        { type: 'guarantor', status: 'pending' },
-        { type: 'biodata',   status: 'pending' },
-      ],
+      docs: [],
+      uploads: [],
+      onboarding: { status: 'draft' },
+      letters: [],
     });
     setNewName(''); setNewRole(''); setNewPhone(''); setNewDept(DEPARTMENTS[0]);
     setShowAddForm(false);
