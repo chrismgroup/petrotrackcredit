@@ -43,16 +43,23 @@ const ROLE_LABELS: Record<string, string> = {
 const BLANK_TANK  = { name: '', cap: '', dip: '', prod: 'PMS' as Tank['prod'] };
 const BLANK_LPG   = { name: '', cap: '' };
 const BLANK_PUMP  = { name: '', prod: 'PMS' as Pump['prod'], active: true };
-const BLANK_STAFF = { name: '', email: '', role: 'att' as typeof ROLE_OPTS[number], sal: '' };
+const BLANK_STAFF = { name: '', email: '', role: 'att' as typeof ROLE_OPTS[number], sal: '', username: '', password: '', branchId: '' };
+
+function autoUsername(name: string): string {
+  const parts = name.trim().toLowerCase().split(/\s+/);
+  if (parts.length < 2) return parts[0] ?? '';
+  return parts[0] + '.' + parts[parts.length - 1];
+}
 
 export default function SystemSettingsScreen() {
   const {
     role, tanks, lpgTanks, pumps, staff, branches, mgrPerms, updateMgrPerms,
     roleAccess, updateRoleAccess,
     userAccess, updateUserAccess, clearUserAccess,
-    addTank, addLpgTank, addPump, addStaff,
+    addTank, addLpgTank, addPump, addStaff, addActiveUserAccount,
     updateTank, updateLpgTank, updatePump, updateStaff,
     deleteTank, deleteLpgTank, deletePump, deleteStaff,
+    userAccounts,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -167,13 +174,35 @@ export default function SystemSettingsScreen() {
   }
 
   function createStaff() {
-    if (!newStaff.name.trim())  { Alert.alert('Error', 'Full name is required.'); return; }
-    if (!newStaff.email.trim()) { Alert.alert('Error', 'Email address is required.'); return; }
+    const name = newStaff.name.trim();
+    const email = newStaff.email.trim();
+    const username = newStaff.username.trim();
+    const password = newStaff.password.trim();
+    if (!name)     { Alert.alert('Error', 'Full name is required.'); return; }
+    if (!email)    { Alert.alert('Error', 'Email address is required.'); return; }
+    if (!username) { Alert.alert('Error', 'Username is required.'); return; }
+    if (!password) { Alert.alert('Error', 'Password is required.'); return; }
+    if (password.length < 6) { Alert.alert('Error', 'Password must be at least 6 characters.'); return; }
+    if (userAccounts.some(a => a.username === username)) {
+      Alert.alert('Error', `Username "${username}" is already taken. Please choose another.`); return;
+    }
+    if (newStaff.role === 'mgr' && !newStaff.branchId) {
+      Alert.alert('Error', 'Please select a branch for this Station Manager.'); return;
+    }
     const sal = parseInt(newStaff.sal) || 0;
-    addStaff({ name: newStaff.name.trim(), email: newStaff.email.trim(), role: newStaff.role, sal, st: 'Active' });
+    addStaff({ name, email, role: newStaff.role, sal, st: 'Active' });
+    addActiveUserAccount({
+      empName: name,
+      username,
+      password,
+      role: newStaff.role,
+      branchId: newStaff.role === 'mgr' ? newStaff.branchId : undefined,
+      jobTitle: ROLE_LABELS[newStaff.role],
+      createdBy: 'System Admin',
+    });
     setNewStaff(BLANK_STAFF);
     setShowNewStaff(false);
-    Alert.alert('User Created', `${newStaff.name.trim()} has been added as ${ROLE_LABELS[newStaff.role]}.`);
+    Alert.alert('User Created', `${name} has been added as ${ROLE_LABELS[newStaff.role]}.\n\nLogin credentials:\nUsername: ${username}\nPassword: ${password}`);
   }
 
   /* ── helpers ── */
@@ -599,10 +628,31 @@ export default function SystemSettingsScreen() {
                       <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
-                  <FieldInput label="Full Name *" value={newStaff.name} onChangeText={v => setNewStaff(n => ({ ...n, name: v }))} placeholder="e.g. Chukwuma Adeyemi" autoCapitalize="words" />
+                  <FieldInput label="Full Name *" value={newStaff.name} onChangeText={v => setNewStaff(n => ({ ...n, name: v, username: autoUsername(v) }))} placeholder="e.g. Chukwuma Adeyemi" autoCapitalize="words" />
                   <FieldInput label="Email Address *" value={newStaff.email} onChangeText={v => setNewStaff(n => ({ ...n, email: v }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
                   <FieldInput label="Monthly Salary (₦)" value={newStaff.sal} onChangeText={v => setNewStaff(n => ({ ...n, sal: v }))} keyboardType="numeric" placeholder="150000" />
-                  <RolePicker value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v }))} />
+                  <RolePicker value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v, branchId: '' }))} />
+                  {newStaff.role === 'mgr' && (
+                    <View style={{ marginBottom: 10 }}>
+                      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
+                      {branches.length === 0
+                        ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
+                        : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                            {branches.map(b => (
+                              <TouchableOpacity key={b.id} onPress={() => setNewStaff(n => ({ ...n, branchId: b.id }))}
+                                style={[styles.roleChip, { borderColor: newStaff.branchId === b.id ? roleColor : colors.border, backgroundColor: newStaff.branchId === b.id ? roleColor + '18' : colors.surface }]}>
+                                <Text style={[styles.roleChipText, { color: newStaff.branchId === b.id ? roleColor : colors.textMuted }]}>{b.name}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                      }
+                    </View>
+                  )}
+                  <View style={[{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginVertical: 10, paddingTop: 10 }]}>
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 6 }]}>Login Credentials</Text>
+                    <FieldInput label="Username *" value={newStaff.username} onChangeText={v => setNewStaff(n => ({ ...n, username: v.toLowerCase().replace(/\s/g, '.') }))} autoCapitalize="none" placeholder="firstname.lastname" />
+                    <FieldInput label="Password *" value={newStaff.password} onChangeText={v => setNewStaff(n => ({ ...n, password: v }))} autoCapitalize="none" placeholder="Min. 6 characters" />
+                  </View>
                   <TouchableOpacity style={[styles.createBtn, { backgroundColor: roleColor }]} onPress={createStaff} activeOpacity={0.85}>
                     <Ionicons name="checkmark-circle" size={16} color="#fff" />
                     <Text style={styles.createBtnText}>Create User</Text>
