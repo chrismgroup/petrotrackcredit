@@ -318,6 +318,7 @@ interface AppContextType {
   userAccounts: UserAccount[];
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
   addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => void;
+  updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => void;
   approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => void;
   suspendUserAccount: (id: number) => void;
   reactivateUserAccount: (id: number) => void;
@@ -616,6 +617,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
   }, []);
 
+  const updateUserAccount = useCallback((id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => {
+    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+    setAudit(a => [{ id: genId(), action: 'Account updated', user: by, detail: `Account #${id} credentials/role updated`, ts: nowTs() }, ...a]);
+  }, []);
+
   const approveUserAccount = useCallback((id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
     setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, role, username, password, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId } : a));
     setAudit(a => [{ id: genId(), action: 'Account approved', user: by, detail: `Account for ${username} approved as ${role}`, ts: nowTs() }, ...a]);
@@ -882,7 +888,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, deleteDepartment,
-      userAccounts, addUserAccount, addActiveUserAccount, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
+      userAccounts, addUserAccount, addActiveUserAccount, updateUserAccount, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,
       addHREmployee, updateHRDocStatus, removeHREmployee,
