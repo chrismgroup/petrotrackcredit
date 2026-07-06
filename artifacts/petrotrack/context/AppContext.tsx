@@ -66,12 +66,15 @@ export interface KPI { id: number; title: string; target: string; unit: string; 
 export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video'; name: string; dt: string; by: string; }
 export interface ShiftReport { id: number; dt: string; by: string; byName: string; entries: number; totalSales: number; totalPOS: number; expectedCash: number; actualCash: number; variance: number; status: 'submitted' | 'reviewed' | 'flagged'; note: string; }
 
-export type HRDocType   = 'contract' | 'promotion' | 'guarantor' | 'biodata';
+export type HRDocType = 'biodata' | 'contract' | 'guarantor' | 'nin' | 'passport_photo' | 'certificate' | 'nysc' | 'medical' | 'reference' | 'bank_details' | 'tin' | 'pension';
 export type HRDocStatus = 'pending' | 'submitted' | 'approved' | 'n/a';
-export interface HRDoc { type: HRDocType; status: HRDocStatus; date?: string; note?: string; }
-export interface HREmployeeDoc { id: number; name: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'img' | 'other'; cat: string; uploadedBy: string; dt: string; approved: boolean; approvedBy?: string; approvedAt?: string; }
+export interface HRDoc { type: HRDocType; status: HRDocStatus; date?: string; note?: string; fileName?: string; }
+export interface HREmployeeDoc { id: number; name: string; fileType: string; cat: string; uploadedBy: string; dt: string; approved: boolean; approvedBy?: string; approvedAt?: string; uri?: string; mimeType?: string; size?: number; }
+export type OnboardingStatus = 'draft' | 'forwarded' | 'md_approved' | 'ceo_approved';
+export interface OnboardingApproval { status: OnboardingStatus; forwardedAt?: string; forwardedBy?: string; mdApprovedBy?: string; mdApprovedAt?: string; ceoApprovedBy?: string; ceoApprovedAt?: string; }
+export interface GeneratedLetter { id: number; type: 'appointment' | 'promotion'; title: string; content: string; generatedAt: string; generatedBy: string; newRole?: string; }
 export interface HRRecommendation { id: number; empId: number; empName: string; type: 'suspend' | 'deactivate' | 'delete'; reason: string; by: string; dt: string; status: 'pending' | 'approved' | 'rejected'; resolvedBy?: string; resolvedAt?: string; }
-export interface HREmployee { id: number; empId: string; serial: number; name: string; role: string; dept: string; phone: string; email: string; address: string; dob: string; joinDate: string; nextOfKin: string; status: 'active' | 'suspended' | 'inactive'; docs: HRDoc[]; uploads: HREmployeeDoc[]; }
+export interface HREmployee { id: number; empId: string; serial: number; name: string; role: string; dept: string; phone: string; email: string; address: string; dob: string; joinDate: string; nextOfKin: string; status: 'active' | 'suspended' | 'inactive'; docs: HRDoc[]; uploads: HREmployeeDoc[]; onboarding: OnboardingApproval; letters: GeneratedLetter[]; }
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrator', ceo: 'Chief Executive Officer', md: 'Managing Director',
@@ -118,6 +121,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
   ceo: [
     { id: 'home', icon: 'home', label: 'Home' },
     { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
+    { id: 'hr', icon: 'people-circle', label: 'HR' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'acct', icon: 'calculator', label: 'Accounts' },
     { id: 'mktg', icon: 'megaphone', label: 'Mktg' },
@@ -126,6 +130,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'ops', icon: 'construct', label: 'Ops' },
     { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
     { id: 'branches', icon: 'business', label: 'Branches' },
+    { id: 'hr', icon: 'people-circle', label: 'HR' },
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'exprpt', icon: 'analytics', label: 'Reports' },
     { id: 'sales', icon: 'bar-chart', label: 'Sales' },
@@ -400,21 +405,23 @@ const INIT_USER_ACCOUNTS: UserAccount[] = [
   { id: 9,  empId: 'PTNG-0001', empName: 'Emeka Okafor',     username: 'emeka.okafor',  password: 'Att@2024',  role: 'att',   status: 'active', createdBy: 'System Admin', createdAt: '2022-03-15T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2022-03-15T00:00:00Z', jobTitle: 'Pump Attendant',         dept: 'Operations'    },
 ];
 
-function mkDocs(contract: HRDocStatus, promotion: HRDocStatus, guarantor: HRDocStatus, biodata: HRDocStatus, date?: string): HRDoc[] {
-  return [
-    { type: 'contract',  status: contract,   date },
-    { type: 'promotion', status: promotion,  date: promotion !== 'n/a' ? date : undefined },
-    { type: 'guarantor', status: guarantor,  date },
-    { type: 'biodata',   status: biodata,    date },
-  ];
+const ALL_HR_DOC_TYPES: HRDocType[] = ['biodata', 'contract', 'guarantor', 'nin', 'passport_photo', 'certificate', 'nysc', 'medical', 'reference', 'bank_details', 'tin', 'pension'];
+function mkDocs(statuses: Partial<Record<HRDocType, HRDocStatus>> = {}, date?: string): HRDoc[] {
+  return ALL_HR_DOC_TYPES.map(type => ({
+    type,
+    status: statuses[type] ?? 'pending',
+    date: (statuses[type] && statuses[type] !== 'n/a' && statuses[type] !== 'pending') ? date : undefined,
+  }));
 }
+const FULLY_APPROVED = { biodata: 'approved', contract: 'approved', guarantor: 'approved', nin: 'approved', passport_photo: 'approved', certificate: 'approved', nysc: 'approved', medical: 'approved', reference: 'approved', bank_details: 'approved', tin: 'approved', pension: 'approved' } as Partial<Record<HRDocType, HRDocStatus>>;
+const CEO_ONBOARDED: OnboardingApproval = { status: 'ceo_approved', forwardedBy: 'System Admin', forwardedAt: '2020-01-01T00:00:00Z', mdApprovedBy: 'System Admin', mdApprovedAt: '2020-01-01T00:00:00Z', ceoApprovedBy: 'System Admin', ceoApprovedAt: '2020-01-01T00:00:00Z' };
 const INIT_HR_EMPLOYEES: HREmployee[] = [
-  { id: 10001, empId: 'PTNG-0001', serial: 1, name: 'Emeka Okafor',     role: 'Pump Attendant',     dept: 'Operations',     phone: '+234 803 100 0001', email: 'emeka.okafor@petrotrack.ng',     address: '14 Zaria Rd, Kano',       dob: '1995-06-12', joinDate: '2022-03-15', nextOfKin: 'Chioma Okafor',   status: 'active',    docs: mkDocs('approved', 'n/a',      'approved', 'approved', '2022-03-15'), uploads: [] },
-  { id: 10002, empId: 'PTNG-0002', serial: 2, name: 'Chukwuma Adeyemi', role: 'Station Manager',    dept: 'Operations',     phone: '+234 803 100 0002', email: 'c.adeyemi@petrotrack.ng',        address: '7 Broad St, Ibadan',      dob: '1988-11-04', joinDate: '2021-07-01', nextOfKin: 'Bola Adeyemi',    status: 'active',    docs: mkDocs('approved', 'approved', 'approved', 'approved', '2021-07-01'), uploads: [] },
-  { id: 10003, empId: 'PTNG-0003', serial: 3, name: 'Grace Adeyemi',    role: 'Accountant',         dept: 'Finance',        phone: '+234 803 100 0003', email: 'grace.adeyemi@petrotrack.ng',    address: '33 Marina Ave, Lagos',    dob: '1992-03-21', joinDate: '2022-09-05', nextOfKin: 'Tunde Adeyemi',   status: 'active',    docs: mkDocs('approved', 'n/a',      'submitted','approved', '2022-09-05'), uploads: [] },
-  { id: 10004, empId: 'PTNG-0004', serial: 4, name: 'Funmi Adesanya',   role: 'Marketing Manager',  dept: 'Marketing',      phone: '+234 803 100 0004', email: 'funmi.adesanya@petrotrack.ng',   address: '2 Adeola Odeku, VI',      dob: '1990-07-15', joinDate: '2023-02-20', nextOfKin: 'Seun Adesanya',   status: 'active',    docs: mkDocs('approved', 'submitted','approved', 'pending',  '2023-02-20'), uploads: [] },
-  { id: 10005, empId: 'PTNG-0005', serial: 5, name: 'Ngozi Eze',        role: 'Corp. Services Mgr', dept: 'Administration', phone: '+234 803 100 0005', email: 'ngozi.eze@petrotrack.ng',        address: '9 Asokoro, Abuja',        dob: '1985-01-30', joinDate: '2021-01-10', nextOfKin: 'Chidi Eze',       status: 'active',    docs: mkDocs('approved', 'approved', 'approved', 'approved', '2021-01-10'), uploads: [] },
-  { id: 10006, empId: 'PTNG-0006', serial: 6, name: 'Adaeze Obi',       role: 'Managing Director',  dept: 'Management',     phone: '+234 803 100 0006', email: 'adaeze.obi@petrotrack.ng',       address: '5 Maitama Close, Abuja',  dob: '1982-09-08', joinDate: '2020-06-01', nextOfKin: 'Emeka Obi',       status: 'active',    docs: mkDocs('approved', 'approved', 'approved', 'approved', '2020-06-01'), uploads: [] },
+  { id: 10001, empId: 'PTNG-0001', serial: 1, name: 'Emeka Okafor',     role: 'Pump Attendant',     dept: 'Operations',     phone: '+234 803 100 0001', email: 'emeka.okafor@petrotrack.ng',     address: '14 Zaria Rd, Kano',       dob: '1995-06-12', joinDate: '2022-03-15', nextOfKin: 'Chioma Okafor',   status: 'active',    docs: mkDocs(FULLY_APPROVED, '2022-03-15'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
+  { id: 10002, empId: 'PTNG-0002', serial: 2, name: 'Chukwuma Adeyemi', role: 'Station Manager',    dept: 'Operations',     phone: '+234 803 100 0002', email: 'c.adeyemi@petrotrack.ng',        address: '7 Broad St, Ibadan',      dob: '1988-11-04', joinDate: '2021-07-01', nextOfKin: 'Bola Adeyemi',    status: 'active',    docs: mkDocs(FULLY_APPROVED, '2021-07-01'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
+  { id: 10003, empId: 'PTNG-0003', serial: 3, name: 'Grace Adeyemi',    role: 'Accountant',         dept: 'Finance',        phone: '+234 803 100 0003', email: 'grace.adeyemi@petrotrack.ng',    address: '33 Marina Ave, Lagos',    dob: '1992-03-21', joinDate: '2022-09-05', nextOfKin: 'Tunde Adeyemi',   status: 'active',    docs: mkDocs(FULLY_APPROVED, '2022-09-05'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
+  { id: 10004, empId: 'PTNG-0004', serial: 4, name: 'Funmi Adesanya',   role: 'Marketing Manager',  dept: 'Marketing',      phone: '+234 803 100 0004', email: 'funmi.adesanya@petrotrack.ng',   address: '2 Adeola Odeku, VI',      dob: '1990-07-15', joinDate: '2023-02-20', nextOfKin: 'Seun Adesanya',   status: 'active',    docs: mkDocs(FULLY_APPROVED, '2023-02-20'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
+  { id: 10005, empId: 'PTNG-0005', serial: 5, name: 'Ngozi Eze',        role: 'Corp. Services Mgr', dept: 'Administration', phone: '+234 803 100 0005', email: 'ngozi.eze@petrotrack.ng',        address: '9 Asokoro, Abuja',        dob: '1985-01-30', joinDate: '2021-01-10', nextOfKin: 'Chidi Eze',       status: 'active',    docs: mkDocs(FULLY_APPROVED, '2021-01-10'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
+  { id: 10006, empId: 'PTNG-0006', serial: 6, name: 'Adaeze Obi',       role: 'Managing Director',  dept: 'Management',     phone: '+234 803 100 0006', email: 'adaeze.obi@petrotrack.ng',       address: '5 Maitama Close, Abuja',  dob: '1982-09-08', joinDate: '2020-06-01', nextOfKin: 'Emeka Obi',       status: 'active',    docs: mkDocs(FULLY_APPROVED, '2020-06-01'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
 ];
 const INIT_HR_RECOMMENDATIONS: HRRecommendation[] = [];
 const INIT_HR_HANDBOOKS: HREmployeeDoc[] = [
@@ -493,12 +500,16 @@ interface AppContextType {
   addHREmployee: (e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => void;
   updateHRDocStatus: (empId: number, docType: HRDocType, status: HRDocStatus, note?: string) => void;
   removeHREmployee: (id: number) => void;
+  uploadHRDocFile: (empId: number, docType: HRDocType, fileName: string, uri?: string, mimeType?: string, size?: number) => void;
   addHRUpload: (empId: number, doc: Omit<HREmployeeDoc, 'id' | 'dt' | 'approved'>) => void;
   approveHRUpload: (empId: number, docId: number, by: string) => void;
   addHRRecommendation: (rec: Omit<HRRecommendation, 'id' | 'dt' | 'status'>) => void;
   resolveHRRecommendation: (id: number, action: 'approved' | 'rejected', by: string) => void;
   addHRHandbook: (doc: Omit<HREmployeeDoc, 'id' | 'dt' | 'approved'>) => void;
   approveHRHandbook: (docId: number, by: string) => void;
+  forwardOnboardingForApproval: (empId: number, by: string) => void;
+  approveOnboarding: (empId: number, stage: 'md' | 'ceo', by: string) => void;
+  addGeneratedLetter: (empId: number, letter: Omit<GeneratedLetter, 'id' | 'generatedAt'>) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -806,7 +817,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setHrEmployees(prev => {
       const serial = prev.length + 1;
       const empId  = 'PTNG-' + String(serial).padStart(4, '0');
-      return [...prev, { ...e, id: genId(), empId, serial }];
+      return [...prev, { ...e, id: genId(), empId, serial, onboarding: e.onboarding ?? { status: 'draft' }, letters: e.letters ?? [] }];
     });
   }, []);
 
@@ -867,6 +878,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setHrHandbooks(prev => prev.map(d => d.id === docId ? { ...d, approved: true, approvedBy: by, approvedAt: nowTs() } : d));
   }, []);
 
+  const uploadHRDocFile = useCallback((empId: number, docType: HRDocType, fileName: string, uri?: string, mimeType?: string, size?: number) => {
+    const ext = fileName.split('.').pop()?.toLowerCase() ?? 'other';
+    setHrEmployees(prev => prev.map(emp => {
+      if (emp.id !== empId) return emp;
+      return {
+        ...emp,
+        docs: emp.docs.map(d => d.type === docType ? { ...d, status: 'submitted' as HRDocStatus, date: nowTs(), fileName } : d),
+        uploads: [...(emp.uploads ?? []), { id: genId(), name: fileName, fileType: ext, cat: docType, uploadedBy: userName, dt: nowTs(), approved: false, uri, mimeType, size }],
+      };
+    }));
+    setAudit(a => [{ id: genId(), action: 'HR document uploaded', user: userName, detail: `${docType}: ${fileName}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const forwardOnboardingForApproval = useCallback((empId: number, by: string) => {
+    setHrEmployees(prev => prev.map(emp =>
+      emp.id === empId
+        ? { ...emp, onboarding: { ...emp.onboarding, status: 'forwarded' as OnboardingStatus, forwardedAt: nowTs(), forwardedBy: by } }
+        : emp
+    ));
+    setAudit(a => [{ id: genId(), action: 'Onboarding forwarded for approval', user: by, detail: `Employee #${empId} forwarded to MD and CEO`, ts: nowTs() }, ...a]);
+  }, []);
+
+  const approveOnboarding = useCallback((empId: number, stage: 'md' | 'ceo', by: string) => {
+    setHrEmployees(prev => prev.map(emp => {
+      if (emp.id !== empId) return emp;
+      if (stage === 'md') return { ...emp, onboarding: { ...emp.onboarding, status: 'md_approved' as OnboardingStatus, mdApprovedBy: by, mdApprovedAt: nowTs() } };
+      return { ...emp, onboarding: { ...emp.onboarding, status: 'ceo_approved' as OnboardingStatus, ceoApprovedBy: by, ceoApprovedAt: nowTs() } };
+    }));
+    setAudit(a => [{ id: genId(), action: `Onboarding ${stage === 'md' ? 'MD' : 'CEO'} approved`, user: by, detail: `Employee #${empId}`, ts: nowTs() }, ...a]);
+  }, []);
+
+  const addGeneratedLetter = useCallback((empId: number, letter: Omit<GeneratedLetter, 'id' | 'generatedAt'>) => {
+    setHrEmployees(prev => prev.map(emp =>
+      emp.id === empId
+        ? { ...emp, letters: [...(emp.letters ?? []), { ...letter, id: genId(), generatedAt: nowTs() }] }
+        : emp
+    ));
+    setAudit(a => [{ id: genId(), action: 'Letter generated', user: userName, detail: `${letter.type} letter for employee #${empId}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const addSystemNotification = useCallback((from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => {
     if (!role) return;
     const key = chatKey(from, role);
@@ -912,9 +963,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,
       addHREmployee, updateHRDocStatus, removeHREmployee,
-      addHRUpload, approveHRUpload,
+      uploadHRDocFile, addHRUpload, approveHRUpload,
       addHRRecommendation, resolveHRRecommendation,
       addHRHandbook, approveHRHandbook,
+      forwardOnboardingForApproval, approveOnboarding, addGeneratedLetter,
     }}>
       {children}
     </AppContext.Provider>
