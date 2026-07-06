@@ -17,6 +17,12 @@ export interface SalesEntry { id: number; pump: string; by: string; L: number; p
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
+export interface PriceProposal {
+  id: number; prod: string; currentPrice: number; proposedPrice: number;
+  proposedBy: string; proposedAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string; reviewedAt?: string; note?: string;
+}
 export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; }
 export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
 export interface Budget { id: number; month: number; year: number; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
@@ -140,6 +146,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
     { id: 'acct', icon: 'calculator', label: 'Accounts' },
     { id: 'mktg', icon: 'megaphone', label: 'Mktg' },
+    { id: 'prices', icon: 'pricetag', label: 'Prices' },
   ],
   md: [
     { id: 'ops',      icon: 'construct',        label: 'Ops'      },
@@ -297,6 +304,10 @@ interface AppContextType {
   messages: Record<string, Message[]>; audit: AuditEntry[]; departments: Department[];
   companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[]; shiftReports: ShiftReport[];
   updatePrice: (prod: string, price: number) => void;
+  priceProposals: PriceProposal[];
+  addPriceProposal: (prod: string, proposedPrice: number) => void;
+  approvePriceProposal: (id: number) => void;
+  rejectPriceProposal: (id: number, note?: string) => void;
   addTank: (t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => void;
   addLpgTank: (t: Omit<LPGTank, 'id' | 'op' | 'rv' | 'sl'>) => void;
   addPump: (p: Omit<Pump, 'id'>) => void;
@@ -419,6 +430,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hrEmployees, setHrEmployees] = useState<HREmployee[]>(INIT_HR_EMPLOYEES);
   const [hrRecommendations, setHrRecommendations] = useState<HRRecommendation[]>(INIT_HR_RECOMMENDATIONS);
   const [hrHandbooks, setHrHandbooks] = useState<HREmployeeDoc[]>(INIT_HR_HANDBOOKS);
+  const [priceProposals, setPriceProposals] = useState<PriceProposal[]>([]);
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
   const [loaded, setLoaded] = useState(false);
@@ -429,7 +441,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'roleAccess', 'userAccess', 'expenses', 'budgets', 'sales', 'dips',
       'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'shiftReports', 'hrEmployees', 'hrHandbooks',
-      'hrRecommendations',
+      'hrRecommendations', 'priceProposals',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -464,6 +476,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.hrEmployees)       setHrEmployees(s.hrEmployees);
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks);
       if (s.hrRecommendations) setHrRecommendations(s.hrRecommendations);
+      if (s.priceProposals)    setPriceProposals(s.priceProposals);
       setLoaded(true);
     });
   }, []);
@@ -502,6 +515,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.hrEmployees)       setHrEmployees(s.hrEmployees as HREmployee[]);
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks as HREmployeeDoc[]);
       if (s.hrRecommendations) setHrRecommendations(s.hrRecommendations as HRRecommendation[]);
+      if (s.priceProposals)    setPriceProposals(s.priceProposals as PriceProposal[]);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
@@ -540,6 +554,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('hrEmployees',       hrEmployees); },       [hrEmployees, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrHandbooks',       hrHandbooks); },       [hrHandbooks, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrRecommendations', hrRecommendations); }, [hrRecommendations, loaded]);
+  useEffect(() => { if (loaded) syncSlice('priceProposals',    priceProposals); },    [priceProposals, loaded]);
 
   const login = useCallback((r: Role, n: string, sid?: number, bid?: string) => {
     setRole(r); setUserName(n);
@@ -557,12 +572,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Manager permissions updated', user: userName, detail: `Branch ${bid}: ${JSON.stringify(perms)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updatePrice = useCallback((prod: string, price: number) => {
+  const updatePrice = useCallback((prod: string, price: number, by?: string) => {
     const oldPrice = (prices as any)[prod] ?? 0;
+    const actor = by ?? userName;
     setPrices(p => ({ ...p, [prod]: price }));
-    setPriceHistory(h => [{ id: genId(), prod, oldPrice, newPrice: price, by: userName, dt: nowTs() }, ...h]);
-    setAudit(a => [{ id: genId(), action: 'Price update', user: userName, detail: `${prod}: ₦${oldPrice} → ₦${price}/L`, ts: nowTs() }, ...a]);
+    setPriceHistory(h => [{ id: genId(), prod, oldPrice, newPrice: price, by: actor, dt: nowTs() }, ...h]);
+    setAudit(a => [{ id: genId(), action: 'Price update', user: actor, detail: `${prod}: ₦${oldPrice} → ₦${price}/L`, ts: nowTs() }, ...a]);
   }, [userName, prices]);
+
+  const addPriceProposal = useCallback((prod: string, proposedPrice: number) => {
+    const currentPrice = (prices as any)[prod] ?? 0;
+    setPriceProposals(ps => [
+      { id: genId(), prod, currentPrice, proposedPrice, proposedBy: userName, proposedAt: nowTs(), status: 'pending' },
+      ...ps,
+    ]);
+    setAudit(a => [{ id: genId(), action: 'Price proposal submitted', user: userName, detail: `${prod}: ₦${currentPrice} → ₦${proposedPrice}/L (awaiting CEO approval)`, ts: nowTs() }, ...a]);
+  }, [userName, prices]);
+
+  const approvePriceProposal = useCallback((id: number) => {
+    setPriceProposals(ps => ps.map(p => {
+      if (p.id !== id || p.status !== 'pending') return p;
+      updatePrice(p.prod, p.proposedPrice, userName);
+      return { ...p, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() };
+    }));
+    setAudit(a => [{ id: genId(), action: 'Price proposal approved', user: userName, detail: `Proposal #${id} approved`, ts: nowTs() }, ...a]);
+  }, [userName, updatePrice]);
+
+  const rejectPriceProposal = useCallback((id: number, note?: string) => {
+    setPriceProposals(ps => ps.map(p =>
+      p.id === id && p.status === 'pending'
+        ? { ...p, status: 'rejected' as const, reviewedBy: userName, reviewedAt: nowTs(), note }
+        : p
+    ));
+    setAudit(a => [{ id: genId(), action: 'Price proposal rejected', user: userName, detail: `Proposal #${id}${note ? ': ' + note : ''}`, ts: nowTs() }, ...a]);
+  }, [userName]);
 
   const addTank = useCallback((t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => {
     const id = `T${Date.now()}`;
@@ -1039,6 +1082,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
+      priceProposals, addPriceProposal, approvePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, addBudget, forwardBudget, approveBudget, rejectBudget,
