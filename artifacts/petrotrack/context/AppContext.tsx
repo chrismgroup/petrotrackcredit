@@ -317,6 +317,7 @@ interface AppContextType {
   deleteDepartment: (id: string) => void;
   userAccounts: UserAccount[];
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
+  addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => void;
   approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => void;
   suspendUserAccount: (id: number) => void;
   reactivateUserAccount: (id: number) => void;
@@ -605,6 +606,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUserAccounts(prev => [...prev, { ...acc, id: genId(), createdAt: nowTs(), status: 'pending', username: '', password: '', role: null }]);
   }, []);
 
+  const addActiveUserAccount = useCallback((acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => {
+    setUserAccounts(prev => [...prev, {
+      id: genId(), createdAt: nowTs(), status: 'active',
+      approvedBy: acc.createdBy, approvedAt: nowTs(),
+      empName: acc.empName, username: acc.username, password: acc.password,
+      role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept, createdBy: acc.createdBy,
+    }]);
+    setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
+  }, []);
+
   const approveUserAccount = useCallback((id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
     setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, role, username, password, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId } : a));
     setAudit(a => [{ id: genId(), action: 'Account approved', user: by, detail: `Account for ${username} approved as ${role}`, ts: nowTs() }, ...a]);
@@ -871,7 +882,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, deleteDepartment,
-      userAccounts, addUserAccount, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
+      userAccounts, addUserAccount, addActiveUserAccount, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,
       addHREmployee, updateHRDocStatus, removeHREmployee,
