@@ -127,13 +127,14 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'mktg', icon: 'megaphone', label: 'Mktg' },
   ],
   md: [
-    { id: 'ops', icon: 'construct', label: 'Ops' },
-    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
-    { id: 'branches', icon: 'business', label: 'Branches' },
-    { id: 'hr', icon: 'people-circle', label: 'HR' },
-    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
-    { id: 'exprpt', icon: 'analytics', label: 'Reports' },
-    { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+    { id: 'ops',      icon: 'construct',        label: 'Ops'      },
+    { id: 'tasks',    icon: 'checkmark-circle', label: 'Tasks'    },
+    { id: 'branches', icon: 'business',         label: 'Branches' },
+    { id: 'hr',       icon: 'people-circle',    label: 'HR'       },
+    { id: 'budget',   icon: 'wallet',           label: 'Budget'   },
+    { id: 'msgs',     icon: 'chatbubbles',      label: 'Chat'     },
+    { id: 'exprpt',   icon: 'analytics',        label: 'Reports'  },
+    { id: 'sales',    icon: 'bar-chart',        label: 'Sales'    },
   ],
   mktg: [
     { id: 'mktg', icon: 'megaphone', label: 'Marketing' },
@@ -153,6 +154,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'tasks',  icon: 'checkmark-circle', label: 'Tasks'    },
     { id: 'recv',   icon: 'cube',             label: 'Receive'  },
     { id: 'exp',    icon: 'receipt',          label: 'Expenses' },
+    { id: 'budget', icon: 'wallet',           label: 'Budget'   },
     { id: 'msgs',   icon: 'chatbubbles',      label: 'Chat'     },
     { id: 'exprpt', icon: 'analytics',        label: 'Reports'  },
   ],
@@ -432,6 +434,10 @@ interface AppContextType {
   dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
   sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
+  addBudget: (b: Omit<Budget, 'id' | 'workflow'>) => void;
+  forwardBudget: (id: number, note: string) => void;
+  approveBudget: (id: number, note: string) => void;
+  rejectBudget: (id: number, note: string) => void;
   messages: Record<string, Message[]>; audit: AuditEntry[]; departments: Department[];
   companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[]; shiftReports: ShiftReport[];
   updatePrice: (prod: string, price: number) => void;
@@ -527,7 +533,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [branches, setBranches] = useState<Branch[]>(INIT_BRANCHES);
   const [docs] = useState<ComplianceDoc[]>(INIT_DOCS);
   const [expenses, setExpenses] = useState<Expense[]>(INIT_EXPENSES);
-  const [budgets] = useState<Budget[]>(INIT_BUDGETS);
+  const [budgets, setBudgets] = useState<Budget[]>(INIT_BUDGETS);
   const [messages, setMessages] = useState<Record<string, Message[]>>(INIT_MSGS);
   const [audit, setAudit] = useState<AuditEntry[]>(INIT_AUDIT);
   const [departments, setDepartments] = useState<Department[]>(INIT_DEPTS);
@@ -662,6 +668,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const rejectExpense = useCallback((id: number) => {
     setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'rejected' } : x));
   }, []);
+
+  const addBudget = useCallback((b: Omit<Budget, 'id' | 'workflow'>) => {
+    const newBudget: Budget = {
+      ...b, id: genId(),
+      workflow: [{ stage: 'Submitted', by: userName, role: b.by, dt: nowTs(), action: 'submit', note: `${b.items.length} items submitted for ${b.label}.` }],
+    };
+    setBudgets(prev => [...prev, newBudget]);
+    setAudit(a => [{ id: genId(), action: 'Budget submitted', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const forwardBudget = useCallback((id: number, note: string) => {
+    setBudgets(prev => prev.map(b => b.id !== id ? b : {
+      ...b, status: 'acc_forwarded',
+      workflow: [...b.workflow, { stage: 'Accountant reviewed', by: userName, role: 'acc', dt: nowTs(), action: 'forward', note }],
+    }));
+    setAudit(a => [{ id: genId(), action: 'Budget forwarded to MD', user: userName, detail: `Budget #${id}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const approveBudget = useCallback((id: number, note: string) => {
+    setBudgets(prev => prev.map(b => b.id !== id ? b : {
+      ...b, status: 'fully_approved',
+      workflow: [...b.workflow, { stage: 'MD approved', by: userName, role: 'md', dt: nowTs(), action: 'approve', note }],
+    }));
+    setAudit(a => [{ id: genId(), action: 'Budget approved by MD', user: userName, detail: `Budget #${id}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const rejectBudget = useCallback((id: number, note: string) => {
+    setBudgets(prev => prev.map(b => b.id !== id ? b : {
+      ...b, status: 'rejected',
+      workflow: [...b.workflow, { stage: 'Rejected', by: userName, role: 'md', dt: nowTs(), action: 'reject', note }],
+    }));
+    setAudit(a => [{ id: genId(), action: 'Budget rejected', user: userName, detail: `Budget #${id}`, ts: nowTs() }, ...a]);
+  }, [userName]);
 
   const addStaff = useCallback((s: Omit<Staff, 'id'>) => {
     setStaff(st => [...st, { ...s, id: genId() }]);
@@ -947,7 +986,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
-      addExpense, addDip, approveDip, rejectDip, addDelivery, addMaintenance, addSales,
+      addExpense, addBudget, forwardBudget, approveBudget, rejectBudget,
+      addDip, approveDip, rejectDip, addDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
