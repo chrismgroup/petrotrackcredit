@@ -209,11 +209,12 @@ export default function ReceivingScreen() {
 
       {/* Add Delivery Modal */}
       <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowForm(false)}>
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowForm(false)} />
           <ScrollView
             style={[styles.sheet, { backgroundColor: colors.background }]}
-            onStartShouldSetResponder={() => true}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="none"
           >
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Record Product Receipt</Text>
 
@@ -336,7 +337,7 @@ export default function ReceivingScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </ScreenLayout>
   );

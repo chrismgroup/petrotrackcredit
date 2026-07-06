@@ -408,8 +408,9 @@ export default function TasksScreen() {
 
       {/* ── Assign Task Modal ── */}
       <Modal visible={showTaskForm} transparent animationType="slide" onRequestClose={() => setShowTaskForm(false)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowTaskForm(false)}>
-          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true} keyboardShouldPersistTaps="handled">
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowTaskForm(false)} />
+          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Assign Task</Text>
 
             <TextInput
@@ -518,13 +519,14 @@ export default function TasksScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* ── Add KPI Modal (CEO only) ── */}
       <Modal visible={showKpiForm} transparent animationType="slide" onRequestClose={() => setShowKpiForm(false)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowKpiForm(false)}>
-          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true} keyboardShouldPersistTaps="handled">
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowKpiForm(false)} />
+          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Set KPI / Target</Text>
 
             {[
@@ -586,7 +588,7 @@ export default function TasksScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </ScreenLayout>
   );

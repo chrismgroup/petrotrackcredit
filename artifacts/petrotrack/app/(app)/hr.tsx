@@ -784,9 +784,10 @@ export default function HRScreen() {
 
       {/* ── Generate Letter Modal ── */}
       <Modal visible={!!letterModal} transparent animationType="slide" onRequestClose={() => setLetterModal(null)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setLetterModal(null)}>
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setLetterModal(null)} />
           <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
-            onStartShouldSetResponder={() => true} keyboardShouldPersistTaps="handled">
+            keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>
               {letterModal === 'appointment' ? 'Generate Appointment Letter' : 'Generate Promotion Letter'}
             </Text>
@@ -848,7 +849,7 @@ export default function HRScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* ── View Letter Modal ── */}

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Modal, Platform,
+  Alert, Modal,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
@@ -48,16 +48,9 @@ function DeptFormModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-          <View
-            style={[styles.modalCard, { backgroundColor: colors.background }]}
-            onStartShouldSetResponder={() => true}
-          >
+      <View style={styles.overlay}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+        <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>{title}</Text>
 
             <ScrollView
@@ -144,8 +137,7 @@ function DeptFormModal({
               </View>
             </ScrollView>
           </View>
-        </TouchableOpacity>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -373,9 +365,10 @@ export default function DepartmentsScreen() {
 
       {/* ── Post Staff Modal ── */}
       <Modal visible={!!postingDept} transparent animationType="slide" onRequestClose={() => setPostingDept(null)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setPostingDept(null)}>
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPostingDept(null)} />
           {postingDept && (
-            <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                 <View style={[styles.icon, { width: 36, height: 36, borderRadius: 10, backgroundColor: postingDept.col.fg + '22' }]}>
                   <Ionicons name={postingDept.icon as any} size={18} color={postingDept.col.fg} />
@@ -417,7 +410,7 @@ export default function DepartmentsScreen() {
               </ScrollView>
             </View>
           )}
-        </TouchableOpacity>
+        </View>
       </Modal>
     </ScreenLayout>
   );

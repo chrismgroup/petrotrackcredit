@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Modal, Platform,
+  Alert, Modal,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
@@ -224,14 +224,11 @@ export default function BranchesScreen() {
 
       {/* ── Add Branch Modal ── */}
       <Modal visible={showAddForm} transparent animationType="slide" onRequestClose={() => setShowAddForm(false)}>
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAddForm(false)} />
           <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Add Branch</Text>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none" showsVerticalScrollIndicator={false}>
               {BRANCH_FIELDS.map(f => (
                 <TextInput
                   key={f.key}
@@ -254,15 +251,12 @@ export default function BranchesScreen() {
               </View>
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* ── Edit Branch Modal ── */}
       <Modal visible={editingId !== null} transparent animationType="slide" onRequestClose={() => setEditingId(null)}>
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setEditingId(null)} />
           <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <View style={styles.modalHeader}>
@@ -271,7 +265,7 @@ export default function BranchesScreen() {
                 <Ionicons name="close" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none" showsVerticalScrollIndicator={false}>
               {BRANCH_FIELDS.map(f => (
                 <View key={f.key}>
                   <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
@@ -297,7 +291,7 @@ export default function BranchesScreen() {
               </View>
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </ScreenLayout>
   );

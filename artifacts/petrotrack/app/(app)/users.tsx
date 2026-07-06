@@ -338,8 +338,9 @@ export default function UsersScreen() {
 
       {/* ── APPROVE MODAL ── */}
       <Modal visible={!!approving} transparent animationType="slide" onRequestClose={() => setApproving(null)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setApproving(null)}>
-          <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setApproving(null)} />
+          <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <View style={styles.modalHeader}>
               <View style={[styles.modalIconBox, { backgroundColor: '#1a6e3c22' }]}>
                 <Ionicons name="person-add" size={20} color="#1a6e3c" />
@@ -436,14 +437,15 @@ export default function UsersScreen() {
               </View>
             </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* ── EDIT ACCOUNT MODAL (admin only) ── */}
       <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setEditing(null)}>
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setEditing(null)} />
           {editing && (
-            <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
               <View style={styles.modalHeader}>
                 <View style={[styles.avatar, { width: 46, height: 46, borderRadius: 23, backgroundColor: roleColor + '22' }]}>
                   <Text style={[styles.avatarText, { color: roleColor, fontSize: 16 }]}>{initials(editing.empName)}</Text>
@@ -572,14 +574,15 @@ export default function UsersScreen() {
               </ScrollView>
             </View>
           )}
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* ── VIEW ACCOUNT MODAL (non-admin) ── */}
       <Modal visible={!!viewAcc} transparent animationType="slide" onRequestClose={() => setViewAcc(null)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setViewAcc(null)}>
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setViewAcc(null)} />
           {viewAcc && (
-            <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
               <View style={styles.modalHeader}>
                 <View style={[styles.avatar, { width: 46, height: 46, borderRadius: 23, backgroundColor: (ROLE_COLORS[viewAcc.role || 'att'] || roleColor) + '22' }]}>
                   <Text style={[styles.avatarText, { color: ROLE_COLORS[viewAcc.role || 'att'] || roleColor, fontSize: 16 }]}>{initials(viewAcc.empName)}</Text>
@@ -609,7 +612,7 @@ export default function UsersScreen() {
               ))}
             </View>
           )}
-        </TouchableOpacity>
+        </View>
       </Modal>
     </ScreenLayout>
   );
