@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
+import { BLANK_COMPANY_INFO, DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'access' | 'system';
@@ -59,7 +59,7 @@ export default function SystemSettingsScreen() {
     addTank, addLpgTank, addPump, addStaff, addActiveUserAccount,
     updateTank, updateLpgTank, updatePump, updateStaff,
     deleteTank, deleteLpgTank, deletePump, deleteStaff,
-    userAccounts,
+    userAccounts, companyInfo, updateCompanyInfo,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -67,9 +67,10 @@ export default function SystemSettingsScreen() {
 
   const [activeTab, setActiveTab] = useState<Tab>('company');
   const [expandedUsers, setExpandedUsers] = useState<Record<number, boolean>>({});
-  const [toggles, setToggles] = useState<Record<string, boolean>>({
-    'Daily Dip Required': true, 'Auto-Audit Logging': true,
-  });
+
+  /* ── company draft (local edits before save) ── */
+  const [cDraft, setCDraft] = useState(companyInfo);
+  useEffect(() => { setCDraft(companyInfo); }, [companyInfo]);
 
   /* ── edit state (existing items) ── */
   const [tankEdits, setTankEdits] = useState<Record<string, { name: string; cap: string; dip: string; prod: Tank['prod'] }>>({});
@@ -306,51 +307,151 @@ export default function SystemSettingsScreen() {
           {activeTab === 'company' && (
             <>
               <View style={[styles.banner, { backgroundColor: '#0a2318' }]}>
-                <Ionicons name="settings" size={22} color="#4CAF50" />
-                <View>
-                  <Text style={styles.bannerTitle}>System Configuration</Text>
-                  <Text style={styles.bannerSub}>Administrator access only</Text>
+                <Ionicons name="business" size={22} color="#4CAF50" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bannerTitle}>
+                    {companyInfo.name ? companyInfo.name : 'Company Profile'}
+                  </Text>
+                  <Text style={styles.bannerSub}>
+                    {companyInfo.rcNumber ? `RC: ${companyInfo.rcNumber}` : 'Configure your company details below'}
+                  </Text>
                 </View>
               </View>
-              {[
-                { title: 'Company Information', icon: 'business', items: [
-                  { label: 'Company Name', v: '' }, { label: 'RC Number', v: '' },
-                  { label: 'Tax ID (TIN)', v: '' }, { label: 'Head Office Address', v: '' },
-                ]},
-                { title: 'Financial Settings', icon: 'calculator', items: [
-                  { label: 'VAT Rate (%)', v: '' }, { label: 'WHT Rate (%)', v: '' },
-                  { label: 'Currency', v: '' }, { label: 'Fiscal Year Start', v: '' },
-                ]},
-                { title: 'Operations Settings', icon: 'construct', items: [
-                  { label: 'Low Stock Alert (%)', v: '' }, { label: 'Reorder Level (%)', v: '' },
-                ]},
-              ].map(section => (
-                <View key={section.title} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={styles.cardHeader}>
-                    <View style={[styles.iconBox, { backgroundColor: roleColor + '18' }]}>
-                      <Ionicons name={section.icon as any} size={15} color={roleColor} />
-                    </View>
-                    <Text style={[styles.cardTitle, { color: colors.text }]}>{section.title}</Text>
+
+              {/* ── Company Identity ── */}
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.iconBox, { backgroundColor: roleColor + '18' }]}>
+                    <Ionicons name="business" size={15} color={roleColor} />
                   </View>
-                  {section.items.map((item, idx) => (
-                    <View key={item.label} style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: idx === 0 ? 0 : StyleSheet.hairlineWidth }]}>
-                      <Text style={[styles.settingLabel, { color: colors.textMuted }]}>{item.label}</Text>
-                      <TextInput style={[styles.settingInput, { color: colors.text }]} defaultValue={item.v} editable={isAdmin} />
-                    </View>
-                  ))}
-                  {section.title === 'Operations Settings' && (
-                    <>
-                      {['Daily Dip Required', 'Auto-Audit Logging'].map(lbl => (
-                        <View key={lbl} style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }]}>
-                          <Text style={[styles.settingLabel, { color: colors.textMuted }]}>{lbl}</Text>
-                          <Switch value={toggles[lbl]} onValueChange={v => setToggles(t => ({ ...t, [lbl]: v }))} trackColor={{ true: roleColor, false: colors.border }} thumbColor="#fff" disabled={!isAdmin} />
-                        </View>
-                      ))}
-                    </>
-                  )}
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>Company Information</Text>
                 </View>
-              ))}
-              {isAdmin && <SaveBtn label="Save Company Settings" onPress={() => Alert.alert('Settings Saved', 'Company settings updated successfully.')} />}
+                {([
+                  { label: 'Company Name', key: 'name', placeholder: 'e.g. PetroTrack Stations Ltd', kb: 'default' },
+                  { label: 'RC Number', key: 'rcNumber', placeholder: 'e.g. RC-123456', kb: 'default' },
+                  { label: 'Tax ID (TIN)', key: 'tin', placeholder: 'e.g. 1234567-0001', kb: 'default' },
+                  { label: 'Head Office Address', key: 'address', placeholder: 'Full address', kb: 'default' },
+                  { label: 'Phone Number', key: 'phone', placeholder: 'e.g. +234 801 000 0000', kb: 'phone-pad' },
+                  { label: 'Email Address', key: 'email', placeholder: 'info@company.com', kb: 'email-address' },
+                  { label: 'Website', key: 'website', placeholder: 'https://company.com', kb: 'url' },
+                ] as const).map((item, idx) => (
+                  <View key={item.key} style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: idx === 0 ? 0 : StyleSheet.hairlineWidth }]}>
+                    <Text style={[styles.settingLabel, { color: colors.textMuted }]}>{item.label}</Text>
+                    <TextInput
+                      style={[styles.settingInput, { color: colors.text }]}
+                      value={cDraft[item.key]}
+                      onChangeText={v => setCDraft(d => ({ ...d, [item.key]: v }))}
+                      placeholder={item.placeholder}
+                      placeholderTextColor={colors.textSubtle}
+                      keyboardType={item.kb as any}
+                      editable={isAdmin}
+                      autoCapitalize={item.kb === 'email-address' || item.kb === 'url' ? 'none' : 'sentences'}
+                    />
+                  </View>
+                ))}
+              </View>
+
+              {/* ── Financial Settings ── */}
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.iconBox, { backgroundColor: roleColor + '18' }]}>
+                    <Ionicons name="calculator" size={15} color={roleColor} />
+                  </View>
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>Financial Settings</Text>
+                </View>
+                {([
+                  { label: 'VAT Rate (%)', key: 'vatRate', placeholder: '7.5', kb: 'decimal-pad' },
+                  { label: 'WHT Rate (%)', key: 'whtRate', placeholder: '5', kb: 'decimal-pad' },
+                  { label: 'Currency', key: 'currency', placeholder: 'NGN', kb: 'default' },
+                  { label: 'Fiscal Year Start', key: 'fiscalYearStart', placeholder: 'e.g. January', kb: 'default' },
+                ] as const).map((item, idx) => (
+                  <View key={item.key} style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: idx === 0 ? 0 : StyleSheet.hairlineWidth }]}>
+                    <Text style={[styles.settingLabel, { color: colors.textMuted }]}>{item.label}</Text>
+                    <TextInput
+                      style={[styles.settingInput, { color: colors.text }]}
+                      value={cDraft[item.key]}
+                      onChangeText={v => setCDraft(d => ({ ...d, [item.key]: v }))}
+                      placeholder={item.placeholder}
+                      placeholderTextColor={colors.textSubtle}
+                      keyboardType={item.kb as any}
+                      editable={isAdmin}
+                    />
+                  </View>
+                ))}
+              </View>
+
+              {/* ── Operations Settings ── */}
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.iconBox, { backgroundColor: roleColor + '18' }]}>
+                    <Ionicons name="construct" size={15} color={roleColor} />
+                  </View>
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>Operations Settings</Text>
+                </View>
+                {([
+                  { label: 'Low Stock Alert (%)', key: 'lowStockAlert', placeholder: '20', kb: 'numeric' },
+                  { label: 'Reorder Level (%)',   key: 'reorderLevel',  placeholder: '30', kb: 'numeric' },
+                ] as const).map((item, idx) => (
+                  <View key={item.key} style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: idx === 0 ? 0 : StyleSheet.hairlineWidth }]}>
+                    <Text style={[styles.settingLabel, { color: colors.textMuted }]}>{item.label}</Text>
+                    <TextInput
+                      style={[styles.settingInput, { color: colors.text }]}
+                      value={cDraft[item.key]}
+                      onChangeText={v => setCDraft(d => ({ ...d, [item.key]: v }))}
+                      placeholder={item.placeholder}
+                      placeholderTextColor={colors.textSubtle}
+                      keyboardType={item.kb as any}
+                      editable={isAdmin}
+                    />
+                  </View>
+                ))}
+                <View style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }]}>
+                  <Text style={[styles.settingLabel, { color: colors.textMuted }]}>Daily Dip Required</Text>
+                  <Switch
+                    value={cDraft.dailyDipRequired}
+                    onValueChange={v => setCDraft(d => ({ ...d, dailyDipRequired: v }))}
+                    trackColor={{ true: roleColor, false: colors.border }}
+                    thumbColor="#fff"
+                    disabled={!isAdmin}
+                  />
+                </View>
+                <View style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }]}>
+                  <Text style={[styles.settingLabel, { color: colors.textMuted }]}>Auto-Audit Logging</Text>
+                  <Switch
+                    value={cDraft.autoAuditLogging}
+                    onValueChange={v => setCDraft(d => ({ ...d, autoAuditLogging: v }))}
+                    trackColor={{ true: roleColor, false: colors.border }}
+                    thumbColor="#fff"
+                    disabled={!isAdmin}
+                  />
+                </View>
+              </View>
+
+              {isAdmin && (
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <SaveBtn
+                    label="Save Company Settings"
+                    onPress={() => {
+                      if (!cDraft.name.trim()) { Alert.alert('Required', 'Company name cannot be empty.'); return; }
+                      updateCompanyInfo(cDraft);
+                      Alert.alert('Saved', 'Company details updated successfully.');
+                    }}
+                  />
+                </View>
+              )}
+              {isAdmin && (
+                <TouchableOpacity
+                  onPress={() => Alert.alert('Reset', 'Clear all company details and start over?', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Reset', style: 'destructive', onPress: () => { setCDraft(BLANK_COMPANY_INFO); updateCompanyInfo(BLANK_COMPANY_INFO); } },
+                  ])}
+                  style={[styles.dangerBtn, { borderColor: colors.errorBorder, marginBottom: 8 }]}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="refresh-outline" size={15} color={colors.error} />
+                  <Text style={[styles.dangerBtnText, { color: colors.error }]}>Reset Company Details</Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
 
