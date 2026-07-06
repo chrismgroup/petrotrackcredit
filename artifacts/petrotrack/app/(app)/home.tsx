@@ -64,7 +64,7 @@ export default function HomeScreen() {
           </View>
           <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Audit Log</Text>
-            {audit.slice(0, 5).map(a => (
+            {(Array.isArray(audit) ? audit : []).slice(0, 5).map(a => (
               <View key={a.id} style={styles.auditRow}>
                 <View style={[styles.auditDot, { backgroundColor: roleColor }]} />
                 <View style={{ flex: 1 }}>
