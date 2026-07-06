@@ -57,6 +57,20 @@ export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; 'L
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; }
 export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
+export interface CompanyInfo {
+  name: string; rcNumber: string; tin: string; address: string;
+  phone: string; email: string; website: string;
+  vatRate: string; whtRate: string; currency: string; fiscalYearStart: string;
+  lowStockAlert: string; reorderLevel: string;
+  dailyDipRequired: boolean; autoAuditLogging: boolean;
+}
+export const BLANK_COMPANY_INFO: CompanyInfo = {
+  name: '', rcNumber: '', tin: '', address: '',
+  phone: '', email: '', website: '',
+  vatRate: '7.5', whtRate: '5', currency: 'NGN', fiscalYearStart: 'January',
+  lowStockAlert: '20', reorderLevel: '30',
+  dailyDipRequired: true, autoAuditLogging: true,
+};
 export interface CompanyFile { id: number; name: string; cat: string; by: string; dt: string; size: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'img' | 'mp4' | 'other'; }
 export type TaskStatus = 'commenced' | 'progressing' | 'completed';
 export type TaskPriority = 'High' | 'Medium' | 'Low';
@@ -264,6 +278,7 @@ const INIT_HR_RECOMMENDATIONS: HRRecommendation[] = [];
 const INIT_HR_HANDBOOKS: HREmployeeDoc[] = [];
 
 interface AppContextType {
+  companyInfo: CompanyInfo; updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
   role: Role | null; userName: string; branchId: string | null; staffId: number | null;
   navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
   login: (role: Role, name: string, staffId?: number, branchId?: string) => void; logout: () => void;
@@ -361,6 +376,11 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(BLANK_COMPANY_INFO);
+  const updateCompanyInfo = useCallback((updates: Partial<CompanyInfo>) => {
+    setCompanyInfo(prev => ({ ...prev, ...updates }));
+  }, []);
+
   const [role, setRole] = useState<Role | null>(null);
   const [userName, setUserName] = useState('');
   const [branchId, setBranchId] = useState<string | null>(null);
@@ -883,6 +903,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
+      companyInfo, updateCompanyInfo,
       role, userName, branchId, staffId, navItems, mgrPerms,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
