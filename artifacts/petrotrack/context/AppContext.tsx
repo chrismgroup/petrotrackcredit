@@ -30,12 +30,12 @@ export interface NavItem { id: string; icon: string; label: string; }
 export interface UserInfo { name: string; color: string; initials: string; role: string; online: boolean; }
 export interface MgrPermissions {
   canDip: boolean; canSales: boolean; canExpenses: boolean;
-  canMaintenance: boolean; canBudget: boolean; canChat: boolean;
+  canMaintenance: boolean; canBudget: boolean;
   canPetrolTanks: boolean; canLpgTanks: boolean;
 }
 export const DEFAULT_MGR_PERMS: MgrPermissions = {
   canDip: true, canSales: true, canExpenses: true,
-  canMaintenance: true, canBudget: true, canChat: true,
+  canMaintenance: true, canBudget: true,
   canPetrolTanks: true, canLpgTanks: true,
 };
 
@@ -140,13 +140,12 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'settings', icon: 'settings', label: 'Settings' },
   ],
   ceo: [
-    { id: 'home', icon: 'home', label: 'Home' },
-    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
-    { id: 'hr', icon: 'people-circle', label: 'HR' },
-    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
-    { id: 'acct', icon: 'calculator', label: 'Accounts' },
-    { id: 'mktg', icon: 'megaphone', label: 'Mktg' },
-    { id: 'prices', icon: 'pricetag', label: 'Prices' },
+    { id: 'home',   icon: 'home',             label: 'Home'     },
+    { id: 'tasks',  icon: 'checkmark-circle', label: 'Tasks'    },
+    { id: 'hr',     icon: 'people-circle',    label: 'HR'       },
+    { id: 'acct',   icon: 'calculator',       label: 'Accounts' },
+    { id: 'mktg',   icon: 'megaphone',        label: 'Mktg'     },
+    { id: 'prices', icon: 'pricetag',         label: 'Prices'   },
   ],
   md: [
     { id: 'ops',      icon: 'construct',        label: 'Ops'      },
@@ -154,22 +153,19 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'branches', icon: 'business',         label: 'Branches' },
     { id: 'hr',       icon: 'people-circle',    label: 'HR'       },
     { id: 'budget',   icon: 'wallet',           label: 'Budget'   },
-    { id: 'msgs',     icon: 'chatbubbles',      label: 'Chat'     },
     { id: 'exprpt',   icon: 'analytics',        label: 'Reports'  },
     { id: 'sales',    icon: 'bar-chart',        label: 'Sales'    },
     { id: 'prices',   icon: 'pricetag',         label: 'Prices'   },
   ],
   mktg: [
-    { id: 'mktg', icon: 'megaphone', label: 'Marketing' },
-    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks' },
-    { id: 'msgs', icon: 'chatbubbles', label: 'Chat' },
-    { id: 'sales', icon: 'bar-chart', label: 'Sales' },
+    { id: 'mktg',  icon: 'megaphone',        label: 'Marketing' },
+    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks'     },
+    { id: 'sales', icon: 'bar-chart',        label: 'Sales'     },
   ],
   csm: [
     { id: 'corp',  icon: 'briefcase',        label: 'Corporate'  },
     { id: 'hr',    icon: 'people-circle',    label: 'HR'         },
     { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks'      },
-    { id: 'msgs',  icon: 'chatbubbles',      label: 'Chat'       },
     { id: 'ops',   icon: 'construct',        label: 'Operations' },
   ],
   acc: [
@@ -178,31 +174,27 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'recv',   icon: 'cube',             label: 'Receive'  },
     { id: 'exp',    icon: 'receipt',          label: 'Expenses' },
     { id: 'budget', icon: 'wallet',           label: 'Budget'   },
-    { id: 'msgs',   icon: 'chatbubbles',      label: 'Chat'     },
     { id: 'exprpt', icon: 'analytics',        label: 'Reports'  },
   ],
   mgr: [
     { id: 'ops',   icon: 'construct',        label: 'Operations' },
     { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks'      },
     { id: 'exp',   icon: 'receipt',          label: 'Expenses'   },
-    { id: 'msgs',  icon: 'chatbubbles',      label: 'Chat'       },
   ],
   att: [
     { id: 'ops',   icon: 'construct',        label: 'Operations' },
     { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks'      },
     { id: 'shift', icon: 'calculator',       label: 'Shift'      },
-    { id: 'msgs',  icon: 'chatbubbles',      label: 'Chat'       },
   ],
 };
 
 const MGR_NAV_ALL: NavItem[] = [
-  { id: 'ops',    icon: 'construct',   label: 'Operations' },
-  { id: 'exp',    icon: 'receipt',     label: 'Expenses'   },
-  { id: 'budget', icon: 'wallet',      label: 'Budget'     },
-  { id: 'msgs',   icon: 'chatbubbles', label: 'Chat'       },
+  { id: 'ops',    icon: 'construct', label: 'Operations' },
+  { id: 'exp',    icon: 'receipt',   label: 'Expenses'   },
+  { id: 'budget', icon: 'wallet',    label: 'Budget'     },
 ];
 const MGR_NAV_PERM: Record<string, keyof MgrPermissions> = {
-  exp: 'canExpenses', budget: 'canBudget', msgs: 'canChat',
+  exp: 'canExpenses', budget: 'canBudget',
 };
 const INIT_MGR_PERMS: Record<string, MgrPermissions> = {};
 
@@ -227,7 +219,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   audit: '/(app)/audit', settings: '/(app)/system-settings', ops: '/(app)/operations',
   tanks: '/(app)/tanks', acct: '/(app)/accounts', corp: '/(app)/corporate',
   branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
-  msgs: '/(app)/messages', budget: '/(app)/budget', exp: '/(app)/expenses',
+  budget: '/(app)/budget', exp: '/(app)/expenses',
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
   tasks: '/(app)/tasks',
   recv: '/(app)/receiving',
