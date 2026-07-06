@@ -21,7 +21,7 @@ const STATUS_CFG = {
 } as const;
 
 export default function PricesScreen() {
-  const { role, userName, prices, priceHistory, priceProposals, addPriceProposal, approvePriceProposal, rejectPriceProposal } = useApp();
+  const { role, userName, prices, priceHistory, priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'md'] || colors.primary;
 
@@ -50,6 +50,22 @@ export default function PricesScreen() {
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectNote, setRejectNote] = useState('');
 
+  /* ── update modal (CEO) ── */
+  const [updateProposal, setUpdateProposal] = useState<PriceProposal | null>(null);
+  const [updateDraft, setUpdateDraft] = useState('');
+
+  function openUpdate(p: PriceProposal) {
+    setUpdateProposal(p);
+    setUpdateDraft(p.proposedPrice.toString());
+  }
+  function handleUpdate() {
+    if (!updateProposal) return;
+    const val = parseFloat(updateDraft);
+    if (!updateDraft || isNaN(val) || val <= 0) { Alert.alert('Invalid', 'Enter a valid price greater than 0.'); return; }
+    updateAndApprovePriceProposal(updateProposal.id, val);
+    setUpdateProposal(null);
+  }
+
   function handleApprove(p: PriceProposal) {
     Alert.alert(
       'Approve price change?',
@@ -70,7 +86,6 @@ export default function PricesScreen() {
   const resolvedProposals = priceProposals.filter(p => p.status !== 'pending').slice(0, 10);
   const recentHistory     = [...priceHistory].sort((a, b) => b.id - a.id).slice(0, 15);
 
-  /* Pending proposals for a given product (MD view) */
   function myPendingFor(prod: string) {
     return priceProposals.find(p => p.prod === prod && p.status === 'pending' && p.proposedBy === userName);
   }
@@ -126,7 +141,7 @@ export default function PricesScreen() {
           })}
         </View>
 
-        {/* CEO: pending proposals to approve/reject */}
+        {/* CEO: pending proposals to approve / update / reject */}
         {canApprove && pendingProposals.length > 0 && (
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Pending Approvals</Text>
@@ -160,6 +175,13 @@ export default function PricesScreen() {
                     >
                       <Ionicons name="close" size={14} color="#791F1F" />
                       <Text style={[styles.rejectBtnText, { color: '#791F1F' }]}>Reject</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.updateBtn, { borderColor: '#185FA5' }]}
+                      onPress={() => openUpdate(p)}
+                    >
+                      <Ionicons name="create-outline" size={14} color="#185FA5" />
+                      <Text style={[styles.updateBtnText, { color: '#185FA5' }]}>Update</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.approveBtn, { backgroundColor: '#27500A' }]}
@@ -291,6 +313,54 @@ export default function PricesScreen() {
         </View>
       </Modal>
 
+      {/* CEO: Update price modal */}
+      <Modal visible={updateProposal !== null} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setUpdateProposal(null)} />
+          <View style={[styles.modal, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <View style={[styles.modalIcon, { backgroundColor: '#E8F0FC' }]}>
+                <Ionicons name="create" size={20} color="#185FA5" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  Update {updateProposal?.prod} Price
+                </Text>
+                <Text style={[styles.modalSub, { color: colors.textMuted }]}>
+                  MD proposed ₦{updateProposal?.proposedPrice.toLocaleString()}/L · Set your own price to approve
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>New Price per Litre (₦)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              keyboardType="numeric"
+              value={updateDraft}
+              onChangeText={setUpdateDraft}
+              placeholder="e.g. 950"
+              placeholderTextColor={colors.textSubtle}
+              autoFocus
+            />
+            <Text style={[styles.approvalNote, { color: colors.textMuted, backgroundColor: colors.background }]}>
+              <Ionicons name="information-circle-outline" size={13} color={colors.textMuted} />
+              {' '}The MD will be notified of the adjusted price. This takes effect immediately.
+            </Text>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={[styles.cancelBtn, { borderColor: colors.border }]} onPress={() => setUpdateProposal(null)}>
+                <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, { backgroundColor: '#185FA5' }]}
+                onPress={handleUpdate}
+              >
+                <Ionicons name="checkmark-circle" size={15} color="#fff" />
+                <Text style={styles.saveBtnText}>Update & Approve</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* CEO: Reject reason modal */}
       <Modal visible={rejectId !== null} transparent animationType="fade">
         <View style={styles.overlay}>
@@ -355,11 +425,13 @@ const styles = StyleSheet.create({
   diffBadge:      { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   diffText:       { fontSize: 12, fontWeight: '700' },
   proposalMeta:   { fontSize: 12 },
-  proposalBtns:   { flexDirection: 'row', gap: 10, marginTop: 4 },
-  rejectBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, borderWidth: 1.5, paddingVertical: 10 },
-  rejectBtnText:  { fontSize: 14, fontWeight: '600' },
-  approveBtn:     { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, paddingVertical: 10 },
-  approveBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  proposalBtns:   { flexDirection: 'row', gap: 8, marginTop: 4 },
+  rejectBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 8, borderWidth: 1.5, paddingVertical: 10 },
+  rejectBtnText:  { fontSize: 13, fontWeight: '600' },
+  updateBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 8, borderWidth: 1.5, paddingVertical: 10 },
+  updateBtnText:  { fontSize: 13, fontWeight: '600' },
+  approveBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 8, paddingVertical: 10 },
+  approveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   resolvedRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 8 },
   resolvedMid:    { flex: 1, gap: 3 },
   resolvedPrices: { fontSize: 13, fontWeight: '600' },
