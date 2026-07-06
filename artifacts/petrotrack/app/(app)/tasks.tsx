@@ -42,7 +42,7 @@ export default function TasksScreen() {
   const { role, userName, tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'md'] || colors.primary;
-  const isMd = role === 'md';
+  const isCeo = role === 'ceo';
 
   const [tab, setTab] = useState<TabId>('mine');
   const [cadenceFilter, setCadenceFilter] = useState<CadenceFilter>('all');
@@ -71,7 +71,7 @@ export default function TasksScreen() {
   const tabs: { id: TabId; label: string }[] = [
     { id: 'mine',     label: `My Tasks (${myTasksAll.length})` },
     { id: 'assigned', label: `Assigned (${assignedByAll.length})` },
-    ...(isMd ? [{ id: 'kpis' as TabId, label: `KPIs (${kpis.length})` }] : []),
+    ...(isCeo ? [{ id: 'kpis' as TabId, label: `KPIs (${kpis.length})` }] : []),
   ];
 
   function openTaskForm() { setShowTaskForm(true); }
@@ -143,7 +143,7 @@ export default function TasksScreen() {
     const done = task.status === 'completed';
     return (
       <View key={task.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {/* Top row: badges + trash */}
+        {/* Top row: badges + trash (CEO can delete tasks they assigned; assignees cannot) */}
         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <View style={[styles.badge, { backgroundColor: cm.bg }]}>
             <Ionicons name={cm.icon as any} size={10} color={cm.color} />
@@ -157,12 +157,14 @@ export default function TasksScreen() {
             <Text style={[styles.badgeText, { color: sm.color }]}>{sm.label}</Text>
           </View>
           <View style={{ flex: 1 }} />
-          <TouchableOpacity
-            onPress={() => handleDeleteTask(task)}
-            style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
-          >
-            <Ionicons name="trash-outline" size={12} color={colors.error} />
-          </TouchableOpacity>
+          {isCeo && !isAssignedToMe && (
+            <TouchableOpacity
+              onPress={() => handleDeleteTask(task)}
+              style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
+            >
+              <Ionicons name="trash-outline" size={12} color={colors.error} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Title + desc */}
@@ -256,12 +258,14 @@ export default function TasksScreen() {
               <Text style={[styles.metaText, { color: colors.textMuted }]}>{kpi.assignedToName}</Text>
             </View>
           </View>
-          <TouchableOpacity
-            onPress={() => handleDeleteKpi(kpi)}
-            style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
-          >
-            <Ionicons name="trash-outline" size={12} color={colors.error} />
-          </TouchableOpacity>
+          {isCeo && (
+            <TouchableOpacity
+              onPress={() => handleDeleteKpi(kpi)}
+              style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
+            >
+              <Ionicons name="trash-outline" size={12} color={colors.error} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -340,7 +344,7 @@ export default function TasksScreen() {
     );
   }
 
-  const showAddBtn = tab === 'kpis' ? isMd : canAssign;
+  const showAddBtn = tab === 'kpis' ? isCeo : canAssign;
 
   return (
     <ScreenLayout
@@ -517,7 +521,7 @@ export default function TasksScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Add KPI Modal (MD only) ── */}
+      {/* ── Add KPI Modal (CEO only) ── */}
       <Modal visible={showKpiForm} transparent animationType="slide" onRequestClose={() => setShowKpiForm(false)}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowKpiForm(false)}>
           <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true} keyboardShouldPersistTaps="handled">
@@ -551,7 +555,7 @@ export default function TasksScreen() {
             </View>
 
             <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Assign to *</Text>
-            {(['md', 'mktg', 'csm', 'acc', 'mgr', 'att'] as const).map(r => {
+            {(['md', 'mktg', 'csm', 'acc', 'mgr', 'att'] as const).filter(r => r !== role).map(r => {
               const info = UINFO[r];
               const rc = ROLE_COLORS[r] || colors.primary;
               const active = kpiForm.assignedTo === r;
