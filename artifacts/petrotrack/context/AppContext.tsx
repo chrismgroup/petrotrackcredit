@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { stateApi } from '@/lib/api';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
@@ -417,7 +418,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hrRecommendations, setHrRecommendations] = useState<HRRecommendation[]>(INIT_HR_RECOMMENDATIONS);
   const [hrHandbooks, setHrHandbooks] = useState<HREmployeeDoc[]>(INIT_HR_HANDBOOKS);
 
-  /* ── persistence: load all state from AsyncStorage on mount ── */
+  /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const KEYS = [
@@ -426,6 +427,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'roleAccess', 'userAccess', 'expenses', 'budgets', 'sales', 'dips',
       'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'shiftReports', 'hrEmployees', 'hrHandbooks',
+      'hrRecommendations',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -459,39 +461,83 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.shiftReports)      setShiftReports(s.shiftReports);
       if (s.hrEmployees)       setHrEmployees(s.hrEmployees);
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks);
+      if (s.hrRecommendations) setHrRecommendations(s.hrRecommendations);
       setLoaded(true);
     });
   }, []);
 
-  /* ── persistence: save each state slice to AsyncStorage when it changes ── */
-  useEffect(() => { if (loaded) AsyncStorage.setItem('companyInfo',       JSON.stringify(companyInfo)); },       [companyInfo, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('tanks',             JSON.stringify(tanks)); },             [tanks, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('lpgTanks',          JSON.stringify(lpgTanks)); },          [lpgTanks, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('pumps',             JSON.stringify(pumps)); },             [pumps, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('staff',             JSON.stringify(staff)); },             [staff, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('branches',          JSON.stringify(branches)); },          [branches, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('departments',       JSON.stringify(departments)); },       [departments, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('userAccounts',      JSON.stringify(userAccounts)); },      [userAccounts, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('prices',            JSON.stringify(prices)); },            [prices, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('priceHistory',      JSON.stringify(priceHistory)); },      [priceHistory, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('mgrPerms',          JSON.stringify(mgrPerms)); },          [mgrPerms, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('roleAccess',        JSON.stringify(roleAccess)); },        [roleAccess, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('userAccess',        JSON.stringify(userAccess)); },        [userAccess, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('expenses',          JSON.stringify(expenses)); },          [expenses, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('budgets',           JSON.stringify(budgets)); },           [budgets, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('sales',             JSON.stringify(sales)); },             [sales, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('dips',              JSON.stringify(dips)); },              [dips, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('deliveries',        JSON.stringify(deliveries)); },        [deliveries, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('maintenance',       JSON.stringify(maintenance)); },       [maintenance, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('audit',             JSON.stringify(audit)); },             [audit, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('messages',          JSON.stringify(messages)); },          [messages, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('tasks',             JSON.stringify(tasks)); },             [tasks, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('kpis',              JSON.stringify(kpis)); },              [kpis, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('companyFiles',      JSON.stringify(companyFiles)); },      [companyFiles, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('deliveryEvidences', JSON.stringify(deliveryEvidences)); }, [deliveryEvidences, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('shiftReports',      JSON.stringify(shiftReports)); },      [shiftReports, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('hrEmployees',       JSON.stringify(hrEmployees)); },       [hrEmployees, loaded]);
-  useEffect(() => { if (loaded) AsyncStorage.setItem('hrHandbooks',       JSON.stringify(hrHandbooks)); },       [hrHandbooks, loaded]);
+  /* ── sync from API after AsyncStorage load (server is authoritative) ── */
+  useEffect(() => {
+    if (!loaded) return;
+    stateApi.getAll().then(s => {
+      if (!s) return;
+      if (s.companyInfo)       setCompanyInfo(s.companyInfo as CompanyInfo);
+      if (s.tanks)             setTanks(s.tanks as Tank[]);
+      if (s.lpgTanks)          setLpgTanks(s.lpgTanks as LPGTank[]);
+      if (s.pumps)             setPumps(s.pumps as Pump[]);
+      if (s.staff)             setStaff(s.staff as Staff[]);
+      if (s.branches)          setBranches(s.branches as Branch[]);
+      if (s.departments)       setDepartments(s.departments as Department[]);
+      if (s.userAccounts)      setUserAccounts(s.userAccounts as UserAccount[]);
+      if (s.prices)            setPrices(s.prices as Prices);
+      if (s.priceHistory)      setPriceHistory(s.priceHistory as PriceChange[]);
+      if (s.mgrPerms)          setMgrPerms(s.mgrPerms as Record<string, MgrPermissions>);
+      if (s.roleAccess)        setRoleAccess(s.roleAccess as Record<string, Record<string, boolean>>);
+      if (s.userAccess)        setUserAccess(s.userAccess as Record<number, Record<string, boolean>>);
+      if (s.expenses)          setExpenses(s.expenses as Expense[]);
+      if (s.budgets)           setBudgets(s.budgets as Budget[]);
+      if (s.sales)             setSales(s.sales as SalesEntry[]);
+      if (s.dips)              setDips(s.dips as DipRecord[]);
+      if (s.deliveries)        setDeliveries(s.deliveries as Delivery[]);
+      if (s.maintenance)       setMaintenance(s.maintenance as MaintenanceItem[]);
+      if (s.audit)             setAudit(s.audit as AuditEntry[]);
+      if (s.messages)          setMessages(s.messages as Record<string, Message[]>);
+      if (s.tasks)             setTasks(s.tasks as Task[]);
+      if (s.kpis)              setKpis(s.kpis as KPI[]);
+      if (s.companyFiles)      setCompanyFiles(s.companyFiles as CompanyFile[]);
+      if (s.deliveryEvidences) setDeliveryEvidences(s.deliveryEvidences as DeliveryEvidence[]);
+      if (s.shiftReports)      setShiftReports(s.shiftReports as ShiftReport[]);
+      if (s.hrEmployees)       setHrEmployees(s.hrEmployees as HREmployee[]);
+      if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks as HREmployeeDoc[]);
+      if (s.hrRecommendations) setHrRecommendations(s.hrRecommendations as HRRecommendation[]);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
+  /* ── persistence: save each state slice to AsyncStorage + API when it changes ── */
+  function syncSlice(key: string, value: unknown) {
+    AsyncStorage.setItem(key, JSON.stringify(value));
+    stateApi.put(key, value);
+  }
+  useEffect(() => { if (loaded) syncSlice('companyInfo',       companyInfo); },       [companyInfo, loaded]);
+  useEffect(() => { if (loaded) syncSlice('tanks',             tanks); },             [tanks, loaded]);
+  useEffect(() => { if (loaded) syncSlice('lpgTanks',          lpgTanks); },          [lpgTanks, loaded]);
+  useEffect(() => { if (loaded) syncSlice('pumps',             pumps); },             [pumps, loaded]);
+  useEffect(() => { if (loaded) syncSlice('staff',             staff); },             [staff, loaded]);
+  useEffect(() => { if (loaded) syncSlice('branches',          branches); },          [branches, loaded]);
+  useEffect(() => { if (loaded) syncSlice('departments',       departments); },       [departments, loaded]);
+  useEffect(() => { if (loaded) syncSlice('userAccounts',      userAccounts); },      [userAccounts, loaded]);
+  useEffect(() => { if (loaded) syncSlice('prices',            prices); },            [prices, loaded]);
+  useEffect(() => { if (loaded) syncSlice('priceHistory',      priceHistory); },      [priceHistory, loaded]);
+  useEffect(() => { if (loaded) syncSlice('mgrPerms',          mgrPerms); },          [mgrPerms, loaded]);
+  useEffect(() => { if (loaded) syncSlice('roleAccess',        roleAccess); },        [roleAccess, loaded]);
+  useEffect(() => { if (loaded) syncSlice('userAccess',        userAccess); },        [userAccess, loaded]);
+  useEffect(() => { if (loaded) syncSlice('expenses',          expenses); },          [expenses, loaded]);
+  useEffect(() => { if (loaded) syncSlice('budgets',           budgets); },           [budgets, loaded]);
+  useEffect(() => { if (loaded) syncSlice('sales',             sales); },             [sales, loaded]);
+  useEffect(() => { if (loaded) syncSlice('dips',              dips); },              [dips, loaded]);
+  useEffect(() => { if (loaded) syncSlice('deliveries',        deliveries); },        [deliveries, loaded]);
+  useEffect(() => { if (loaded) syncSlice('maintenance',       maintenance); },       [maintenance, loaded]);
+  useEffect(() => { if (loaded) syncSlice('audit',             audit); },             [audit, loaded]);
+  useEffect(() => { if (loaded) syncSlice('messages',          messages); },          [messages, loaded]);
+  useEffect(() => { if (loaded) syncSlice('tasks',             tasks); },             [tasks, loaded]);
+  useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
+  useEffect(() => { if (loaded) syncSlice('companyFiles',      companyFiles); },      [companyFiles, loaded]);
+  useEffect(() => { if (loaded) syncSlice('deliveryEvidences', deliveryEvidences); }, [deliveryEvidences, loaded]);
+  useEffect(() => { if (loaded) syncSlice('shiftReports',      shiftReports); },      [shiftReports, loaded]);
+  useEffect(() => { if (loaded) syncSlice('hrEmployees',       hrEmployees); },       [hrEmployees, loaded]);
+  useEffect(() => { if (loaded) syncSlice('hrHandbooks',       hrHandbooks); },       [hrHandbooks, loaded]);
+  useEffect(() => { if (loaded) syncSlice('hrRecommendations', hrRecommendations); }, [hrRecommendations, loaded]);
 
   const login = useCallback((r: Role, n: string, sid?: number, bid?: string) => {
     setRole(r); setUserName(n);
