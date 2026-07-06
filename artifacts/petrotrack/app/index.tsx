@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import { Redirect, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
@@ -11,7 +11,7 @@ import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 export default function LoginScreen() {
-  const { login, validateCredentials } = useApp();
+  const { role, login, validateCredentials } = useApp();
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -24,6 +24,12 @@ export default function LoginScreen() {
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
+
+  useEffect(() => {
+    if (role) {
+      router.replace('/(app)/home');
+    }
+  }, [role]);
 
   function handleLogin() {
     const u = username.trim();
@@ -39,7 +45,6 @@ export default function LoginScreen() {
         return;
       }
       login(acc.role, acc.empName, undefined, acc.branchId);
-      router.replace('/(app)/home');
     }, 400);
   }
 
@@ -90,6 +95,7 @@ export default function LoginScreen() {
             placeholderTextColor={colors.textSubtle}
             secureTextEntry={!showPw}
             autoCapitalize="none"
+            autoCorrect={false}
             returnKeyType="done"
             value={password}
             onChangeText={setPassword}
