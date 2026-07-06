@@ -1,389 +1,880 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  Alert, Animated, Easing, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ROLE_COLORS, useApp } from '@/context/AppContext';
+import {
+  DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDate, fmtDateTime,
+  mmToLiters, useApp,
+} from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const PROD_META: Record<string, { color: string; icon: string; unit: string }> = {
-  PMS:       { color: '#34d399', icon: 'water-outline',  unit: 'per litre' },
-  AGO:       { color: '#60a5fa', icon: 'cube-outline',   unit: 'per litre' },
-  DPK:       { color: '#fb923c', icon: 'flame-outline',  unit: 'per litre' },
-  LPG:       { color: '#a78bfa', icon: 'cloud-outline',  unit: 'per kg'    },
-  'Lube Oil':{ color: '#fbbf24', icon: 'flask-outline',  unit: 'per litre' },
+const DIP_SUBTABS = ['Dip Form', 'Log & Delivery', 'Inventory'];
+const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
+const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
+const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
+const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
+const DIP_STATUS_ICON: Record<string, string>  = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
+const PRI_COLORS: Record<string, { bg: string; fg: string }> = {
+  Urgent: { bg: '#FCEBEB', fg: '#791F1F' },
+  Medium: { bg: '#FAEEDA', fg: '#633806' },
+  Low:    { bg: '#EAF3DE', fg: '#27500A' },
 };
 
-// ─── Counting price with end-of-count bounce ───────────────────────────────
-function RunningPrice({ target, color }: { target: number; color: string }) {
-  const [displayed, setDisplayed] = useState(0);
-  const fromRef    = useRef(0);
-  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const bounceAnim = useRef(new Animated.Value(1)).current;
+type TopTab = 'dip' | 'sales' | 'maint';
 
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    const from  = fromRef.current;
-    const to    = target;
-    let   step  = 0;
-    const STEPS = 26, MS = 25;
-    timerRef.current = setInterval(() => {
-      step++;
-      const ease = 1 - Math.pow(1 - step / STEPS, 3);
-      const v    = Math.round(from + (to - from) * ease);
-      fromRef.current = v;
-      setDisplayed(v);
-      if (step >= STEPS) {
-        fromRef.current = to;
-        setDisplayed(to);
-        clearInterval(timerRef.current!);
-        // small bounce at end
-        Animated.sequence([
-          Animated.timing(bounceAnim, { toValue: 1.06, duration: 100, useNativeDriver: true }),
-          Animated.spring(bounceAnim,  { toValue: 1,   useNativeDriver: true, friction: 4 }),
-        ]).start();
-      }
-    }, MS);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [target]);
-
-  return (
-    <Animated.Text style={[styles.cardPrice, { color: '#fff', transform: [{ scale: bounceAnim }] }]}>
-      ₦{displayed.toLocaleString()}
-    </Animated.Text>
-  );
-}
-
-// ─── Pulsing live dot ──────────────────────────────────────────────────────
-function PulseDot({ color = '#4ade80' }: { color?: string }) {
-  const scale   = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(0.9)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(scale,   { toValue: 1.6, duration: 900, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
-          Animated.timing(scale,   { toValue: 1,   duration: 900, useNativeDriver: true, easing: Easing.in(Easing.ease)  }),
-        ]),
-        Animated.sequence([
-          Animated.timing(opacity, { toValue: 0.15, duration: 900, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 0.9,  duration: 900, useNativeDriver: true }),
-        ]),
-      ])
-    ).start();
-  }, []);
-  return (
-    <View style={{ width: 10, height: 10, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color, transform: [{ scale }], opacity }} />
-    </View>
-  );
-}
-
-// ─── Shimmer sweep (white highlight travelling left→right) ──────────────────
-function Shimmer() {
-  const x = useRef(new Animated.Value(-80)).current;
-  useEffect(() => {
-    function run() {
-      x.setValue(-80);
-      Animated.timing(x, { toValue: 220, duration: 900, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }).start(() => {
-        setTimeout(run, 3200);
-      });
-    }
-    const id = setTimeout(run, 400);
-    return () => clearTimeout(id);
-  }, []);
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[styles.shimmer, { transform: [{ translateX: x }] }]}
-    />
-  );
-}
-
-// ─── Animated product card ──────────────────────────────────────────────────
-function BoardCard({ prod, price, meta, index }: {
-  prod: string; price: number; meta: { color: string; icon: string; unit: string }; index: number;
-}) {
-  const slideAnim = useRef(new Animated.Value(40)).current;
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
-  const flashAnim = useRef(new Animated.Value(0)).current;
-  const prevPrice = useRef<number | null>(null);
-
-  // Staggered entrance
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(slideAnim, { toValue: 0, delay: index * 75, useNativeDriver: true, friction: 7, tension: 70 }),
-      Animated.timing(fadeAnim,  { toValue: 1, delay: index * 75, duration: 350, useNativeDriver: true }),
-    ]).start();
-  }, []);
-
-  // Flash on price change (skip first render)
-  useEffect(() => {
-    if (prevPrice.current !== null && prevPrice.current !== price) {
-      Animated.sequence([
-        Animated.timing(flashAnim, { toValue: 1,   duration: 80,  useNativeDriver: true }),
-        Animated.timing(flashAnim, { toValue: 0.6, duration: 120, useNativeDriver: true }),
-        Animated.timing(flashAnim, { toValue: 1,   duration: 80,  useNativeDriver: true }),
-        Animated.timing(flashAnim, { toValue: 0,   duration: 500, useNativeDriver: true }),
-      ]).start();
-    }
-    prevPrice.current = price;
-  }, [price]);
-
-  return (
-    <Animated.View
-      style={[
-        styles.boardCard,
-        { borderColor: meta.color + '28', transform: [{ translateY: slideAnim }], opacity: fadeAnim },
-      ]}
-    >
-      {/* Flash overlay */}
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.cardFlash, { backgroundColor: meta.color, opacity: flashAnim }]}
-      />
-
-      {/* Shimmer */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <Shimmer />
-      </View>
-
-      {/* Left accent bar */}
-      <View style={[styles.cardAccent, { backgroundColor: meta.color }]} />
-
-      <View style={styles.cardInner}>
-        {/* Product row */}
-        <View style={styles.cardProdRow}>
-          <View style={[styles.cardIconWrap, { backgroundColor: meta.color + '22' }]}>
-            <Ionicons name={meta.icon as any} size={13} color={meta.color} />
-          </View>
-          <Text style={[styles.cardProdName, { color: meta.color }]}>{prod}</Text>
-        </View>
-
-        {/* Animated price */}
-        <RunningPrice target={price} color={meta.color} />
-
-        {/* Unit */}
-        <Text style={[styles.cardUnit, { color: meta.color + 'aa' }]}>{meta.unit}</Text>
-      </View>
-    </Animated.View>
-  );
-}
-
-// ─── Main screen ────────────────────────────────────────────────────────────
 export default function OperationsScreen() {
-  const { role, prices, updatePrice, tanks, dips } = useApp();
+  const {
+    role, userName, branchId, mgrPerms,
+    tanks, lpgTanks, dips, deliveries,
+    addDip, approveDip, rejectDip, addDelivery,
+    prices, deliveryEvidences, addDeliveryEvidence,
+    sales, addSales, pumps,
+    maintenance, addMaintenance,
+  } = useApp();
+
   const colors    = useColors();
-  const roleColor = ROLE_COLORS[role || 'md'] || colors.primary;
-  const canEdit   = role === 'md' || role === 'admin';
+  const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
+  const isMgr     = role === 'mgr';
+  const isMD      = role === 'md';
+  const isAtt     = role === 'att';
 
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editVal, setEditVal] = useState('');
-  const [nowStr,  setNowStr]  = useState('');
-  const [dateStr, setDateStr] = useState('');
+  const topTabs: { key: TopTab; label: string; icon: string }[] = [
+    ...(isMgr || isMD ? [{ key: 'dip' as TopTab, label: 'Tank Dip', icon: 'water-outline' }] : []),
+    { key: 'sales', label: 'Sales',        icon: 'bar-chart-outline' },
+    { key: 'maint', label: 'Maintenance',  icon: 'build-outline'     },
+  ];
 
-  useEffect(() => {
-    function tick() {
-      const d = new Date();
-      setNowStr(d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-      setDateStr(d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }));
-    }
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
+  const defaultTab: TopTab = (isMgr || isMD) ? 'dip' : 'sales';
+  const [topTab, setTopTab] = useState<TopTab>(defaultTab);
 
-  function handleEdit(prod: string) { setEditing(prod); setEditVal(String((prices as any)[prod])); }
-  function handleSave(prod: string) {
-    const val = parseFloat(editVal);
-    if (isNaN(val) || val < 100) { Alert.alert('Invalid', 'Enter a valid price above ₦100.'); return; }
-    updatePrice(prod, val);
-    setEditing(null);
-    Alert.alert('Price Updated', `${prod} updated to ₦${val.toLocaleString()}/L`);
+  // ── Dip state ────────────────────────────────────────────────────────────
+  const [dipSubTab, setDipSubTab]     = useState(0);
+  const [readings, setReadings]       = useState<Record<string, string>>({});
+  const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
+  const [obs, setObs]                 = useState('');
+  const [showDelForm, setShowDelForm] = useState(false);
+  const [delForm, setDelForm]         = useState({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
+
+  const perms           = isMgr ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
+  const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : tanks;
+  const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : lpgTanks;
+  const canDip          = isMgr;
+  const hasPendingDip   = canDip && dips.some(d => d.by === userName && d.status === 'pending');
+
+  function handleDipSubmit() {
+    const rd: Record<string, number> = {};
+    const lpg: Record<string, number> = {};
+    for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
+    for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
+    addDip({ dt: new Date().toISOString(), by: userName, rd, lpg, obs, status: 'pending' });
+    setReadings({}); setLpgReadings({}); setObs('');
+    Alert.alert('Dip Submitted', 'Tank readings recorded successfully.');
   }
 
-  const boardEntries   = Object.entries(prices).filter(([p]) => p !== 'Others' && p !== 'DPK');
-  const manageEntries  = Object.entries(prices).filter(([p]) => p !== 'Others');
-  const lastDip = dips[0];
+  function handleDeliverySubmit() {
+    addDelivery({ dt: new Date().toISOString(), sup: delForm.sup, prod: delForm.prod, wb: delForm.wb, ord: parseFloat(delForm.ord) || 0, rec: parseFloat(delForm.rec) || 0, st: delForm.st as any, notes: delForm.notes });
+    setDelForm({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
+    setShowDelForm(false);
+    Alert.alert('Delivery Recorded', 'Delivery entry saved.');
+  }
+
+  function stockPct(t: { op: number; sl: number; rv: number; cap: number }) {
+    return Math.round(((t.op + t.rv - t.sl) / t.cap) * 100);
+  }
+
+  // ── Sales state ──────────────────────────────────────────────────────────
+  const activePumps = pumps.filter(p => p.active);
+  const PUMP_PRODS  = Object.fromEntries(activePumps.map(p => [p.name, p.prod]));
+  const canRecord   = isMgr || isAtt || role === 'admin';
+
+  const [pump,         setPump]         = useState(() => activePumps[0]?.name || '');
+  const [openMeter,    setOpenMeter]    = useState('');
+  const [closeMeter,   setCloseMeter]   = useState('');
+  const [posAmt,       setPosAmt]       = useState('');
+  const [showSaleForm, setShowSaleForm] = useState(false);
+
+  const today      = new Date().toISOString().slice(0, 10);
+  const todaySales = sales.filter(s => s.dt.startsWith(today));
+  const totalL     = todaySales.reduce((s, e) => s + e.L, 0);
+  const totalAmt   = todaySales.reduce((s, e) => s + e.L * e.price, 0);
+  const totalPOS   = todaySales.reduce((s, e) => s + (e.pos || 0), 0);
+  const totalCash  = totalAmt - totalPOS;
+  const pmsSales   = todaySales.filter(s => s.pump.includes('PMS'));
+  const agoSales   = todaySales.filter(s => s.pump.includes('AGO'));
+  const dkpSales   = todaySales.filter(s => s.pump.includes('DPK'));
+
+  const openVal   = parseFloat(openMeter);
+  const closeVal  = parseFloat(closeMeter);
+  const liters    = (!isNaN(openVal) && !isNaN(closeVal) && closeVal > openVal) ? Math.round(closeVal - openVal) : 0;
+  const prod      = PUMP_PRODS[pump] || 'PMS';
+  const unitPrice = (prices as any)[prod] || 830;
+  const saleAmt   = liters * unitPrice;
+  const posVal    = parseFloat(posAmt.replace(/,/g, '')) || 0;
+  const cashAmt   = saleAmt - posVal;
+
+  function handleSaleSubmit() {
+    if (!liters || liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
+    if (posVal < 0 || posVal > saleAmt) { Alert.alert('Error', `POS amount cannot exceed ${fmt(saleAmt)}.`); return; }
+    addSales({ pump, by: userName, L: liters, price: unitPrice, dt: new Date().toISOString(), pos: posVal > 0 ? posVal : undefined });
+    setOpenMeter(''); setCloseMeter(''); setPosAmt('');
+    setShowSaleForm(false);
+    Alert.alert('Sales Recorded', `${liters.toLocaleString()}L · Total: ${fmt(saleAmt)}`);
+  }
+
+  // ── Maintenance state ────────────────────────────────────────────────────
+  const canMaint = isMgr || isAtt || role === 'csm' || role === 'admin';
+  const [showMaintForm, setShowMaintForm] = useState(false);
+  const [maintForm, setMaintForm]         = useState({ title: '', pri: 'Urgent' as 'Urgent' | 'Medium' | 'Low' });
+  const openItems = maintenance.filter(m => m.st === 'Open');
+  const doneItems = maintenance.filter(m => m.st === 'Done');
+
+  function handleMaintSubmit() {
+    if (!maintForm.title.trim()) { Alert.alert('Required', 'Please enter a description.'); return; }
+    addMaintenance({ title: maintForm.title.trim(), pri: maintForm.pri, by: userName, date: new Date().toISOString().slice(0, 10), st: 'Open' });
+    setMaintForm({ title: '', pri: 'Urgent' });
+    setShowMaintForm(false);
+    Alert.alert('Submitted', 'Maintenance request logged.');
+  }
 
   return (
     <ScreenLayout title="Operations">
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* ── LIVE PRICE BOARD ── */}
-        <View style={styles.board}>
-          {/* Header bar */}
-          <View style={styles.boardTopBar}>
-            <View style={styles.boardTopLeft}>
-              <PulseDot color="#4ade80" />
-              <Text style={styles.liveLabel}>LIVE</Text>
-              <View style={styles.dividerV} />
-              <Text style={styles.boardTagline}>PUMP PRICES</Text>
-            </View>
-            <View style={styles.boardTopRight}>
-              <Text style={styles.boardDate}>{dateStr}</Text>
-              <Text style={styles.boardClock}>{nowStr}</Text>
-            </View>
-          </View>
+      {/* ── Top-level tab bar ── */}
+      <View style={[styles.topTabBar, { borderBottomColor: colors.border }]}>
+        {topTabs.map(t => (
+          <TouchableOpacity key={t.key} onPress={() => setTopTab(t.key)}
+            style={[styles.topTabBtn, { borderBottomColor: t.key === topTab ? roleColor : 'transparent' }]}>
+            <Ionicons name={t.icon as any} size={15} color={t.key === topTab ? roleColor : colors.textMuted} />
+            <Text style={[styles.topTabLabel, { color: t.key === topTab ? roleColor : colors.textMuted, fontWeight: t.key === topTab ? '700' : '400' }]}>
+              {t.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-          {/* Rainbow accent stripe */}
-          <View style={styles.boardRainbow}>
-            {boardEntries.map(([prod]) => (
-              <View key={prod} style={[styles.boardRainbowSlice, { backgroundColor: (PROD_META[prod]?.color ?? '#888') + 'cc' }]} />
+      {/* ═══════════════════════════════════════════════════════ TANK DIP ══ */}
+      {topTab === 'dip' && (
+        <>
+          <View style={[styles.subTabBar, { borderBottomColor: colors.border }]}>
+            {DIP_SUBTABS.map((t, i) => (
+              <TouchableOpacity key={t} onPress={() => setDipSubTab(i)}
+                style={[styles.subTabBtn, { borderBottomColor: i === dipSubTab ? roleColor : 'transparent' }]}>
+                <Text style={[styles.subTabLabel, { color: i === dipSubTab ? roleColor : colors.textMuted, fontWeight: i === dipSubTab ? '700' : '400' }]}>{t}</Text>
+              </TouchableOpacity>
             ))}
           </View>
 
-          {/* Animated product cards */}
-          <View style={styles.boardGrid}>
-            {boardEntries.map(([prod, price], i) => {
-              const meta = PROD_META[prod] ?? { color: '#aaa', icon: 'pricetag-outline', unit: 'per litre' };
-              return (
-                <BoardCard key={prod} prod={prod} price={price as number} meta={meta} index={i} />
-              );
-            })}
-          </View>
-        </View>
+          {/* Dip Form */}
+          {dipSubTab === 0 && (
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+              {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
+              {!perms.canPetrolTanks && isMgr && (
+                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>Petroleum tank access not granted for this branch</Text>
+                </View>
+              )}
+              {visibleTanks.map(t => {
+                const mm = parseFloat(readings[t.id] || '');
+                const L  = !isNaN(mm) ? mmToLiters(t, mm) : null;
+                return (
+                  <View key={t.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.dipCardHeader}>
+                      <Text style={[styles.dipCardTitle, { color: colors.text }]}>{t.name}</Text>
+                      <View style={[styles.prodBadge, { backgroundColor: roleColor + '18' }]}>
+                        <Text style={[styles.prodBadgeText, { color: roleColor }]}>{t.prod}</Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Cap: {t.cap.toLocaleString()}L · Stock: {(t.op - t.sl).toLocaleString()}L</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                      placeholder={`Reading in mm (max ${t.dip}mm)`}
+                      placeholderTextColor={colors.textSubtle}
+                      keyboardType="numeric"
+                      value={readings[t.id] || ''}
+                      onChangeText={v => setReadings(r => ({ ...r, [t.id]: v }))}
+                      editable={canDip}
+                    />
+                    {L !== null && <Text style={[styles.calcResult, { color: roleColor }]}>≈ {L.toLocaleString()} L ({Math.round((L / t.cap) * 100)}% full)</Text>}
+                  </View>
+                );
+              })}
 
-        {/* ── MANAGE PRICES ── */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Manage Prices</Text>
-        {manageEntries.map(([prod, price]) => {
-          const isEditing = editing === prod;
-          const col = PROD_META[prod]?.color ?? roleColor;
-          return (
-            <View key={prod} style={[styles.priceRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.prodIcon, { backgroundColor: col + '18' }]}>
-                <Ionicons name={(PROD_META[prod]?.icon ?? 'pricetag') as any} size={18} color={col} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.prodName, { color: colors.text }]}>{prod}</Text>
-                {isEditing ? (
+              {visibleLpgTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>LPG Tanks</Text>}
+              {!perms.canLpgTanks && isMgr && (
+                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>LPG tank access not granted for this branch</Text>
+                </View>
+              )}
+              {visibleLpgTanks.map(l => (
+                <View key={l.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Text style={[styles.dipCardTitle, { color: colors.text }]}>{l.name}</Text>
+                  <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Cap: {l.cap.toLocaleString()} kg</Text>
                   <TextInput
-                    style={[styles.priceInput, { backgroundColor: colors.background, borderColor: col, color: colors.text }]}
-                    value={editVal} onChangeText={setEditVal} keyboardType="numeric" autoFocus
+                    style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                    placeholder="Fill percentage (0-100)"
+                    placeholderTextColor={colors.textSubtle}
+                    keyboardType="numeric"
+                    value={lpgReadings[l.id] || ''}
+                    onChangeText={v => setLpgReadings(r => ({ ...r, [l.id]: v }))}
+                    editable={canDip}
                   />
-                ) : (
-                  <Text style={[styles.currentPrice, { color: col }]}>₦{(price as number).toLocaleString()}/L</Text>
+                  {lpgReadings[l.id] ? <Text style={[styles.calcResult, { color: roleColor }]}>≈ {Math.round((parseFloat(lpgReadings[l.id] || '0') / 100) * l.cap).toLocaleString()} kg</Text> : null}
+                </View>
+              ))}
+
+              <TextInput
+                style={[styles.obsInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                placeholder="Observations (anomalies, water sheen, etc.)"
+                placeholderTextColor={colors.textSubtle}
+                multiline numberOfLines={3}
+                value={obs} onChangeText={setObs} editable={canDip}
+              />
+
+              {canDip && hasPendingDip && (
+                <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517' }]}>
+                  <Ionicons name="time" size={16} color="#BA7517" />
+                  <Text style={[styles.pendingText, { color: '#BA7517' }]}>You have a dip record awaiting MD approval.</Text>
+                </View>
+              )}
+              {canDip && !hasPendingDip && (
+                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor }]} onPress={handleDipSubmit} activeOpacity={0.85}>
+                  <Ionicons name="save" size={18} color="#fff" />
+                  <Text style={styles.submitBtnText}>Submit Dip Record</Text>
+                </TouchableOpacity>
+              )}
+
+              <Text style={[styles.formSection, { color: colors.text }]}>Record Delivery</Text>
+              {!showDelForm ? (
+                <TouchableOpacity style={[styles.addOutlineBtn, { borderColor: roleColor }]} onPress={() => setShowDelForm(true)}>
+                  <Ionicons name="add" size={18} color={roleColor} />
+                  <Text style={[styles.addOutlineBtnText, { color: roleColor }]}>Record New Delivery</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {['PMS', 'AGO', 'DPK', 'LPG'].map(p => (
+                      <TouchableOpacity key={p} onPress={() => setDelForm(f => ({ ...f, prod: p }))}
+                        style={[styles.prodBtn, { backgroundColor: delForm.prod === p ? roleColor : colors.background, borderColor: delForm.prod === p ? roleColor : colors.border }]}>
+                        <Text style={{ color: delForm.prod === p ? '#fff' : colors.textMuted, fontSize: 12, fontWeight: '600' }}>{p}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {[
+                    { key: 'sup', label: 'Supplier Name' }, { key: 'wb', label: 'Waybill Number' },
+                    { key: 'ord', label: 'Ordered Qty (L)' }, { key: 'rec', label: 'Received Qty (L)' },
+                    { key: 'notes', label: 'Notes' },
+                  ].map(f => (
+                    <TextInput key={f.key}
+                      style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                      placeholder={f.label} placeholderTextColor={colors.textSubtle}
+                      keyboardType={['ord', 'rec'].includes(f.key) ? 'numeric' : 'default'}
+                      value={(delForm as any)[f.key]}
+                      onChangeText={v => setDelForm(fv => ({ ...fv, [f.key]: v }))}
+                    />
+                  ))}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {['ok', 'short', 'spill', 'seal'].map(s => (
+                      <TouchableOpacity key={s} onPress={() => setDelForm(f => ({ ...f, st: s }))}
+                        style={[styles.prodBtn, { backgroundColor: delForm.st === s ? roleColor : colors.background, borderColor: delForm.st === s ? roleColor : colors.border }]}>
+                        <Text style={{ color: delForm.st === s ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{STATUS_LABELS[s]}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleDeliverySubmit} activeOpacity={0.85}>
+                      <Text style={styles.submitBtnText}>Save</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={() => setShowDelForm(false)}>
+                      <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              <View style={{ height: 16 }} />
+            </ScrollView>
+          )}
+
+          {/* Log & Delivery */}
+          {dipSubTab === 1 && (
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+              {isMD && dips.some(d => d.status === 'pending') && (
+                <View style={[styles.mdBanner, { backgroundColor: '#4527a018', borderColor: '#4527a0' }]}>
+                  <Ionicons name="alert-circle" size={16} color="#4527a0" />
+                  <Text style={[styles.mdBannerText, { color: '#4527a0' }]}>
+                    {dips.filter(d => d.status === 'pending').length} dip record{dips.filter(d => d.status === 'pending').length > 1 ? 's' : ''} awaiting your approval
+                  </Text>
+                </View>
+              )}
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Records</Text>
+              {dips.map(dip => {
+                const sc = DIP_STATUS_COLOR[dip.status] || '#888';
+                const isPending = dip.status === 'pending';
+                return (
+                  <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: isPending ? sc + '66' : colors.border, borderWidth: isPending ? 1.5 : 1 }]}>
+                    <View style={styles.logHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.logDate, { color: colors.text }]}>{fmtDateTime(dip.dt)}</Text>
+                        <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
+                      </View>
+                      <View style={[styles.dipStatusBadge, { backgroundColor: sc + '18' }]}>
+                        <Ionicons name={DIP_STATUS_ICON[dip.status] as any} size={11} color={sc} />
+                        <Text style={[styles.dipStatusText, { color: sc }]}>{DIP_STATUS_LABEL[dip.status]}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.readingsGrid}>
+                      {Object.entries(dip.rd).map(([tid, mm]) => {
+                        const tank = tanks.find(t => t.id === tid);
+                        return (
+                          <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                            <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{tank?.name.replace('Tank ', 'T')}</Text>
+                            <Text style={[styles.readingVal, { color: roleColor }]}>{mm}mm</Text>
+                          </View>
+                        );
+                      })}
+                      {Object.entries(dip.lpg).map(([lid, pct]) => {
+                        const lt = lpgTanks.find(l => l.id === lid);
+                        return (
+                          <View key={lid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                            <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{lt?.name.replace('LPG Tank ', 'L')}</Text>
+                            <Text style={[styles.readingVal, { color: colors.teal }]}>{pct}%</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                    {dip.obs ? <Text style={[styles.dipObs, { color: colors.warning }]}>⚠ {dip.obs}</Text> : null}
+                    {dip.approvedBy && (
+                      <Text style={[styles.approvedByText, { color: colors.textMuted }]}>
+                        {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
+                      </Text>
+                    )}
+                    {isMD && isPending && (
+                      <View style={styles.mdActions}>
+                        <TouchableOpacity style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]} activeOpacity={0.85}
+                          onPress={() => { approveDip(dip.id); Alert.alert('Approved', 'Dip record approved.'); }}>
+                          <Ionicons name="checkmark" size={15} color="#fff" />
+                          <Text style={styles.mdActionText}>Approve</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.rejectBtn, { borderColor: '#A32D2D' }]} activeOpacity={0.85}
+                          onPress={() => { rejectDip(dip.id); Alert.alert('Rejected', 'Dip record rejected.'); }}>
+                          <Ionicons name="close" size={15} color="#A32D2D" />
+                          <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>Delivery Records</Text>
+              {deliveries.map(rec => {
+                const evidence = deliveryEvidences.filter(e => e.delivId === rec.id);
+                return (
+                  <View key={rec.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.logHeader}>
+                      <View>
+                        <Text style={[styles.logDate, { color: colors.text }]}>{rec.prod} — {rec.sup}</Text>
+                        <Text style={[styles.logBy, { color: colors.textMuted }]}>WB: {rec.wb} · {fmtDateTime(rec.dt)}</Text>
+                      </View>
+                      <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[rec.st] + '22' }]}>
+                        <Text style={[styles.statusText, { color: STATUS_COLORS[rec.st] }]}>{STATUS_LABELS[rec.st]}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.deliveryStats}>
+                      <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Ordered: <Text style={{ color: colors.text, fontWeight: '600' }}>{rec.ord.toLocaleString()}L</Text></Text>
+                      <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Received: <Text style={{ color: roleColor, fontWeight: '700' }}>{rec.rec.toLocaleString()}L</Text></Text>
+                      {rec.ord !== rec.rec && <Text style={{ color: STATUS_COLORS[rec.st], fontSize: 12 }}>Diff: {(rec.rec - rec.ord).toLocaleString()}L</Text>}
+                    </View>
+                    {rec.notes ? <Text style={[styles.dipObs, { color: colors.textMuted }]}>{rec.notes}</Text> : null}
+                    <View style={[styles.evidenceSection, { borderTopColor: colors.border }]}>
+                      <View style={styles.evidenceHeader}>
+                        <Ionicons name="camera" size={13} color={colors.textMuted} />
+                        <Text style={[styles.evidenceTitle, { color: colors.textMuted }]}>Evidence ({evidence.length})</Text>
+                        {canDip && (
+                          <View style={styles.evidenceBtns}>
+                            <TouchableOpacity
+                              style={[styles.evidenceAddBtn, { backgroundColor: roleColor + '18', borderColor: roleColor + '44' }]}
+                              onPress={() => { const n = `WB-${rec.wb}_photo_${Date.now()}.jpg`; addDeliveryEvidence({ delivId: rec.id, type: 'photo', name: n, by: userName || 'Manager' }); Alert.alert('Photo Added', n); }}>
+                              <Ionicons name="camera" size={11} color={roleColor} />
+                              <Text style={[styles.evidenceAddText, { color: roleColor }]}>Photo</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.evidenceAddBtn, { backgroundColor: '#8E44AD18', borderColor: '#8E44AD44' }]}
+                              onPress={() => { const n = `WB-${rec.wb}_video_${Date.now()}.mp4`; addDeliveryEvidence({ delivId: rec.id, type: 'video', name: n, by: userName || 'Manager' }); Alert.alert('Video Added', n); }}>
+                              <Ionicons name="videocam" size={11} color="#8E44AD" />
+                              <Text style={[styles.evidenceAddText, { color: '#8E44AD' }]}>Video</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                      {evidence.length === 0 && <Text style={[styles.evidenceEmpty, { color: colors.textSubtle }]}>No evidence attached</Text>}
+                      {evidence.map(ev => (
+                        <View key={ev.id} style={[styles.evidenceItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                          <Ionicons name={ev.type === 'photo' ? 'image' : 'videocam'} size={14} color={ev.type === 'photo' ? roleColor : '#8E44AD'} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.evidenceName, { color: colors.text }]} numberOfLines={1}>{ev.name}</Text>
+                            <Text style={[styles.evidenceMeta, { color: colors.textSubtle }]}>by {ev.by} · {fmtDateTime(ev.dt)}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                );
+              })}
+              <View style={{ height: 16 }} />
+            </ScrollView>
+          )}
+
+          {/* Inventory */}
+          {dipSubTab === 2 && (
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+              {visibleTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>}
+              {visibleTanks.map(t => {
+                const stock = t.op + t.rv - t.sl;
+                const pct   = stockPct(t);
+                const barCol = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary;
+                return (
+                  <View key={t.id} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.invHeader}>
+                      <View>
+                        <Text style={[styles.invName, { color: colors.text }]}>{t.name}</Text>
+                        <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {t.cap.toLocaleString()}L</Text>
+                      </View>
+                      <View style={[styles.prodBadge, { backgroundColor: roleColor + '18' }]}>
+                        <Text style={[styles.prodBadgeText, { color: roleColor }]}>{t.prod}</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.progressBg, { backgroundColor: colors.border, marginVertical: 10 }]}>
+                      <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: barCol }]} />
+                    </View>
+                    <View style={styles.invStats}>
+                      <View style={styles.invStat}>
+                        <Text style={[styles.invStatVal, { color: colors.text }]}>{stock.toLocaleString()}L</Text>
+                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Current Stock</Text>
+                      </View>
+                      <View style={styles.invStat}>
+                        <Text style={[styles.invStatVal, { color: barCol }]}>{pct}%</Text>
+                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Fill Level</Text>
+                      </View>
+                      <View style={styles.invStat}>
+                        <Text style={[styles.invStatVal, { color: colors.text }]}>{t.sl.toLocaleString()}L</Text>
+                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Today Sales</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+              {visibleLpgTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>LPG Tanks</Text>}
+              {visibleLpgTanks.map(l => {
+                const stock  = l.op + l.rv - l.sl;
+                const pct    = Math.max(0, Math.min(100, Math.round((stock / l.cap) * 100)));
+                const barCol = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.teal;
+                return (
+                  <View key={l.id} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.invHeader}>
+                      <View>
+                        <Text style={[styles.invName, { color: colors.text }]}>{l.name}</Text>
+                        <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {l.cap.toLocaleString()} kg</Text>
+                      </View>
+                      <View style={[styles.prodBadge, { backgroundColor: colors.teal + '18' }]}>
+                        <Text style={[styles.prodBadgeText, { color: colors.teal }]}>LPG</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.progressBg, { backgroundColor: colors.border, marginVertical: 10 }]}>
+                      <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: barCol }]} />
+                    </View>
+                    <View style={styles.invStats}>
+                      <View style={styles.invStat}>
+                        <Text style={[styles.invStatVal, { color: barCol }]}>{pct}%</Text>
+                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Fill Level</Text>
+                      </View>
+                      <View style={styles.invStat}>
+                        <Text style={[styles.invStatVal, { color: colors.text }]}>{Math.round(pct / 100 * l.cap).toLocaleString()} kg</Text>
+                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Current Stock</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+              <View style={{ height: 16 }} />
+            </ScrollView>
+          )}
+        </>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ SALES ══ */}
+      {topTab === 'sales' && (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <View style={styles.metricsRow}>
+            <View style={[styles.metricCard, { backgroundColor: roleColor + '12', borderColor: roleColor + '33' }]}>
+              <Text style={[styles.metricValue, { color: roleColor }]}>{fmt(totalAmt)}</Text>
+              <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Today's Revenue</Text>
+            </View>
+            <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.metricValue, { color: colors.text }]}>{totalL.toLocaleString()} L</Text>
+              <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Volume Sold</Text>
+            </View>
+            <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.metricValue, { color: colors.text }]}>{todaySales.length}</Text>
+              <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Entries</Text>
+            </View>
+          </View>
+
+          {totalPOS > 0 && (
+            <View style={[styles.cashPosCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.cashPosTitle, { color: colors.text }]}>Payment Breakdown</Text>
+              <View style={styles.cashPosRow}>
+                <View style={[styles.cashPosItem, { backgroundColor: '#27500A12', borderColor: '#27500A33' }]}>
+                  <Ionicons name="cash-outline" size={16} color="#27500A" />
+                  <Text style={[styles.cashPosValue, { color: '#27500A' }]}>{fmt(totalCash)}</Text>
+                  <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>Cash</Text>
+                </View>
+                <View style={[styles.cashPosItem, { backgroundColor: '#185FA512', borderColor: '#185FA533' }]}>
+                  <Ionicons name="card-outline" size={16} color="#185FA5" />
+                  <Text style={[styles.cashPosValue, { color: '#185FA5' }]}>{fmt(totalPOS)}</Text>
+                  <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>POS / Transfer</Text>
+                </View>
+              </View>
+              <View style={[styles.posBar, { backgroundColor: colors.border }]}>
+                <View style={[styles.posBarCash, { flex: totalCash, backgroundColor: '#27500A' }]} />
+                <View style={[styles.posBarPos, { flex: totalPOS, backgroundColor: '#185FA5' }]} />
+              </View>
+              <Text style={[styles.posBarLabel, { color: colors.textSubtle }]}>
+                Cash {totalAmt > 0 ? Math.round((totalCash / totalAmt) * 100) : 0}% · POS {totalAmt > 0 ? Math.round((totalPOS / totalAmt) * 100) : 0}%
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.prodRowSales}>
+            {[
+              { label: 'PMS', L: pmsSales.reduce((s, e) => s + e.L, 0), color: colors.primary },
+              { label: 'AGO', L: agoSales.reduce((s, e) => s + e.L, 0), color: colors.blue   },
+              { label: 'DPK', L: dkpSales.reduce((s, e) => s + e.L, 0), color: colors.amber  },
+            ].map(p => (
+              <View key={p.label} style={[styles.prodCardSales, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
+                <Text style={[styles.prodLabelSales, { color: p.color }]}>{p.label}</Text>
+                <Text style={[styles.prodLSales, { color: colors.text }]}>{p.L.toLocaleString()}L</Text>
+              </View>
+            ))}
+          </View>
+
+          {canRecord && (
+            <TouchableOpacity onPress={() => setShowSaleForm(v => !v)}
+              style={[styles.addOutlineBtn, { borderColor: roleColor, marginBottom: showSaleForm ? 0 : 12 }]}>
+              <Ionicons name={showSaleForm ? 'close' : 'add'} size={17} color={roleColor} />
+              <Text style={[styles.addOutlineBtnText, { color: roleColor }]}>{showSaleForm ? 'Cancel' : 'Record Sales Entry'}</Text>
+            </TouchableOpacity>
+          )}
+
+          {showSaleForm && canRecord && (
+            <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.formSectionTitle, { color: colors.text }]}>Record Sales Entry</Text>
+              <Text style={[styles.subLabel, { color: colors.textMuted }]}>Pump</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {activePumps.map(p => (
+                    <TouchableOpacity key={p.name} onPress={() => setPump(p.name)}
+                      style={[styles.prodBtn, { backgroundColor: pump === p.name ? roleColor : colors.background, borderColor: pump === p.name ? roleColor : colors.border }]}>
+                      <Text style={{ color: pump === p.name ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{p.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.subLabel, { color: colors.textMuted }]}>Opening Meter (L)</Text>
+                  <TextInput style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                    placeholder="0.00" placeholderTextColor={colors.textSubtle} keyboardType="numeric" value={openMeter} onChangeText={setOpenMeter} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.subLabel, { color: colors.textMuted }]}>Closing Meter (L)</Text>
+                  <TextInput style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                    placeholder="0.00" placeholderTextColor={colors.textSubtle} keyboardType="numeric" value={closeMeter} onChangeText={setCloseMeter} />
+                </View>
+              </View>
+              <Text style={[styles.subLabel, { color: colors.textMuted }]}>POS / Transfer ₦ (optional)</Text>
+              <TextInput style={[styles.input, { backgroundColor: colors.background, borderColor: posVal > saleAmt && saleAmt > 0 ? colors.error : colors.inputBorder, color: colors.text }]}
+                placeholder="0" placeholderTextColor={colors.textSubtle} keyboardType="numeric" value={posAmt} onChangeText={setPosAmt} />
+              {liters > 0 && (
+                <View style={[styles.calcPreview, { backgroundColor: roleColor + '10', borderColor: roleColor + '30' }]}>
+                  <View style={styles.calcRow}>
+                    <Text style={[styles.calcLabel, { color: colors.textMuted }]}>Volume</Text>
+                    <Text style={[styles.calcValue, { color: colors.text }]}>{liters.toLocaleString()} L</Text>
+                  </View>
+                  <View style={styles.calcRow}>
+                    <Text style={[styles.calcLabel, { color: colors.textMuted }]}>Total Sale</Text>
+                    <Text style={[styles.calcValue, { color: roleColor }]}>{fmt(saleAmt)}</Text>
+                  </View>
+                  {posVal > 0 && (
+                    <>
+                      <View style={[styles.calcDivider, { backgroundColor: colors.border }]} />
+                      <View style={styles.calcRow}>
+                        <Text style={[styles.calcLabel, { color: '#185FA5' }]}>POS</Text>
+                        <Text style={[styles.calcValue, { color: '#185FA5' }]}>− {fmt(posVal)}</Text>
+                      </View>
+                      <View style={styles.calcRow}>
+                        <Text style={[styles.calcLabel, { color: '#27500A' }]}>Cash to Collect</Text>
+                        <Text style={[styles.calcValue, { color: '#27500A', fontWeight: '800' }]}>{fmt(Math.max(0, cashAmt))}</Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+              )}
+              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor, marginTop: 8 }]} onPress={handleSaleSubmit} activeOpacity={0.85}>
+                <Text style={styles.submitBtnText}>Record Sales</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>Sales Log</Text>
+          {sales.slice().reverse().map(entry => {
+            const amt  = entry.L * entry.price;
+            const pos  = entry.pos || 0;
+            const cash = amt - pos;
+            return (
+              <View key={entry.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.logHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.logDate, { color: colors.text }]}>{entry.pump}</Text>
+                    <Text style={[styles.logBy, { color: colors.textMuted }]}>by {entry.by} · {fmtDateTime(entry.dt)}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[styles.saleAmt, { color: roleColor }]}>{fmt(amt)}</Text>
+                    <Text style={[styles.saleL, { color: colors.textMuted }]}>{entry.L.toLocaleString()}L @ ₦{entry.price}/L</Text>
+                  </View>
+                </View>
+                {pos > 0 && (
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+                    <View style={[styles.posChip, { backgroundColor: '#27500A12', borderColor: '#27500A30' }]}>
+                      <Ionicons name="cash-outline" size={11} color="#27500A" />
+                      <Text style={[styles.posChipText, { color: '#27500A' }]}>Cash {fmt(cash)}</Text>
+                    </View>
+                    <View style={[styles.posChip, { backgroundColor: '#185FA512', borderColor: '#185FA530' }]}>
+                      <Ionicons name="card-outline" size={11} color="#185FA5" />
+                      <Text style={[styles.posChipText, { color: '#185FA5' }]}>POS {fmt(pos)}</Text>
+                    </View>
+                  </View>
                 )}
               </View>
-              {canEdit && (
-                isEditing ? (
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <TouchableOpacity onPress={() => handleSave(prod)} style={[styles.saveBtn, { backgroundColor: col }]}>
-                      <Ionicons name="checkmark" size={16} color="#fff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setEditing(null)} style={[styles.cancelIconBtn, { borderColor: colors.border }]}>
-                      <Ionicons name="close" size={16} color={colors.textMuted} />
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity onPress={() => handleEdit(prod)} style={[styles.editBtn, { borderColor: col + '55' }]}>
-                    <Ionicons name="pencil" size={13} color={col} />
-                    <Text style={[styles.editBtnText, { color: col }]}>Edit</Text>
-                  </TouchableOpacity>
-                )
-              )}
-            </View>
-          );
-        })}
+            );
+          })}
+          <View style={{ height: 16 }} />
+        </ScrollView>
+      )}
 
-        {/* ── TANK SUMMARY ── */}
-        {lastDip && (
-          <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Latest Tank Summary</Text>
-            {Object.entries(lastDip.rd).map(([tid, mm]) => {
-              const tank = tanks.find(t => t.id === tid);
-              if (!tank) return null;
-              const pct      = Math.round((mm / tank.dip) * 100);
-              const barColor = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary;
-              return (
-                <View key={tid} style={[styles.tankRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.tankRowHeader}>
-                      <Text style={[styles.tankName, { color: colors.text }]}>{tank.name}</Text>
-                      <Text style={[styles.tankPct, { color: barColor }]}>{pct}%</Text>
-                    </View>
-                    <View style={[styles.progressBg, { backgroundColor: colors.border }]}>
-                      <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: barColor }]} />
+      {/* ══════════════════════════════════════════════════ MAINTENANCE ══ */}
+      {topTab === 'maint' && (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          {canMaint && (
+            <TouchableOpacity onPress={() => setShowMaintForm(v => !v)}
+              style={[styles.addOutlineBtn, { borderColor: roleColor, marginBottom: showMaintForm ? 0 : 12 }]}>
+              <Ionicons name={showMaintForm ? 'close' : 'add'} size={17} color={roleColor} />
+              <Text style={[styles.addOutlineBtnText, { color: roleColor }]}>{showMaintForm ? 'Cancel' : 'New Maintenance Request'}</Text>
+            </TouchableOpacity>
+          )}
+          {showMaintForm && canMaint && (
+            <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 12 }]}>
+              <Text style={[styles.formSectionTitle, { color: colors.text }]}>New Maintenance Request</Text>
+              <TextInput
+                style={[styles.obsInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                placeholder="Describe the issue..."
+                placeholderTextColor={colors.textSubtle}
+                multiline numberOfLines={3}
+                value={maintForm.title}
+                onChangeText={v => setMaintForm(f => ({ ...f, title: v }))}
+                textAlignVertical="top"
+              />
+              <Text style={[styles.subLabel, { color: colors.textMuted }]}>Priority</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {(['Urgent', 'Medium', 'Low'] as const).map(p => (
+                  <TouchableOpacity key={p} onPress={() => setMaintForm(f => ({ ...f, pri: p }))}
+                    style={[styles.prodBtn, { flex: 1, justifyContent: 'center', backgroundColor: maintForm.pri === p ? PRI_COLORS[p].fg : colors.background, borderColor: maintForm.pri === p ? PRI_COLORS[p].fg : colors.border }]}>
+                    <Text style={{ color: maintForm.pri === p ? '#fff' : colors.textMuted, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleMaintSubmit} activeOpacity={0.85}>
+                  <Ionicons name="send" size={16} color="#fff" />
+                  <Text style={styles.submitBtnText}>Submit Request</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={() => setShowMaintForm(false)}>
+                  <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.metricsRow}>
+            <View style={[styles.metricCard, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}>
+              <Text style={[styles.metricValue, { color: colors.error }]}>{openItems.length}</Text>
+              <Text style={[styles.metricLabel, { color: colors.error }]}>Open</Text>
+            </View>
+            <View style={[styles.metricCard, { backgroundColor: colors.warningBg, borderColor: colors.warningBorder }]}>
+              <Text style={[styles.metricValue, { color: colors.warning }]}>{openItems.filter(m => m.pri === 'Urgent').length}</Text>
+              <Text style={[styles.metricLabel, { color: colors.warning }]}>Urgent</Text>
+            </View>
+            <View style={[styles.metricCard, { backgroundColor: colors.successBg, borderColor: colors.successBorder }]}>
+              <Text style={[styles.metricValue, { color: colors.success }]}>{doneItems.length}</Text>
+              <Text style={[styles.metricLabel, { color: colors.success }]}>Done</Text>
+            </View>
+          </View>
+
+          {openItems.length > 0 && (
+            <>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Open Items</Text>
+              {openItems.map(m => (
+                <View key={m.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Text style={[styles.logDate, { color: colors.text, flex: 1 }]}>{m.title}</Text>
+                    <View style={[styles.priBadge, { backgroundColor: PRI_COLORS[m.pri].bg }]}>
+                      <Text style={[styles.priText, { color: PRI_COLORS[m.pri].fg }]}>{m.pri}</Text>
                     </View>
                   </View>
-                  <Text style={[styles.tankMm, { color: colors.textMuted }]}>{mm}mm</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                    <Ionicons name="person-outline" size={12} color={colors.textMuted} />
+                    <Text style={[styles.logBy, { color: colors.textMuted }]}>by {m.by}</Text>
+                    <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
+                    <Text style={[styles.logBy, { color: colors.textMuted }]}>{fmtDate(m.date)}</Text>
+                  </View>
                 </View>
-              );
-            })}
-          </>
-        )}
-        <View style={{ height: 20 }} />
-      </ScrollView>
+              ))}
+            </>
+          )}
+
+          {doneItems.length > 0 && (
+            <>
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>Completed</Text>
+              {doneItems.map(m => (
+                <View key={m.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: 0.75 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={[styles.logDate, { color: colors.text, flex: 1 }]}>{m.title}</Text>
+                    {m.cost !== undefined && <Text style={[styles.saleAmt, { color: colors.success }]}>₦{m.cost.toLocaleString()}</Text>}
+                  </View>
+                  <Text style={[styles.logBy, { color: colors.textMuted, marginTop: 4 }]}>by {m.by} · {fmtDate(m.date)}</Text>
+                </View>
+              ))}
+            </>
+          )}
+          <View style={{ height: 16 }} />
+        </ScrollView>
+      )}
     </ScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: 14 },
+  topTabBar:   { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
+  topTabBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 11, borderBottomWidth: 2 },
+  topTabLabel: { fontSize: 12 },
+  subTabBar:   { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: 'transparent' },
+  subTabBtn:   { flex: 1, alignItems: 'center', paddingVertical: 8, borderBottomWidth: 2 },
+  subTabLabel: { fontSize: 12 },
+  scroll:      { padding: 14 },
 
-  // ── Board ──
-  board: { borderRadius: 20, backgroundColor: '#060f0a', marginBottom: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  formSection:      { fontSize: 13, fontWeight: '700', marginBottom: 10, marginTop: 4 },
+  formSectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  subLabel:         { fontSize: 11, fontWeight: '600', marginBottom: 4, color: '#888' },
+  sectionTitle:     { fontSize: 14, fontWeight: '700', marginBottom: 10 },
 
-  boardTopBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
-  boardTopLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  liveLabel: { color: '#4ade80', fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
-  dividerV: { width: 1, height: 10, backgroundColor: 'rgba(255,255,255,0.15)' },
-  boardTagline: { color: 'rgba(255,255,255,0.3)', fontSize: 9, fontWeight: '700', letterSpacing: 1.2 },
-  boardTopRight: { alignItems: 'flex-end', gap: 1 },
-  boardDate: { color: 'rgba(255,255,255,0.25)', fontSize: 9, fontWeight: '500' },
-  boardClock: { color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  dipCard:       { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 12, gap: 8 },
+  dipCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dipCardTitle:  { fontSize: 14, fontWeight: '700' },
+  dipCapacity:   { fontSize: 11 },
+  prodBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  prodBadgeText: { fontSize: 12, fontWeight: '700' },
+  prodBtn:       { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
+  input:         { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  obsInput:      { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, minHeight: 72, textAlignVertical: 'top' },
+  calcResult:    { fontSize: 13, fontWeight: '700' },
+  pendingBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
+  pendingText:   { fontSize: 12, flex: 1 },
+  noBanner:      { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 10 },
+  noBannerText:  { fontSize: 12, flex: 1 },
+  addOutlineBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 10, borderWidth: 1.5, marginBottom: 12 },
+  addOutlineBtnText: { fontSize: 13, fontWeight: '700' },
+  submitBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12 },
+  submitBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  cancelBtn:     { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
+  cancelBtnText: { fontSize: 14, fontWeight: '600' },
 
-  boardRainbow: { flexDirection: 'row', height: 2, marginHorizontal: 14, borderRadius: 1, overflow: 'hidden', marginBottom: 12 },
-  boardRainbowSlice: { flex: 1 },
+  mdBanner:     { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
+  mdBannerText: { fontSize: 12, flex: 1 },
+  logCard:      { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
+  logHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  logDate:      { fontSize: 13, fontWeight: '600' },
+  logBy:        { fontSize: 11, marginTop: 2 },
+  dipStatusBadge:{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+  dipStatusText:{ fontSize: 10, fontWeight: '700' },
+  readingsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  readingChip:  { flexDirection: 'row', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, borderWidth: 1, alignItems: 'center' },
+  readingLabel: { fontSize: 10 },
+  readingVal:   { fontSize: 12, fontWeight: '700' },
+  dipObs:       { fontSize: 11, marginTop: 4 },
+  approvedByText:{ fontSize: 10, marginTop: 4 },
+  mdActions:    { flexDirection: 'row', gap: 8, marginTop: 8 },
+  approveBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 8 },
+  rejectBtn:    { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5 },
+  mdActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  statusBadge:  { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  statusText:   { fontSize: 11, fontWeight: '700' },
+  deliveryStats:{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginTop: 8 },
+  deliveryStatItem:{ fontSize: 12 },
+  evidenceSection: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 10, paddingTop: 8 },
+  evidenceHeader:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  evidenceTitle:   { flex: 1, fontSize: 11 },
+  evidenceBtns:    { flexDirection: 'row', gap: 6 },
+  evidenceAddBtn:  { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+  evidenceAddText: { fontSize: 10, fontWeight: '600' },
+  evidenceEmpty:   { fontSize: 11, fontStyle: 'italic' },
+  evidenceItem:    { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 7, borderRadius: 7, borderWidth: 1, marginBottom: 4 },
+  evidenceName:    { fontSize: 11, fontWeight: '600' },
+  evidenceMeta:    { fontSize: 10 },
 
-  boardGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, paddingBottom: 14, gap: 8 },
-  boardCard: {
-    width: '47%',
-    borderRadius: 14,
-    borderWidth: 1,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    flexDirection: 'row',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  cardFlash: { ...StyleSheet.absoluteFillObject, borderRadius: 14, zIndex: 1 },
-  shimmer: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 50,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    transform: [{ skewX: '-15deg' }],
-  },
-  cardAccent: { width: 3, borderRadius: 3 },
-  cardInner: { flex: 1, padding: 12, gap: 4, zIndex: 2 },
-  cardProdRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  cardIconWrap: { width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-  cardProdName: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
-  cardPrice: { fontSize: 17, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  cardUnit: { fontSize: 8, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' },
+  invCard:      { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
+  invHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  invName:      { fontSize: 14, fontWeight: '700' },
+  invProd:      { fontSize: 11, marginTop: 2 },
+  progressBg:   { height: 7, borderRadius: 4, overflow: 'hidden' },
+  progressBar:  { height: '100%', borderRadius: 4 },
+  invStats:     { flexDirection: 'row' },
+  invStat:      { flex: 1, alignItems: 'center' },
+  invStatVal:   { fontSize: 16, fontWeight: '700' },
+  invStatLabel: { fontSize: 10, marginTop: 2 },
 
-  // ── Manage ──
-  sectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  priceRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
-  prodIcon: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  prodName: { fontSize: 13, fontWeight: '600', marginBottom: 2 },
-  currentPrice: { fontSize: 17, fontWeight: '700' },
-  priceInput: { borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 16, fontWeight: '700', width: 100 },
-  saveBtn: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  cancelIconBtn: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
-  editBtnText: { fontSize: 11, fontWeight: '600' },
+  metricsRow:   { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  metricCard:   { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1 },
+  metricValue:  { fontSize: 15, fontWeight: '700' },
+  metricLabel:  { fontSize: 10, marginTop: 2 },
+  cashPosCard:  { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 12 },
+  cashPosTitle: { fontSize: 13, fontWeight: '700', marginBottom: 10 },
+  cashPosRow:   { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  cashPosItem:  { flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center', gap: 3 },
+  cashPosValue: { fontSize: 16, fontWeight: '700' },
+  cashPosLabel: { fontSize: 10 },
+  posBar:       { height: 6, borderRadius: 3, overflow: 'hidden', flexDirection: 'row', marginBottom: 4 },
+  posBarCash:   { borderRadius: 3 },
+  posBarPos:    { borderRadius: 3 },
+  posBarLabel:  { fontSize: 10, textAlign: 'center' },
+  prodRowSales: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  prodCardSales:{ flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  prodLabelSales:{ fontSize: 12, fontWeight: '700' },
+  prodLSales:   { fontSize: 13, fontWeight: '700', marginTop: 2 },
+  calcPreview:  { padding: 12, borderRadius: 10, borderWidth: 1, gap: 6, marginBottom: 4 },
+  calcRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  calcLabel:    { fontSize: 12 },
+  calcValue:    { fontSize: 14, fontWeight: '700' },
+  calcDivider:  { height: StyleSheet.hairlineWidth, marginVertical: 2 },
+  saleAmt:      { fontSize: 15, fontWeight: '700' },
+  saleL:        { fontSize: 11, marginTop: 2 },
+  posChip:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, borderWidth: 1 },
+  posChipText:  { fontSize: 11, fontWeight: '600' },
 
-  // ── Tanks ──
-  tankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11, borderRadius: 10, borderWidth: 1, marginBottom: 6 },
-  tankRowHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  tankName: { fontSize: 12, fontWeight: '600' },
-  tankPct: { fontSize: 12, fontWeight: '700' },
-  tankMm: { fontSize: 11, width: 44, textAlign: 'right' },
-  progressBg: { height: 5, borderRadius: 3, overflow: 'hidden' },
-  progressBar: { height: 5, borderRadius: 3 },
+  priBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  priText:      { fontSize: 11, fontWeight: '700' },
 });
