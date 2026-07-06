@@ -181,11 +181,7 @@ const MGR_NAV_ALL: NavItem[] = [
 const MGR_NAV_PERM: Record<string, keyof MgrPermissions> = {
   exp: 'canExpenses', budget: 'canBudget', msgs: 'canChat',
 };
-const INIT_MGR_PERMS: Record<string, MgrPermissions> = {
-  HQ: { ...DEFAULT_MGR_PERMS },
-  B1: { ...DEFAULT_MGR_PERMS },
-  B2: { ...DEFAULT_MGR_PERMS },
-};
+const INIT_MGR_PERMS: Record<string, MgrPermissions> = {};
 
 // Full nav catalogue per role (mgr uses MGR_NAV_ALL, all others use NAVDEF)
 export const ROLE_FULL_NAV: Record<string, NavItem[]> = {
@@ -229,193 +225,29 @@ function genId() { return Date.now() + Math.floor(Math.random() * 10000); }
 function nowTs() { return new Date().toISOString(); }
 function nowTime() { return new Date().toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }); }
 
-const INIT_PUMPS: Pump[] = [
-  { id: 'P1', name: 'Pump #1 PMS', prod: 'PMS', active: true },
-  { id: 'P2', name: 'Pump #2 PMS', prod: 'PMS', active: true },
-  { id: 'P3', name: 'Pump #3 AGO', prod: 'AGO', active: true },
-  { id: 'P4', name: 'Pump #4 DPK', prod: 'DPK', active: true },
-  { id: 'P5', name: 'LPG Pump', prod: 'LPG', active: true },
-];
-const INIT_TANKS: Tank[] = [
-  { id: 'T1', name: 'PMS Tank 1', prod: 'PMS', cap: 25000, dip: 2500, op: 18200, rv: 0, sl: 1600 },
-  { id: 'T2', name: 'PMS Tank 2', prod: 'PMS', cap: 25000, dip: 2500, op: 15800, rv: 0, sl: 0 },
-  { id: 'T3', name: 'AGO Tank 3', prod: 'AGO', cap: 30000, dip: 3000, op: 12600, rv: 0, sl: 520 },
-  { id: 'T4', name: 'DPK Tank 4', prod: 'DPK', cap: 20000, dip: 2000, op: 16200, rv: 0, sl: 120 },
-];
-const INIT_LPG: LPGTank[] = [
-  { id: 'L1', name: 'LPG Tank 1', cap: 5000, op: 3200, rv: 0, sl: 400 },
-  { id: 'L2', name: 'LPG Tank 2', cap: 3000, op: 1840, rv: 0, sl: 0 },
-];
-const INIT_DIPS: DipRecord[] = [
-  { id: 1, dt: '2025-06-10T05:50', by: 'Chukwuma Adeyemi', rd: { T1: 1456, T2: 1264, T3: 1260, T4: 1620 }, lpg: { L1: 64, L2: 58 }, obs: 'T3 water sheen noted.', status: 'approved', approvedBy: 'Adaeze Obi', approvedDt: '2025-06-10T08:00' },
-  { id: 2, dt: '2025-06-11T06:10', by: 'Ibrahim Sule', rd: { T1: 1380, T2: 1180, T3: 1100 }, lpg: {}, obs: '', status: 'pending' },
-];
-const INIT_RECS: Delivery[] = [
-  { id: 1, dt: '2025-06-09T10:30', sup: 'NNPCL Abuja', prod: 'AGO', wb: 'WB-2025-041', ord: 20000, rec: 19600, st: 'short', notes: '400L short delivery.', costPrice: 980, receivedBy: 'Grace Adeyemi' },
-  { id: 2, dt: '2025-06-05T08:00', sup: 'NNPCL Abuja', prod: 'PMS', wb: 'WB-2025-038', ord: 33000, rec: 33000, st: 'ok', notes: '', costPrice: 775, receivedBy: 'Grace Adeyemi' },
-  { id: 3, dt: '2025-05-28T11:20', sup: 'Total Energies', prod: 'DPK', wb: 'WB-2025-031', ord: 15000, rec: 15000, st: 'ok', notes: '', costPrice: 640, receivedBy: 'Grace Adeyemi' },
-  { id: 4, dt: '2025-06-01T09:00', sup: 'Ardova PLC', prod: 'LPG', wb: 'WB-2025-035', ord: 5000, rec: 5000, st: 'ok', notes: '', costPrice: 1050, receivedBy: 'Grace Adeyemi' },
-  { id: 5, dt: '2025-05-20T14:00', sup: 'Total Energies', prod: 'Lube Oil', wb: 'WB-2025-028', ord: 500, rec: 500, st: 'ok', notes: 'Engine oil 5L packs — 100 units', costPrice: 3200, receivedBy: 'Grace Adeyemi' },
-];
-const INIT_PRICE_HISTORY: PriceChange[] = [
-  { id: 1, prod: 'PMS',  oldPrice: 785,  newPrice: 830,  by: 'Adaeze Obi', dt: '2025-06-01T09:00' },
-  { id: 2, prod: 'AGO',  oldPrice: 980,  newPrice: 1050, by: 'Adaeze Obi', dt: '2025-06-01T09:00' },
-  { id: 3, prod: 'LPG',  oldPrice: 1150, newPrice: 1200, by: 'Adaeze Obi', dt: '2025-05-28T09:00' },
-  { id: 4, prod: 'PMS',  oldPrice: 750,  newPrice: 785,  by: 'Adaeze Obi', dt: '2025-05-01T08:00' },
-];
-const INIT_MAINT: MaintenanceItem[] = [
-  { id: 1, title: 'Pump #3 nozzle leak', pri: 'Urgent', by: 'Emeka', date: '2025-06-07', st: 'Open' },
-  { id: 2, title: 'Generator oil service', pri: 'Medium', by: 'Bello', date: '2025-06-05', st: 'Open' },
-  { id: 3, title: 'Pump #1 calibration', pri: 'Low', by: 'Chukwuma', date: '2025-05-28', st: 'Done', cost: 42000 },
-];
-const INIT_SALES: SalesEntry[] = [
-  { id: 1, pump: 'Pump #1 PMS', by: 'Emeka', L: 880, price: 830, dt: '2025-06-10T07:30' },
-  { id: 2, pump: 'Pump #3 AGO', by: 'Bello', L: 520, price: 1050, dt: '2025-06-10T08:15' },
-  { id: 3, pump: 'Pump #2 PMS', by: 'Chukwuma', L: 640, price: 830, dt: '2025-06-10T09:00' },
-  { id: 4, pump: 'Pump #4 DPK', by: 'Ibrahim', L: 310, price: 700, dt: '2025-06-10T09:45' },
-  { id: 5, pump: 'LPG Pump',    by: 'Emeka',    L: 180, price: 1200, dt: '2025-06-10T10:30' },
-];
-const INIT_STAFF: Staff[] = [
-  { id: 1, name: 'Amaka Osei', role: 'CEO', sal: 1200000, st: 'Active', email: 'ceo@petrotrack.ng' },
-  { id: 2, name: 'Adaeze Obi', role: 'Managing Director', sal: 650000, st: 'Active', email: 'md@petrotrack.ng' },
-  { id: 3, name: 'Funmi Adesanya', role: 'Marketing Manager', sal: 420000, st: 'Active', email: 'mktg@petrotrack.ng' },
-  { id: 4, name: 'Ngozi Eze', role: 'Corp. Services Mgr', sal: 380000, st: 'Active', email: 'csm@petrotrack.ng' },
-  { id: 5, name: 'Grace Adeyemi', role: 'Accountant', sal: 250000, st: 'Active', email: 'acc@petrotrack.ng' },
-  { id: 6, name: 'Chukwuma Adeyemi', role: 'Station Manager', sal: 280000, st: 'Active', email: 'mgr.hq@petrotrack.ng' },
-  { id: 9, name: 'Ibrahim Sule', role: 'Station Manager', sal: 280000, st: 'Active', email: 'mgr.maitama@petrotrack.ng' },
-  { id: 10, name: 'Chidinma Nwosu', role: 'Station Manager', sal: 280000, st: 'Active', email: 'mgr.lugbe@petrotrack.ng' },
-  { id: 7, name: 'Emeka Okafor', role: 'Pump Attendant', sal: 120000, st: 'Active', email: 'emeka@petrotrack.ng' },
-  { id: 8, name: 'Bello Abubakar', role: 'Pump Attendant', sal: 120000, st: 'Active', email: 'bello@petrotrack.ng' },
-];
-const INIT_BRANCHES: Branch[] = [
-  { id: 'HQ', name: 'HQ — Abuja CBD', st: 'Active', rev: 18400000, mgr: 'Chukwuma Adeyemi', pumps: 4, tanks: 4 },
-  { id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 11200000, mgr: 'Ibrahim Sule', pumps: 3, tanks: 3 },
-  { id: 'B2', name: 'Lugbe Branch', st: 'Active', rev: 5200000, mgr: 'Chidinma Nwosu', pumps: 2, tanks: 2 },
-];
-const INIT_DOCS: ComplianceDoc[] = [
-  { id: 1, name: 'NESREA Env. Permit', cat: 'Permit', iss: 'NESREA', exp: '2025-06-05', ref: 'NESREA/EI/0567' },
-  { id: 2, name: 'NMDPRA Retail Licence', cat: 'Licence', iss: 'NMDPRA', exp: '2025-06-20', ref: 'NMD/R/ABJ/0234' },
-  { id: 3, name: 'Fire Safety Certificate', cat: 'Certificate', iss: 'FSCE Abuja', exp: '2025-08-10', ref: 'FSCE/2024/441' },
-  { id: 4, name: 'CAC Registration', cat: 'Registration', iss: 'CAC Nigeria', exp: '2026-03-01', ref: 'RC-0987654' },
-];
-const INIT_SHIFTS: ShiftReport[] = [
-  { id: 1, dt: '2025-06-08T18:04', by: 'att', byName: 'Emeka Okonkwo', entries: 12, totalSales: 498600, totalPOS: 125000, expectedCash: 373600, actualCash: 373600, variance: 0, status: 'reviewed', note: '' },
-  { id: 2, dt: '2025-06-09T18:11', by: 'att', byName: 'Emeka Okonkwo', entries: 9, totalSales: 312400, totalPOS: 80000, expectedCash: 232400, actualCash: 230000, variance: -2400, status: 'flagged', note: 'Short by ₦2,400 — one POS terminal disconnected mid-shift, investigating' },
-  { id: 3, dt: '2025-06-10T17:55', by: 'att', byName: 'Emeka Okonkwo', entries: 11, totalSales: 421800, totalPOS: 95000, expectedCash: 326800, actualCash: 326800, variance: 0, status: 'submitted', note: '' },
-];
-const INIT_COMPANY_FILES: CompanyFile[] = [
-  { id: 1, name: 'Corporate_Policy_Manual_2025.pdf', cat: 'Policy', by: 'Ngozi Eze', dt: '2025-05-01T09:00', size: '2.4 MB', fileType: 'pdf' },
-  { id: 2, name: 'Employee_Handbook_v3.docx', cat: 'HR', by: 'Ngozi Eze', dt: '2025-04-15T14:30', size: '1.1 MB', fileType: 'docx' },
-  { id: 3, name: 'Q1_2025_Financial_Report.xlsx', cat: 'Finance', by: 'Grace Adeyemi', dt: '2025-04-05T10:00', size: '0.8 MB', fileType: 'xlsx' },
-  { id: 4, name: 'NNPCL_Dealership_Agreement.pdf', cat: 'Legal', by: 'Ngozi Eze', dt: '2025-03-20T11:00', size: '3.2 MB', fileType: 'pdf' },
-  { id: 5, name: 'HSE_Safety_Procedures.pdf', cat: 'Compliance', by: 'Ngozi Eze', dt: '2025-03-10T09:30', size: '1.8 MB', fileType: 'pdf' },
-];
-const INIT_DELIVERY_EVIDENCE: DeliveryEvidence[] = [
-  { id: 1, delivId: 1, type: 'photo', name: 'WB-2025-041_seal_intact.jpg', dt: '2025-06-09T10:35', by: 'Chukwuma Adeyemi' },
-  { id: 2, delivId: 1, type: 'photo', name: 'WB-2025-041_offload_start.jpg', dt: '2025-06-09T10:42', by: 'Chukwuma Adeyemi' },
-  { id: 3, delivId: 1, type: 'video', name: 'WB-2025-041_discharge_video.mp4', dt: '2025-06-09T11:00', by: 'Chukwuma Adeyemi' },
-];
-const INIT_EXPENSES: Expense[] = [
-  { id: 1, dt: '2025-06-10T07:15', cat: 'Generator fuel', desc: 'AGO for gen set — 50L offload', amt: 52500, by: 'mgr', byName: 'Chukwuma Adeyemi', status: 'approved', approvedBy: 'Grace Adeyemi', approvedDt: '2025-06-10T09:00', budgetId: 1 },
-  { id: 2, dt: '2025-06-10T09:00', cat: 'Security & guarding', desc: 'Daily security allowance — 3 guards', amt: 9000, by: 'mgr', byName: 'Chukwuma Adeyemi', status: 'approved', approvedBy: 'Grace Adeyemi', approvedDt: '2025-06-10T09:30', budgetId: 1 },
-  { id: 3, dt: '2025-06-10T11:30', cat: 'Office supplies', desc: 'Printer paper, receipt books, pens', amt: 14500, by: 'mgr', byName: 'Chukwuma Adeyemi', status: 'pending', budgetId: 1 },
-  { id: 4, dt: '2025-06-10T14:00', cat: 'Staff welfare', desc: 'Staff lunch — 8 persons', amt: 16000, by: 'mgr', byName: 'Chukwuma Adeyemi', status: 'pending', budgetId: 1 },
-];
-const INIT_BUDGETS: Budget[] = [
-  {
-    id: 1, month: 6, year: 2025, label: 'June 2025', by: 'mgr', byName: 'Chukwuma Adeyemi',
-    items: [{ cat: 'Generator fuel', amt: 150000 }, { cat: 'Security & guarding', amt: 189000 }, { cat: 'Utilities', amt: 120000 }, { cat: 'Staff welfare', amt: 48000 }, { cat: 'Maintenance & repairs', amt: 85000 }, { cat: 'Office supplies', amt: 20000 }, { cat: 'Transport', amt: 15000 }, { cat: 'Miscellaneous', amt: 10000 }],
-    total: 637000, status: 'fully_approved',
-    workflow: [
-      { stage: 'Submitted', by: 'Chukwuma Adeyemi', role: 'mgr', dt: '2025-05-28T09:00', action: 'submit', note: 'June 2025 monthly operating budget request.' },
-      { stage: 'Accountant reviewed', by: 'Grace Adeyemi', role: 'acc', dt: '2025-05-30T14:00', action: 'forward', note: 'Reviewed — no corrections needed. Forwarded to MD and CEO.' },
-      { stage: 'MD approved', by: 'Adaeze Obi', role: 'md', dt: '2025-05-31T10:00', action: 'approve', note: 'Approved. Ensure all expenses are properly documented.' },
-      { stage: 'CEO final approval', by: 'Amaka Osei', role: 'ceo', dt: '2025-05-31T15:30', action: 'approve', note: 'Final approval granted. Station Manager may proceed.' },
-    ],
-  },
-  {
-    id: 2, month: 7, year: 2025, label: 'July 2025', by: 'mgr', byName: 'Chukwuma Adeyemi',
-    items: [{ cat: 'Generator fuel', amt: 165000 }, { cat: 'Security & guarding', amt: 189000 }, { cat: 'Utilities', amt: 130000 }, { cat: 'Staff welfare', amt: 52000 }, { cat: 'Maintenance & repairs', amt: 90000 }, { cat: 'Office supplies', amt: 22000 }, { cat: 'Transport', amt: 18000 }, { cat: 'Miscellaneous', amt: 12000 }],
-    total: 678000, status: 'acc_forwarded',
-    workflow: [
-      { stage: 'Submitted', by: 'Chukwuma Adeyemi', role: 'mgr', dt: '2025-06-08T09:00', action: 'submit', note: 'July 2025 budget — generator fuel increased due to NNPCL price hike.' },
-      { stage: 'Accountant reviewed', by: 'Grace Adeyemi', role: 'acc', dt: '2025-06-09T14:00', action: 'forward', note: 'Reviewed. Miscellaneous corrected from ₦12,000 to ₦8,000. Forwarded to MD and CEO.' },
-    ],
-  },
-  {
-    id: 3, month: 8, year: 2025, label: 'August 2025', by: 'mgr', byName: 'Chukwuma Adeyemi',
-    items: [{ cat: 'Generator fuel', amt: 170000 }, { cat: 'Security & guarding', amt: 200000 }, { cat: 'Utilities', amt: 135000 }, { cat: 'Staff welfare', amt: 55000 }, { cat: 'Maintenance & repairs', amt: 95000 }, { cat: 'Office supplies', amt: 25000 }, { cat: 'Transport', amt: 20000 }, { cat: 'Miscellaneous', amt: 15000 }],
-    total: 715000, status: 'submitted',
-    workflow: [
-      { stage: 'Submitted', by: 'Chukwuma Adeyemi', role: 'mgr', dt: '2025-06-10T11:00', action: 'submit', note: 'August 2025 budget. Security increased — new contract with Omega Guard Services.' },
-    ],
-  },
-];
-const INIT_TASKS: Task[] = [
-  { id: 1, title: 'Q3 Sales Target Review', desc: 'Compile and review Q3 sales performance across all branches and present findings.', assignedBy: 'ceo', assignedByName: 'Amaka Osei', assignedTo: 'md', assignedToName: 'Adaeze Obi', status: 'progressing', priority: 'High', cadence: 'quarterly', target: '35,000,000', targetUnit: '₦ revenue', dueDate: '2025-07-15', createdAt: '2025-06-01T09:00' },
-  { id: 2, title: 'Station Safety Inspection', desc: 'Conduct full HSE safety inspection of HQ station and file NESREA compliance report.', assignedBy: 'md', assignedByName: 'Adaeze Obi', assignedTo: 'mgr', assignedToName: 'Chukwuma Adeyemi', status: 'commenced', priority: 'High', cadence: 'monthly', target: '100', targetUnit: '% completion', dueDate: '2025-06-20', createdAt: '2025-06-10T07:00' },
-  { id: 3, title: 'June Payroll Processing', desc: 'Process June payroll for all staff members by month end. Confirm figures with HR.', assignedBy: 'md', assignedByName: 'Adaeze Obi', assignedTo: 'acc', assignedToName: 'Grace Adeyemi', status: 'commenced', priority: 'Medium', cadence: 'monthly', dueDate: '2025-06-30', createdAt: '2025-06-10T08:00' },
-  { id: 4, title: 'Pump #3 Nozzle Repair Follow-up', desc: 'Monitor repair progress with contractor, confirm fix and get sign-off sheet.', assignedBy: 'mgr', assignedByName: 'Chukwuma Adeyemi', assignedTo: 'att', assignedToName: 'Emeka Okafor', status: 'commenced', priority: 'High', cadence: 'daily', dueDate: '2025-06-12', createdAt: '2025-06-10T10:00' },
-  { id: 5, title: 'NMDPRA Licence Renewal', desc: 'Initiate renewal on ELPS portal. Deadline in 10 days — escalate if portal unresponsive.', assignedBy: 'md', assignedByName: 'Adaeze Obi', assignedTo: 'csm', assignedToName: 'Ngozi Eze', status: 'progressing', priority: 'High', cadence: 'monthly', target: '1', targetUnit: 'renewal filed', dueDate: '2025-06-20', createdAt: '2025-06-10T13:00' },
-  { id: 6, title: 'Marketing Campaign Report', desc: 'Prepare June digital campaign ROI report for MD review.', assignedBy: 'md', assignedByName: 'Adaeze Obi', assignedTo: 'mktg', assignedToName: 'Funmi Adesanya', status: 'commenced', priority: 'Medium', cadence: 'monthly', target: '150', targetUnit: '% ROI', dueDate: '2025-06-25', createdAt: '2025-06-10T09:00' },
-  { id: 7, title: 'Daily Opening Dip Reading', desc: 'Record and submit tank dip readings before 6:30 AM every morning.', assignedBy: 'mgr', assignedByName: 'Chukwuma Adeyemi', assignedTo: 'att', assignedToName: 'Emeka Okafor', status: 'progressing', priority: 'High', cadence: 'daily', target: '6', targetUnit: 'tanks dipped', dueDate: '2025-06-11', createdAt: '2025-06-10T05:00' },
-  { id: 8, title: 'Weekly Sales Summary', desc: 'Compile weekly sales figures for all pumps and send summary to MD every Friday.', assignedBy: 'md', assignedByName: 'Adaeze Obi', assignedTo: 'mgr', assignedToName: 'Chukwuma Adeyemi', status: 'commenced', priority: 'Medium', cadence: 'weekly', target: '3,500,000', targetUnit: '₦ weekly sales', dueDate: '2025-06-14', createdAt: '2025-06-10T08:00' },
-];
-const INIT_KPIS: KPI[] = [
-  { id: 1, title: 'Monthly Revenue Target', target: '15,000,000', unit: '₦', period: 'Monthly', assignedTo: 'mgr', assignedToName: 'All Station Managers', createdAt: '2025-06-01T09:00' },
-  { id: 2, title: 'Expense Approval Turnaround', target: '24', unit: 'hours', period: 'Per request', assignedTo: 'acc', assignedToName: 'Grace Adeyemi', createdAt: '2025-06-01T09:00' },
-  { id: 3, title: 'Zero Safety Incidents', target: '0', unit: 'incidents', period: 'Monthly', assignedTo: 'mgr', assignedToName: 'All Station Managers', createdAt: '2025-06-01T09:00' },
-  { id: 4, title: 'NMDPRA Licence Compliance', target: '100', unit: '%', period: 'Annual', assignedTo: 'csm', assignedToName: 'Ngozi Eze', createdAt: '2025-06-01T09:00' },
-];
+const INIT_PUMPS: Pump[] = [];
+const INIT_TANKS: Tank[] = [];
+const INIT_LPG: LPGTank[] = [];
+const INIT_DIPS: DipRecord[] = [];
+const INIT_RECS: Delivery[] = [];
+const INIT_PRICE_HISTORY: PriceChange[] = [];
+const INIT_MAINT: MaintenanceItem[] = [];
+const INIT_SALES: SalesEntry[] = [];
+const INIT_STAFF: Staff[] = [];
+const INIT_BRANCHES: Branch[] = [];
+const INIT_DOCS: ComplianceDoc[] = [];
+const INIT_SHIFTS: ShiftReport[] = [];
+const INIT_COMPANY_FILES: CompanyFile[] = [];
+const INIT_DELIVERY_EVIDENCE: DeliveryEvidence[] = [];
+const INIT_EXPENSES: Expense[] = [];
+const INIT_BUDGETS: Budget[] = [];
+const INIT_TASKS: Task[] = [];
+const INIT_KPIS: KPI[] = [];
+const INIT_AUDIT: AuditEntry[] = [];
+const INIT_DEPTS: Department[] = [];
+const INIT_MSGS: Record<string, Message[]> = {};
 
-const INIT_AUDIT: AuditEntry[] = [
-  { id: 1, action: 'User login', user: 'Adaeze Obi (MD)', detail: 'Successful — Abuja', ts: '2025-06-10T06:02' },
-  { id: 2, action: 'Price update', user: 'Adaeze Obi (MD)', detail: 'PMS set to ₦830/L — synced all forms', ts: '2025-06-10T06:30' },
-  { id: 3, action: 'Dip submitted', user: 'Chukwuma Adeyemi (Mgr)', detail: 'All 6 tanks dipped. T3 anomaly flagged.', ts: '2025-06-10T05:52' },
-  { id: 4, action: 'Short delivery', user: 'Chukwuma Adeyemi (Mgr)', detail: 'AGO WB-2025-041 — 400L dispute raised', ts: '2025-06-10T09:47' },
-  { id: 5, action: 'Sales entry', user: 'Emeka Okafor (Att)', detail: 'Pump #1 PMS — 880L', ts: '2025-06-10T07:30' },
-  { id: 6, action: 'Message sent', user: 'Ngozi Eze (CSM)', detail: 'Compliance alert to CEO — NMDPRA licence', ts: '2025-06-10T13:02' },
-  { id: 7, action: 'Maintenance request', user: 'Emeka Okafor (Att)', detail: 'Pump #3 nozzle leak — Urgent', ts: '2025-06-07T10:30' },
-];
-const INIT_DEPTS: Department[] = [
-  { id: 'd1', name: 'Operations', icon: 'construct', col: { bg: '#EAF3DE', fg: '#27500A' }, roles: ['md', 'mgr'], sys: true },
-  { id: 'd2', name: 'Tank Dipping', icon: 'water', col: { bg: '#E6F1FB', fg: '#0C447C' }, roles: ['ceo', 'md', 'csm', 'acc', 'mgr'], sys: true },
-  { id: 'd3', name: 'Accounting', icon: 'calculator', col: { bg: '#EEEDFE', fg: '#3C3489' }, roles: ['ceo', 'md', 'csm', 'acc'], sys: true },
-  { id: 'd4', name: 'Corporate Services', icon: 'briefcase', col: { bg: '#E1F5EE', fg: '#085041' }, roles: ['ceo', 'csm'], sys: true },
-  { id: 'd5', name: 'Marketing & Market Intel', icon: 'megaphone', col: { bg: '#FAECE7', fg: '#712B13' }, roles: ['ceo', 'md'], sys: true },
-  { id: 'd6', name: 'Branches', icon: 'business', col: { bg: '#EAF3DE', fg: '#27500A' }, roles: ['ceo', 'md', 'csm', 'acc', 'mgr'], sys: true },
-  { id: 'd7', name: 'Maintenance', icon: 'build', col: { bg: '#FAEEDA', fg: '#633806' }, roles: ['ceo', 'md', 'csm', 'acc', 'mgr', 'att'], sys: true },
-  { id: 'd8', name: 'Sales', icon: 'bar-chart', col: { bg: '#E6F1FB', fg: '#0C447C' }, roles: ['ceo', 'md', 'csm', 'acc', 'mgr', 'att'], sys: true },
-];
-const INIT_MSGS: Record<string, Message[]> = {
-  'acc-mgr': [
-    { id: 1, from: 'mgr', to: 'acc', type: 'txt', body: 'Please approve June gen fuel expense — ₦52,500.', ts: '08:15', read: true },
-    { id: 2, from: 'acc', to: 'mgr', type: 'txt', body: 'Reviewed. Approved — within budget. Receipt logged.', ts: '09:02', read: true },
-  ],
-  'ceo-md': [
-    { id: 3, from: 'md', to: 'ceo', type: 'req', body: 'Product purchase request', req: { product: 'AGO', qty: 20000, sup: 'NNPCL Abuja', reason: 'Tank 3 at 42% — reorder level reached.' }, ts: '07:50', read: true },
-    { id: 4, from: 'ceo', to: 'md', type: 'txt', body: '✅ Request approved. Please proceed with proper documentation.', ts: '08:30', read: true },
-  ],
-  'ceo-csm': [
-    { id: 5, from: 'csm', to: 'ceo', type: 'alert', body: 'Operations alert', alrt: { title: 'NMDPRA licence expiry', pri: 'Urgent', detail: 'NMDPRA Retail Licence expires in 10 days. Renewal on ELPS portal required.' }, ts: '13:02', read: false },
-  ],
-  'att-mgr': [
-    { id: 6, from: 'att', to: 'mgr', type: 'txt', body: 'Pump #3 nozzle still leaking. Getting worse.', ts: '06:50', read: true },
-    { id: 7, from: 'mgr', to: 'att', type: 'txt', body: 'Noted. Maintenance request submitted. Do not use that pump.', ts: '07:05', read: true },
-  ],
-};
-
-const INIT_USER_ACCOUNTS: UserAccount[] = [
-  { id: 1,  empId: 'PTNG-0006', empName: 'Adaeze Obi',      username: 'adaeze.obi',    password: 'MD@2024',   role: 'md',    status: 'active', createdBy: 'System Admin', createdAt: '2020-06-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2020-06-01T00:00:00Z', jobTitle: 'Managing Director',      dept: 'Management'     },
-  { id: 2,                       empName: 'Amaka Osei',       username: 'amaka.osei',    password: 'Ceo@2024',  role: 'ceo',   status: 'active', createdBy: 'System Admin', createdAt: '2020-01-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2020-01-01T00:00:00Z', jobTitle: 'Chief Executive Officer', dept: 'Executive'      },
-  { id: 3,  empId: 'PTNG-0004', empName: 'Funmi Adesanya',   username: 'funmi.adesanya',password: 'Mktg@2024', role: 'mktg',  status: 'active', createdBy: 'System Admin', createdAt: '2023-02-20T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2023-02-20T00:00:00Z', jobTitle: 'Marketing Manager',      dept: 'Marketing'     },
-  { id: 4,  empId: 'PTNG-0005', empName: 'Ngozi Eze',        username: 'ngozi.eze',     password: 'Csm@2024',  role: 'csm',   status: 'active', createdBy: 'System Admin', createdAt: '2021-01-10T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2021-01-10T00:00:00Z', jobTitle: 'Corp. Services Mgr',     dept: 'Administration' },
-  { id: 5,  empId: 'PTNG-0003', empName: 'Grace Adeyemi',    username: 'grace.adeyemi', password: 'Acc@2024',  role: 'acc',   status: 'active', createdBy: 'System Admin', createdAt: '2022-09-05T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2022-09-05T00:00:00Z', jobTitle: 'Accountant',             dept: 'Finance'       },
-  { id: 6,  empId: 'PTNG-0002', empName: 'Chukwuma Adeyemi', username: 'chukwuma.a',    password: 'Mgr@2024',  role: 'mgr',   branchId: 'HQ', status: 'active', createdBy: 'System Admin', createdAt: '2021-07-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2021-07-01T00:00:00Z', jobTitle: 'Station Manager', dept: 'Operations' },
-  { id: 7,                       empName: 'Ibrahim Sule',     username: 'ibrahim.sule',  password: 'Mgr@2024',  role: 'mgr',   branchId: 'B1', status: 'active', createdBy: 'System Admin', createdAt: '2021-07-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2021-07-01T00:00:00Z', jobTitle: 'Station Manager', dept: 'Operations' },
-  { id: 8,                       empName: 'Chidinma Nwosu',   username: 'chidinma.n',    password: 'Mgr@2024',  role: 'mgr',   branchId: 'B2', status: 'active', createdBy: 'System Admin', createdAt: '2021-07-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2021-07-01T00:00:00Z', jobTitle: 'Station Manager', dept: 'Operations' },
-  { id: 9,  empId: 'PTNG-0001', empName: 'Emeka Okafor',     username: 'emeka.okafor',  password: 'Att@2024',  role: 'att',   status: 'active', createdBy: 'System Admin', createdAt: '2022-03-15T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2022-03-15T00:00:00Z', jobTitle: 'Pump Attendant',         dept: 'Operations'    },
-];
+const INIT_USER_ACCOUNTS: UserAccount[] = [];
 
 const ALL_HR_DOC_TYPES: HRDocType[] = ['biodata', 'contract', 'guarantor', 'nin', 'passport_photo', 'certificate', 'nysc', 'medical', 'reference', 'bank_details', 'tin', 'pension'];
 function mkDocs(statuses: Partial<Record<HRDocType, HRDocStatus>> = {}, date?: string): HRDoc[] {
@@ -427,19 +259,9 @@ function mkDocs(statuses: Partial<Record<HRDocType, HRDocStatus>> = {}, date?: s
 }
 const FULLY_APPROVED = { biodata: 'approved', contract: 'approved', guarantor: 'approved', nin: 'approved', passport_photo: 'approved', certificate: 'approved', nysc: 'approved', medical: 'approved', reference: 'approved', bank_details: 'approved', tin: 'approved', pension: 'approved' } as Partial<Record<HRDocType, HRDocStatus>>;
 const CEO_ONBOARDED: OnboardingApproval = { status: 'ceo_approved', forwardedBy: 'System Admin', forwardedAt: '2020-01-01T00:00:00Z', mdApprovedBy: 'System Admin', mdApprovedAt: '2020-01-01T00:00:00Z', ceoApprovedBy: 'System Admin', ceoApprovedAt: '2020-01-01T00:00:00Z' };
-const INIT_HR_EMPLOYEES: HREmployee[] = [
-  { id: 10001, empId: 'PTNG-0001', serial: 1, name: 'Emeka Okafor',     role: 'Pump Attendant',     dept: 'Operations',     phone: '+234 803 100 0001', email: 'emeka.okafor@petrotrack.ng',     address: '14 Zaria Rd, Kano',       dob: '1995-06-12', joinDate: '2022-03-15', nextOfKin: 'Chioma Okafor',   status: 'active',    docs: mkDocs(FULLY_APPROVED, '2022-03-15'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
-  { id: 10002, empId: 'PTNG-0002', serial: 2, name: 'Chukwuma Adeyemi', role: 'Station Manager',    dept: 'Operations',     phone: '+234 803 100 0002', email: 'c.adeyemi@petrotrack.ng',        address: '7 Broad St, Ibadan',      dob: '1988-11-04', joinDate: '2021-07-01', nextOfKin: 'Bola Adeyemi',    status: 'active',    docs: mkDocs(FULLY_APPROVED, '2021-07-01'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
-  { id: 10003, empId: 'PTNG-0003', serial: 3, name: 'Grace Adeyemi',    role: 'Accountant',         dept: 'Finance',        phone: '+234 803 100 0003', email: 'grace.adeyemi@petrotrack.ng',    address: '33 Marina Ave, Lagos',    dob: '1992-03-21', joinDate: '2022-09-05', nextOfKin: 'Tunde Adeyemi',   status: 'active',    docs: mkDocs(FULLY_APPROVED, '2022-09-05'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
-  { id: 10004, empId: 'PTNG-0004', serial: 4, name: 'Funmi Adesanya',   role: 'Marketing Manager',  dept: 'Marketing',      phone: '+234 803 100 0004', email: 'funmi.adesanya@petrotrack.ng',   address: '2 Adeola Odeku, VI',      dob: '1990-07-15', joinDate: '2023-02-20', nextOfKin: 'Seun Adesanya',   status: 'active',    docs: mkDocs(FULLY_APPROVED, '2023-02-20'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
-  { id: 10005, empId: 'PTNG-0005', serial: 5, name: 'Ngozi Eze',        role: 'Corp. Services Mgr', dept: 'Administration', phone: '+234 803 100 0005', email: 'ngozi.eze@petrotrack.ng',        address: '9 Asokoro, Abuja',        dob: '1985-01-30', joinDate: '2021-01-10', nextOfKin: 'Chidi Eze',       status: 'active',    docs: mkDocs(FULLY_APPROVED, '2021-01-10'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
-  { id: 10006, empId: 'PTNG-0006', serial: 6, name: 'Adaeze Obi',       role: 'Managing Director',  dept: 'Management',     phone: '+234 803 100 0006', email: 'adaeze.obi@petrotrack.ng',       address: '5 Maitama Close, Abuja',  dob: '1982-09-08', joinDate: '2020-06-01', nextOfKin: 'Emeka Obi',       status: 'active',    docs: mkDocs(FULLY_APPROVED, '2020-06-01'), uploads: [], onboarding: CEO_ONBOARDED, letters: [] },
-];
+const INIT_HR_EMPLOYEES: HREmployee[] = [];
 const INIT_HR_RECOMMENDATIONS: HRRecommendation[] = [];
-const INIT_HR_HANDBOOKS: HREmployeeDoc[] = [
-  { id: 1, name: 'Employee Handbook 2024.pdf', fileType: 'pdf', cat: 'Handbook', uploadedBy: 'Ngozi Eze', dt: '2024-01-15T09:00:00Z', approved: true, approvedBy: 'System Admin', approvedAt: '2024-01-16T10:00:00Z' },
-  { id: 2, name: 'Code of Conduct.pdf',        fileType: 'pdf', cat: 'Policy',   uploadedBy: 'Ngozi Eze', dt: '2024-02-01T08:30:00Z', approved: true, approvedBy: 'System Admin', approvedAt: '2024-02-02T09:00:00Z' },
-];
+const INIT_HR_HANDBOOKS: HREmployeeDoc[] = [];
 
 interface AppContextType {
   role: Role | null; userName: string; branchId: string | null; staffId: number | null;
@@ -543,7 +365,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [mgrPerms, setMgrPerms] = useState<Record<string, MgrPermissions>>(INIT_MGR_PERMS);
   const [roleAccess, setRoleAccess] = useState<Record<string, Record<string, boolean>>>(defaultRoleAccess);
   const [userAccess, setUserAccess] = useState<Record<number, Record<string, boolean>>>({});
-  const [prices, setPrices] = useState<Prices>({ PMS: 830, AGO: 1050, DPK: 700, LPG: 1200, 'Lube Oil': 4500 });
+  const [prices, setPrices] = useState<Prices>({ PMS: 0, AGO: 0, DPK: 0, LPG: 0, 'Lube Oil': 0 });
   const [priceHistory, setPriceHistory] = useState<PriceChange[]>(INIT_PRICE_HISTORY);
   const [tanks, setTanks] = useState<Tank[]>(INIT_TANKS);
   const [lpgTanks, setLpgTanks] = useState<LPGTank[]>(INIT_LPG);

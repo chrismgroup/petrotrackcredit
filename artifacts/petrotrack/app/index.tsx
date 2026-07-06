@@ -11,16 +11,7 @@ import { ROLE_COLORS, ROLE_LABELS, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const DEMO_ACCOUNTS = [
-  { username: 'admin',          password: 'Admin@2024',  label: 'System Admin',          role: 'admin' },
-  { username: 'amaka.osei',     password: 'Ceo@2024',    label: 'CEO — Amaka Osei',       role: 'ceo'   },
-  { username: 'adaeze.obi',     password: 'MD@2024',     label: 'MD — Adaeze Obi',        role: 'md'    },
-  { username: 'funmi.adesanya', password: 'Mktg@2024',   label: 'Marketing — Funmi A.',   role: 'mktg'  },
-  { username: 'ngozi.eze',      password: 'Csm@2024',    label: 'CSM — Ngozi Eze',        role: 'csm'   },
-  { username: 'grace.adeyemi',  password: 'Acc@2024',    label: 'Accountant — Grace A.',  role: 'acc'   },
-  { username: 'chukwuma.a',     password: 'Mgr@2024',    label: 'Manager — HQ',           role: 'mgr'   },
-  { username: 'ibrahim.sule',   password: 'Mgr@2024',    label: 'Manager — Maitama',      role: 'mgr'   },
-  { username: 'chidinma.n',     password: 'Mgr@2024',    label: 'Manager — Lugbe',        role: 'mgr'   },
-  { username: 'emeka.okafor',   password: 'Att@2024',    label: 'Pump Attendant — Emeka', role: 'att'   },
+  { username: 'admin', password: 'Admin@2024', label: 'System Admin', role: 'admin' },
 ];
 
 export default function LoginScreen() {
