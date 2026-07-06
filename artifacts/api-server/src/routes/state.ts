@@ -10,7 +10,7 @@ const ALLOWED_KEYS = new Set([
   "roleAccess", "userAccess", "expenses", "budgets", "sales", "dips",
   "deliveries", "maintenance", "audit", "messages", "tasks", "kpis",
   "companyFiles", "deliveryEvidences", "shiftReports", "hrEmployees",
-  "hrHandbooks", "hrRecommendations", "complianceDocs",
+  "hrHandbooks", "hrRecommendations", "complianceDocs", "priceProposals",
 ]);
 
 router.get("/state", async (_req, res): Promise<void> => {
