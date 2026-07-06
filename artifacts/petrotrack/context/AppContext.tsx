@@ -299,6 +299,7 @@ interface AppContextType {
   priceProposals: PriceProposal[];
   addPriceProposal: (prod: string, proposedPrice: number) => void;
   approvePriceProposal: (id: number) => void;
+  updateAndApprovePriceProposal: (id: number, updatedPrice: number) => void;
   rejectPriceProposal: (id: number, note?: string) => void;
   addTank: (t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => void;
   addLpgTank: (t: Omit<LPGTank, 'id' | 'op' | 'rv' | 'sl'>) => void;
@@ -609,6 +610,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: genId(), from: 'ceo' as Role, to: 'md' as Role, type: 'alert' as const,
         body: `Price approved: ${proposal.prod} is now ₦${proposal.proposedPrice.toLocaleString()}/L`,
         alrt: { title: 'Price Change Approved', pri: 'Low', detail: `${proposal.prod}: ₦${proposal.currentPrice.toLocaleString()} → ₦${proposal.proposedPrice.toLocaleString()}/L (effective immediately)` },
+        ts: nowTime(), read: false,
+      }],
+    }));
+  }, [userName, updatePrice, priceProposals]);
+
+  const updateAndApprovePriceProposal = useCallback((id: number, updatedPrice: number) => {
+    const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
+    if (!proposal) return;
+    updatePrice(proposal.prod, updatedPrice, userName);
+    setPriceProposals(ps => ps.map(p =>
+      p.id === id ? { ...p, proposedPrice: updatedPrice, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
+    ));
+    setAudit(a => [{ id: genId(), action: 'Price proposal updated & approved', user: userName, detail: `${proposal.prod}: ₦${proposal.proposedPrice.toLocaleString()} → ₦${updatedPrice.toLocaleString()}/L (CEO updated price)`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('ceo', 'md');
+    setMessages(m => ({
+      ...m,
+      [msgKey]: [...(m[msgKey] || []), {
+        id: genId(), from: 'ceo' as Role, to: 'md' as Role, type: 'alert' as const,
+        body: `Price updated & approved: ${proposal.prod} is now ₦${updatedPrice.toLocaleString()}/L (CEO adjusted from your ₦${proposal.proposedPrice.toLocaleString()}/L)`,
+        alrt: { title: 'Price Updated & Approved', pri: 'Low', detail: `${proposal.prod}: You proposed ₦${proposal.proposedPrice.toLocaleString()}/L, CEO set it to ₦${updatedPrice.toLocaleString()}/L (effective immediately)` },
         ts: nowTime(), read: false,
       }],
     }));
@@ -1112,7 +1133,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
-      priceProposals, addPriceProposal, approvePriceProposal, rejectPriceProposal,
+      priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, addBudget, forwardBudget, approveBudget, rejectBudget,
