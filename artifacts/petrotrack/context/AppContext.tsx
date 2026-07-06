@@ -13,7 +13,7 @@ export interface DipRecord { id: number; dt: string; by: string; rd: Record<stri
 export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; }
-export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; }
+export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
 export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; }
@@ -300,7 +300,7 @@ interface AppContextType {
   updateTank: (id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip'>>) => void;
   updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap'>>) => void;
   updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active'>>) => void;
-  updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal'>>) => void;
+  updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept'>>) => void;
   addExpense: (exp: Omit<Expense, 'id' | 'dt' | 'status'>) => void;
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
   addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
@@ -329,7 +329,9 @@ interface AppContextType {
   deleteLpgTank: (id: string) => void;
   deletePump: (id: string) => void;
   addDepartment: (d: Omit<Department, 'id' | 'sys'>) => void;
+  updateDepartment: (id: string, updates: Partial<Pick<Department, 'name' | 'icon' | 'col' | 'roles'>>) => void;
   deleteDepartment: (id: string) => void;
+  assignStaffDept: (staffId: number, deptId: string | null) => void;
   userAccounts: UserAccount[];
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
   addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => void;
@@ -547,7 +549,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Pump configuration updated', user: userName, detail: `Pump ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updateStaff = useCallback((id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal'>>) => {
+  const updateStaff = useCallback((id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept'>>) => {
     setStaff(s => s.map(m => m.id === id ? { ...m, ...updates } : m));
     setAudit(a => [{ id: genId(), action: 'Staff record updated', user: userName, detail: `Staff ID ${id} updated`, ts: nowTs() }, ...a]);
   }, [userName]);
@@ -687,6 +689,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addDepartment = useCallback((d: Omit<Department, 'id' | 'sys'>) => {
     setDepartments(ds => [...ds, { ...d, id: `dept${genId()}`, sys: false }]);
     setAudit(a => [{ id: genId(), action: 'Department created', user: userName, detail: d.name, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updateDepartment = useCallback((id: string, updates: Partial<Pick<Department, 'name' | 'icon' | 'col' | 'roles'>>) => {
+    setDepartments(ds => ds.map(d => d.id === id ? { ...d, ...updates } : d));
+    setAudit(a => [{ id: genId(), action: 'Department updated', user: userName, detail: `Department ${id} updated`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const assignStaffDept = useCallback((sid: number, deptId: string | null) => {
+    setStaff(s => s.map(m => m.id === sid ? { ...m, dept: deptId ?? undefined } : m));
+    setAudit(a => [{ id: genId(), action: 'Staff posted to department', user: userName, detail: `Staff #${sid} → ${deptId ?? 'unassigned'}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
   const deleteDepartment = useCallback((id: string) => {
@@ -987,7 +999,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
-      addDepartment, deleteDepartment,
+      addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
       userAccounts, addUserAccount, addActiveUserAccount, updateUserAccount, changeOwnPassword, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,

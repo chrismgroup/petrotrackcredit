@@ -60,10 +60,13 @@ export default function SystemSettingsScreen() {
     updateTank, updateLpgTank, updatePump, updateStaff,
     deleteTank, deleteLpgTank, deletePump, deleteStaff,
     userAccounts, companyInfo, updateCompanyInfo,
+    departments, assignStaffDept,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
   const isAdmin = role === 'admin';
+  const isCsm = role === 'csm';
+  const canManageStaff = isAdmin || isCsm;
 
   const [activeTab, setActiveTab] = useState<Tab>('company');
   const [expandedUsers, setExpandedUsers] = useState<Record<number, boolean>>({});
@@ -191,7 +194,8 @@ export default function SystemSettingsScreen() {
       Alert.alert('Error', 'Please select a branch for this Station Manager.'); return;
     }
     const sal = parseInt(newStaff.sal) || 0;
-    addStaff({ name, email, role: newStaff.role, sal, st: 'Active' });
+    const deptId = (newStaff as any).dept as string | undefined;
+    addStaff({ name, email, role: newStaff.role, sal, st: 'Active', dept: deptId });
     addActiveUserAccount({
       empName: name,
       username,
@@ -207,12 +211,15 @@ export default function SystemSettingsScreen() {
   }
 
   /* ── helpers ── */
-  const LockBanner = () => isAdmin ? null : (
-    <View style={[styles.lockBanner, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}>
-      <Ionicons name="lock-closed" size={16} color={colors.error} />
-      <Text style={[styles.lockText, { color: colors.error }]}>View only — System Admin can make changes.</Text>
-    </View>
-  );
+  const LockBanner = ({ staffTab = false }: { staffTab?: boolean }) => {
+    if (staffTab ? canManageStaff : isAdmin) return null;
+    return (
+      <View style={[styles.lockBanner, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}>
+        <Ionicons name="lock-closed" size={16} color={colors.error} />
+        <Text style={[styles.lockText, { color: colors.error }]}>View only — {staffTab ? 'Admin or CSM' : 'System Admin'} can make changes.</Text>
+      </View>
+    );
+  };
 
   const AddBtn = ({ label, onPress }: { label: string; onPress: () => void }) => (
     <TouchableOpacity style={[styles.addBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]} onPress={onPress} activeOpacity={0.8}>
@@ -677,7 +684,7 @@ export default function SystemSettingsScreen() {
           {/* ── STAFF ── */}
           {activeTab === 'staff' && (
             <>
-              <LockBanner />
+              <LockBanner staffTab />
               <View style={styles.sectionRow}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>Staff Directory</Text>
                 <Text style={[styles.sectionCount, { color: colors.textMuted }]}>{staff.filter(m => m.st === 'Active').length} active</Text>
@@ -710,15 +717,39 @@ export default function SystemSettingsScreen() {
                         </TouchableOpacity>
                       )}
                     </View>
-                    <FieldInput label="Full Name" value={e.name} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, name: v } }))} placeholder="Enter full name" autoCapitalize="words" />
-                    <FieldInput label="Email Address" value={e.email} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, email: v } }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
+                    <FieldInput label="Full Name" value={e.name} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, name: v } }))} placeholder="Enter full name" autoCapitalize="words" editable={canManageStaff} />
+                    <FieldInput label="Email Address" value={e.email} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, email: v } }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" editable={canManageStaff} />
+                    {/* Department assignment */}
+                    {departments.length > 0 && canManageStaff && (
+                      <View style={{ marginTop: 4 }}>
+                        <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Department</Text>
+                        <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                          {departments.map(d => {
+                            const sel = member.dept === d.id;
+                            return (
+                              <TouchableOpacity key={d.id}
+                                onPress={() => assignStaffDept(member.id, sel ? null : d.id)}
+                                style={[styles.roleChip, { borderColor: sel ? d.col.fg : colors.border, backgroundColor: sel ? d.col.bg : colors.surface }]}>
+                                <Text style={[styles.roleChipText, { color: sel ? d.col.fg : colors.textMuted }]}>{d.name}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                          {member.dept && (
+                            <TouchableOpacity onPress={() => assignStaffDept(member.id, null)}
+                              style={[styles.roleChip, { borderColor: colors.error + '55', backgroundColor: colors.errorBg }]}>
+                              <Text style={[styles.roleChipText, { color: colors.error }]}>Unpost</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    )}
                   </View>
                 );
               })}
 
               {/* Add new user */}
-              {isAdmin && !showNewStaff && <AddBtn label="Create New User" onPress={() => { setShowNewStaff(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
-              {isAdmin && showNewStaff && (
+              {canManageStaff && !showNewStaff && <AddBtn label="Create New User" onPress={() => { setShowNewStaff(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
+              {canManageStaff && showNewStaff && (
                 <View style={[styles.newCard, { backgroundColor: colors.infoBg, borderColor: roleColor + '55' }]}>
                   <View style={styles.newCardHeader}>
                     <View style={[styles.idBadge, { backgroundColor: roleColor + '22' }]}>
@@ -749,6 +780,25 @@ export default function SystemSettingsScreen() {
                       }
                     </View>
                   )}
+                  {/* Department picker */}
+                  {departments.length > 0 && (
+                    <View style={{ marginBottom: 10 }}>
+                      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Department (optional)</Text>
+                      <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                        {departments.map(d => {
+                          const sel = (newStaff as any).dept === d.id;
+                          return (
+                            <TouchableOpacity key={d.id}
+                              onPress={() => setNewStaff(n => ({ ...n, dept: sel ? undefined : d.id } as any))}
+                              style={[styles.roleChip, { borderColor: sel ? d.col.fg : colors.border, backgroundColor: sel ? d.col.bg : colors.surface }]}>
+                              <Text style={[styles.roleChipText, { color: sel ? d.col.fg : colors.textMuted }]}>{d.name}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+
                   <View style={[{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginVertical: 10, paddingTop: 10 }]}>
                     <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 6 }]}>Login Credentials</Text>
                     <FieldInput label="Username *" value={newStaff.username} onChangeText={v => setNewStaff(n => ({ ...n, username: v.toLowerCase().replace(/\s/g, '.') }))} autoCapitalize="none" placeholder="firstname.lastname" />
@@ -761,7 +811,7 @@ export default function SystemSettingsScreen() {
                 </View>
               )}
 
-              {isAdmin && <SaveBtn label="Save Staff Information" onPress={saveStaff} />}
+              {canManageStaff && <SaveBtn label="Save Staff Information" onPress={saveStaff} />}
             </>
           )}
 
@@ -1078,4 +1128,7 @@ const styles = StyleSheet.create({
   permIcon:         { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   permLabel:        { flex: 1, fontSize: 14 },
   userAccessHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rolePickerRow:    { flexDirection: 'row', gap: 6 },
+  roleChip:         { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  roleChipText:     { fontSize: 11, fontWeight: '600' },
 });
