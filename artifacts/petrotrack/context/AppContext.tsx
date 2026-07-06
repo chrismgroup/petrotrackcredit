@@ -150,6 +150,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'msgs',     icon: 'chatbubbles',      label: 'Chat'     },
     { id: 'exprpt',   icon: 'analytics',        label: 'Reports'  },
     { id: 'sales',    icon: 'bar-chart',        label: 'Sales'    },
+    { id: 'prices',   icon: 'pricetag',         label: 'Prices'   },
   ],
   mktg: [
     { id: 'mktg', icon: 'megaphone', label: 'Marketing' },
@@ -224,6 +225,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   tasks: '/(app)/tasks',
   recv: '/(app)/receiving',
   hr: '/(app)/hr',
+  prices: '/(app)/prices',
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
