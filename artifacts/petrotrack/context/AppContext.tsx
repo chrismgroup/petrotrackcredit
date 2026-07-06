@@ -503,7 +503,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.dips)              setDips(s.dips as DipRecord[]);
       if (s.deliveries)        setDeliveries(s.deliveries as Delivery[]);
       if (s.maintenance)       setMaintenance(s.maintenance as MaintenanceItem[]);
-      if (s.audit)             setAudit(s.audit as AuditEntry[]);
+      if (Array.isArray(s.audit)) setAudit(s.audit as AuditEntry[]);
       if (s.messages && typeof s.messages === 'object' && !Array.isArray(s.messages)) {
         const sanitized: Record<string, Message[]> = {};
         for (const [k, v] of Object.entries(s.messages)) {
