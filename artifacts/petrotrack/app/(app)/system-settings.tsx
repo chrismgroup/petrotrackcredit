@@ -285,15 +285,15 @@ export default function SystemSettingsScreen() {
               </View>
               {[
                 { title: 'Company Information', icon: 'business', items: [
-                  { label: 'Company Name', v: 'PetroTrack Energy Ltd' }, { label: 'RC Number', v: 'RC-0987654' },
-                  { label: 'Tax ID (TIN)', v: '0123456789-0001' }, { label: 'Head Office Address', v: 'Plot 22, CBD, Abuja, FCT' },
+                  { label: 'Company Name', v: '' }, { label: 'RC Number', v: '' },
+                  { label: 'Tax ID (TIN)', v: '' }, { label: 'Head Office Address', v: '' },
                 ]},
                 { title: 'Financial Settings', icon: 'calculator', items: [
-                  { label: 'VAT Rate (%)', v: '7.5' }, { label: 'WHT Rate (%)', v: '5' },
-                  { label: 'Currency', v: 'NGN (₦)' }, { label: 'Fiscal Year Start', v: 'January' },
+                  { label: 'VAT Rate (%)', v: '' }, { label: 'WHT Rate (%)', v: '' },
+                  { label: 'Currency', v: '' }, { label: 'Fiscal Year Start', v: '' },
                 ]},
                 { title: 'Operations Settings', icon: 'construct', items: [
-                  { label: 'Low Stock Alert (%)', v: '30' }, { label: 'Reorder Level (%)', v: '25' },
+                  { label: 'Low Stock Alert (%)', v: '' }, { label: 'Reorder Level (%)', v: '' },
                 ]},
               ].map(section => (
                 <View key={section.title} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
