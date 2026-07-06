@@ -7,12 +7,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ROLE_COLORS, ROLE_LABELS, useApp } from '@/context/AppContext';
+import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-
-const DEMO_ACCOUNTS = [
-  { username: 'admin', password: 'Admin@2024', label: 'System Admin', role: 'admin' },
-];
 
 export default function LoginScreen() {
   const { login, validateCredentials } = useApp();
@@ -25,7 +21,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [loading, setLoading]   = useState(false);
-  const [showDemo, setShowDemo] = useState(false);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
@@ -46,12 +41,6 @@ export default function LoginScreen() {
       login(acc.role, acc.empName, undefined, acc.branchId);
       router.replace('/(app)/home');
     }, 400);
-  }
-
-  function fillDemo(u: string, p: string) {
-    setUsername(u);
-    setPassword(p);
-    setShowDemo(false);
   }
 
   return (
@@ -127,43 +116,6 @@ export default function LoginScreen() {
           }
         </TouchableOpacity>
 
-        {/* Demo credentials toggle */}
-        <TouchableOpacity
-          onPress={() => setShowDemo(v => !v)}
-          style={styles.demoToggle}
-          activeOpacity={0.7}
-        >
-          <Ionicons name={showDemo ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
-          <Text style={[styles.demoToggleText, { color: colors.textMuted }]}>
-            {showDemo ? 'Hide' : 'Show'} demo credentials
-          </Text>
-        </TouchableOpacity>
-
-        {showDemo && (
-          <View style={[styles.demoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.demoTitle, { color: colors.text }]}>Demo Accounts</Text>
-            {DEMO_ACCOUNTS.map((d, i) => {
-              const roleColor = ROLE_COLORS[d.role as any] || '#1a6e3c';
-              return (
-                <TouchableOpacity
-                  key={i}
-                  onPress={() => fillDemo(d.username, d.password)}
-                  activeOpacity={0.75}
-                  style={[styles.demoRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}
-                >
-                  <View style={[styles.demoRoleDot, { backgroundColor: roleColor }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.demoLabel, { color: colors.text }]}>{d.label}</Text>
-                    <Text style={[styles.demoCred, { color: colors.textMuted }]}>
-                      {d.username} · {d.password}
-                    </Text>
-                  </View>
-                  <Ionicons name="enter-outline" size={14} color={colors.textSubtle} />
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
       </ScrollView>
     </View>
   );
@@ -183,12 +135,4 @@ const styles = StyleSheet.create({
   input:           { flex: 1, fontSize: 15 },
   loginBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 14, marginTop: 6 },
   loginBtnText:    { color: '#fff', fontSize: 16, fontWeight: '700' },
-  demoToggle:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 20, marginBottom: 6, paddingVertical: 4 },
-  demoToggleText:  { fontSize: 12 },
-  demoBox:         { borderRadius: 14, borderWidth: 1, overflow: 'hidden', marginTop: 4 },
-  demoTitle:       { fontSize: 12, fontWeight: '700', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8, opacity: 0.5 },
-  demoRow:         { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11 },
-  demoRoleDot:     { width: 8, height: 8, borderRadius: 4 },
-  demoLabel:       { fontSize: 13, fontWeight: '600' },
-  demoCred:        { fontSize: 11, marginTop: 1 },
 });
