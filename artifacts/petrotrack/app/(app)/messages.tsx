@@ -21,14 +21,16 @@ export default function MessagesScreen() {
 
   function getUnreadFromPeer(peer: Role): number {
     const key = chatKey(role!, peer);
-    const msgs = messages[key] || [];
+    const msgs = messages[key];
+    if (!Array.isArray(msgs)) return 0;
     return msgs.filter(m => m.to === role && !m.read).length;
   }
 
   function getLastMessage(peer: Role) {
     const key = chatKey(role!, peer);
-    const msgs = messages[key] || [];
-    return msgs.length > 0 ? msgs[msgs.length - 1] : null;
+    const msgs = messages[key];
+    if (!Array.isArray(msgs) || msgs.length === 0) return null;
+    return msgs[msgs.length - 1];
   }
 
   function openChat(peer: Role) {
