@@ -32,23 +32,23 @@ export const DEFAULT_MGR_PERMS: MgrPermissions = {
   canPetrolTanks: true, canLpgTanks: true,
 };
 
-export interface RolePermissions {
-  canViewSales: boolean; canViewExpenses: boolean; canViewMaintenance: boolean;
-  canViewBudget: boolean; canViewTanks: boolean; canViewReports: boolean;
-  canApproveExpenses: boolean; canApproveDips: boolean;
-  canManageStaff: boolean; canManageBranches: boolean;
-  canViewAudit: boolean; canViewMessages: boolean;
+export type AccountStatus = 'pending' | 'active' | 'suspended' | 'rejected';
+export interface UserAccount {
+  id: number;
+  empId?: string;
+  empName: string;
+  username: string;
+  password: string;
+  role: Role | null;
+  branchId?: string;
+  status: AccountStatus;
+  createdBy: string;
+  createdAt: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  jobTitle?: string;
+  dept?: string;
 }
-export const INIT_ROLE_PERMS: Record<string, RolePermissions> = {
-  admin: { canViewSales: true,  canViewExpenses: true,  canViewMaintenance: true,  canViewBudget: true,  canViewTanks: true,  canViewReports: true,  canApproveExpenses: true,  canApproveDips: true,  canManageStaff: true,  canManageBranches: true,  canViewAudit: true,  canViewMessages: true  },
-  ceo:   { canViewSales: true,  canViewExpenses: true,  canViewMaintenance: false, canViewBudget: true,  canViewTanks: false, canViewReports: true,  canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
-  md:    { canViewSales: true,  canViewExpenses: false, canViewMaintenance: false, canViewBudget: false, canViewTanks: true,  canViewReports: true,  canApproveExpenses: true,  canApproveDips: true,  canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
-  mktg:  { canViewSales: true,  canViewExpenses: false, canViewMaintenance: false, canViewBudget: false, canViewTanks: false, canViewReports: false, canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
-  csm:   { canViewSales: false, canViewExpenses: false, canViewMaintenance: true,  canViewBudget: false, canViewTanks: false, canViewReports: false, canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
-  acc:   { canViewSales: true,  canViewExpenses: true,  canViewMaintenance: false, canViewBudget: true,  canViewTanks: false, canViewReports: true,  canApproveExpenses: true,  canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
-  mgr:   { canViewSales: true,  canViewExpenses: true,  canViewMaintenance: true,  canViewBudget: true,  canViewTanks: true,  canViewReports: false, canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
-  att:   { canViewSales: true,  canViewExpenses: false, canViewMaintenance: true,  canViewBudget: false, canViewTanks: false, canViewReports: false, canApproveExpenses: false, canApproveDips: false, canManageStaff: false, canManageBranches: false, canViewAudit: false, canViewMessages: true  },
-};
 export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
 };
@@ -388,6 +388,18 @@ const INIT_MSGS: Record<string, Message[]> = {
   ],
 };
 
+const INIT_USER_ACCOUNTS: UserAccount[] = [
+  { id: 1,  empId: 'PTNG-0006', empName: 'Adaeze Obi',      username: 'adaeze.obi',    password: 'MD@2024',   role: 'md',    status: 'active', createdBy: 'System Admin', createdAt: '2020-06-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2020-06-01T00:00:00Z', jobTitle: 'Managing Director',      dept: 'Management'     },
+  { id: 2,                       empName: 'Amaka Osei',       username: 'amaka.osei',    password: 'Ceo@2024',  role: 'ceo',   status: 'active', createdBy: 'System Admin', createdAt: '2020-01-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2020-01-01T00:00:00Z', jobTitle: 'Chief Executive Officer', dept: 'Executive'      },
+  { id: 3,  empId: 'PTNG-0004', empName: 'Funmi Adesanya',   username: 'funmi.adesanya',password: 'Mktg@2024', role: 'mktg',  status: 'active', createdBy: 'System Admin', createdAt: '2023-02-20T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2023-02-20T00:00:00Z', jobTitle: 'Marketing Manager',      dept: 'Marketing'     },
+  { id: 4,  empId: 'PTNG-0005', empName: 'Ngozi Eze',        username: 'ngozi.eze',     password: 'Csm@2024',  role: 'csm',   status: 'active', createdBy: 'System Admin', createdAt: '2021-01-10T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2021-01-10T00:00:00Z', jobTitle: 'Corp. Services Mgr',     dept: 'Administration' },
+  { id: 5,  empId: 'PTNG-0003', empName: 'Grace Adeyemi',    username: 'grace.adeyemi', password: 'Acc@2024',  role: 'acc',   status: 'active', createdBy: 'System Admin', createdAt: '2022-09-05T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2022-09-05T00:00:00Z', jobTitle: 'Accountant',             dept: 'Finance'       },
+  { id: 6,  empId: 'PTNG-0002', empName: 'Chukwuma Adeyemi', username: 'chukwuma.a',    password: 'Mgr@2024',  role: 'mgr',   branchId: 'HQ', status: 'active', createdBy: 'System Admin', createdAt: '2021-07-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2021-07-01T00:00:00Z', jobTitle: 'Station Manager', dept: 'Operations' },
+  { id: 7,                       empName: 'Ibrahim Sule',     username: 'ibrahim.sule',  password: 'Mgr@2024',  role: 'mgr',   branchId: 'B1', status: 'active', createdBy: 'System Admin', createdAt: '2021-07-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2021-07-01T00:00:00Z', jobTitle: 'Station Manager', dept: 'Operations' },
+  { id: 8,                       empName: 'Chidinma Nwosu',   username: 'chidinma.n',    password: 'Mgr@2024',  role: 'mgr',   branchId: 'B2', status: 'active', createdBy: 'System Admin', createdAt: '2021-07-01T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2021-07-01T00:00:00Z', jobTitle: 'Station Manager', dept: 'Operations' },
+  { id: 9,  empId: 'PTNG-0001', empName: 'Emeka Okafor',     username: 'emeka.okafor',  password: 'Att@2024',  role: 'att',   status: 'active', createdBy: 'System Admin', createdAt: '2022-03-15T00:00:00Z', approvedBy: 'System Admin', approvedAt: '2022-03-15T00:00:00Z', jobTitle: 'Pump Attendant',         dept: 'Operations'    },
+];
+
 function mkDocs(contract: HRDocStatus, promotion: HRDocStatus, guarantor: HRDocStatus, biodata: HRDocStatus, date?: string): HRDoc[] {
   return [
     { type: 'contract',  status: contract,   date },
@@ -458,8 +470,14 @@ interface AppContextType {
   deletePump: (id: string) => void;
   addDepartment: (d: Omit<Department, 'id' | 'sys'>) => void;
   deleteDepartment: (id: string) => void;
-  rolePermissions: Record<string, RolePermissions>;
-  updateRolePermissions: (role: string, perms: Partial<RolePermissions>) => void;
+  userAccounts: UserAccount[];
+  addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
+  approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => void;
+  suspendUserAccount: (id: number) => void;
+  reactivateUserAccount: (id: number) => void;
+  rejectUserAccount: (id: number) => void;
+  deleteUserAccount: (id: number) => void;
+  validateCredentials: (username: string, password: string) => UserAccount | null;
   getConversation: (peer: Role) => Message[];
   unreadCount: () => number;
   tasks: Task[];
@@ -508,7 +526,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Record<string, Message[]>>(INIT_MSGS);
   const [audit, setAudit] = useState<AuditEntry[]>(INIT_AUDIT);
   const [departments, setDepartments] = useState<Department[]>(INIT_DEPTS);
-  const [rolePermissions, setRolePermissions] = useState<Record<string, RolePermissions>>(INIT_ROLE_PERMS);
+  const [userAccounts, setUserAccounts] = useState<UserAccount[]>(INIT_USER_ACCOUNTS);
   const [companyFiles, setCompanyFiles] = useState<CompanyFile[]>(INIT_COMPANY_FILES);
   const [deliveryEvidences, setDeliveryEvidences] = useState<DeliveryEvidence[]>(INIT_DELIVERY_EVIDENCE);
   const [shiftReports, setShiftReports] = useState<ShiftReport[]>(INIT_SHIFTS);
@@ -694,10 +712,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Department deleted', user: userName, detail: `Department ${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updateRolePermissions = useCallback((r: string, perms: Partial<RolePermissions>) => {
-    setRolePermissions(p => ({ ...p, [r]: { ...(p[r] ?? INIT_ROLE_PERMS[r]), ...perms } }));
-    setAudit(a => [{ id: genId(), action: 'Role permissions updated', user: userName, detail: `${r}: ${Object.keys(perms).join(', ')}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+  const addUserAccount = useCallback((acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => {
+    setUserAccounts(prev => [...prev, { ...acc, id: genId(), createdAt: nowTs(), status: 'pending', username: '', password: '', role: null }]);
+  }, []);
+
+  const approveUserAccount = useCallback((id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
+    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, role, username, password, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId } : a));
+    setAudit(a => [{ id: genId(), action: 'Account approved', user: by, detail: `Account for ${username} approved as ${role}`, ts: nowTs() }, ...a]);
+  }, []);
+
+  const suspendUserAccount = useCallback((id: number) => {
+    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'suspended' } : a));
+  }, []);
+
+  const reactivateUserAccount = useCallback((id: number) => {
+    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'active' } : a));
+  }, []);
+
+  const rejectUserAccount = useCallback((id: number) => {
+    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'rejected' } : a));
+  }, []);
+
+  const deleteUserAccount = useCallback((id: number) => {
+    setUserAccounts(prev => prev.filter(a => a.id !== id));
+  }, []);
+
+  const validateCredentials = useCallback((username: string, password: string): UserAccount | null => {
+    if (username.toLowerCase() === 'admin' && password === 'Admin@2024') {
+      return { id: 0, empName: 'System Admin', username: 'admin', password: 'Admin@2024', role: 'admin', status: 'active', createdBy: 'system', createdAt: '' };
+    }
+    return userAccounts.find(a => a.username === username && a.password === password && a.status === 'active') ?? null;
+  }, [userAccounts]);
 
   const addAudit = useCallback((entry: Omit<AuditEntry, 'id' | 'ts'>) => {
     setAudit(a => [{ ...entry, id: genId(), ts: nowTs() }, ...a]);
@@ -863,7 +908,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, deleteDepartment,
-      rolePermissions, updateRolePermissions,
+      userAccounts, addUserAccount, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,
       addHREmployee, updateHRDocStatus, removeHREmployee,

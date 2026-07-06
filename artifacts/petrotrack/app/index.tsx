@@ -1,53 +1,66 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
-  Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput,
+  TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MGR_BRANCH_NAMES, ROLE_COLORS, useApp, type Role } from '@/context/AppContext';
+import { ROLE_COLORS, ROLE_LABELS, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type LoginProfile = {
-  profileId: string;
-  role: Role;
-  name: string;
-  sub: string;
-  icon: string;
-  staffId?: number;
-  branchId?: string;
-};
-
-const LOGIN_PROFILES: LoginProfile[] = [
-  { profileId: 'admin', role: 'admin', name: 'System Admin',      sub: 'Administrator',          icon: 'shield-checkmark' },
-  { profileId: 'ceo',   role: 'ceo',   name: 'Amaka Osei',        sub: 'Chief Executive Officer', icon: 'star' },
-  { profileId: 'md',    role: 'md',    name: 'Adaeze Obi',         sub: 'Managing Director',       icon: 'briefcase' },
-  { profileId: 'mktg',  role: 'mktg',  name: 'Funmi Adesanya',     sub: 'Marketing Manager',       icon: 'megaphone' },
-  { profileId: 'csm',   role: 'csm',   name: 'Ngozi Eze',          sub: 'Corp. Services Mgr',      icon: 'business' },
-  { profileId: 'acc',   role: 'acc',   name: 'Grace Adeyemi',      sub: 'Accountant',              icon: 'calculator' },
-  { profileId: 'mgrHQ', role: 'mgr',   name: 'Chukwuma Adeyemi',   sub: MGR_BRANCH_NAMES.HQ,       icon: 'construct', staffId: 6,  branchId: 'HQ' },
-  { profileId: 'mgrB1', role: 'mgr',   name: 'Ibrahim Sule',       sub: MGR_BRANCH_NAMES.B1,       icon: 'construct', staffId: 9,  branchId: 'B1' },
-  { profileId: 'mgrB2', role: 'mgr',   name: 'Chidinma Nwosu',     sub: MGR_BRANCH_NAMES.B2,       icon: 'construct', staffId: 10, branchId: 'B2' },
-  { profileId: 'att',   role: 'att',   name: 'Emeka Okafor',       sub: 'Pump Attendant',           icon: 'water' },
+const DEMO_ACCOUNTS = [
+  { username: 'admin',          password: 'Admin@2024',  label: 'System Admin',          role: 'admin' },
+  { username: 'amaka.osei',     password: 'Ceo@2024',    label: 'CEO — Amaka Osei',       role: 'ceo'   },
+  { username: 'adaeze.obi',     password: 'MD@2024',     label: 'MD — Adaeze Obi',        role: 'md'    },
+  { username: 'funmi.adesanya', password: 'Mktg@2024',   label: 'Marketing — Funmi A.',   role: 'mktg'  },
+  { username: 'ngozi.eze',      password: 'Csm@2024',    label: 'CSM — Ngozi Eze',        role: 'csm'   },
+  { username: 'grace.adeyemi',  password: 'Acc@2024',    label: 'Accountant — Grace A.',  role: 'acc'   },
+  { username: 'chukwuma.a',     password: 'Mgr@2024',    label: 'Manager — HQ',           role: 'mgr'   },
+  { username: 'ibrahim.sule',   password: 'Mgr@2024',    label: 'Manager — Maitama',      role: 'mgr'   },
+  { username: 'chidinma.n',     password: 'Mgr@2024',    label: 'Manager — Lugbe',        role: 'mgr'   },
+  { username: 'emeka.okafor',   password: 'Att@2024',    label: 'Pump Attendant — Emeka', role: 'att'   },
 ];
 
 export default function LoginScreen() {
-  const { login } = useApp();
+  const { login, validateCredentials } = useApp();
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [selected, setSelected] = useState<string | null>(null);
+  const pwRef = useRef<TextInput>(null);
+
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPw, setShowPw]     = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
 
-  const selectedProfile = LOGIN_PROFILES.find(p => p.profileId === selected);
-
   function handleLogin() {
-    if (!selectedProfile) return;
-    login(selectedProfile.role, selectedProfile.name, selectedProfile.staffId, selectedProfile.branchId);
-    router.replace('/(app)/home');
+    const u = username.trim();
+    const p = password.trim();
+    if (!u || !p) { Alert.alert('Required', 'Please enter your username and password.'); return; }
+
+    setLoading(true);
+    setTimeout(() => {
+      const acc = validateCredentials(u, p);
+      setLoading(false);
+      if (!acc || !acc.role) {
+        Alert.alert('Login Failed', 'Incorrect username or password, or your account is not yet active.');
+        return;
+      }
+      login(acc.role, acc.empName, undefined, acc.branchId);
+      router.replace('/(app)/home');
+    }, 400);
+  }
+
+  function fillDemo(u: string, p: string) {
+    setUsername(u);
+    setPassword(p);
+    setShowDemo(false);
   }
 
   return (
@@ -60,94 +73,131 @@ export default function LoginScreen() {
         <Text style={styles.tagline}>Fuel Station Management System</Text>
       </View>
 
-      <View style={[styles.card, { backgroundColor: colors.background }]}>
-        <Text style={[styles.cardTitle, { color: colors.text }]}>Select Your Role</Text>
+      <ScrollView
+        style={[styles.card, { backgroundColor: colors.background }]}
+        contentContainerStyle={{ paddingBottom: botPad + 24 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Sign In</Text>
         <Text style={[styles.cardSubtitle, { color: colors.textMuted }]}>
-          Choose your access level to continue
+          Enter your credentials to access the system
         </Text>
 
-        <ScrollView showsVerticalScrollIndicator={false} style={styles.roleList}>
-          <View style={styles.roleGrid}>
-            {LOGIN_PROFILES.map(p => {
-              const isSelected = selected === p.profileId;
-              const roleColor = ROLE_COLORS[p.role];
-              const isMgr = p.role === 'mgr';
+        {/* Username */}
+        <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+          <TextInput
+            style={[styles.input, { color: colors.text }]}
+            placeholder="Username"
+            placeholderTextColor={colors.textSubtle}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="next"
+            value={username}
+            onChangeText={setUsername}
+            onSubmitEditing={() => pwRef.current?.focus()}
+          />
+        </View>
+
+        {/* Password */}
+        <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
+          <TextInput
+            ref={pwRef}
+            style={[styles.input, { color: colors.text }]}
+            placeholder="Password"
+            placeholderTextColor={colors.textSubtle}
+            secureTextEntry={!showPw}
+            autoCapitalize="none"
+            returnKeyType="done"
+            value={password}
+            onChangeText={setPassword}
+            onSubmitEditing={handleLogin}
+          />
+          <TouchableOpacity onPress={() => setShowPw(v => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Login button */}
+        <TouchableOpacity
+          onPress={handleLogin}
+          disabled={loading}
+          activeOpacity={0.85}
+          style={[styles.loginBtn, { backgroundColor: '#1a6e3c', opacity: loading ? 0.7 : 1 }]}
+        >
+          {loading
+            ? <Text style={styles.loginBtnText}>Signing in…</Text>
+            : <>
+                <Text style={styles.loginBtnText}>Sign In</Text>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              </>
+          }
+        </TouchableOpacity>
+
+        {/* Demo credentials toggle */}
+        <TouchableOpacity
+          onPress={() => setShowDemo(v => !v)}
+          style={styles.demoToggle}
+          activeOpacity={0.7}
+        >
+          <Ionicons name={showDemo ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
+          <Text style={[styles.demoToggleText, { color: colors.textMuted }]}>
+            {showDemo ? 'Hide' : 'Show'} demo credentials
+          </Text>
+        </TouchableOpacity>
+
+        {showDemo && (
+          <View style={[styles.demoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.demoTitle, { color: colors.text }]}>Demo Accounts</Text>
+            {DEMO_ACCOUNTS.map((d, i) => {
+              const roleColor = ROLE_COLORS[d.role as any] || '#1a6e3c';
               return (
                 <TouchableOpacity
-                  key={p.profileId}
-                  onPress={() => setSelected(p.profileId)}
-                  activeOpacity={0.8}
-                  style={[
-                    styles.roleCard,
-                    isMgr && styles.mgrCard,
-                    { borderColor: isSelected ? roleColor : colors.border, backgroundColor: isSelected ? roleColor + '12' : colors.surface },
-                  ]}
+                  key={i}
+                  onPress={() => fillDemo(d.username, d.password)}
+                  activeOpacity={0.75}
+                  style={[styles.demoRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}
                 >
-                  {isMgr && (
-                    <View style={[styles.branchTag, { backgroundColor: roleColor + '22' }]}>
-                      <Ionicons name="location" size={9} color={roleColor} />
-                      <Text style={[styles.branchTagText, { color: roleColor }]}>
-                        {p.branchId === 'HQ' ? 'HQ' : p.branchId === 'B1' ? 'Maitama' : 'Lugbe'}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={[styles.roleIcon, { backgroundColor: isSelected ? roleColor : roleColor + '22' }]}>
-                    <Ionicons name={p.icon as any} size={20} color={isSelected ? '#fff' : roleColor} />
-                  </View>
-                  <View style={styles.roleText}>
-                    <Text style={[styles.roleLabel, { color: isSelected ? roleColor : colors.text }]} numberOfLines={1}>
-                      {p.name}
-                    </Text>
-                    <Text style={[styles.roleSub, { color: isSelected ? roleColor + 'bb' : colors.textMuted }]} numberOfLines={1}>
-                      {p.sub}
+                  <View style={[styles.demoRoleDot, { backgroundColor: roleColor }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.demoLabel, { color: colors.text }]}>{d.label}</Text>
+                    <Text style={[styles.demoCred, { color: colors.textMuted }]}>
+                      {d.username} · {d.password}
                     </Text>
                   </View>
-                  {isSelected && <Ionicons name="checkmark-circle" size={18} color={roleColor} />}
+                  <Ionicons name="enter-outline" size={14} color={colors.textSubtle} />
                 </TouchableOpacity>
               );
             })}
           </View>
-        </ScrollView>
-
-        <TouchableOpacity
-          onPress={handleLogin}
-          disabled={!selectedProfile}
-          activeOpacity={0.85}
-          style={[
-            styles.loginBtn,
-            { backgroundColor: selectedProfile ? ROLE_COLORS[selectedProfile.role] : colors.border, marginBottom: botPad + 8 },
-          ]}
-        >
-          <Text style={styles.loginBtnText}>
-            {selectedProfile ? `Sign in as ${selectedProfile.name.split(' ')[0]}` : 'Select a role to continue'}
-          </Text>
-          {selectedProfile && <Ionicons name="arrow-forward" size={18} color="#fff" />}
-        </TouchableOpacity>
-      </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:    { flex: 1 },
-  header:       { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 28 },
-  logoWrap:     { width: 80, height: 80, borderRadius: 20, overflow: 'hidden', marginBottom: 14, borderWidth: 2, borderColor: 'rgba(255,255,255,0.15)' },
-  logo:         { width: 80, height: 80 },
-  appName:      { fontSize: 28, fontWeight: '700', color: '#fff', letterSpacing: -0.5 },
-  tagline:      { fontSize: 13, color: 'rgba(255,255,255,0.55)', marginTop: 4, letterSpacing: 0.3 },
-  card:         { flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 24, paddingHorizontal: 20 },
-  cardTitle:    { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
-  cardSubtitle: { fontSize: 13, textAlign: 'center', marginBottom: 16 },
-  roleList:     { flex: 1 },
-  roleGrid:     { gap: 10, paddingBottom: 12 },
-  roleCard:     { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, borderWidth: 1.5 },
-  mgrCard:      { paddingTop: 20 },
-  branchTag:    { position: 'absolute', top: 6, left: 12, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  branchTagText:{ fontSize: 9, fontWeight: '700' },
-  roleIcon:     { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  roleText:     { flex: 1 },
-  roleLabel:    { fontSize: 14, fontWeight: '600' },
-  roleSub:      { fontSize: 11, marginTop: 1 },
-  loginBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 14, marginTop: 8 },
-  loginBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  container:       { flex: 1 },
+  header:          { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 28 },
+  logoWrap:        { width: 80, height: 80, borderRadius: 20, overflow: 'hidden', marginBottom: 14, borderWidth: 2, borderColor: 'rgba(255,255,255,0.15)' },
+  logo:            { width: 80, height: 80 },
+  appName:         { fontSize: 28, fontWeight: '700', color: '#fff', letterSpacing: -0.5 },
+  tagline:         { fontSize: 13, color: 'rgba(255,255,255,0.55)', marginTop: 4, letterSpacing: 0.3 },
+  card:            { flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 28, paddingHorizontal: 22 },
+  cardTitle:       { fontSize: 22, fontWeight: '700', marginBottom: 4 },
+  cardSubtitle:    { fontSize: 13, marginBottom: 24 },
+  inputWrap:       { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 13, borderRadius: 14, borderWidth: 1.5, marginBottom: 12 },
+  input:           { flex: 1, fontSize: 15 },
+  loginBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 14, marginTop: 6 },
+  loginBtnText:    { color: '#fff', fontSize: 16, fontWeight: '700' },
+  demoToggle:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 20, marginBottom: 6, paddingVertical: 4 },
+  demoToggleText:  { fontSize: 12 },
+  demoBox:         { borderRadius: 14, borderWidth: 1, overflow: 'hidden', marginTop: 4 },
+  demoTitle:       { fontSize: 12, fontWeight: '700', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8, opacity: 0.5 },
+  demoRow:         { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11 },
+  demoRoleDot:     { width: 8, height: 8, borderRadius: 4 },
+  demoLabel:       { fontSize: 13, fontWeight: '600' },
+  demoCred:        { fontSize: 11, marginTop: 1 },
 });

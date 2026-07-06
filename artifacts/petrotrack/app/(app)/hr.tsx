@@ -74,6 +74,7 @@ export default function HRScreen() {
     role, userName,
     hrEmployees, hrRecommendations, hrHandbooks,
     addHREmployee, removeHREmployee,
+    addUserAccount,
     addHRUpload, approveHRUpload,
     addHRRecommendation, resolveHRRecommendation,
     addHRHandbook, approveHRHandbook,
@@ -140,10 +141,16 @@ export default function HRScreen() {
       ],
       uploads: [],
     });
+    addUserAccount({
+      empName: newName.trim(),
+      jobTitle: newJobRole.trim(),
+      dept: newDept,
+      createdBy: userName || 'CSM',
+    });
     setNewName(''); setNewJobRole(''); setNewPhone(''); setNewEmail('');
     setNewAddr(''); setNewDob(''); setNewKin(''); setNewDept(DEPARTMENTS[0]);
     setShowAdd(false);
-    Alert.alert('Onboarded', `${newName.trim()} has been registered. A unique company ID has been assigned.`);
+    Alert.alert('Onboarded', `${newName.trim()} has been registered. A unique company ID has been assigned.\n\nAn account request has been submitted to Admin for approval.`);
   }
 
   function handleUploadDoc(empId: number) {

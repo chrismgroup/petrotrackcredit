@@ -1,65 +1,132 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert, Modal, ScrollView, StyleSheet, Text, TextInput,
+  TouchableOpacity, View,
+} from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ROLE_COLORS, useApp } from '@/context/AppContext';
+import { MGR_BRANCH_NAMES, ROLE_COLORS, ROLE_LABELS, UserAccount, useApp, type Role } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const ROLE_OPTIONS = ['CEO', 'Managing Director', 'Marketing Manager', 'Corp. Services Mgr', 'Accountant', 'Station Manager', 'Pump Attendant'];
+type Tab = 'pending' | 'active';
+
+const ROLE_OPTS: Role[] = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'];
+const BRANCH_OPTS = Object.entries(MGR_BRANCH_NAMES);
+
+const STATUS_COLORS: Record<string, string> = {
+  active: '#1a6e3c', pending: '#BA7517', suspended: '#c0392b', rejected: '#888',
+};
 
 export default function UsersScreen() {
-  const { role, staff, addStaff, toggleStaff, deleteStaff } = useApp();
+  const {
+    role, userName,
+    userAccounts, approveUserAccount, suspendUserAccount,
+    reactivateUserAccount, rejectUserAccount, deleteUserAccount,
+  } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
   const isAdmin = role === 'admin';
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', role: 'Station Manager', email: '', sal: '' });
-  const [search, setSearch] = useState('');
 
-  const filtered = staff.filter(s =>
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    s.role.toLowerCase().includes(search.toLowerCase())
+  const [tab, setTab]           = useState<Tab>('pending');
+  const [search, setSearch]     = useState('');
+  const [approving, setApproving] = useState<UserAccount | null>(null);
+  const [viewAcc, setViewAcc]   = useState<UserAccount | null>(null);
+
+  const [aRole, setARole]       = useState<Role>('att');
+  const [aUsername, setAUsername] = useState('');
+  const [aPassword, setAPassword] = useState('');
+  const [aBranch, setABranch]   = useState('');
+  const [showPw, setShowPw]     = useState(false);
+
+  const pending = userAccounts.filter(a => a.status === 'pending');
+  const active  = userAccounts.filter(a => ['active', 'suspended'].includes(a.status));
+  const filtered = (tab === 'pending' ? pending : active).filter(a =>
+    !search || a.empName.toLowerCase().includes(search.toLowerCase()) ||
+    a.username.toLowerCase().includes(search.toLowerCase())
   );
 
-  function handleAdd() {
-    if (!form.name || !form.email) { Alert.alert('Required', 'Name and email are required.'); return; }
-    addStaff({ name: form.name, role: form.role, email: form.email, sal: parseFloat(form.sal) || 0, st: 'Active' });
-    setForm({ name: '', role: 'Station Manager', email: '', sal: '' });
-    setShowForm(false);
+  function openApprove(acc: UserAccount) {
+    const suggested = acc.empName.split(' ').map(w => w[0]?.toLowerCase()).join('') +
+      (acc.empName.split(' ')[1] || '').toLowerCase().slice(0, 5);
+    setARole('att');
+    setAUsername(suggested || '');
+    setAPassword('');
+    setABranch('');
+    setShowPw(false);
+    setApproving(acc);
   }
 
-  function handleToggle(s: typeof staff[number]) {
+  function handleApprove() {
+    if (!approving) return;
+    if (!aUsername.trim()) { Alert.alert('Required', 'Username is required.'); return; }
+    if (!aPassword.trim()) { Alert.alert('Required', 'Set a temporary password.'); return; }
+    if (aRole === 'mgr' && !aBranch) { Alert.alert('Required', 'Assign a branch for this Station Manager.'); return; }
+    const duplicate = userAccounts.find(a => a.username === aUsername.trim() && a.id !== approving.id);
+    if (duplicate) { Alert.alert('Username Taken', 'That username is already in use. Choose another.'); return; }
+    approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch || undefined);
+    Alert.alert('Account Approved', `${approving.empName} can now log in as ${aUsername.trim()}.`);
+    setApproving(null);
+  }
+
+  function handleReject(acc: UserAccount) {
+    Alert.alert('Reject Account', `Reject ${acc.empName}'s account request?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reject', style: 'destructive', onPress: () => rejectUserAccount(acc.id) },
+    ]);
+  }
+
+  function handleSuspend(acc: UserAccount) {
     Alert.alert(
-      'Confirm',
-      `${s.st === 'Active' ? 'Suspend' : 'Activate'} ${s.name}?`,
-      [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm', onPress: () => toggleStaff(s.id) }]
+      acc.status === 'active' ? 'Suspend Account' : 'Reactivate Account',
+      `${acc.status === 'active' ? 'Suspend' : 'Reactivate'} ${acc.empName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: () => acc.status === 'active' ? suspendUserAccount(acc.id) : reactivateUserAccount(acc.id),
+        },
+      ]
     );
   }
 
-  function handleDelete(s: typeof staff[number]) {
-    Alert.alert(
-      'Delete User',
-      `Permanently remove ${s.name} from the system? This cannot be undone.`,
-      [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => deleteStaff(s.id) }]
-    );
+  function handleDelete(acc: UserAccount) {
+    Alert.alert('Delete Account', `Permanently remove ${acc.empName}'s account? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteUserAccount(acc.id) },
+    ]);
   }
+
+  const initials = (name: string) =>
+    name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
   return (
-    <ScreenLayout
-      title="Users"
-      rightAction={isAdmin ? (
-        <TouchableOpacity onPress={() => setShowForm(true)} style={styles.headerBtn}>
-          <Ionicons name="add" size={20} color="#fff" />
-        </TouchableOpacity>
-      ) : undefined}
-    >
+    <ScreenLayout title="User Accounts">
+      {/* Tab bar */}
+      <View style={[styles.tabRow, { borderBottomColor: colors.border }]}>
+        {([['pending', 'Pending Approval', pending.length], ['active', 'Active Users', active.length]] as const).map(([id, label, cnt]) => (
+          <TouchableOpacity
+            key={id}
+            onPress={() => setTab(id)}
+            style={[styles.tab, tab === id && { borderBottomColor: roleColor, borderBottomWidth: 2.5 }]}
+          >
+            <Text style={[styles.tabLabel, { color: tab === id ? roleColor : colors.textMuted, fontWeight: tab === id ? '700' : '400' }]}>
+              {label}
+            </Text>
+            <View style={[styles.tabBadge, { backgroundColor: id === 'pending' ? (cnt > 0 ? '#BA7517' : colors.border) : roleColor + '22' }]}>
+              <Text style={[styles.tabBadgeText, { color: id === 'pending' && cnt > 0 ? '#fff' : (id === 'pending' ? colors.textMuted : roleColor) }]}>{cnt}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Search */}
       <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
         <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="search" size={16} color={colors.textMuted} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search users..."
+            placeholder="Search by name or username…"
             placeholderTextColor={colors.textSubtle}
             value={search}
             onChangeText={setSearch}
@@ -68,145 +135,352 @@ export default function UsersScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {!isAdmin && (
-          <View style={[styles.readonlyBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
-            <Text style={[styles.readonlyText, { color: colors.textMuted }]}>
-              View only — only System Admin can add, suspend or delete users
-            </Text>
-          </View>
+
+        {/* ── PENDING TAB ── */}
+        {tab === 'pending' && (
+          <>
+            {pending.length === 0 ? (
+              <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="checkmark-circle" size={36} color={colors.success} />
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>All clear</Text>
+                <Text style={[styles.emptySub, { color: colors.textMuted }]}>No pending account requests</Text>
+              </View>
+            ) : (
+              <>
+                {isAdmin && (
+                  <View style={[styles.infoBanner, { backgroundColor: '#BA751722', borderColor: '#BA751744' }]}>
+                    <Ionicons name="information-circle" size={16} color="#BA7517" />
+                    <Text style={[styles.infoBannerText, { color: '#BA7517' }]}>
+                      {pending.length} account{pending.length > 1 ? 's' : ''} awaiting your approval. Set a role and credentials for each.
+                    </Text>
+                  </View>
+                )}
+                {filtered.map(acc => (
+                  <View key={acc.id} style={[styles.accCard, { backgroundColor: colors.surface, borderColor: '#BA751755' }]}>
+                    <View style={[styles.avatar, { backgroundColor: '#BA751722' }]}>
+                      <Text style={[styles.avatarText, { color: '#BA7517' }]}>{initials(acc.empName)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.accName, { color: colors.text }]}>{acc.empName}</Text>
+                      {acc.jobTitle
+                        ? <Text style={[styles.accSub, { color: colors.textMuted }]}>{acc.jobTitle}{acc.dept ? ` · ${acc.dept}` : ''}</Text>
+                        : <Text style={[styles.accSub, { color: colors.textMuted }]}>No role assigned yet</Text>
+                      }
+                      {acc.empId && <Text style={[styles.accId, { color: colors.textSubtle }]}>{acc.empId}</Text>}
+                      <Text style={[styles.accDate, { color: colors.textSubtle }]}>
+                        Requested by {acc.createdBy} · {acc.createdAt.slice(0, 10)}
+                      </Text>
+                    </View>
+                    {isAdmin ? (
+                      <View style={{ gap: 6, alignItems: 'flex-end' }}>
+                        <TouchableOpacity
+                          onPress={() => openApprove(acc)}
+                          style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
+                        >
+                          <Ionicons name="checkmark" size={13} color="#fff" />
+                          <Text style={styles.approveBtnText}>Approve</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleReject(acc)}
+                          style={[styles.rejectBtn, { borderColor: colors.errorBorder }]}
+                        >
+                          <Text style={[styles.rejectBtnText, { color: colors.error }]}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <View style={[styles.stBadge, { backgroundColor: '#BA751722' }]}>
+                        <Text style={[styles.stText, { color: '#BA7517' }]}>Pending</Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </>
+            )}
+          </>
         )}
 
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: roleColor }]}>{staff.filter(s => s.st === 'Active').length}</Text>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>Active</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: colors.warning }]}>{staff.filter(s => s.st === 'Suspended').length}</Text>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>Suspended</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: colors.text }]}>{staff.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>Total</Text>
-          </View>
-        </View>
-
-        {filtered.map(s => (
-          <View
-            key={s.id}
-            style={[styles.userCard, { backgroundColor: colors.surface, borderColor: s.st === 'Active' ? colors.border : colors.warningBorder }]}
-          >
-            <View style={[styles.avatar, { backgroundColor: s.st === 'Active' ? roleColor : colors.textSubtle }]}>
-              <Text style={styles.avatarText}>{s.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.userName, { color: colors.text }]}>{s.name}</Text>
-              <Text style={[styles.userRole, { color: colors.textMuted }]}>{s.role}</Text>
-              <Text style={[styles.userEmail, { color: colors.textSubtle }]}>{s.email}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: 6 }}>
-              <View style={[styles.stBadge, { backgroundColor: s.st === 'Active' ? colors.successBg : colors.warningBg }]}>
-                <Text style={[styles.stText, { color: s.st === 'Active' ? colors.success : colors.warning }]}>{s.st}</Text>
-              </View>
-              {isAdmin && (
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  <TouchableOpacity
-                    onPress={() => handleToggle(s)}
-                    style={[styles.actionBtn, { borderColor: colors.border }]}
-                  >
-                    <Ionicons name={s.st === 'Active' ? 'pause' : 'play'} size={12} color={colors.textMuted} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleDelete(s)}
-                    style={[styles.actionBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
-                  >
-                    <Ionicons name="trash-outline" size={12} color={colors.error} />
-                  </TouchableOpacity>
+        {/* ── ACTIVE TAB ── */}
+        {tab === 'active' && (
+          <>
+            <View style={styles.statsRow}>
+              {[
+                { label: 'Active',    val: active.filter(a => a.status === 'active').length,    color: '#1a6e3c' },
+                { label: 'Suspended', val: active.filter(a => a.status === 'suspended').length, color: colors.error },
+                { label: 'Total',     val: active.length,                                        color: colors.text },
+              ].map(s => (
+                <View key={s.label} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Text style={[styles.statNum, { color: s.color }]}>{s.val}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textMuted }]}>{s.label}</Text>
                 </View>
-              )}
+              ))}
             </View>
-          </View>
-        ))}
-        <View style={{ height: 16 }} />
+
+            {!isAdmin && (
+              <View style={[styles.infoBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
+                <Text style={[styles.infoBannerText, { color: colors.textMuted }]}>
+                  View only — only System Admin can manage accounts
+                </Text>
+              </View>
+            )}
+
+            {filtered.map(acc => {
+              const rc = ROLE_COLORS[acc.role || 'att'] || roleColor;
+              const isSuspended = acc.status === 'suspended';
+              return (
+                <TouchableOpacity
+                  key={acc.id}
+                  onPress={() => setViewAcc(acc)}
+                  activeOpacity={0.8}
+                  style={[styles.accCard, { backgroundColor: colors.surface, borderColor: isSuspended ? colors.errorBorder : colors.border }]}
+                >
+                  <View style={[styles.avatar, { backgroundColor: isSuspended ? colors.textSubtle + '33' : rc + '22' }]}>
+                    <Text style={[styles.avatarText, { color: isSuspended ? colors.textSubtle : rc }]}>{initials(acc.empName)}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.accName, { color: colors.text }]}>{acc.empName}</Text>
+                    <Text style={[styles.accSub, { color: colors.textMuted }]}>
+                      {ROLE_LABELS[acc.role || ''] ?? acc.role ?? 'Unknown role'}
+                      {acc.branchId ? ` · ${MGR_BRANCH_NAMES[acc.branchId] ?? acc.branchId}` : ''}
+                    </Text>
+                    <Text style={[styles.accId, { color: colors.textSubtle }]}>@{acc.username}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    <View style={[styles.stBadge, { backgroundColor: STATUS_COLORS[acc.status] + '22' }]}>
+                      <Text style={[styles.stText, { color: STATUS_COLORS[acc.status] }]}>
+                        {acc.status.charAt(0).toUpperCase() + acc.status.slice(1)}
+                      </Text>
+                    </View>
+                    {isAdmin && (
+                      <View style={{ flexDirection: 'row', gap: 5 }}>
+                        <TouchableOpacity
+                          onPress={() => handleSuspend(acc)}
+                          style={[styles.iconBtn, { borderColor: colors.border }]}
+                        >
+                          <Ionicons name={isSuspended ? 'play' : 'pause'} size={12} color={colors.textMuted} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDelete(acc)}
+                          style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
+                        >
+                          <Ionicons name="trash-outline" size={12} color={colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </>
+        )}
+
+        <View style={{ height: 24 }} />
       </ScrollView>
 
-      {isAdmin && (
-        <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
-          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowForm(false)}>
-            <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Staff Member</Text>
-              {[
-                { key: 'name', label: 'Full Name *' },
-                { key: 'email', label: 'Email Address *', kb: 'email-address' as const },
-                { key: 'sal', label: 'Monthly Salary (₦)', kb: 'numeric' as const },
-              ].map(f => (
-                <TextInput
-                  key={f.key}
-                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                  placeholder={f.label} placeholderTextColor={colors.textSubtle}
-                  keyboardType={f.kb} value={(form as any)[f.key]}
-                  onChangeText={v => setForm(fr => ({ ...fr, [f.key]: v }))}
-                />
-              ))}
-              <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Role</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+      {/* ── APPROVE MODAL ── */}
+      <Modal visible={!!approving} transparent animationType="slide" onRequestClose={() => setApproving(null)}>
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setApproving(null)}>
+          <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHeader}>
+              <View style={[styles.modalIconBox, { backgroundColor: '#1a6e3c22' }]}>
+                <Ionicons name="person-add" size={20} color="#1a6e3c" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Approve Account</Text>
+                <Text style={[styles.modalSub, { color: colors.textMuted }]}>{approving?.empName}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setApproving(null)}>
+                <Ionicons name="close-circle" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Role picker */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Role *</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {ROLE_OPTIONS.map(r => (
-                    <TouchableOpacity
-                      key={r}
-                      onPress={() => setForm(f => ({ ...f, role: r }))}
-                      style={[styles.roleBtn, { backgroundColor: form.role === r ? roleColor : colors.surface, borderColor: form.role === r ? roleColor : colors.border }]}
-                    >
-                      <Text style={{ color: form.role === r ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{r}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {ROLE_OPTS.map(r => {
+                    const rc = ROLE_COLORS[r] || roleColor;
+                    return (
+                      <TouchableOpacity
+                        key={r}
+                        onPress={() => { setARole(r); if (r !== 'mgr') setABranch(''); }}
+                        style={[styles.roleChip, { backgroundColor: aRole === r ? rc : colors.surface, borderColor: aRole === r ? rc : colors.border }]}
+                      >
+                        <Text style={[styles.roleChipText, { color: aRole === r ? '#fff' : colors.textMuted }]}>
+                          {ROLE_LABELS[r] ?? r}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </ScrollView>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
-                  <Text style={styles.submitBtnText}>Add Staff</Text>
+
+              {/* Branch picker — only for mgr */}
+              {aRole === 'mgr' && (
+                <>
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch *</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
+                    {BRANCH_OPTS.map(([bid, bname]) => (
+                      <TouchableOpacity
+                        key={bid}
+                        onPress={() => setABranch(bid)}
+                        style={[styles.roleChip, { backgroundColor: aBranch === bid ? ROLE_COLORS.mgr : colors.surface, borderColor: aBranch === bid ? ROLE_COLORS.mgr : colors.border }]}
+                      >
+                        <Text style={[styles.roleChipText, { color: aBranch === bid ? '#fff' : colors.textMuted }]}>{bid}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Username */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username *</Text>
+              <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="at" size={16} color={colors.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  value={aUsername}
+                  onChangeText={setAUsername}
+                  placeholder="e.g. ngozi.eze"
+                  placeholderTextColor={colors.textSubtle}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              {/* Temp password */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Temporary Password *</Text>
+              <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="lock-closed-outline" size={16} color={colors.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  value={aPassword}
+                  onChangeText={setAPassword}
+                  placeholder="e.g. Welcome@2024"
+                  placeholderTextColor={colors.textSubtle}
+                  secureTextEntry={!showPw}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setShowPw(v => !v)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={16} color={colors.textMuted} />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowForm(false)}>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity
+                  onPress={handleApprove}
+                  style={[styles.confirmBtn, { backgroundColor: '#1a6e3c', flex: 1 }]}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                  <Text style={styles.confirmBtnText}>Approve & Create</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setApproving(null)}
+                  style={[styles.cancelBtn, { borderColor: colors.border, flex: 0.55 }]}
+                  activeOpacity={0.8}
+                >
                   <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
                 </TouchableOpacity>
               </View>
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── VIEW ACCOUNT MODAL ── */}
+      <Modal visible={!!viewAcc} transparent animationType="slide" onRequestClose={() => setViewAcc(null)}>
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setViewAcc(null)}>
+          {viewAcc && (
+            <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+              <View style={styles.modalHeader}>
+                <View style={[styles.avatar, { width: 46, height: 46, borderRadius: 23, backgroundColor: (ROLE_COLORS[viewAcc.role || 'att'] || roleColor) + '22' }]}>
+                  <Text style={[styles.avatarText, { color: ROLE_COLORS[viewAcc.role || 'att'] || roleColor, fontSize: 16 }]}>{initials(viewAcc.empName)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>{viewAcc.empName}</Text>
+                  <Text style={[styles.modalSub, { color: colors.textMuted }]}>
+                    {ROLE_LABELS[viewAcc.role || ''] ?? viewAcc.role}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setViewAcc(null)}>
+                  <Ionicons name="close-circle" size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {[
+                { label: 'Username',   value: `@${viewAcc.username}` },
+                { label: 'Employee ID', value: viewAcc.empId || '—' },
+                { label: 'Branch',      value: viewAcc.branchId ? (MGR_BRANCH_NAMES[viewAcc.branchId] ?? viewAcc.branchId) : '—' },
+                { label: 'Status',      value: viewAcc.status.charAt(0).toUpperCase() + viewAcc.status.slice(1) },
+                { label: 'Approved By', value: viewAcc.approvedBy || '—' },
+                { label: 'Approved',    value: viewAcc.approvedAt ? viewAcc.approvedAt.slice(0, 10) : '—' },
+              ].map((row, i) => (
+                <View
+                  key={row.label}
+                  style={[styles.detailRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}
+                >
+                  <Text style={[styles.detailLabel, { color: colors.textMuted }]}>{row.label}</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>{row.value}</Text>
+                </View>
+              ))}
             </View>
-          </TouchableOpacity>
-        </Modal>
-      )}
+          )}
+        </TouchableOpacity>
+      </Modal>
     </ScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: 16 },
-  readonlyBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
-  readonlyText: { flex: 1, fontSize: 12 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, marginBottom: 4 },
-  searchInput: { flex: 1, fontSize: 14 },
-  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  statCard: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
-  statNum: { fontSize: 22, fontWeight: '700' },
-  statLabel: { fontSize: 11, marginTop: 1 },
-  userCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
-  avatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  userName: { fontSize: 15, fontWeight: '600' },
-  userRole: { fontSize: 12, marginTop: 1 },
-  userEmail: { fontSize: 11, marginTop: 1 },
-  stBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
-  stText: { fontSize: 10, fontWeight: '700' },
-  actionBtn: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  headerBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 10 },
-  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14 },
-  inputLabel: { fontSize: 12, fontWeight: '500' },
-  roleBtn: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
-  submitBtn: { alignItems: 'center', paddingVertical: 13, borderRadius: 12 },
-  submitBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  cancelBtn: { alignItems: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: '#e5e5e3' },
-  cancelBtnText: { fontSize: 14, fontWeight: '600' },
+  tabRow:         { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
+  tab:            { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11 },
+  tabLabel:       { fontSize: 13 },
+  tabBadge:       { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 },
+  tabBadgeText:   { fontSize: 11, fontWeight: '700' },
+  searchBar:      { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
+  searchInput:    { flex: 1, fontSize: 14 },
+  scroll:         { padding: 16 },
+  statsRow:       { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  statCard:       { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
+  statNum:        { fontSize: 22, fontWeight: '700' },
+  statLabel:      { fontSize: 11, marginTop: 1 },
+  infoBanner:     { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
+  infoBannerText: { flex: 1, fontSize: 12 },
+  emptyCard:      { alignItems: 'center', padding: 36, borderRadius: 16, borderWidth: 1, gap: 8, marginTop: 20 },
+  emptyTitle:     { fontSize: 17, fontWeight: '700' },
+  emptySub:       { fontSize: 13 },
+  accCard:        { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
+  avatar:         { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  avatarText:     { fontSize: 15, fontWeight: '700' },
+  accName:        { fontSize: 15, fontWeight: '600' },
+  accSub:         { fontSize: 12, marginTop: 1 },
+  accId:          { fontSize: 11, marginTop: 1 },
+  accDate:        { fontSize: 10, marginTop: 2 },
+  stBadge:        { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+  stText:         { fontSize: 10, fontWeight: '700' },
+  approveBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  approveBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  rejectBtn:      { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
+  rejectBtnText:  { fontSize: 11, fontWeight: '600' },
+  iconBtn:        { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  overlay:        { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalCard:      { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 22, gap: 12, maxHeight: '90%' },
+  modalHeader:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
+  modalIconBox:   { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  modalTitle:     { fontSize: 16, fontWeight: '700' },
+  modalSub:       { fontSize: 12, marginTop: 1 },
+  fieldLabel:     { fontSize: 11, fontWeight: '600', marginBottom: 6 },
+  inputWrap:      { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 12, borderWidth: 1.5, marginBottom: 12 },
+  input:          { flex: 1, fontSize: 14 },
+  roleChip:       { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
+  roleChipText:   { fontSize: 12, fontWeight: '600' },
+  confirmBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12 },
+  confirmBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  cancelBtn:      { alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1 },
+  cancelBtnText:  { fontSize: 14, fontWeight: '600' },
+  detailRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
+  detailLabel:    { fontSize: 13 },
+  detailValue:    { fontSize: 13, fontWeight: '600' },
 });
