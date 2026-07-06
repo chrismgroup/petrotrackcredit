@@ -6,16 +6,17 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'managers' | 'system';
+type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'managers' | 'access' | 'system';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'company',  label: 'Company',  icon: 'business' },
   { id: 'tanks',    label: 'Tanks',    icon: 'water' },
   { id: 'pumps',    label: 'Pumps',    icon: 'speedometer' },
   { id: 'staff',    label: 'Staff',    icon: 'people' },
   { id: 'managers', label: 'Managers', icon: 'construct' },
+  { id: 'access',   label: 'Access',   icon: 'lock-closed' },
   { id: 'system',   label: 'System',   icon: 'settings' },
 ];
 
@@ -48,6 +49,7 @@ const BLANK_STAFF = { name: '', email: '', role: 'att' as typeof ROLE_OPTS[numbe
 export default function SystemSettingsScreen() {
   const {
     role, tanks, lpgTanks, pumps, staff, branches, mgrPerms, updateMgrPerms,
+    roleAccess, updateRoleAccess,
     addTank, addLpgTank, addPump, addStaff,
     updateTank, updateLpgTank, updatePump, updateStaff,
     deleteTank, deleteLpgTank, deletePump, deleteStaff,
@@ -664,6 +666,69 @@ export default function SystemSettingsScreen() {
                   </View>
                 );
               })}
+            </>
+          )}
+
+          {/* ── ACCESS CONTROL ── */}
+          {activeTab === 'access' && (
+            <>
+              <View style={[styles.banner, { backgroundColor: '#1a0a2e' }]}>
+                <Ionicons name="lock-closed" size={22} color={roleColor} />
+                <View>
+                  <Text style={styles.bannerTitle}>Role Access Control</Text>
+                  <Text style={styles.bannerSub}>Toggle which panels each role can see</Text>
+                </View>
+              </View>
+
+              {(Object.entries(ROLE_FULL_NAV) as [string, { id: string; icon: string; label: string }[]][])
+                .filter(([r]) => r !== 'admin')
+                .map(([r, modules]) => {
+                  const rc = ROLE_COLORS[r] || roleColor;
+                  const enabledCount = modules.filter(m => (roleAccess[r] ?? {})[m.id] !== false).length;
+                  return (
+                    <View key={r} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 14 }]}>
+                      {/* Role header */}
+                      <View style={[styles.mgrHeader, { borderBottomColor: colors.border }]}>
+                        <View style={[styles.mgrBadge, { backgroundColor: rc + '22' }]}>
+                          <Ionicons name="person" size={14} color={rc} />
+                          <Text style={[styles.mgrBadgeText, { color: rc }]}>{r.toUpperCase()}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.cardTitle, { color: colors.text }]}>{ROLE_LABELS[r] ?? r}</Text>
+                          <Text style={[styles.subLabel, { color: colors.textMuted }]}>
+                            {enabledCount}/{modules.length} panels enabled
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Module toggles */}
+                      {modules.map(({ id, icon, label }, idx) => {
+                        const enabled = (roleAccess[r] ?? {})[id] !== false;
+                        return (
+                          <View
+                            key={id}
+                            style={[
+                              styles.permRow,
+                              idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+                            ]}
+                          >
+                            <View style={[styles.permIcon, { backgroundColor: enabled ? rc + '22' : colors.border + '55' }]}>
+                              <Ionicons name={icon as any} size={16} color={enabled ? rc : colors.textMuted} />
+                            </View>
+                            <Text style={[styles.permLabel, { color: enabled ? colors.text : colors.textMuted }]}>{label}</Text>
+                            <Switch
+                              value={enabled}
+                              onValueChange={v => isAdmin && updateRoleAccess(r, id, v)}
+                              thumbColor={enabled ? rc : '#aaa'}
+                              trackColor={{ false: colors.border, true: rc + '55' }}
+                              disabled={!isAdmin}
+                            />
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
             </>
           )}
 
