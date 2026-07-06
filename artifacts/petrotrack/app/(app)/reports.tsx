@@ -36,11 +36,11 @@ function matchesProd(pump: string, prod: string): boolean {
 }
 
 export default function ReportsScreen() {
-  const { role, expenses, sales, branches, deliveries, prices, priceHistory } = useApp();
+  const { role, expenses, sales, branches, deliveries, prices, priceHistory, priceProposals } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
   const [period, setPeriod] = useState<Period>('Monthly');
-  const [reportTab, setReportTab] = useState<'summary' | 'pnl' | 'expenses' | 'sales'>('summary');
+  const [reportTab, setReportTab] = useState<'summary' | 'pnl' | 'expenses' | 'sales' | 'prices'>('summary');
 
   const { from, to } = useMemo(() => periodRange(period), [period]);
   const scale = SCALE[period];
@@ -150,6 +150,7 @@ export default function ReportsScreen() {
           { id: 'pnl',      label: 'P&L'      },
           { id: 'expenses', label: 'Expenses' },
           { id: 'sales',    label: 'Sales'    },
+          { id: 'prices',   label: 'Prices'   },
         ] as const).map(t => (
           <TouchableOpacity key={t.id} onPress={() => setReportTab(t.id)}
             style={[styles.reportTab, { borderBottomColor: t.id === reportTab ? roleColor : 'transparent', borderBottomWidth: 2 }]}>
@@ -422,6 +423,109 @@ export default function ReportsScreen() {
           </>
         )}
 
+        {/* ── PRICES ── */}
+        {reportTab === 'prices' && (
+          <>
+            {/* Current prices snapshot */}
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Current Selling Prices</Text>
+            {(['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const).map(prod => {
+              const price = (prices as any)[prod] ?? 0;
+              const pc = PROD_COLORS[prod] || roleColor;
+              const lastChange = priceHistory.filter(h => h.prod === prod).sort((a, b) => b.id - a.id)[0];
+              return (
+                <View key={prod} style={[styles.catRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[styles.prodDot, { backgroundColor: pc }]} />
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.catHeader}>
+                      <Text style={[styles.catName, { color: colors.text }]}>{prod}</Text>
+                      <Text style={[styles.catAmt, { color: price > 0 ? pc : colors.textSubtle }]}>
+                        {price > 0 ? `₦${price.toLocaleString()}/L` : 'Not set'}
+                      </Text>
+                    </View>
+                    {lastChange && (
+                      <Text style={[styles.catPct, { color: colors.textMuted }]}>
+                        Last changed by {lastChange.by} · {fmtDate(lastChange.dt)}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+
+            {/* Full price change log */}
+            <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>All Price Changes</Text>
+            {priceHistory.length === 0 ? (
+              <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="pricetag-outline" size={32} color={colors.textSubtle} />
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>No price changes recorded</Text>
+              </View>
+            ) : (
+              [...priceHistory].sort((a, b) => b.id - a.id).map(h => {
+                const pc  = PROD_COLORS[h.prod] || roleColor;
+                const up  = h.newPrice > h.oldPrice;
+                const approved = priceProposals.find(p => p.prod === h.prod && p.status === 'approved' && Math.abs(p.proposedPrice - h.newPrice) < 1);
+                return (
+                  <View key={h.id} style={[styles.priceHistRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={[styles.priceHistTag, { backgroundColor: pc + '18' }]}>
+                      <Text style={[styles.priceHistProd, { color: pc }]}>{h.prod}</Text>
+                    </View>
+                    <View style={styles.priceHistMid}>
+                      <View style={styles.priceHistChange}>
+                        <Text style={[styles.priceHistOld, { color: colors.textMuted }]}>₦{h.oldPrice.toLocaleString()}</Text>
+                        <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
+                        <Text style={[styles.priceHistNew, { color: colors.text }]}>₦{h.newPrice.toLocaleString()}</Text>
+                        <View style={[styles.priceHistDiff, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB' }]}>
+                          <Text style={[styles.priceHistDiffText, { color: up ? '#27500A' : '#791F1F' }]}>
+                            {up ? '+' : ''}₦{(h.newPrice - h.oldPrice).toLocaleString()}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.priceHistMeta, { color: colors.textSubtle }]}>
+                        {h.by}{approved?.reviewedBy ? ` · Approved by ${approved.reviewedBy}` : ''} · {fmtDate(h.dt)}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+
+            {/* Proposal history */}
+            {priceProposals.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>Proposal History</Text>
+                {[...priceProposals].sort((a, b) => b.id - a.id).map(p => {
+                  const pc  = PROD_COLORS[p.prod] || roleColor;
+                  const up  = p.proposedPrice > p.currentPrice;
+                  const statusColor = p.status === 'approved' ? '#27500A' : p.status === 'rejected' ? '#791F1F' : '#BA7517';
+                  const statusBg    = p.status === 'approved' ? '#EAF3DE'  : p.status === 'rejected' ? '#FCEBEB'  : '#FAEEDA';
+                  return (
+                    <View key={p.id} style={[styles.priceHistRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <View style={[styles.priceHistTag, { backgroundColor: pc + '18' }]}>
+                        <Text style={[styles.priceHistProd, { color: pc }]}>{p.prod}</Text>
+                      </View>
+                      <View style={styles.priceHistMid}>
+                        <View style={styles.priceHistChange}>
+                          <Text style={[styles.priceHistOld, { color: colors.textMuted }]}>₦{p.currentPrice.toLocaleString()}</Text>
+                          <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
+                          <Text style={[styles.priceHistNew, { color: colors.text }]}>₦{p.proposedPrice.toLocaleString()}</Text>
+                        </View>
+                        <Text style={[styles.priceHistMeta, { color: colors.textSubtle }]}>
+                          Proposed by {p.proposedBy}{p.reviewedBy ? ` · ${p.status === 'approved' ? 'Approved' : 'Rejected'} by ${p.reviewedBy}` : ''} · {fmtDate(p.proposedAt)}
+                        </Text>
+                      </View>
+                      <View style={[styles.priceHistDiff, { backgroundColor: statusBg }]}>
+                        <Text style={[styles.priceHistDiffText, { color: statusColor, textTransform: 'capitalize' }]}>{p.status}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </>
+            )}
+
+            <ExportBanner label="Export Price Change Report" sub="Full history with approvals" color={roleColor} colors={colors} />
+          </>
+        )}
+
         <View style={{ height: 20 }} />
       </ScrollView>
     </ScreenLayout>
@@ -533,4 +637,14 @@ const styles = StyleSheet.create({
   miniHistoryRow: { gap: 1 },
   miniHistoryChange: { fontSize: 12, fontWeight: '700' },
   miniHistoryMeta: { fontSize: 10 },
+  priceHistRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 8 },
+  priceHistTag:      { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, alignItems: 'center', minWidth: 44 },
+  priceHistProd:     { fontSize: 11, fontWeight: '700' },
+  priceHistMid:      { flex: 1, gap: 3 },
+  priceHistChange:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  priceHistOld:      { fontSize: 13, textDecorationLine: 'line-through' },
+  priceHistNew:      { fontSize: 13, fontWeight: '700' },
+  priceHistDiff:     { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
+  priceHistDiffText: { fontSize: 11, fontWeight: '700' },
+  priceHistMeta:     { fontSize: 11 },
 });

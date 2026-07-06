@@ -112,7 +112,7 @@ export default function OperationsScreen() {
   const closeVal  = parseFloat(closeMeter);
   const liters    = (!isNaN(openVal) && !isNaN(closeVal) && closeVal > openVal) ? Math.round(closeVal - openVal) : 0;
   const prod      = PUMP_PRODS[pump] || 'PMS';
-  const unitPrice = (prices as any)[prod] || 830;
+  const unitPrice = (prices as any)[prod] || 0;
   const saleAmt   = liters * unitPrice;
   const posVal    = parseFloat(posAmt.replace(/,/g, '')) || 0;
   const cashAmt   = saleAmt - posVal;

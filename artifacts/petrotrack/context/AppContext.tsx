@@ -590,22 +590,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName, prices]);
 
   const approvePriceProposal = useCallback((id: number) => {
-    setPriceProposals(ps => ps.map(p => {
-      if (p.id !== id || p.status !== 'pending') return p;
-      updatePrice(p.prod, p.proposedPrice, userName);
-      return { ...p, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() };
+    const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
+    if (!proposal) return;
+    updatePrice(proposal.prod, proposal.proposedPrice, userName);
+    setPriceProposals(ps => ps.map(p =>
+      p.id === id ? { ...p, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
+    ));
+    const msgKey = chatKey('ceo', 'md');
+    setMessages(m => ({
+      ...m,
+      [msgKey]: [...(m[msgKey] || []), {
+        id: genId(), from: 'ceo' as Role, to: 'md' as Role, type: 'alert' as const,
+        body: `Price approved: ${proposal.prod} is now ₦${proposal.proposedPrice.toLocaleString()}/L`,
+        alrt: { title: 'Price Change Approved', pri: 'Low', detail: `${proposal.prod}: ₦${proposal.currentPrice.toLocaleString()} → ₦${proposal.proposedPrice.toLocaleString()}/L (effective immediately)` },
+        ts: nowTime(), read: false,
+      }],
     }));
-    setAudit(a => [{ id: genId(), action: 'Price proposal approved', user: userName, detail: `Proposal #${id} approved`, ts: nowTs() }, ...a]);
-  }, [userName, updatePrice]);
+  }, [userName, updatePrice, priceProposals]);
 
   const rejectPriceProposal = useCallback((id: number, note?: string) => {
+    const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
     setPriceProposals(ps => ps.map(p =>
       p.id === id && p.status === 'pending'
         ? { ...p, status: 'rejected' as const, reviewedBy: userName, reviewedAt: nowTs(), note }
         : p
     ));
     setAudit(a => [{ id: genId(), action: 'Price proposal rejected', user: userName, detail: `Proposal #${id}${note ? ': ' + note : ''}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    if (proposal) {
+      const msgKey = chatKey('ceo', 'md');
+      setMessages(m => ({
+        ...m,
+        [msgKey]: [...(m[msgKey] || []), {
+          id: genId(), from: 'ceo' as Role, to: 'md' as Role, type: 'alert' as const,
+          body: `Price proposal rejected: ${proposal.prod} ₦${proposal.proposedPrice.toLocaleString()}/L was not approved${note ? ` — ${note}` : ''}`,
+          alrt: { title: 'Price Change Rejected', pri: 'Medium', detail: note || 'No reason given' },
+          ts: nowTime(), read: false,
+        }],
+      }));
+    }
+  }, [userName, priceProposals]);
 
   const addTank = useCallback((t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => {
     const id = `T${Date.now()}`;
