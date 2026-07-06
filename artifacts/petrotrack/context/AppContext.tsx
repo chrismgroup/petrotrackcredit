@@ -415,11 +415,81 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hrRecommendations, setHrRecommendations] = useState<HRRecommendation[]>(INIT_HR_RECOMMENDATIONS);
   const [hrHandbooks, setHrHandbooks] = useState<HREmployeeDoc[]>(INIT_HR_HANDBOOKS);
 
+  /* ── persistence: load all state from AsyncStorage on mount ── */
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    AsyncStorage.getItem('auth').then(v => {
-      if (v) { const { r, n, sid, bid } = JSON.parse(v); setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null); }
+    const KEYS = [
+      'auth', 'companyInfo', 'tanks', 'lpgTanks', 'pumps', 'staff', 'branches',
+      'departments', 'userAccounts', 'prices', 'priceHistory', 'mgrPerms',
+      'roleAccess', 'userAccess', 'expenses', 'budgets', 'sales', 'dips',
+      'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
+      'companyFiles', 'deliveryEvidences', 'shiftReports', 'hrEmployees', 'hrHandbooks',
+    ] as const;
+    AsyncStorage.multiGet([...KEYS]).then(pairs => {
+      const s: Record<string, any> = {};
+      for (const [k, v] of pairs) if (v) s[k] = JSON.parse(v);
+      if (s.auth) { const { r, n, sid, bid } = s.auth; setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null); }
+      if (s.companyInfo)       setCompanyInfo(s.companyInfo);
+      if (s.tanks)             setTanks(s.tanks);
+      if (s.lpgTanks)          setLpgTanks(s.lpgTanks);
+      if (s.pumps)             setPumps(s.pumps);
+      if (s.staff)             setStaff(s.staff);
+      if (s.branches)          setBranches(s.branches);
+      if (s.departments)       setDepartments(s.departments);
+      if (s.userAccounts)      setUserAccounts(s.userAccounts);
+      if (s.prices)            setPrices(s.prices);
+      if (s.priceHistory)      setPriceHistory(s.priceHistory);
+      if (s.mgrPerms)          setMgrPerms(s.mgrPerms);
+      if (s.roleAccess)        setRoleAccess(s.roleAccess);
+      if (s.userAccess)        setUserAccess(s.userAccess);
+      if (s.expenses)          setExpenses(s.expenses);
+      if (s.budgets)           setBudgets(s.budgets);
+      if (s.sales)             setSales(s.sales);
+      if (s.dips)              setDips(s.dips);
+      if (s.deliveries)        setDeliveries(s.deliveries);
+      if (s.maintenance)       setMaintenance(s.maintenance);
+      if (s.audit)             setAudit(s.audit);
+      if (s.messages)          setMessages(s.messages);
+      if (s.tasks)             setTasks(s.tasks);
+      if (s.kpis)              setKpis(s.kpis);
+      if (s.companyFiles)      setCompanyFiles(s.companyFiles);
+      if (s.deliveryEvidences) setDeliveryEvidences(s.deliveryEvidences);
+      if (s.shiftReports)      setShiftReports(s.shiftReports);
+      if (s.hrEmployees)       setHrEmployees(s.hrEmployees);
+      if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks);
+      setLoaded(true);
     });
   }, []);
+
+  /* ── persistence: save each state slice to AsyncStorage when it changes ── */
+  useEffect(() => { if (loaded) AsyncStorage.setItem('companyInfo',       JSON.stringify(companyInfo)); },       [companyInfo, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('tanks',             JSON.stringify(tanks)); },             [tanks, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('lpgTanks',          JSON.stringify(lpgTanks)); },          [lpgTanks, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('pumps',             JSON.stringify(pumps)); },             [pumps, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('staff',             JSON.stringify(staff)); },             [staff, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('branches',          JSON.stringify(branches)); },          [branches, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('departments',       JSON.stringify(departments)); },       [departments, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('userAccounts',      JSON.stringify(userAccounts)); },      [userAccounts, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('prices',            JSON.stringify(prices)); },            [prices, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('priceHistory',      JSON.stringify(priceHistory)); },      [priceHistory, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('mgrPerms',          JSON.stringify(mgrPerms)); },          [mgrPerms, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('roleAccess',        JSON.stringify(roleAccess)); },        [roleAccess, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('userAccess',        JSON.stringify(userAccess)); },        [userAccess, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('expenses',          JSON.stringify(expenses)); },          [expenses, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('budgets',           JSON.stringify(budgets)); },           [budgets, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('sales',             JSON.stringify(sales)); },             [sales, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('dips',              JSON.stringify(dips)); },              [dips, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('deliveries',        JSON.stringify(deliveries)); },        [deliveries, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('maintenance',       JSON.stringify(maintenance)); },       [maintenance, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('audit',             JSON.stringify(audit)); },             [audit, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('messages',          JSON.stringify(messages)); },          [messages, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('tasks',             JSON.stringify(tasks)); },             [tasks, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('kpis',              JSON.stringify(kpis)); },              [kpis, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('companyFiles',      JSON.stringify(companyFiles)); },      [companyFiles, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('deliveryEvidences', JSON.stringify(deliveryEvidences)); }, [deliveryEvidences, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('shiftReports',      JSON.stringify(shiftReports)); },      [shiftReports, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('hrEmployees',       JSON.stringify(hrEmployees)); },       [hrEmployees, loaded]);
+  useEffect(() => { if (loaded) AsyncStorage.setItem('hrHandbooks',       JSON.stringify(hrHandbooks)); },       [hrHandbooks, loaded]);
 
   const login = useCallback((r: Role, n: string, sid?: number, bid?: string) => {
     setRole(r); setUserName(n);
