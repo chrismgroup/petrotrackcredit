@@ -9,15 +9,14 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'managers' | 'access' | 'system';
+type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'access' | 'system';
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'company',  label: 'Company',  icon: 'business' },
-  { id: 'tanks',    label: 'Tanks',    icon: 'water' },
-  { id: 'pumps',    label: 'Pumps',    icon: 'speedometer' },
-  { id: 'staff',    label: 'Staff',    icon: 'people' },
-  { id: 'managers', label: 'Managers', icon: 'construct' },
-  { id: 'access',   label: 'Access',   icon: 'lock-closed' },
-  { id: 'system',   label: 'System',   icon: 'settings' },
+  { id: 'company', label: 'Company', icon: 'business' },
+  { id: 'tanks',   label: 'Tanks',   icon: 'water' },
+  { id: 'pumps',   label: 'Pumps',   icon: 'speedometer' },
+  { id: 'staff',   label: 'Staff',   icon: 'people' },
+  { id: 'access',  label: 'Access',  icon: 'lock-closed' },
+  { id: 'system',  label: 'System',  icon: 'settings' },
 ];
 
 const MGR_PERM_LABELS: { key: keyof MgrPermissions; label: string; icon: string; sub?: string }[] = [
