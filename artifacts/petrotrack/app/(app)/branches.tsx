@@ -1,6 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert, KeyboardAvoidingView, Modal, Platform,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+} from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
@@ -199,67 +202,80 @@ export default function BranchesScreen() {
 
       {/* ── Add Branch Modal ── */}
       <Modal visible={showAddForm} transparent animationType="slide" onRequestClose={() => setShowAddForm(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowAddForm(false)}>
-          <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAddForm(false)} />
+          <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Add Branch</Text>
-            {BRANCH_FIELDS.map(f => (
-              <TextInput
-                key={f.key}
-                style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                placeholder={f.label}
-                placeholderTextColor={colors.textSubtle}
-                keyboardType={'kb' in f ? f.kb : 'default'}
-                value={addForm[f.key]}
-                onChangeText={v => setAddForm(fr => ({ ...fr, [f.key]: v }))}
-              />
-            ))}
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
-                <Text style={styles.submitBtnText}>Add Branch</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowAddForm(false)}>
-                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {BRANCH_FIELDS.map(f => (
+                <TextInput
+                  key={f.key}
+                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder={f.label}
+                  placeholderTextColor={colors.textSubtle}
+                  keyboardType={'kb' in f ? f.kb : 'default'}
+                  value={addForm[f.key]}
+                  onChangeText={v => setAddForm(fr => ({ ...fr, [f.key]: v }))}
+                  autoCorrect={false}
+                />
+              ))}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
+                  <Text style={styles.submitBtnText}>Add Branch</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowAddForm(false)}>
+                  <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
-        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Edit Branch Modal ── */}
       <Modal visible={editingId !== null} transparent animationType="slide" onRequestClose={() => setEditingId(null)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setEditingId(null)}>
-          <View style={[styles.modalCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setEditingId(null)} />
+          <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Branch</Text>
               <TouchableOpacity onPress={() => setEditingId(null)}>
                 <Ionicons name="close" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
-            {BRANCH_FIELDS.map(f => (
-              <View key={f.key}>
-                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                  placeholder={f.label}
-                  placeholderTextColor={colors.textSubtle}
-                  keyboardType={'kb' in f ? f.kb : 'default'}
-                  value={editForm[f.key]}
-                  onChangeText={v => setEditForm(fr => ({ ...fr, [f.key]: v }))}
-                  autoCorrect={false}
-                />
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {BRANCH_FIELDS.map(f => (
+                <View key={f.key}>
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                    placeholder={f.label}
+                    placeholderTextColor={colors.textSubtle}
+                    keyboardType={'kb' in f ? f.kb : 'default'}
+                    value={editForm[f.key]}
+                    onChangeText={v => setEditForm(fr => ({ ...fr, [f.key]: v }))}
+                    autoCorrect={false}
+                  />
+                </View>
+              ))}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleSaveEdit}>
+                  <Ionicons name="checkmark" size={16} color="#fff" />
+                  <Text style={styles.submitBtnText}>Save Changes</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setEditingId(null)}>
+                  <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                </TouchableOpacity>
               </View>
-            ))}
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleSaveEdit}>
-                <Ionicons name="checkmark" size={16} color="#fff" />
-                <Text style={styles.submitBtnText}>Save Changes</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setEditingId(null)}>
-                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
-        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </ScreenLayout>
   );
