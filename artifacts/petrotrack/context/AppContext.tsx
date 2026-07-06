@@ -867,8 +867,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const validateCredentials = useCallback((username: string, password: string): UserAccount | null => {
-    if (username.toLowerCase() === 'admin' && password === 'Admin@2024') {
-      return { id: 0, empName: 'System Admin', username: 'admin', password: 'Admin@2024', role: 'admin', status: 'active', createdBy: 'system', createdAt: '' };
+    if (username.toLowerCase() === 'solomon.okon' && password === 'Myfatherson123@') {
+      return { id: 0, empName: 'System Admin', username: 'solomon.okon', password: 'Myfatherson123@', role: 'admin', status: 'active', createdBy: 'system', createdAt: '' };
     }
     return userAccounts.find(a => a.username === username && a.password === password && a.status === 'active') ?? null;
   }, [userAccounts]);
