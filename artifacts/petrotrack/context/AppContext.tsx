@@ -438,7 +438,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
       for (const [k, v] of pairs) if (v) s[k] = JSON.parse(v);
-      if (s.auth) { const { r, n, sid, bid } = s.auth; setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null); }
+      if (s.auth) {
+        const { r, n, sid, bid } = s.auth;
+        setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null);
+      } else {
+        setRole('admin'); setUserName('Solomon Okon');
+        AsyncStorage.setItem('auth', JSON.stringify({ r: 'admin', n: 'Solomon Okon', sid: null, bid: null }));
+      }
       if (s.companyInfo)       setCompanyInfo(s.companyInfo);
       if (s.tanks)             setTanks(s.tanks);
       if (s.lpgTanks)          setLpgTanks(s.lpgTanks);
