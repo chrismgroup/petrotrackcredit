@@ -39,9 +39,21 @@ export default function BranchesScreen() {
 
   function handleAdd() {
     if (!addForm.name.trim()) { Alert.alert('Required', 'Branch name is required.'); return; }
-    addBranch({ name: addForm.name.trim(), st: 'Pending', rev: 0, mgr: addForm.mgr.trim(), pumps: parseInt(addForm.pumps) || 2, tanks: parseInt(addForm.tanks) || 2 });
+    // Admin-created branches go straight to Active; other roles submit as Pending
+    addBranch({ name: addForm.name.trim(), st: isAdmin ? 'Active' : 'Pending', rev: 0, mgr: addForm.mgr.trim(), pumps: parseInt(addForm.pumps) || 2, tanks: parseInt(addForm.tanks) || 2 });
     setAddForm({ name: '', mgr: '', pumps: '2', tanks: '2' });
     setShowAddForm(false);
+  }
+
+  function handleApprove(b: typeof branches[number]) {
+    Alert.alert(
+      'Approve Branch',
+      `Activate "${b.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Approve', onPress: () => updateBranch(b.id, { st: 'Active' }) },
+      ]
+    );
   }
 
   // ── Edit form ─────────────────────────────────────────────────────────
@@ -162,6 +174,16 @@ export default function BranchesScreen() {
 
               {isAdmin && (
                 <View style={styles.adminActions}>
+                  {/* Approve — only shown for Pending branches */}
+                  {b.st === 'Pending' && (
+                    <TouchableOpacity
+                      onPress={() => handleApprove(b)}
+                      style={[styles.actionBtn, { backgroundColor: colors.successBg, borderColor: colors.successBorder }]}
+                    >
+                      <Ionicons name="checkmark-circle-outline" size={13} color={colors.success} />
+                      <Text style={[styles.actionBtnText, { color: colors.success }]}>Approve</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={() => openEdit(b)}
                     style={[styles.actionBtn, { backgroundColor: roleColor + '12', borderColor: roleColor + '33' }]}

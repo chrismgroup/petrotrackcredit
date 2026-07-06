@@ -50,7 +50,7 @@ export default function SystemSettingsScreen() {
     role, tanks, lpgTanks, pumps, staff, branches, mgrPerms, updateMgrPerms,
     addTank, addLpgTank, addPump, addStaff,
     updateTank, updateLpgTank, updatePump, updateStaff,
-    deleteTank, deleteLpgTank, deletePump,
+    deleteTank, deleteLpgTank, deletePump, deleteStaff,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -565,6 +565,17 @@ export default function SystemSettingsScreen() {
                       <View style={[styles.stBadge, { backgroundColor: member.st === 'Active' ? colors.successBg : colors.errorBg }]}>
                         <Text style={[styles.stText, { color: member.st === 'Active' ? colors.success : colors.error }]}>{member.st}</Text>
                       </View>
+                      {isAdmin && (
+                        <TouchableOpacity
+                          onPress={() => Alert.alert('Delete Staff', `Remove "${member.name}" from the directory? This cannot be undone.`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => deleteStaff(member.id) },
+                          ])}
+                          style={styles.deleteIconBtn}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      )}
                     </View>
                     <FieldInput label="Full Name" value={e.name} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, name: v } }))} placeholder="Enter full name" autoCapitalize="words" />
                     <FieldInput label="Email Address" value={e.email} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, email: v } }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
