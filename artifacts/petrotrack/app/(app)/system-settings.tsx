@@ -50,6 +50,7 @@ export default function SystemSettingsScreen() {
   const {
     role, tanks, lpgTanks, pumps, staff, branches, mgrPerms, updateMgrPerms,
     roleAccess, updateRoleAccess,
+    userAccess, updateUserAccess, clearUserAccess,
     addTank, addLpgTank, addPump, addStaff,
     updateTank, updateLpgTank, updatePump, updateStaff,
     deleteTank, deleteLpgTank, deletePump, deleteStaff,
@@ -59,6 +60,7 @@ export default function SystemSettingsScreen() {
   const isAdmin = role === 'admin';
 
   const [activeTab, setActiveTab] = useState<Tab>('company');
+  const [expandedUsers, setExpandedUsers] = useState<Record<number, boolean>>({});
   const [toggles, setToggles] = useState<Record<string, boolean>>({
     'Daily Dip Required': true, 'Auto-Audit Logging': true,
   });
@@ -680,6 +682,12 @@ export default function SystemSettingsScreen() {
                 </View>
               </View>
 
+              {/* ── By Role ── */}
+              <View style={styles.sectionRow}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>By Role</Text>
+                <Text style={[styles.sectionCount, { color: colors.textMuted }]}>applies to all members of a role</Text>
+              </View>
+
               {(Object.entries(ROLE_FULL_NAV) as [string, { id: string; icon: string; label: string }[]][])
                 .filter(([r]) => r !== 'admin')
                 .map(([r, modules]) => {
@@ -687,31 +695,20 @@ export default function SystemSettingsScreen() {
                   const enabledCount = modules.filter(m => (roleAccess[r] ?? {})[m.id] !== false).length;
                   return (
                     <View key={r} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 14 }]}>
-                      {/* Role header */}
                       <View style={[styles.mgrHeader, { borderBottomColor: colors.border }]}>
                         <View style={[styles.mgrBadge, { backgroundColor: rc + '22' }]}>
-                          <Ionicons name="person" size={14} color={rc} />
+                          <Ionicons name="people" size={14} color={rc} />
                           <Text style={[styles.mgrBadgeText, { color: rc }]}>{r.toUpperCase()}</Text>
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.cardTitle, { color: colors.text }]}>{ROLE_LABELS[r] ?? r}</Text>
-                          <Text style={[styles.subLabel, { color: colors.textMuted }]}>
-                            {enabledCount}/{modules.length} panels enabled
-                          </Text>
+                          <Text style={[styles.subLabel, { color: colors.textMuted }]}>{enabledCount}/{modules.length} panels enabled</Text>
                         </View>
                       </View>
-
-                      {/* Module toggles */}
                       {modules.map(({ id, icon, label }, idx) => {
                         const enabled = (roleAccess[r] ?? {})[id] !== false;
                         return (
-                          <View
-                            key={id}
-                            style={[
-                              styles.permRow,
-                              idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-                            ]}
-                          >
+                          <View key={id} style={[styles.permRow, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
                             <View style={[styles.permIcon, { backgroundColor: enabled ? rc + '22' : colors.border + '55' }]}>
                               <Ionicons name={icon as any} size={16} color={enabled ? rc : colors.textMuted} />
                             </View>
@@ -729,6 +726,101 @@ export default function SystemSettingsScreen() {
                     </View>
                   );
                 })}
+
+              {/* ── By User ── */}
+              <View style={[styles.sectionRow, { marginTop: 8 }]}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>By User</Text>
+                <Text style={[styles.sectionCount, { color: colors.textMuted }]}>overrides role defaults</Text>
+              </View>
+
+              {staff.filter(m => m.role !== 'admin').map(member => {
+                const rc = ROLE_COLORS[member.role] || roleColor;
+                const modules = ROLE_FULL_NAV[member.role] ?? [];
+                const overrides = userAccess[member.id] ?? {};
+                const hasOverrides = Object.keys(overrides).length > 0;
+                const expanded = expandedUsers[member.id] ?? false;
+                const initials = member.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+
+                // Effective access: user override > role default
+                const effectiveEnabled = (id: string) => {
+                  if (overrides[id] !== undefined) return overrides[id];
+                  return (roleAccess[member.role] ?? {})[id] !== false;
+                };
+                const enabledCount = modules.filter(m => effectiveEnabled(m.id)).length;
+
+                return (
+                  <View key={member.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: hasOverrides ? rc + '55' : colors.border, marginBottom: 10 }]}>
+                    {/* Tappable header — expand/collapse */}
+                    <TouchableOpacity
+                      onPress={() => setExpandedUsers(e => ({ ...e, [member.id]: !expanded }))}
+                      activeOpacity={0.7}
+                      style={styles.userAccessHeader}
+                    >
+                      <View style={[styles.idBadge, { backgroundColor: rc + '18' }]}>
+                        <Text style={[styles.initials, { color: rc }]}>{initials}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.itemCurrent, { color: colors.text }]}>{member.name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                          <View style={[styles.mgrBadge, { backgroundColor: rc + '18', paddingHorizontal: 6, paddingVertical: 2 }]}>
+                            <Text style={[styles.mgrBadgeText, { color: rc, fontSize: 10 }]}>{(ROLE_LABELS[member.role] ?? member.role).toUpperCase()}</Text>
+                          </View>
+                          <Text style={[styles.subLabel, { color: colors.textMuted }]}>{enabledCount}/{modules.length} panels</Text>
+                          {hasOverrides && (
+                            <View style={[styles.stBadge, { backgroundColor: rc + '22' }]}>
+                              <Text style={[styles.stText, { color: rc }]}>OVERRIDDEN</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
+
+                    {/* Expanded module toggles */}
+                    {expanded && (
+                      <>
+                        {modules.map(({ id, icon, label }, idx) => {
+                          const enabled = effectiveEnabled(id);
+                          const isOverridden = overrides[id] !== undefined;
+                          return (
+                            <View key={id} style={[styles.permRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                              <View style={[styles.permIcon, { backgroundColor: enabled ? rc + '22' : colors.border + '55' }]}>
+                                <Ionicons name={icon as any} size={16} color={enabled ? rc : colors.textMuted} />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.permLabel, { color: enabled ? colors.text : colors.textMuted }]}>{label}</Text>
+                                {isOverridden && (
+                                  <Text style={[styles.subLabel, { color: rc, fontSize: 10 }]}>User override</Text>
+                                )}
+                              </View>
+                              <Switch
+                                value={enabled}
+                                onValueChange={v => isAdmin && updateUserAccess(member.id, id, v)}
+                                thumbColor={enabled ? rc : '#aaa'}
+                                trackColor={{ false: colors.border, true: rc + '55' }}
+                                disabled={!isAdmin}
+                              />
+                            </View>
+                          );
+                        })}
+                        {isAdmin && hasOverrides && (
+                          <TouchableOpacity
+                            onPress={() => Alert.alert('Reset Access', `Reset "${member.name}" to role defaults?`, [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Reset', style: 'destructive', onPress: () => clearUserAccess(member.id) },
+                            ])}
+                            style={[styles.dangerBtn, { borderColor: colors.errorBorder, marginTop: 8 }]}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="refresh-outline" size={15} color={colors.error} />
+                            <Text style={[styles.dangerBtnText, { color: colors.error, fontSize: 13 }]}>Reset to role defaults</Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
+                  </View>
+                );
+              })}
             </>
           )}
 
@@ -832,7 +924,8 @@ const styles = StyleSheet.create({
   mgrHeader:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 12, marginBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   mgrBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   mgrBadgeText:  { fontSize: 11, fontWeight: '800' },
-  permRow:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
-  permIcon:      { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  permLabel:     { flex: 1, fontSize: 14 },
+  permRow:          { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
+  permIcon:         { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  permLabel:        { flex: 1, fontSize: 14 },
+  userAccessHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });
