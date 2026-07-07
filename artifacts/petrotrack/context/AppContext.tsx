@@ -318,6 +318,8 @@ interface AppContextType {
   approveDip: (id: number) => void;
   rejectDip: (id: number) => void;
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
+  updateDelivery: (id: number, updates: Partial<Omit<Delivery, 'id'>>) => void;
+  deleteDelivery: (id: number) => void;
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
   sendMessage: (to: Role, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => void;
@@ -714,6 +716,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addDelivery = useCallback((rec: Omit<Delivery, 'id'>) => {
     setDeliveries(d => [{ ...rec, id: genId() }, ...d]);
     setAudit(a => [{ id: genId(), action: 'Delivery recorded', user: userName, detail: `${rec.prod} — ${rec.rec}L from ${rec.sup}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updateDelivery = useCallback((id: number, updates: Partial<Omit<Delivery, 'id'>>) => {
+    setDeliveries(ds => ds.map(d => d.id === id ? { ...d, ...updates } : d));
+    setAudit(a => [{ id: genId(), action: 'Delivery updated', user: userName, detail: `Delivery #${id} edited`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteDelivery = useCallback((id: number) => {
+    setDeliveries(ds => ds.filter(d => d.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Delivery deleted', user: userName, detail: `Delivery #${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
 
   const addMaintenance = useCallback((item: Omit<MaintenanceItem, 'id'>) => {
@@ -1137,7 +1149,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, addBudget, forwardBudget, approveBudget, rejectBudget,
-      addDip, approveDip, rejectDip, addDelivery, addMaintenance, addSales,
+      addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
