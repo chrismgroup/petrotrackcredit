@@ -146,7 +146,9 @@ export default function BudgetScreen() {
     if (editTarget) {
       updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear });
     } else {
-      addBudget({ month: formMonth + 1, year: formYear, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'draft' });
+      /* Accountant-created budgets go straight to 'submitted' so they appear in their For-Review queue */
+      const status = isAcc ? 'submitted' : 'draft';
+      addBudget({ month: formMonth + 1, year: formYear, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status });
     }
     setShowForm(false);
   }
@@ -191,10 +193,10 @@ export default function BudgetScreen() {
   }
 
   /* Edit rights */
-  const mgrCanEdit = (b: Budget) =>
+  const mgrCanEdit   = (b: Budget) =>
     isMgr && (b.status === 'draft' || b.status === 'rejected') && (b.by === role || b.byName === userName);
-  const accCanEdit = (b: Budget) =>
-    isAcc && b.status === 'submitted';
+  const accCanEdit   = (b: Budget) => isAcc && (b.status === 'submitted' || b.status === 'rejected');
+  const accCanDelete = (b: Budget) => isAcc && (b.status === 'submitted' || b.status === 'rejected');
 
   /* Tabs */
   const TABS_MGR = [{ key: 'mine', label: 'My Budgets' }];
@@ -212,7 +214,7 @@ export default function BudgetScreen() {
     <ScreenLayout
       title="Budget"
       rightAction={
-        isMgr ? (
+        (isMgr || isAcc) ? (
           <TouchableOpacity onPress={openCreate} style={styles.headerBtn}>
             <Ionicons name="add" size={20} color="#fff" />
           </TouchableOpacity>
@@ -304,13 +306,18 @@ export default function BudgetScreen() {
                 </View>
               ) : null}
 
-              {/* Acc inline edit hint */}
+              {/* Acc inline actions: edit, delete, forward */}
               {canAccEdit ? (
                 <View style={styles.cardActions}>
                   <TouchableOpacity onPress={e => { e.stopPropagation?.(); openEdit(b); }}
                     style={[styles.cardActionBtn, { borderColor: '#0C447C' }]}>
                     <Ionicons name="create-outline" size={13} color="#0C447C" />
-                    <Text style={[styles.cardActionText, { color: '#0C447C' }]}>Edit / Verify</Text>
+                    <Text style={[styles.cardActionText, { color: '#0C447C' }]}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={e => { e.stopPropagation?.(); handleDeleteBudget(b); }}
+                    style={[styles.cardActionBtn, { borderColor: '#791F1F' }]}>
+                    <Ionicons name="trash-outline" size={13} color="#791F1F" />
+                    <Text style={[styles.cardActionText, { color: '#791F1F' }]}>Delete</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => setSelected(b)}
                     style={[styles.cardSubmitBtn, { backgroundColor: '#0C447C' }]}>

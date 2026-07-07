@@ -142,7 +142,8 @@ export default function ExpensesScreen() {
   /* Permission helpers */
   const mgrCanEdit = (e: Expense) =>
     isMgr && (e.status === 'pending' || e.status === 'rejected') && (e.by === role || e.byName === userName);
-  const accCanEdit = (e: Expense) => isAcc && e.status === 'pending';
+  const accCanEdit    = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
+  const accCanDelete  = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
   const accCanForward = (e: Expense) => isAcc && e.status === 'pending';
   const mdCanAct = (e: Expense) => isMD && e.status === 'acc_forwarded';
 
@@ -150,7 +151,7 @@ export default function ExpensesScreen() {
     <ScreenLayout
       title="Expenses"
       rightAction={
-        isMgr ? (
+        (isMgr || isAcc) ? (
           <TouchableOpacity onPress={openCreate} style={styles.headerBtn}>
             <Ionicons name="add" size={20} color="#fff" />
           </TouchableOpacity>
@@ -266,13 +267,19 @@ export default function ExpensesScreen() {
                 </View>
               ) : null}
 
-              {/* Acc: edit + forward to MD */}
+              {/* Acc: add/edit/delete + forward to MD */}
               {accCanEdit(exp) ? (
                 <View style={styles.actionRow}>
                   <TouchableOpacity onPress={() => openEdit(exp)} style={[styles.actionBtn, { borderColor: '#0C447C' }]}>
                     <Ionicons name="create-outline" size={13} color="#0C447C" />
-                    <Text style={[styles.actionBtnText, { color: '#0C447C' }]}>Edit / Verify</Text>
+                    <Text style={[styles.actionBtnText, { color: '#0C447C' }]}>Edit</Text>
                   </TouchableOpacity>
+                  {accCanDelete(exp) ? (
+                    <TouchableOpacity onPress={() => handleDelete(exp)} style={[styles.actionBtn, { borderColor: '#791F1F' }]}>
+                      <Ionicons name="trash-outline" size={13} color="#791F1F" />
+                      <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Delete</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   {accCanForward(exp) ? (
                     <TouchableOpacity onPress={() => { setFwdTarget(exp); setFwdNote(''); }}
                       style={[styles.forwardBtn]}>
