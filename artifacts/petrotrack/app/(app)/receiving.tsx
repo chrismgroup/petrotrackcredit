@@ -195,6 +195,10 @@ export default function ReceivingScreen() {
   const [rejectTarget, setRejectTarget] = useState<Delivery | null>(null);
   const [rejectNote, setRejectNote] = useState('');
 
+  /* Accountant date-only edit for pending/approved records */
+  const [dateTarget, setDateTarget] = useState<Delivery | null>(null);
+  const [dateEdit, setDateEdit]     = useState('');
+
   const sortedDeliveries = [...deliveries].sort((a, b) => b.id - a.id);
   const pendingCount = sortedDeliveries.filter(d => d.approvalStatus === 'pending').length;
 
@@ -287,6 +291,22 @@ export default function ReceivingScreen() {
     rejectDelivery(rejectTarget.id, rejectNote || undefined);
     setRejectTarget(null);
     setRejectNote('');
+  }
+
+  function openDateEdit(d: Delivery) {
+    setDateTarget(d);
+    setDateEdit(d.dt ? d.dt.slice(0, 10) : todayIso());
+  }
+
+  function handleDateSave() {
+    if (!dateTarget) return;
+    if (!dateEdit.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      Alert.alert('Invalid date', 'Please enter the date in YYYY-MM-DD format.');
+      return;
+    }
+    updateDelivery(dateTarget.id, { dt: new Date(dateEdit).toISOString() });
+    setDateTarget(null);
+    setDateEdit('');
   }
 
   const canEdit = (d: Delivery) =>
@@ -508,19 +528,33 @@ export default function ReceivingScreen() {
                 </View>
               ) : null}
 
-              {/* Pending lock notice for accountant */}
+              {/* Pending lock notice for accountant + date edit */}
               {isAcc && apSt === 'pending' ? (
-                <View style={[styles.lockRow, { borderColor: '#BA7517' }]}>
-                  <Ionicons name="lock-closed-outline" size={12} color="#BA7517" />
-                  <Text style={[styles.lockText, { color: '#BA7517' }]}>Submitted — awaiting CEO approval</Text>
+                <View style={{ gap: 6 }}>
+                  <View style={[styles.lockRow, { borderColor: '#BA7517' }]}>
+                    <Ionicons name="lock-closed-outline" size={12} color="#BA7517" />
+                    <Text style={[styles.lockText, { color: '#BA7517', flex: 1 }]}>Submitted — awaiting CEO approval</Text>
+                    <TouchableOpacity onPress={() => openDateEdit(d)}
+                      style={[styles.dateEditBtn, { borderColor: '#185FA5' }]}>
+                      <Ionicons name="calendar-outline" size={12} color="#185FA5" />
+                      <Text style={[styles.dateEditBtnText, { color: '#185FA5' }]}>Edit Date</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : null}
 
-              {/* Approved lock notice for accountant */}
+              {/* Approved lock notice for accountant + date edit */}
               {isAcc && apSt === 'approved' ? (
-                <View style={[styles.lockRow, { borderColor: '#27500A' }]}>
-                  <Ionicons name="lock-closed" size={12} color="#27500A" />
-                  <Text style={[styles.lockText, { color: '#27500A' }]}>Record locked — CEO approved</Text>
+                <View style={{ gap: 6 }}>
+                  <View style={[styles.lockRow, { borderColor: '#27500A' }]}>
+                    <Ionicons name="lock-closed" size={12} color="#27500A" />
+                    <Text style={[styles.lockText, { color: '#27500A', flex: 1 }]}>Record locked — CEO approved</Text>
+                    <TouchableOpacity onPress={() => openDateEdit(d)}
+                      style={[styles.dateEditBtn, { borderColor: '#185FA5' }]}>
+                      <Ionicons name="calendar-outline" size={12} color="#185FA5" />
+                      <Text style={[styles.dateEditBtnText, { color: '#185FA5' }]}>Edit Date</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : null}
             </View>
@@ -573,6 +607,50 @@ export default function ReceivingScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Accountant Date-Only Edit Modal */}
+      <Modal visible={dateTarget !== null} transparent animationType="fade" onRequestClose={() => setDateTarget(null)}>
+        <View style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setDateTarget(null)} />
+          <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
+            <View style={styles.editHeader}>
+              <View style={[styles.editIconBox, { backgroundColor: '#E6F1FB' }]}>
+                <Ionicons name="calendar" size={18} color="#185FA5" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Edit Delivery Date</Text>
+                <Text style={[styles.editSub, { color: colors.textMuted }]}>{'WB: '}{dateTarget?.wb}</Text>
+              </View>
+            </View>
+            <Text style={[styles.inputLabel, { color: colors.textMuted, marginTop: 8 }]}>Delivery Date</Text>
+            <View style={[styles.dateRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Ionicons name="calendar-outline" size={16} color={roleColor} />
+              <TextInput
+                style={[styles.dateInput, { color: colors.text }]}
+                value={dateEdit}
+                onChangeText={setDateEdit}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textSubtle}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
+                autoFocus
+              />
+              <TouchableOpacity onPress={() => setDateEdit(todayIso())}>
+                <Text style={[styles.todayBtn, { color: roleColor }]}>Today</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setDateTarget(null)}>
+                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#185FA5' }]} onPress={handleDateSave}>
+                <Ionicons name="checkmark" size={15} color="#fff" />
+                <Text style={styles.saveBtnText}>Save Date</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
 
@@ -661,6 +739,8 @@ const styles = StyleSheet.create({
   approveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   lockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   lockText: { fontSize: 11, fontWeight: '600' },
+  dateEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1 },
+  dateEditBtnText: { fontSize: 11, fontWeight: '700' },
   headerBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingTop: 24, maxHeight: '92%' },
