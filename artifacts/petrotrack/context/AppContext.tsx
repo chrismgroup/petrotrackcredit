@@ -11,7 +11,7 @@ export interface Tank {
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG'; active: boolean; }
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
-export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; }
+export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
@@ -320,6 +320,9 @@ interface AppContextType {
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
   updateDelivery: (id: number, updates: Partial<Omit<Delivery, 'id'>>) => void;
   deleteDelivery: (id: number) => void;
+  submitDeliveryForApproval: (id: number) => void;
+  approveDelivery: (id: number) => void;
+  rejectDelivery: (id: number, note?: string) => void;
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
   sendMessage: (to: Role, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => void;
@@ -727,6 +730,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setDeliveries(ds => ds.filter(d => d.id !== id));
     setAudit(a => [{ id: genId(), action: 'Delivery deleted', user: userName, detail: `Delivery #${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
+
+  const submitDeliveryForApproval = useCallback((id: number) => {
+    const d = deliveries.find(d => d.id === id);
+    if (!d) return;
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending' as const } : rec));
+    setAudit(a => [{ id: genId(), action: 'Delivery submitted for approval', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L from ${d.sup}`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('acc', 'ceo');
+    setMessages(m => ({
+      ...m,
+      [msgKey]: [...(m[msgKey] || []), {
+        id: genId(), from: 'acc' as Role, to: 'ceo' as Role, type: 'alert' as const,
+        body: `Delivery record submitted for approval: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb})`,
+        alrt: { title: 'Delivery Awaiting Approval', pri: 'Medium', detail: `${d.prod} · ${d.rec.toLocaleString()}L · Supplier: ${d.sup} · WB: ${d.wb}` },
+        ts: nowTime(), read: false,
+      }],
+    }));
+  }, [userName, deliveries]);
+
+  const approveDelivery = useCallback((id: number) => {
+    const d = deliveries.find(d => d.id === id);
+    if (!d) return;
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'approved' as const, approvedBy: userName, approvedAt: nowTs() } : rec));
+    setAudit(a => [{ id: genId(), action: 'Delivery approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L approved`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('ceo', 'acc');
+    setMessages(m => ({
+      ...m,
+      [msgKey]: [...(m[msgKey] || []), {
+        id: genId(), from: 'ceo' as Role, to: 'acc' as Role, type: 'alert' as const,
+        body: `Delivery approved: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb})`,
+        alrt: { title: 'Delivery Record Approved', pri: 'Low', detail: `WB: ${d.wb} · ${d.prod} · ${d.rec.toLocaleString()}L · Record is now locked.` },
+        ts: nowTime(), read: false,
+      }],
+    }));
+  }, [userName, deliveries]);
+
+  const rejectDelivery = useCallback((id: number, note?: string) => {
+    const d = deliveries.find(d => d.id === id);
+    if (!d) return;
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'rejected' as const, rejectedNote: note } : rec));
+    setAudit(a => [{ id: genId(), action: 'Delivery rejected', user: userName, detail: `WB: ${d.wb}${note ? ' — ' + note : ''}`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('ceo', 'acc');
+    setMessages(m => ({
+      ...m,
+      [msgKey]: [...(m[msgKey] || []), {
+        id: genId(), from: 'ceo' as Role, to: 'acc' as Role, type: 'alert' as const,
+        body: `Delivery rejected: ${d.prod} WB: ${d.wb}${note ? ' — ' + note : ''}`,
+        alrt: { title: 'Delivery Record Rejected', pri: 'Medium', detail: note || 'No reason given' },
+        ts: nowTime(), read: false,
+      }],
+    }));
+  }, [userName, deliveries]);
 
   const addMaintenance = useCallback((item: Omit<MaintenanceItem, 'id'>) => {
     setMaintenance(m => [{ ...item, id: genId() }, ...m]);
@@ -1149,7 +1203,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, addBudget, forwardBudget, approveBudget, rejectBudget,
-      addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, addMaintenance, addSales,
+      addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, approveDelivery, rejectDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
