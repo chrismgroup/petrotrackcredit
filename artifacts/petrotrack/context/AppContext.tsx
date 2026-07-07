@@ -23,7 +23,7 @@ export interface PriceProposal {
   status: 'pending' | 'approved' | 'rejected';
   reviewedBy?: string; reviewedAt?: string; note?: string;
 }
-export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; }
+export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; }
 export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
 export interface Budget { id: number; month: number; year: number; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
 export interface NavItem { id: string; icon: string; label: string; }
@@ -292,7 +292,7 @@ interface AppContextType {
   addBudget: (b: Omit<Budget, 'id' | 'workflow'>) => void;
   updateBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string }) => void;
   deleteBudget: (id: number) => void;
-  submitBudgetToMD: (id: number) => void;
+  submitBudgetToAcc: (id: number) => void;
   forwardBudget: (id: number, note: string) => void;
   approveBudget: (id: number, note: string) => void;
   rejectBudget: (id: number, note: string) => void;
@@ -314,6 +314,7 @@ interface AppContextType {
   addExpense: (exp: Omit<Expense, 'id' | 'dt' | 'status'>) => void;
   updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref'>>) => void;
   deleteExpense: (id: number) => void;
+  forwardExpenseToMD: (id: number, note?: string) => void;
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
   addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
   addShiftReport: (r: Omit<ShiftReport, 'id' | 'dt' | 'status'>) => void;
@@ -841,21 +842,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Budget deleted', user: userName, detail: `Budget #${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const submitBudgetToMD = useCallback((id: number) => {
+  const submitBudgetToAcc = useCallback((id: number) => {
     const b = budgets.find(b => b.id === id);
     if (!b) return;
     setBudgets(prev => prev.map(bud => bud.id !== id ? bud : {
       ...bud, status: 'submitted',
-      workflow: [...bud.workflow, { stage: 'Submitted to MD', by: userName, role: bud.by, dt: nowTs(), action: 'submit', note: `${bud.items.length} line items — ₦${bud.total.toLocaleString()}` }],
+      workflow: [...bud.workflow, { stage: 'Submitted to Accountant', by: userName, role: bud.by, dt: nowTs(), action: 'submit', note: `${bud.items.length} line items — ₦${bud.total.toLocaleString()}` }],
     }));
-    setAudit(a => [{ id: genId(), action: 'Budget submitted to MD', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey(b.by, 'md');
+    setAudit(a => [{ id: genId(), action: 'Budget submitted to Accountant', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey(b.by, 'acc');
     setMessages(m => ({
       ...m,
       [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: b.by as Role, to: 'md' as Role, type: 'alert' as const,
-        body: `Budget submitted for approval: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
-        alrt: { title: 'Budget Awaiting Approval', pri: 'Medium', detail: `${b.label} · ₦${b.total.toLocaleString()} · Submitted by ${userName}` },
+        id: genId(), from: b.by as Role, to: 'acc' as Role, type: 'alert' as const,
+        body: `Budget submitted for review: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
+        alrt: { title: 'Budget Awaiting Accountant Review', pri: 'Medium', detail: `${b.label} · ₦${b.total.toLocaleString()} · Submitted by ${userName}` },
         ts: nowTime(), read: false,
       }],
     }));
@@ -1047,6 +1048,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setExpenses(e => e.filter(x => x.id !== id));
     setAudit(a => [{ id: genId(), action: 'Expense deleted', user: userName, detail: `Expense #${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
+
+  const forwardExpenseToMD = useCallback((id: number, note?: string) => {
+    const exp = expenses.find(e => e.id === id);
+    if (!exp) return;
+    setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'acc_forwarded' as const } : x));
+    setAudit(a => [{ id: genId(), action: 'Expense forwarded to MD', user: userName, detail: `${exp.cat} — ₦${exp.amt.toLocaleString()}${note ? ' · ' + note : ''}`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('acc', 'md');
+    setMessages(m => ({
+      ...m,
+      [msgKey]: [...(m[msgKey] || []), {
+        id: genId(), from: 'acc' as Role, to: 'md' as Role, type: 'alert' as const,
+        body: `Expense forwarded for approval: ${exp.cat} — ₦${exp.amt.toLocaleString()} by ${exp.byName}`,
+        alrt: { title: 'Expense Awaiting MD Approval', pri: 'Medium', detail: `${exp.cat} · ₦${exp.amt.toLocaleString()} · ${exp.desc}${note ? '\nNote: ' + note : ''}` },
+        ts: nowTime(), read: false,
+      }],
+    }));
+  }, [userName, expenses]);
 
   const addCompanyFile = useCallback((file: Omit<CompanyFile, 'id' | 'dt'>) => {
     setCompanyFiles(f => [...f, { ...file, id: genId(), dt: nowTs() }]);
@@ -1248,7 +1266,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
-      addExpense, updateExpense, deleteExpense, addBudget, updateBudget, deleteBudget, submitBudgetToMD, forwardBudget, approveBudget, rejectBudget,
+      addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, approveDelivery, rejectDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
