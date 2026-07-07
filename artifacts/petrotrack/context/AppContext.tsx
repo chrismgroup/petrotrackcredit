@@ -290,6 +290,9 @@ interface AppContextType {
   sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
   addBudget: (b: Omit<Budget, 'id' | 'workflow'>) => void;
+  updateBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string }) => void;
+  deleteBudget: (id: number) => void;
+  submitBudgetToMD: (id: number) => void;
   forwardBudget: (id: number, note: string) => void;
   approveBudget: (id: number, note: string) => void;
   rejectBudget: (id: number, note: string) => void;
@@ -309,6 +312,8 @@ interface AppContextType {
   updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active'>>) => void;
   updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept'>>) => void;
   addExpense: (exp: Omit<Expense, 'id' | 'dt' | 'status'>) => void;
+  updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref'>>) => void;
+  deleteExpense: (id: number) => void;
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
   addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
   addShiftReport: (r: Omit<ShiftReport, 'id' | 'dt' | 'status'>) => void;
@@ -817,13 +822,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addBudget = useCallback((b: Omit<Budget, 'id' | 'workflow'>) => {
+    const isDraft = b.status === 'draft';
     const newBudget: Budget = {
       ...b, id: genId(),
-      workflow: [{ stage: 'Submitted', by: userName, role: b.by, dt: nowTs(), action: 'submit', note: `${b.items.length} items submitted for ${b.label}.` }],
+      workflow: isDraft ? [] : [{ stage: 'Submitted to MD', by: userName, role: b.by, dt: nowTs(), action: 'submit', note: `${b.items.length} items submitted for ${b.label}.` }],
     };
     setBudgets(prev => [...prev, newBudget]);
-    setAudit(a => [{ id: genId(), action: 'Budget submitted', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
+    setAudit(a => [{ id: genId(), action: isDraft ? 'Budget saved as draft' : 'Budget submitted to MD', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
   }, [userName]);
+
+  const updateBudget = useCallback((id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string }) => {
+    setBudgets(prev => prev.map(b => b.id !== id ? b : { ...b, ...updates }));
+    setAudit(a => [{ id: genId(), action: 'Budget updated', user: userName, detail: `Budget #${id} edited`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteBudget = useCallback((id: number) => {
+    setBudgets(prev => prev.filter(b => b.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Budget deleted', user: userName, detail: `Budget #${id} removed`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const submitBudgetToMD = useCallback((id: number) => {
+    const b = budgets.find(b => b.id === id);
+    if (!b) return;
+    setBudgets(prev => prev.map(bud => bud.id !== id ? bud : {
+      ...bud, status: 'submitted',
+      workflow: [...bud.workflow, { stage: 'Submitted to MD', by: userName, role: bud.by, dt: nowTs(), action: 'submit', note: `${bud.items.length} line items — ₦${bud.total.toLocaleString()}` }],
+    }));
+    setAudit(a => [{ id: genId(), action: 'Budget submitted to MD', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey(b.by, 'md');
+    setMessages(m => ({
+      ...m,
+      [msgKey]: [...(m[msgKey] || []), {
+        id: genId(), from: b.by as Role, to: 'md' as Role, type: 'alert' as const,
+        body: `Budget submitted for approval: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
+        alrt: { title: 'Budget Awaiting Approval', pri: 'Medium', detail: `${b.label} · ₦${b.total.toLocaleString()} · Submitted by ${userName}` },
+        ts: nowTime(), read: false,
+      }],
+    }));
+  }, [userName, budgets]);
 
   const forwardBudget = useCallback((id: number, note: string) => {
     setBudgets(prev => prev.map(b => b.id !== id ? b : {
@@ -1000,6 +1036,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addExpense = useCallback((exp: Omit<Expense, 'id' | 'dt' | 'status'>) => {
     setExpenses(e => [...e, { ...exp, id: genId(), dt: nowTs(), status: 'pending' }]);
     setAudit(a => [{ id: genId(), action: 'Expense submitted', user: userName, detail: `${exp.cat} — ₦${exp.amt.toLocaleString()}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const updateExpense = useCallback((id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref'>>) => {
+    setExpenses(e => e.map(x => x.id === id ? { ...x, ...updates } : x));
+    setAudit(a => [{ id: genId(), action: 'Expense updated', user: userName, detail: `Expense #${id} edited`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteExpense = useCallback((id: number) => {
+    setExpenses(e => e.filter(x => x.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Expense deleted', user: userName, detail: `Expense #${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
 
   const addCompanyFile = useCallback((file: Omit<CompanyFile, 'id' | 'dt'>) => {
@@ -1202,7 +1248,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
-      addExpense, addBudget, forwardBudget, approveBudget, rejectBudget,
+      addExpense, updateExpense, deleteExpense, addBudget, updateBudget, deleteBudget, submitBudgetToMD, forwardBudget, approveBudget, rejectBudget,
       addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, approveDelivery, rejectDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
