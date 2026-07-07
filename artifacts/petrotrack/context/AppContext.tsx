@@ -11,9 +11,9 @@ export interface Tank {
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG'; active: boolean; }
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
-export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; }
+export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
-export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; }
+export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
@@ -23,7 +23,7 @@ export interface PriceProposal {
   status: 'pending' | 'approved' | 'rejected';
   reviewedBy?: string; reviewedAt?: string; note?: string;
 }
-export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; }
+export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId?: string; }
 export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
 export interface Budget { id: number; month: number; year: number; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
 export interface NavItem { id: string; icon: string; label: string; }
@@ -723,9 +723,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const addDelivery = useCallback((rec: Omit<Delivery, 'id'>) => {
-    setDeliveries(d => [{ ...rec, id: genId() }, ...d]);
+    setDeliveries(d => [{ ...rec, id: genId(), branchId: rec.branchId ?? branchId ?? undefined }, ...d]);
     setAudit(a => [{ id: genId(), action: 'Delivery recorded', user: userName, detail: `${rec.prod} — ${rec.rec}L from ${rec.sup}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+  }, [userName, branchId]);
 
   const updateDelivery = useCallback((id: number, updates: Partial<Omit<Delivery, 'id'>>) => {
     setDeliveries(ds => ds.map(d => d.id === id ? { ...d, ...updates } : d));
@@ -794,9 +794,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const addSales = useCallback((entry: Omit<SalesEntry, 'id'>) => {
-    setSales(s => [...s, { ...entry, id: genId() }]);
+    setSales(s => [...s, { ...entry, id: genId(), branchId: entry.branchId ?? branchId ?? undefined }]);
     setAudit(a => [{ id: genId(), action: 'Sales entry', user: userName, detail: `${entry.pump} — ${entry.L}L`, ts: nowTs() }, ...a]);
-  }, [userName]);
+  }, [userName, branchId]);
 
   const sendMessage = useCallback((to: Role, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => {
     if (!role) return;
@@ -1035,9 +1035,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const addExpense = useCallback((exp: Omit<Expense, 'id' | 'dt' | 'status'>) => {
-    setExpenses(e => [...e, { ...exp, id: genId(), dt: nowTs(), status: 'pending' }]);
+    setExpenses(e => [...e, { ...exp, id: genId(), dt: nowTs(), status: 'pending', branchId: exp.branchId ?? branchId ?? undefined }]);
     setAudit(a => [{ id: genId(), action: 'Expense submitted', user: userName, detail: `${exp.cat} — ₦${exp.amt.toLocaleString()}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+  }, [userName, branchId]);
 
   const updateExpense = useCallback((id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref'>>) => {
     setExpenses(e => e.map(x => x.id === id ? { ...x, ...updates } : x));
