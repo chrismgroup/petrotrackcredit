@@ -130,86 +130,59 @@ export const UINFO: Record<string, UserInfo> = {
   att: { name: 'Emeka Okafor', color: '#633806', initials: 'EO', role: 'Att', online: true },
 };
 
+// Admin-only nav (system management panels not shown to other roles)
 export const NAVDEF: Record<string, NavItem[]> = {
   admin: [
-    { id: 'home', icon: 'shield-checkmark', label: 'Admin' },
-    { id: 'users', icon: 'people', label: 'Users' },
-    { id: 'depts', icon: 'grid', label: 'Depts' },
-    { id: 'branches', icon: 'business', label: 'Branches' },
-    { id: 'audit', icon: 'list', label: 'Audit' },
-    { id: 'settings', icon: 'settings', label: 'Settings' },
-  ],
-  ceo: [
-    { id: 'home',   icon: 'home',             label: 'Home'     },
-    { id: 'tasks',  icon: 'checkmark-circle', label: 'Tasks'    },
-    { id: 'hr',     icon: 'people-circle',    label: 'HR'       },
-    { id: 'acct',   icon: 'calculator',       label: 'Accounts' },
-    { id: 'mktg',   icon: 'megaphone',        label: 'Mktg'     },
-    { id: 'prices', icon: 'pricetag',         label: 'Prices'   },
-  ],
-  md: [
-    { id: 'ops',      icon: 'construct',        label: 'Ops'      },
-    { id: 'tasks',    icon: 'checkmark-circle', label: 'Tasks'    },
+    { id: 'home',     icon: 'shield-checkmark', label: 'Admin'    },
+    { id: 'users',    icon: 'people',           label: 'Users'    },
+    { id: 'depts',    icon: 'grid',             label: 'Depts'    },
     { id: 'branches', icon: 'business',         label: 'Branches' },
-    { id: 'hr',       icon: 'people-circle',    label: 'HR'       },
-    { id: 'budget',   icon: 'wallet',           label: 'Budget'   },
-    { id: 'exprpt',   icon: 'analytics',        label: 'Reports'  },
-    { id: 'sales',    icon: 'bar-chart',        label: 'Sales'    },
-    { id: 'prices',   icon: 'pricetag',         label: 'Prices'   },
-  ],
-  mktg: [
-    { id: 'mktg',  icon: 'megaphone',        label: 'Marketing' },
-    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks'     },
-    { id: 'sales', icon: 'bar-chart',        label: 'Sales'     },
-  ],
-  csm: [
-    { id: 'corp',  icon: 'briefcase',        label: 'Corporate'  },
-    { id: 'hr',    icon: 'people-circle',    label: 'HR'         },
-    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks'      },
-    { id: 'ops',   icon: 'construct',        label: 'Operations' },
-  ],
-  acc: [
-    { id: 'acct',   icon: 'calculator',       label: 'Accounts' },
-    { id: 'tasks',  icon: 'checkmark-circle', label: 'Tasks'    },
-    { id: 'recv',   icon: 'cube',             label: 'Receive'  },
-    { id: 'exp',    icon: 'receipt',          label: 'Expenses' },
-    { id: 'budget', icon: 'wallet',           label: 'Budget'   },
-    { id: 'exprpt', icon: 'analytics',        label: 'Reports'  },
-  ],
-  mgr: [
-    { id: 'ops',   icon: 'construct',        label: 'Operations' },
-    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks'      },
-    { id: 'exp',   icon: 'receipt',          label: 'Expenses'   },
-  ],
-  att: [
-    { id: 'ops',   icon: 'construct',        label: 'Operations' },
-    { id: 'tasks', icon: 'checkmark-circle', label: 'Tasks'      },
-    { id: 'shift', icon: 'calculator',       label: 'Shift'      },
+    { id: 'audit',    icon: 'list',             label: 'Audit'    },
+    { id: 'settings', icon: 'settings',         label: 'Settings' },
   ],
 };
 
-const MGR_NAV_ALL: NavItem[] = [
-  { id: 'ops',    icon: 'construct', label: 'Operations' },
-  { id: 'exp',    icon: 'receipt',   label: 'Expenses'   },
-  { id: 'budget', icon: 'wallet',    label: 'Budget'     },
+// All panels available to every non-admin user.
+// Admin toggles which of these each role/user can actually see via Access Control.
+export const FULL_NAV_CATALOG: NavItem[] = [
+  { id: 'home',     icon: 'home',             label: 'Home'       },
+  { id: 'ops',      icon: 'construct',        label: 'Operations' },
+  { id: 'tasks',    icon: 'checkmark-circle', label: 'Tasks'      },
+  { id: 'hr',       icon: 'people-circle',    label: 'HR'         },
+  { id: 'acct',     icon: 'calculator',       label: 'Accounts'   },
+  { id: 'mktg',     icon: 'megaphone',        label: 'Marketing'  },
+  { id: 'prices',   icon: 'pricetag',         label: 'Prices'     },
+  { id: 'branches', icon: 'business',         label: 'Branches'   },
+  { id: 'budget',   icon: 'wallet',           label: 'Budget'     },
+  { id: 'exprpt',   icon: 'analytics',        label: 'Reports'    },
+  { id: 'sales',    icon: 'bar-chart',        label: 'Sales'      },
+  { id: 'exp',      icon: 'receipt',          label: 'Expenses'   },
+  { id: 'recv',     icon: 'cube',             label: 'Receiving'  },
+  { id: 'shift',    icon: 'time',             label: 'Shift'      },
+  { id: 'corp',     icon: 'briefcase',        label: 'Corporate'  },
 ];
-const MGR_NAV_PERM: Record<string, keyof MgrPermissions> = {
-  exp: 'canExpenses', budget: 'canBudget',
-};
+
 const INIT_MGR_PERMS: Record<string, MgrPermissions> = {};
 
-// Full nav catalogue per role (mgr uses MGR_NAV_ALL, all others use NAVDEF)
+// Used by the Access Control screen in system-settings to enumerate panels per role.
+// All non-admin roles share the same full catalog; admin controls visibility per role/user.
 export const ROLE_FULL_NAV: Record<string, NavItem[]> = {
-  ...NAVDEF,
-  mgr: MGR_NAV_ALL,
+  admin: NAVDEF.admin,
+  ceo: FULL_NAV_CATALOG,
+  md:  FULL_NAV_CATALOG,
+  acc: FULL_NAV_CATALOG,
+  csm: FULL_NAV_CATALOG,
+  mktg:FULL_NAV_CATALOG,
+  mgr: FULL_NAV_CATALOG,
+  att: FULL_NAV_CATALOG,
 };
 
-// Build a default roleAccess object with every module enabled
+// Every module starts enabled for every role — admin restricts from here
 function defaultRoleAccess(): Record<string, Record<string, boolean>> {
   const result: Record<string, Record<string, boolean>> = {};
-  for (const [r, items] of Object.entries(ROLE_FULL_NAV)) {
-    if (r === 'admin') continue;
-    result[r] = Object.fromEntries(items.map(i => [i.id, true]));
+  const roles = ['ceo','md','acc','csm','mktg','mgr','att'];
+  for (const r of roles) {
+    result[r] = Object.fromEntries(FULL_NAV_CATALOG.map(i => [i.id, true]));
   }
   return result;
 }
@@ -1237,13 +1210,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  // Base nav from NAVDEF / mgrPerms, then filtered by role access, then by per-user overrides
-  const baseNav: NavItem[] = role === 'mgr'
-    ? MGR_NAV_ALL.filter(item => {
-        const key = MGR_NAV_PERM[item.id];
-        return !key || (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS)[key];
-      })
-    : (NAVDEF[role ?? 'att'] ?? []);
+  // Admin always sees their own fixed nav; every other role starts from FULL_NAV_CATALOG
+  // then gets filtered by roleAccess (role-level toggles) and userAccess (per-user overrides).
+  // Both are controlled exclusively by the admin via the Access Control panel.
+  const baseNav: NavItem[] = role === 'admin'
+    ? (NAVDEF.admin ?? [])
+    : FULL_NAV_CATALOG;
   const navItems: NavItem[] = role === 'admin'
     ? baseNav
     : baseNav.filter(item => {
