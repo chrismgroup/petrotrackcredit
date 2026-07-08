@@ -78,7 +78,7 @@ export const BLANK_COMPANY_INFO: CompanyInfo = {
   lowStockAlert: '20', reorderLevel: '30',
   dailyDipRequired: true, autoAuditLogging: true,
 };
-export interface CompanyFile { id: number; name: string; cat: string; by: string; dt: string; size: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'img' | 'mp4' | 'other'; }
+export interface CompanyFile { id: number; name: string; cat: string; by: string; dt: string; size: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'img' | 'mp4' | 'audio' | 'zip' | 'other'; }
 export type TaskStatus = 'commenced' | 'progressing' | 'completed';
 export type TaskPriority = 'High' | 'Medium' | 'Low';
 export type TaskCadence = 'daily' | 'weekly' | 'monthly' | 'quarterly';

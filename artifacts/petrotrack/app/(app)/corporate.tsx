@@ -26,7 +26,7 @@ function getDocStatus(days: number) {
 
 // ── File-type helpers ───────────────────────────────────────────────────────
 const FILE_CATS  = ['Policy','HR','Finance','Legal','Operations','Compliance','Contract','Other'];
-const DOC_FILE_TYPES = ['pdf','docx','xlsx','img','other'] as const;
+const DOC_FILE_TYPES = ['pdf','docx','xlsx','pptx','img','mp4','audio','zip','other'] as const;
 const ATT_FILE_TYPES = [
   { key: 'pdf',   label: 'PDF',   icon: 'document-text', color: '#E74C3C' },
   { key: 'docx',  label: 'DOCX',  icon: 'document',      color: '#2980B9' },
@@ -73,7 +73,7 @@ const APPROVAL_META: Record<CorpApproval['status'], { label: string; color: stri
 };
 
 // ── Tab definition ──────────────────────────────────────────────────────────
-type Tab = 'compliance' | 'legal' | 'projects' | 'minutes' | 'documents';
+type Tab = 'compliance' | 'legal' | 'projects' | 'minutes';
 
 // ── Shared micro-components ─────────────────────────────────────────────────
 function Pill({ label, color, bg }: { label: string; color: string; bg: string }) {
@@ -429,7 +429,6 @@ export default function CorporateScreen() {
     { key: 'legal',      label: 'Legal',      icon: 'scale'            },
     { key: 'projects',   label: 'Projects',   icon: 'hammer'           },
     { key: 'minutes',    label: 'Minutes',    icon: 'reader'           },
-    { key: 'documents',  label: 'Documents',  icon: 'folder'           },
   ];
 
   return (
@@ -498,6 +497,74 @@ export default function CorporateScreen() {
             );
           })}
           {docs.length === 0 && <EmptySlate icon="shield-outline" text="No compliance documents" />}
+
+          {/* ── Corporate Documents upload ── */}
+          <View style={[sty.divider, { borderColor: colors.border }]} />
+          <Text style={[sty.sectionTitle, { color: colors.text }]}>Corporate Documents</Text>
+
+          {(canCreate || isAdmin) && (
+            <View style={[sty.uploadPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={sty.uploadHeader}>
+                <Ionicons name="cloud-upload" size={20} color={roleColor} />
+                <Text style={[sty.uploadTitle, { color: colors.text }]}>Upload Document</Text>
+              </View>
+              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Category</Text>
+              <View style={sty.chipRow}>
+                {FILE_CATS.map(c => (
+                  <TouchableOpacity key={c} onPress={() => setSelCat(c)}
+                    style={[sty.chip, { backgroundColor: c === selCat ? roleColor : colors.background, borderColor: c === selCat ? roleColor : colors.border }]}>
+                    <Text style={[sty.chipTxt, { color: c === selCat ? '#fff' : colors.textMuted }]}>{c}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Type</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+                <View style={sty.typeRow}>
+                  {DOC_FILE_TYPES.map(t => {
+                    const fi = FILE_TYPE_MAP[t];
+                    return (
+                      <TouchableOpacity key={t} onPress={() => setSelType(t)}
+                        style={[sty.typeBtn, { backgroundColor: t === selType ? fi.color + '22' : colors.background, borderColor: t === selType ? fi.color : colors.border }]}>
+                        <Ionicons name={fi.icon as any} size={15} color={t === selType ? fi.color : colors.textMuted} />
+                        <Text style={[sty.typeBtnTxt, { color: t === selType ? fi.color : colors.textMuted }]}>{t.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Name</Text>
+              <TextInput
+                style={[sty.textInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, marginBottom: 12 }]}
+                value={uploadName} onChangeText={setUploadName}
+                placeholder="e.g. Board_Resolution_July2026" placeholderTextColor={colors.textSubtle} />
+              <TouchableOpacity onPress={handleDocUpload} style={[sty.submitBtn, { backgroundColor: roleColor }]}>
+                <Ionicons name="cloud-upload" size={16} color="#fff" />
+                <Text style={sty.submitBtnTxt}>Upload Document</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <Text style={[sty.subSectionTitle, { color: colors.textMuted }]}>Uploaded Files ({companyFiles.length})</Text>
+          {companyFiles.length === 0 && <EmptySlate icon="folder-open-outline" text="No documents uploaded yet" />}
+          {[...companyFiles].reverse().map(f => {
+            const fi = FILE_TYPE_MAP[f.fileType] || FILE_TYPE_MAP.other;
+            return (
+              <View key={f.id} style={[sty.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[sty.fileIconWrap, { backgroundColor: fi.color + '18' }]}>
+                  <Ionicons name={fi.icon as any} size={22} color={fi.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[sty.fileName, { color: colors.text }]} numberOfLines={1}>{f.name}</Text>
+                  <Text style={[sty.fileMeta, { color: colors.textMuted }]}>{f.cat} · {f.size}</Text>
+                  <Text style={[sty.fileBy, { color: colors.textSubtle }]}>by {f.by} · {fmtDateTime(f.dt)}</Text>
+                </View>
+                <TouchableOpacity style={[sty.iconBtn, { borderColor: colors.border }]}>
+                  <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+
           <View style={{ height: 20 }} />
         </ScrollView>
       )}
@@ -902,69 +969,6 @@ export default function CorporateScreen() {
         </ScrollView>
       )}
 
-      {/* ════════════════════════════════════════ DOCUMENTS */}
-      {activeTab === 'documents' && (
-        <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
-          {(canCreate || isAdmin) && (
-            <View style={[sty.uploadPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={sty.uploadHeader}>
-                <Ionicons name="cloud-upload" size={20} color={roleColor} />
-                <Text style={[sty.uploadTitle, { color: colors.text }]}>Upload Corporate Document</Text>
-              </View>
-              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Category</Text>
-              <View style={sty.chipRow}>
-                {FILE_CATS.map(c => (
-                  <TouchableOpacity key={c} onPress={() => setSelCat(c)} style={[sty.chip, { backgroundColor: c === selCat ? roleColor : colors.background, borderColor: c === selCat ? roleColor : colors.border }]}>
-                    <Text style={[sty.chipTxt, { color: c === selCat ? '#fff' : colors.textMuted }]}>{c}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Type</Text>
-              <View style={sty.typeRow}>
-                {DOC_FILE_TYPES.map(t => {
-                  const fi = FILE_TYPE_MAP[t];
-                  return (
-                    <TouchableOpacity key={t} onPress={() => setSelType(t)} style={[sty.typeBtn, { backgroundColor: t === selType ? fi.color + '22' : colors.background, borderColor: t === selType ? fi.color : colors.border }]}>
-                      <Ionicons name={fi.icon as any} size={15} color={t === selType ? fi.color : colors.textMuted} />
-                      <Text style={[sty.typeBtnTxt, { color: t === selType ? fi.color : colors.textMuted }]}>{t.toUpperCase()}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Name</Text>
-              <TextInput style={[sty.textInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, marginBottom: 12 }]}
-                value={uploadName} onChangeText={setUploadName}
-                placeholder="e.g. Board_Resolution_July2026" placeholderTextColor={colors.textSubtle} />
-              <TouchableOpacity onPress={handleDocUpload} style={[sty.submitBtn, { backgroundColor: roleColor }]}>
-                <Ionicons name="cloud-upload" size={16} color="#fff" />
-                <Text style={sty.submitBtnTxt}>Upload Document</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          <Text style={[sty.sectionTitle, { color: colors.text }]}>Corporate Files ({companyFiles.length})</Text>
-          {companyFiles.length === 0 && <EmptySlate icon="folder-open-outline" text="No documents uploaded yet" />}
-          {[...companyFiles].reverse().map(f => {
-            const fi = FILE_TYPE_MAP[f.fileType] || FILE_TYPE_MAP.other;
-            return (
-              <View key={f.id} style={[sty.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[sty.fileIconWrap, { backgroundColor: fi.color + '18' }]}>
-                  <Ionicons name={fi.icon as any} size={22} color={fi.color} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[sty.fileName, { color: colors.text }]} numberOfLines={1}>{f.name}</Text>
-                  <Text style={[sty.fileMeta, { color: colors.textMuted }]}>{f.cat} · {f.size}</Text>
-                  <Text style={[sty.fileBy, { color: colors.textSubtle }]}>by {f.by} · {fmtDateTime(f.dt)}</Text>
-                </View>
-                <TouchableOpacity style={[sty.iconBtn, { borderColor: colors.border }]}>
-                  <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-          <View style={{ height: 20 }} />
-        </ScrollView>
-      )}
-
       {/* ════════════════════════════════ SUBMIT MODAL */}
       <Modal visible={!!submitTarget} transparent animationType="fade">
         <View style={sty.modalBackdrop}>
@@ -1123,7 +1127,10 @@ const sty = StyleSheet.create({
   attRemove:     { padding: 6 },
   attEmpty:      { fontSize: 11, fontStyle: 'italic', paddingVertical: 6 },
 
-  // Documents tab
+  divider:         { borderTopWidth: StyleSheet.hairlineWidth, marginVertical: 18 },
+  subSectionTitle: { fontSize: 13, fontWeight: '600', marginBottom: 8, marginTop: 4 },
+
+  // Documents section
   uploadPanel:   { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16 },
   uploadHeader:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   uploadTitle:   { fontSize: 15, fontWeight: '700' },
