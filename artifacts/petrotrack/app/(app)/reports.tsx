@@ -28,25 +28,35 @@ const PROD_COLORS: Record<string,string> = {
 type PermSet = { visible: ReportType[]; canGenerate: ReportType[] };
 const ALL = ALL_REPORT_TYPES;
 const ROLE_PERMS: Partial<Record<Role, PermSet>> & { default: PermSet } = {
+  // Executive — full access
   admin:  { visible: ALL, canGenerate: ALL },
   ceo:    { visible: ALL, canGenerate: ALL },
   md:     { visible: ALL, canGenerate: ALL },
+
+  // Finance head — financial reports + view sales/prices
   acc:    {
     visible:     ['summary','pnl','expenses','sales','prices','full'],
     canGenerate: ['summary','pnl','expenses','full'],
   },
+
+  // HR / Customer Service head — HR + branch-level financial overview
   csm:    {
-    visible:     ['hr','summary','expenses'],
-    canGenerate: ['hr'],
+    visible:     ['hr','summary','expenses','sales','prices','operations'],
+    canGenerate: ['hr','summary','expenses'],
   },
+
+  // Marketing head — sales, pricing & marketing reports
   mktg:   {
-    visible:     ['sales','prices','marketing','summary'],
+    visible:     ['sales','prices','marketing','summary','expenses'],
     canGenerate: ['sales','prices','marketing'],
   },
+
+  // Station Manager — branch-scoped reports only (data already filtered by branchId)
   mgr:    {
-    visible:     ['summary','expenses'],
-    canGenerate: ['summary','expenses'],
+    visible:     ['summary','expenses','sales','prices','operations','maintenance'],
+    canGenerate: ['summary','expenses','sales','prices','operations'],
   },
+
   default: { visible: [], canGenerate: [] },
 };
 
