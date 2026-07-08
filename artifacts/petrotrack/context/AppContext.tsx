@@ -126,6 +126,7 @@ export interface MeetingMinutes {
   id: number; title: string; date: string; venue: string;
   attendees: string; summary: string; by: string;
   approval: CorpApproval; attachments: CorpAttachment[];
+  shared?: boolean; sharedAt?: string; sharedBy?: string;
 }
 
 export const ROLE_LABELS: Record<string, string> = {
