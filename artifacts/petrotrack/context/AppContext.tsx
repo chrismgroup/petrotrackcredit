@@ -97,6 +97,22 @@ export interface GeneratedLetter { id: number; type: 'appointment' | 'promotion'
 export interface HRRecommendation { id: number; empId: number; empName: string; type: 'suspend' | 'deactivate' | 'delete'; reason: string; by: string; dt: string; status: 'pending' | 'approved' | 'rejected'; resolvedBy?: string; resolvedAt?: string; }
 export interface HREmployee { id: number; empId: string; serial: number; name: string; role: string; dept: string; phone: string; email: string; address: string; dob: string; joinDate: string; nextOfKin: string; status: 'active' | 'suspended' | 'inactive'; docs: HRDoc[]; uploads: HREmployeeDoc[]; onboarding: OnboardingApproval; letters: GeneratedLetter[]; }
 
+export interface LegalMatter {
+  id: number; title: string;
+  type: 'Contract' | 'Dispute' | 'Regulatory' | 'Advisory' | 'Other';
+  status: 'Active' | 'Pending' | 'Resolved' | 'Closed';
+  party: string; openedAt: string; priority: 'High' | 'Medium' | 'Low'; notes: string;
+}
+export interface CorpProject {
+  id: number; title: string; description: string;
+  status: 'Planning' | 'Active' | 'On Hold' | 'Completed' | 'Cancelled';
+  lead: string; startDate: string; dueDate: string; progress: number;
+}
+export interface MeetingMinutes {
+  id: number; title: string; date: string; venue: string;
+  attendees: string; summary: string; by: string;
+}
+
 export const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrator', ceo: 'Chief Executive Officer', md: 'Managing Director',
   mktg: 'Marketing Manager', csm: 'Corp. Services Mgr', acc: 'Accountant',
@@ -251,6 +267,9 @@ const CEO_ONBOARDED: OnboardingApproval = { status: 'ceo_approved', forwardedBy:
 const INIT_HR_EMPLOYEES: HREmployee[] = [];
 const INIT_HR_RECOMMENDATIONS: HRRecommendation[] = [];
 const INIT_HR_HANDBOOKS: HREmployeeDoc[] = [];
+const INIT_LEGAL: LegalMatter[] = [];
+const INIT_CORP_PROJECTS: CorpProject[] = [];
+const INIT_MEETING_MINUTES: MeetingMinutes[] = [];
 
 interface AppContextType {
   companyInfo: CompanyInfo; updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
@@ -359,6 +378,17 @@ interface AppContextType {
   forwardOnboardingForApproval: (empId: number, by: string) => void;
   approveOnboarding: (empId: number, stage: 'md' | 'ceo', by: string) => void;
   addGeneratedLetter: (empId: number, letter: Omit<GeneratedLetter, 'id' | 'generatedAt'>) => void;
+  legalMatters: LegalMatter[];
+  corpProjects: CorpProject[];
+  meetingMinutes: MeetingMinutes[];
+  addLegalMatter: (m: Omit<LegalMatter, 'id' | 'openedAt'>) => void;
+  updateLegalStatus: (id: number, status: LegalMatter['status']) => void;
+  deleteLegalMatter: (id: number) => void;
+  addCorpProject: (p: Omit<CorpProject, 'id'>) => void;
+  updateProjectProgress: (id: number, progress: number, status: CorpProject['status']) => void;
+  deleteCorpProject: (id: number) => void;
+  addMeetingMinutes: (m: Omit<MeetingMinutes, 'id'>) => void;
+  deleteMeetingMinutes: (id: number) => void;
   roleAccess: Record<string, Record<string, boolean>>;
   updateRoleAccess: (role: string, moduleId: string, enabled: boolean) => void;
   userAccess: Record<number, Record<string, boolean>>;
@@ -408,6 +438,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hrRecommendations, setHrRecommendations] = useState<HRRecommendation[]>(INIT_HR_RECOMMENDATIONS);
   const [hrHandbooks, setHrHandbooks] = useState<HREmployeeDoc[]>(INIT_HR_HANDBOOKS);
   const [priceProposals, setPriceProposals] = useState<PriceProposal[]>([]);
+  const [legalMatters, setLegalMatters] = useState<LegalMatter[]>(INIT_LEGAL);
+  const [corpProjects, setCorpProjects] = useState<CorpProject[]>(INIT_CORP_PROJECTS);
+  const [meetingMinutes, setMeetingMinutes] = useState<MeetingMinutes[]>(INIT_MEETING_MINUTES);
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
   const [loaded, setLoaded] = useState(false);
@@ -418,7 +451,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'roleAccess', 'userAccess', 'expenses', 'budgets', 'sales', 'dips',
       'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'shiftReports', 'hrEmployees', 'hrHandbooks',
-      'hrRecommendations', 'priceProposals',
+      'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -462,6 +495,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks);
       if (s.hrRecommendations) setHrRecommendations(s.hrRecommendations);
       if (s.priceProposals)    setPriceProposals(s.priceProposals);
+      if (s.legalMatters)      setLegalMatters(s.legalMatters);
+      if (s.corpProjects)      setCorpProjects(s.corpProjects);
+      if (s.meetingMinutes)    setMeetingMinutes(s.meetingMinutes);
       setLoaded(true);
     });
   }, []);
@@ -507,6 +543,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks as HREmployeeDoc[]);
       if (s.hrRecommendations) setHrRecommendations(s.hrRecommendations as HRRecommendation[]);
       if (s.priceProposals)    setPriceProposals(s.priceProposals as PriceProposal[]);
+      if (s.legalMatters)      setLegalMatters(s.legalMatters as LegalMatter[]);
+      if (s.corpProjects)      setCorpProjects(s.corpProjects as CorpProject[]);
+      if (s.meetingMinutes)    setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
@@ -546,6 +585,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('hrHandbooks',       hrHandbooks); },       [hrHandbooks, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrRecommendations', hrRecommendations); }, [hrRecommendations, loaded]);
   useEffect(() => { if (loaded) syncSlice('priceProposals',    priceProposals); },    [priceProposals, loaded]);
+  useEffect(() => { if (loaded) syncSlice('legalMatters',      legalMatters); },      [legalMatters, loaded]);
+  useEffect(() => { if (loaded) syncSlice('corpProjects',      corpProjects); },      [corpProjects, loaded]);
+  useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
+
+  const addLegalMatter = useCallback((m: Omit<LegalMatter, 'id' | 'openedAt'>) => {
+    setLegalMatters(prev => [{ ...m, id: genId(), openedAt: nowTs() }, ...prev]);
+  }, []);
+  const updateLegalStatus = useCallback((id: number, status: LegalMatter['status']) => {
+    setLegalMatters(prev => prev.map(m => m.id === id ? { ...m, status } : m));
+  }, []);
+  const deleteLegalMatter = useCallback((id: number) => {
+    setLegalMatters(prev => prev.filter(m => m.id !== id));
+  }, []);
+
+  const addCorpProject = useCallback((p: Omit<CorpProject, 'id'>) => {
+    setCorpProjects(prev => [{ ...p, id: genId() }, ...prev]);
+  }, []);
+  const updateProjectProgress = useCallback((id: number, progress: number, status: CorpProject['status']) => {
+    setCorpProjects(prev => prev.map(p => p.id === id ? { ...p, progress, status } : p));
+  }, []);
+  const deleteCorpProject = useCallback((id: number) => {
+    setCorpProjects(prev => prev.filter(p => p.id !== id));
+  }, []);
+
+  const addMeetingMinutes = useCallback((m: Omit<MeetingMinutes, 'id'>) => {
+    setMeetingMinutes(prev => [{ ...m, id: genId() }, ...prev]);
+  }, []);
+  const deleteMeetingMinutes = useCallback((id: number) => {
+    setMeetingMinutes(prev => prev.filter(m => m.id !== id));
+  }, []);
 
   const login = useCallback((r: Role, n: string, sid?: number, bid?: string) => {
     setRole(r); setUserName(n);
@@ -1253,6 +1322,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addHRRecommendation, resolveHRRecommendation,
       addHRHandbook, approveHRHandbook,
       forwardOnboardingForApproval, approveOnboarding, addGeneratedLetter,
+      legalMatters, corpProjects, meetingMinutes,
+      addLegalMatter, updateLegalStatus, deleteLegalMatter,
+      addCorpProject, updateProjectProgress, deleteCorpProject,
+      addMeetingMinutes, deleteMeetingMinutes,
     }}>
       {children}
     </AppContext.Provider>

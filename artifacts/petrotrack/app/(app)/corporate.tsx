@@ -4,23 +4,23 @@ import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View 
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  HRDocStatus, HRDocType,
+  CorpProject, LegalMatter,
   ROLE_COLORS, fmtDate, fmtDateTime, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-// ── Compliance helpers ─────────────────────────────────────────────────────
+// ── Compliance helpers ──────────────────────────────────────────────────────
 function daysLeft(exp: string) {
   return Math.ceil((new Date(exp).getTime() - Date.now()) / 86400000);
 }
 function getDocStatus(days: number) {
-  if (days < 0)  return { label: 'Expired',     color: '#791F1F', bg: '#FCEBEB' };
-  if (days < 14) return { label: `${days}d left`, color: '#791F1F', bg: '#FCEBEB' };
-  if (days < 30) return { label: `${days}d left`, color: '#BA7517', bg: '#FAEEDA' };
-  return             { label: `${days}d left`, color: '#27500A', bg: '#EAF3DE' };
+  if (days < 0)  return { label: 'Expired',       color: '#791F1F', bg: '#FCEBEB' };
+  if (days < 14) return { label: `${days}d left`,  color: '#791F1F', bg: '#FCEBEB' };
+  if (days < 30) return { label: `${days}d left`,  color: '#BA7517', bg: '#FAEEDA' };
+  return             { label: `${days}d left`,  color: '#27500A', bg: '#EAF3DE' };
 }
 
-// ── File helpers ───────────────────────────────────────────────────────────
+// ── File helpers ────────────────────────────────────────────────────────────
 const FILE_CATS  = ['Policy', 'HR', 'Finance', 'Legal', 'Operations', 'Compliance', 'Contract', 'Other'];
 const FILE_TYPES = ['pdf', 'docx', 'xlsx', 'img', 'other'] as const;
 const FILE_TYPE_ICONS: Record<string, { icon: string; color: string }> = {
@@ -33,356 +33,183 @@ const FILE_TYPE_ICONS: Record<string, { icon: string; color: string }> = {
 };
 const FILE_SIZES = ['0.4 MB', '0.8 MB', '1.1 MB', '1.6 MB', '2.2 MB', '3.4 MB'];
 
-// ── HR Staff helpers ───────────────────────────────────────────────────────
-const HR_DOC_META: Record<HRDocType, { label: string; icon: string; color: string }> = {
-  biodata:        { label: 'Bio-Data Form',        icon: 'person',           color: '#27AE60' },
-  contract:       { label: 'Appointment Letter',   icon: 'document-text',    color: '#2980B9' },
-  guarantor:      { label: 'Guarantor Form',       icon: 'people',           color: '#E67E22' },
-  nin:            { label: 'NIN / National ID',    icon: 'card',             color: '#8E44AD' },
-  passport_photo: { label: 'Passport Photo',       icon: 'image',            color: '#D85A30' },
-  certificate:    { label: 'Academic Certificate', icon: 'school',           color: '#0F6E56' },
-  nysc:           { label: 'NYSC Certificate',     icon: 'ribbon',           color: '#185FA5' },
-  medical:        { label: 'Medical Certificate',  icon: 'medkit',           color: '#E74C3C' },
-  reference:      { label: 'Reference Letter',     icon: 'mail',             color: '#4527a0' },
-  bank_details:   { label: 'Bank Details',         icon: 'wallet',           color: '#BA7517' },
-  tin:            { label: 'Tax ID (TIN)',          icon: 'receipt',          color: '#633806' },
-  pension:        { label: 'Pension Form (RSA)',    icon: 'shield-checkmark', color: '#1a6e3c' },
+// ── Legal helpers ───────────────────────────────────────────────────────────
+const LEGAL_TYPES: LegalMatter['type'][] = ['Contract', 'Dispute', 'Regulatory', 'Advisory', 'Other'];
+const LEGAL_STATUS_META: Record<LegalMatter['status'], { color: string; bg: string }> = {
+  Active:   { color: '#185FA5', bg: '#DCF0FF' },
+  Pending:  { color: '#BA7517', bg: '#FAEEDA' },
+  Resolved: { color: '#27500A', bg: '#EAF3DE' },
+  Closed:   { color: '#7F8C8D', bg: '#F4F4F2' },
 };
-const STATUS_META: Record<HRDocStatus, { label: string; color: string; bg: string }> = {
-  approved:  { label: 'Approved',   color: '#27500A', bg: '#EAF3DE' },
-  submitted: { label: 'Submitted',  color: '#185FA5', bg: '#DCF0FF' },
-  pending:   { label: 'Pending',    color: '#BA7517', bg: '#FAEEDA' },
-  'n/a':     { label: 'N/A',        color: '#7F8C8D', bg: '#F4F4F2' },
+const LEGAL_PRIORITY_META: Record<LegalMatter['priority'], { color: string; bg: string }> = {
+  High:   { color: '#791F1F', bg: '#FCEBEB' },
+  Medium: { color: '#BA7517', bg: '#FAEEDA' },
+  Low:    { color: '#27500A', bg: '#EAF3DE' },
 };
-const STATUS_CYCLE: HRDocStatus[] = ['pending', 'submitted', 'approved'];
 
-function nextStatus(current: HRDocStatus): HRDocStatus {
-  const i = STATUS_CYCLE.indexOf(current);
-  return i === -1 ? 'pending' : STATUS_CYCLE[(i + 1) % STATUS_CYCLE.length];
+// ── Project helpers ─────────────────────────────────────────────────────────
+const PROJ_STATUS_META: Record<CorpProject['status'], { color: string; bg: string; icon: string }> = {
+  Planning:   { color: '#185FA5', bg: '#DCF0FF',  icon: 'compass'         },
+  Active:     { color: '#27500A', bg: '#EAF3DE',  icon: 'play-circle'     },
+  'On Hold':  { color: '#BA7517', bg: '#FAEEDA',  icon: 'pause-circle'    },
+  Completed:  { color: '#0F6E56', bg: '#D6F5EC',  icon: 'checkmark-circle'},
+  Cancelled:  { color: '#7F8C8D', bg: '#F4F4F2',  icon: 'close-circle'    },
+};
+
+// ── Tab type ────────────────────────────────────────────────────────────────
+type Tab = 'compliance' | 'legal' | 'projects' | 'minutes' | 'documents';
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function Pill({ label, color, bg }: { label: string; color: string; bg: string }) {
+  return (
+    <View style={[styles.pill, { backgroundColor: bg }]}>
+      <Text style={[styles.pillText, { color }]}>{label}</Text>
+    </View>
+  );
 }
 
-function initials(name: string) {
-  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+function EmptyState({ icon, text }: { icon: string; text: string }) {
+  const colors = useColors();
+  return (
+    <View style={styles.emptyState}>
+      <Ionicons name={icon as any} size={40} color={colors.border} />
+      <Text style={[styles.emptyText, { color: colors.textMuted }]}>{text}</Text>
+    </View>
+  );
 }
 
-const DEPT_COLORS: Record<string, string> = {
-  Operations:     '#27ae60',
-  Finance:        '#185FA5',
-  Marketing:      '#D85A30',
-  Administration: '#0F6E56',
-  Management:     '#4527a0',
-  IT:             '#2980B9',
-  Legal:          '#8E44AD',
-  HR:             '#E67E22',
-};
-
-const DEPARTMENTS = ['Operations', 'Finance', 'Marketing', 'Administration', 'Management', 'IT', 'Legal', 'HR'];
-
-// ── Main screen ────────────────────────────────────────────────────────────
-type Tab = 'compliance' | 'files' | 'staff';
-
+// ════════════════════════════════════════════════════════════════════════════
 export default function CorporateScreen() {
-  const { role, userName, docs, companyFiles, addCompanyFile, hrEmployees, addHREmployee, updateHRDocStatus, removeHREmployee } = useApp();
+  const {
+    role, userName, docs, companyFiles, addCompanyFile,
+    legalMatters, addLegalMatter, updateLegalStatus, deleteLegalMatter,
+    corpProjects, addCorpProject, updateProjectProgress, deleteCorpProject,
+    meetingMinutes, addMeetingMinutes, deleteMeetingMinutes,
+  } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
-  const canEdit   = role === 'csm' || role === 'admin';
+  const canEdit   = role === 'csm' || role === 'admin' || role === 'ceo' || role === 'md';
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<Tab>('staff');
+  const [activeTab, setActiveTab] = useState<Tab>('compliance');
 
-  // File upload state
-  const [selCat,    setSelCat]    = useState(FILE_CATS[0]);
-  const [selType,   setSelType]   = useState<typeof FILE_TYPES[number]>('pdf');
+  // ── Document upload state ──
+  const [selCat,     setSelCat]     = useState(FILE_CATS[0]);
+  const [selType,    setSelType]    = useState<typeof FILE_TYPES[number]>('pdf');
   const [uploadName, setUploadName] = useState('');
 
-  // Staff state
-  const [search,      setSearch]      = useState('');
-  const [expandedId,  setExpandedId]  = useState<number | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newName,     setNewName]     = useState('');
-  const [newRole,     setNewRole]     = useState('');
-  const [newDept,     setNewDept]     = useState(DEPARTMENTS[0]);
-  const [newPhone,    setNewPhone]    = useState('');
+  // ── Legal form state ──
+  const [showLegalForm, setShowLegalForm] = useState(false);
+  const [lTitle,  setLTitle]  = useState('');
+  const [lType,   setLType]   = useState<LegalMatter['type']>('Contract');
+  const [lParty,  setLParty]  = useState('');
+  const [lPri,    setLPri]    = useState<LegalMatter['priority']>('Medium');
+  const [lNotes,  setLNotes]  = useState('');
+  const [lStatus, setLStatus] = useState<LegalMatter['status']>('Active');
 
-  // Compliance stats
+  // ── Project form state ──
+  const [showProjForm,  setShowProjForm]  = useState(false);
+  const [pTitle, setPTitle] = useState('');
+  const [pDesc,  setPDesc]  = useState('');
+  const [pLead,  setPLead]  = useState('');
+  const [pStart, setPStart] = useState(new Date().toISOString().split('T')[0]);
+  const [pDue,   setPDue]   = useState('');
+  const [pStat,  setPStat]  = useState<CorpProject['status']>('Planning');
+
+  // ── Minutes form state ──
+  const [showMinForm,   setShowMinForm]   = useState(false);
+  const [mTitle,   setMTitle]   = useState('');
+  const [mDate,    setMDate]    = useState(new Date().toISOString().split('T')[0]);
+  const [mVenue,   setMVenue]   = useState('');
+  const [mAtt,     setMAtt]     = useState('');
+  const [mSummary, setMSummary] = useState('');
+
+  // ── Compliance stats ──
   const expiredDocs = docs.filter(d => daysLeft(d.exp) < 0);
   const urgentDocs  = docs.filter(d => daysLeft(d.exp) >= 0 && daysLeft(d.exp) < 14);
   const warnDocs    = docs.filter(d => daysLeft(d.exp) >= 14 && daysLeft(d.exp) < 30);
   const okDocs      = docs.filter(d => daysLeft(d.exp) >= 30);
 
-  // Staff filters
-  const filteredStaff = hrEmployees.filter(e =>
-    e.name.toLowerCase().includes(search.toLowerCase()) ||
-    e.empId.toLowerCase().includes(search.toLowerCase()) ||
-    e.dept.toLowerCase().includes(search.toLowerCase())
-  );
-  const pendingDocs = hrEmployees.reduce((n, e) => n + e.docs.filter(d => d.status === 'pending').length, 0);
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   function handleUpload() {
     const trimmed = uploadName.trim();
     if (!trimmed) { Alert.alert('Required', 'Please enter a file name.'); return; }
-    const ext = selType === 'img' ? 'jpg' : selType === 'other' ? 'zip' : selType;
+    const ext  = selType === 'img' ? 'jpg' : selType === 'other' ? 'zip' : selType;
     const name = trimmed.includes('.') ? trimmed : `${trimmed}.${ext}`;
     const size = FILE_SIZES[Math.floor(Math.random() * FILE_SIZES.length)];
     addCompanyFile({ name, cat: selCat, by: userName || 'System Admin', size, fileType: selType });
     setUploadName('');
-    Alert.alert('Uploaded', `${name} uploaded successfully to ${selCat}.`);
+    Alert.alert('Uploaded', `${name} saved to ${selCat}.`);
   }
 
-  function handleAddEmployee() {
-    if (!newName.trim() || !newRole.trim()) { Alert.alert('Required', 'Name and role are required.'); return; }
-    const today = new Date().toISOString().split('T')[0];
-    addHREmployee({
-      name: newName.trim(),
-      role: newRole.trim(),
-      dept: newDept,
-      phone: newPhone.trim() || '—',
-      email: '—', address: '—', dob: '—', nextOfKin: '—',
-      joinDate: today,
-      status: 'active',
-      docs: [],
-      uploads: [],
-      onboarding: { status: 'draft' },
-      letters: [],
-    });
-    setNewName(''); setNewRole(''); setNewPhone(''); setNewDept(DEPARTMENTS[0]);
-    setShowAddForm(false);
-    Alert.alert('Employee Added', `${newName.trim()} has been registered with a new company ID.`);
+  function handleAddLegal() {
+    if (!lTitle.trim() || !lParty.trim()) {
+      Alert.alert('Required', 'Title and party are required.');
+      return;
+    }
+    addLegalMatter({ title: lTitle.trim(), type: lType, party: lParty.trim(), priority: lPri, status: lStatus, notes: lNotes.trim() });
+    setLTitle(''); setLParty(''); setLNotes(''); setLType('Contract'); setLPri('Medium'); setLStatus('Active');
+    setShowLegalForm(false);
+    Alert.alert('Added', 'Legal matter recorded.');
   }
 
-  function handleCycleDoc(empId: number, docType: HRDocType, current: HRDocStatus) {
-    if (!canEdit) return;
-    if (current === 'n/a') return;
-    updateHRDocStatus(empId, docType, nextStatus(current));
+  function handleAddProject() {
+    if (!pTitle.trim() || !pLead.trim() || !pDue) {
+      Alert.alert('Required', 'Title, lead and due date are required.');
+      return;
+    }
+    addCorpProject({ title: pTitle.trim(), description: pDesc.trim(), lead: pLead.trim(), startDate: pStart, dueDate: pDue, status: pStat, progress: 0 });
+    setPTitle(''); setPDesc(''); setPLead(''); setPDue(''); setPStat('Planning');
+    setShowProjForm(false);
+    Alert.alert('Added', 'Project created successfully.');
   }
 
-  function handleRemove(empId: number, name: string) {
-    Alert.alert('Remove Employee', `Remove ${name} from the staff registry?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => removeHREmployee(empId) },
-    ]);
+  function handleAddMinutes() {
+    if (!mTitle.trim() || !mSummary.trim()) {
+      Alert.alert('Required', 'Title and summary are required.');
+      return;
+    }
+    addMeetingMinutes({ title: mTitle.trim(), date: mDate, venue: mVenue.trim() || 'HQ — Abuja CBD', attendees: mAtt.trim(), summary: mSummary.trim(), by: userName || 'System' });
+    setMTitle(''); setMVenue(''); setMAtt(''); setMSummary('');
+    setShowMinForm(false);
+    Alert.alert('Saved', 'Meeting minutes recorded.');
   }
 
-  const TABS: { key: Tab; label: string }[] = [
-    { key: 'staff',      label: 'Staff' },
-    { key: 'compliance', label: 'Compliance' },
-    { key: 'files',      label: 'Files' },
+  const TABS: { key: Tab; label: string; icon: string }[] = [
+    { key: 'compliance', label: 'Compliance', icon: 'shield-checkmark' },
+    { key: 'legal',      label: 'Legal',      icon: 'scale'            },
+    { key: 'projects',   label: 'Projects',   icon: 'hammer'           },
+    { key: 'minutes',    label: 'Minutes',    icon: 'reader'           },
+    { key: 'documents',  label: 'Documents',  icon: 'folder'           },
   ];
 
   return (
     <ScreenLayout title="Corporate Services">
       {/* ── Tab bar ── */}
-      <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
-        {TABS.map(t => (
-          <TouchableOpacity key={t.key} onPress={() => setActiveTab(t.key)} style={[styles.tabBtn, { borderBottomColor: t.key === activeTab ? roleColor : 'transparent' }]}>
-            <Text style={[styles.tabLabel, { color: t.key === activeTab ? roleColor : colors.textMuted, fontWeight: t.key === activeTab ? '700' : '400' }]}>
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabBar, { borderBottomColor: colors.border }]} contentContainerStyle={styles.tabBarContent}>
+        {TABS.map(t => {
+          const active = t.key === activeTab;
+          return (
+            <TouchableOpacity key={t.key} onPress={() => setActiveTab(t.key)}
+              style={[styles.tabBtn, { borderBottomColor: active ? roleColor : 'transparent' }]}>
+              <Ionicons name={t.icon as any} size={13} color={active ? roleColor : colors.textMuted} />
+              <Text style={[styles.tabLabel, { color: active ? roleColor : colors.textMuted, fontWeight: active ? '700' : '400' }]}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
-      {/* ═══════════════════════════════════════════════════════════ STAFF TAB */}
-      {activeTab === 'staff' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-
-          {/* Summary cards */}
-          <View style={styles.summaryRow}>
-            {[
-              { n: hrEmployees.length,                           label: 'Total Staff', col: roleColor,       bg: roleColor + '12',   border: roleColor + '30' },
-              { n: hrEmployees.filter(e => e.status === 'active').length, label: 'Active',      col: '#27500A',       bg: '#EAF3DE',          border: '#C4E5B0' },
-              { n: pendingDocs,                                  label: 'Docs Pending', col: colors.warning,  bg: colors.warningBg,   border: colors.warningBorder },
-            ].map(s => (
-              <View key={s.label} style={[styles.summaryCard, { backgroundColor: s.bg, borderColor: s.border }]}>
-                <Text style={[styles.summaryNum, { color: s.col }]}>{s.n}</Text>
-                <Text style={[styles.summaryLabel, { color: s.col }]}>{s.label}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Search + Add */}
-          <View style={styles.searchRow}>
-            <View style={[styles.searchWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="search" size={15} color={colors.textMuted} />
-              <TextInput
-                placeholder="Search by name, ID or dept…"
-                placeholderTextColor={colors.textMuted}
-                value={search}
-                onChangeText={setSearch}
-                style={[styles.searchInput, { color: colors.text }]}
-              />
-            </View>
-            {canEdit && (
-              <TouchableOpacity onPress={() => setShowAddForm(v => !v)} style={[styles.addBtn, { backgroundColor: roleColor }]}>
-                <Ionicons name={showAddForm ? 'close' : 'person-add'} size={16} color="#fff" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Add Employee form */}
-          {showAddForm && (
-            <View style={[styles.addForm, { backgroundColor: colors.surface, borderColor: roleColor + '44' }]}>
-              <Text style={[styles.formTitle, { color: colors.text }]}>Register New Employee</Text>
-              <Text style={[styles.formHint, { color: colors.textMuted }]}>A unique company ID will be generated automatically.</Text>
-
-              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Full Name *</Text>
-              <TextInput value={newName} onChangeText={setNewName} placeholder="e.g. Kelechi Nwosu" placeholderTextColor={colors.textMuted}
-                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-
-              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Job Title / Role *</Text>
-              <TextInput value={newRole} onChangeText={setNewRole} placeholder="e.g. Senior Accountant" placeholderTextColor={colors.textMuted}
-                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-
-              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Department</Text>
-              <View style={styles.chipRow}>
-                {DEPARTMENTS.map(d => (
-                  <TouchableOpacity key={d} onPress={() => setNewDept(d)}
-                    style={[styles.chip, { backgroundColor: d === newDept ? roleColor : colors.background, borderColor: d === newDept ? roleColor : colors.border }]}>
-                    <Text style={[styles.chipText, { color: d === newDept ? '#fff' : colors.textMuted }]}>{d}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Phone (optional)</Text>
-              <TextInput value={newPhone} onChangeText={setNewPhone} placeholder="+234 8XX XXX XXXX" placeholderTextColor={colors.textMuted}
-                keyboardType="phone-pad"
-                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-
-              <TouchableOpacity onPress={handleAddEmployee} style={[styles.submitBtn, { backgroundColor: roleColor }]}>
-                <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                <Text style={styles.submitBtnText}>Register Employee</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Employee list */}
-          {filteredStaff.length === 0 && (
-            <View style={styles.emptyState}>
-              <Ionicons name="people-outline" size={40} color={colors.border} />
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No employees found</Text>
-            </View>
-          )}
-
-          {filteredStaff.map(emp => {
-            const deptColor = DEPT_COLORS[emp.dept] ?? roleColor;
-            const isExpanded = expandedId === emp.id;
-            const docsPending = emp.docs.filter(d => d.status === 'pending').length;
-
-            return (
-              <View key={emp.id} style={[styles.empCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                {/* Employee header row */}
-                <TouchableOpacity style={styles.empHeader} onPress={() => setExpandedId(isExpanded ? null : emp.id)} activeOpacity={0.7}>
-                  {/* Avatar with dept color */}
-                  <View style={[styles.avatar, { backgroundColor: deptColor }]}>
-                    <Text style={styles.avatarText}>{initials(emp.name)}</Text>
-                  </View>
-
-                  <View style={{ flex: 1 }}>
-                    {/* Company ID badge */}
-                    <View style={styles.empTopRow}>
-                      <View style={[styles.idBadge, { backgroundColor: deptColor + '18', borderColor: deptColor + '44' }]}>
-                        <Text style={[styles.idBadgeText, { color: deptColor }]}>{emp.empId}</Text>
-                      </View>
-                      <View style={[styles.serialBadge, { backgroundColor: colors.border }]}>
-                        <Text style={[styles.serialText, { color: colors.textMuted }]}>#{String(emp.serial).padStart(3, '0')}</Text>
-                      </View>
-                      {docsPending > 0 && (
-                        <View style={styles.pendingBubble}>
-                          <Text style={styles.pendingBubbleText}>{docsPending}</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[styles.empName, { color: colors.text }]}>{emp.name}</Text>
-                    <Text style={[styles.empMeta, { color: colors.textMuted }]}>{emp.role} · {emp.dept}</Text>
-                  </View>
-
-                  <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
-                </TouchableOpacity>
-
-                {/* Doc status chips — always visible */}
-                <View style={styles.docChipRow}>
-                  {emp.docs.map(doc => {
-                    const dm  = HR_DOC_META[doc.type];
-                    const sm  = STATUS_META[doc.status];
-                    return (
-                      <View key={doc.type} style={[styles.docChip, { backgroundColor: sm.bg }]}>
-                        <Ionicons name={dm.icon as any} size={10} color={sm.color} />
-                        <Text style={[styles.docChipText, { color: sm.color }]}>{sm.label}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-
-                {/* Expanded: full doc management */}
-                {isExpanded && (
-                  <View style={[styles.expandedPanel, { borderTopColor: colors.border }]}>
-                    <Text style={[styles.panelTitle, { color: colors.text }]}>HR Documents</Text>
-                    {emp.docs.map(doc => {
-                      const dm  = HR_DOC_META[doc.type];
-                      const sm  = STATUS_META[doc.status];
-                      const tappable = canEdit && doc.status !== 'n/a';
-                      return (
-                        <View key={doc.type} style={[styles.docRow, { borderColor: colors.border }]}>
-                          <View style={[styles.docRowIcon, { backgroundColor: dm.color + '18' }]}>
-                            <Ionicons name={dm.icon as any} size={16} color={dm.color} />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.docRowLabel, { color: colors.text }]}>{dm.label}</Text>
-                            {doc.date && (
-                              <Text style={[styles.docRowDate, { color: colors.textMuted }]}>{fmtDate(doc.date)}</Text>
-                            )}
-                          </View>
-                          <TouchableOpacity
-                            disabled={!tappable}
-                            onPress={() => handleCycleDoc(emp.id, doc.type, doc.status)}
-                            style={[styles.docStatusBtn, { backgroundColor: sm.bg, opacity: tappable ? 1 : 0.7 }]}
-                          >
-                            <Text style={[styles.docStatusText, { color: sm.color }]}>{sm.label}</Text>
-                            {tappable && <Ionicons name="chevron-forward" size={10} color={sm.color} />}
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    })}
-
-                    {/* Employee info */}
-                    <View style={[styles.infoGrid, { borderTopColor: colors.border }]}>
-                      {[
-                        { label: 'Phone',    value: emp.phone    },
-                        { label: 'Joined',   value: fmtDate(emp.joinDate) },
-                        { label: 'Status',   value: emp.status === 'active' ? 'Active' : 'Inactive' },
-                        { label: 'Dept',     value: emp.dept     },
-                      ].map(item => (
-                        <View key={item.label} style={styles.infoItem}>
-                          <Text style={[styles.infoLabel, { color: colors.textMuted }]}>{item.label}</Text>
-                          <Text style={[styles.infoValue, { color: colors.text }]}>{item.value}</Text>
-                        </View>
-                      ))}
-                    </View>
-
-                    {canEdit && (
-                      <TouchableOpacity onPress={() => handleRemove(emp.id, emp.name)} style={[styles.removeBtn, { borderColor: colors.error }]}>
-                        <Ionicons name="trash-outline" size={13} color={colors.error} />
-                        <Text style={[styles.removeBtnText, { color: colors.error }]}>Remove from Registry</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-          <View style={{ height: 20 }} />
-        </ScrollView>
-      )}
-
-      {/* ═══════════════════════════════════════════════════ COMPLIANCE TAB */}
+      {/* ════════════════════════════════════════ COMPLIANCE */}
       {activeTab === 'compliance' && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <View style={styles.summaryRow}>
             {[
-              { n: expiredDocs.length, label: 'Expired',   col: colors.error,   bg: colors.errorBg,   border: colors.errorBorder },
-              { n: urgentDocs.length,  label: '<14 days',  col: colors.error,   bg: colors.errorBg,   border: colors.errorBorder },
-              { n: warnDocs.length,    label: '<30 days',  col: colors.warning, bg: colors.warningBg, border: colors.warningBorder },
-              { n: okDocs.length,      label: 'Current',   col: colors.success, bg: colors.successBg, border: colors.successBorder },
+              { n: expiredDocs.length, label: 'Expired',  col: colors.error,   bg: colors.errorBg,   border: colors.errorBorder   },
+              { n: urgentDocs.length,  label: '<14 days', col: colors.error,   bg: colors.errorBg,   border: colors.errorBorder   },
+              { n: warnDocs.length,    label: '<30 days', col: colors.warning, bg: colors.warningBg, border: colors.warningBorder },
+              { n: okDocs.length,      label: 'Current',  col: colors.success, bg: colors.successBg, border: colors.successBorder },
             ].map(s => (
               <View key={s.label} style={[styles.summaryCard, { backgroundColor: s.bg, borderColor: s.border }]}>
                 <Text style={[styles.summaryNum, { color: s.col }]}>{s.n}</Text>
@@ -393,29 +220,27 @@ export default function CorporateScreen() {
 
           {docs.map(doc => {
             const days = daysLeft(doc.exp);
-            const st = getDocStatus(days);
+            const st   = getDocStatus(days);
             return (
-              <View key={doc.id} style={[styles.docCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.docHeader}>
-                  <View style={[styles.docIcon, { backgroundColor: roleColor + '18' }]}>
+              <View key={doc.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.cardIcon, { backgroundColor: roleColor + '18' }]}>
                     <Ionicons name="document-text" size={18} color={roleColor} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.docName, { color: colors.text }]}>{doc.name}</Text>
-                    <Text style={[styles.docIssuer, { color: colors.textMuted }]}>{doc.iss} · Ref: {doc.ref}</Text>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>{doc.name}</Text>
+                    <Text style={[styles.cardSub, { color: colors.textMuted }]}>{doc.iss} · Ref: {doc.ref}</Text>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
-                    <Text style={[styles.statusText, { color: st.color }]}>{st.label}</Text>
-                  </View>
+                  <Pill label={st.label} color={st.color} bg={st.bg} />
                 </View>
-                <View style={styles.docDates}>
-                  <View style={styles.dateItem}>
-                    <Text style={[styles.dateLabel, { color: colors.textMuted }]}>Category</Text>
-                    <Text style={[styles.dateValue, { color: colors.text }]}>{doc.cat}</Text>
+                <View style={styles.infoRow}>
+                  <View>
+                    <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Category</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{doc.cat}</Text>
                   </View>
-                  <View style={styles.dateItem}>
-                    <Text style={[styles.dateLabel, { color: colors.textMuted }]}>Expires</Text>
-                    <Text style={[styles.dateValue, { color: st.color }]}>{fmtDate(doc.exp)}</Text>
+                  <View>
+                    <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Expires</Text>
+                    <Text style={[styles.infoValue, { color: st.color }]}>{fmtDate(doc.exp)}</Text>
                   </View>
                 </View>
                 {days < 30 && (
@@ -429,23 +254,387 @@ export default function CorporateScreen() {
               </View>
             );
           })}
+          {docs.length === 0 && <EmptyState icon="shield-outline" text="No compliance documents" />}
           <View style={{ height: 16 }} />
         </ScrollView>
       )}
 
-      {/* ═══════════════════════════════════════════════════════════ FILES TAB */}
-      {activeTab === 'files' && (
+      {/* ════════════════════════════════════════ LEGAL */}
+      {activeTab === 'legal' && (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          {/* Summary */}
+          <View style={styles.summaryRow}>
+            {(['Active', 'Pending', 'Resolved', 'Closed'] as LegalMatter['status'][]).map(s => {
+              const m = LEGAL_STATUS_META[s];
+              const n = legalMatters.filter(l => l.status === s).length;
+              return (
+                <View key={s} style={[styles.summaryCard, { backgroundColor: m.bg, borderColor: m.color + '44' }]}>
+                  <Text style={[styles.summaryNum, { color: m.color }]}>{n}</Text>
+                  <Text style={[styles.summaryLabel, { color: m.color }]}>{s}</Text>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Add button */}
+          {canEdit && (
+            <TouchableOpacity onPress={() => setShowLegalForm(v => !v)}
+              style={[styles.addBtn, { backgroundColor: roleColor }]}>
+              <Ionicons name={showLegalForm ? 'close' : 'add'} size={16} color="#fff" />
+              <Text style={styles.addBtnText}>{showLegalForm ? 'Cancel' : 'Add Legal Matter'}</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Form */}
+          {showLegalForm && (
+            <View style={[styles.form, { backgroundColor: colors.surface, borderColor: roleColor + '44' }]}>
+              <Text style={[styles.formTitle, { color: colors.text }]}>New Legal Matter</Text>
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Title *</Text>
+              <TextInput value={lTitle} onChangeText={setLTitle} placeholder="e.g. Lease Agreement — Lugbe Branch" placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Type</Text>
+              <View style={styles.chipRow}>
+                {LEGAL_TYPES.map(t => (
+                  <TouchableOpacity key={t} onPress={() => setLType(t)}
+                    style={[styles.chip, { backgroundColor: t === lType ? roleColor : colors.background, borderColor: t === lType ? roleColor : colors.border }]}>
+                    <Text style={[styles.chipText, { color: t === lType ? '#fff' : colors.textMuted }]}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Counterparty / Lawyer *</Text>
+              <TextInput value={lParty} onChangeText={setLParty} placeholder="e.g. FIRS, NNPC Legal, Aluko & Oyebode" placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Priority</Text>
+              <View style={styles.chipRow}>
+                {(['High', 'Medium', 'Low'] as LegalMatter['priority'][]).map(p => {
+                  const m = LEGAL_PRIORITY_META[p];
+                  return (
+                    <TouchableOpacity key={p} onPress={() => setLPri(p)}
+                      style={[styles.chip, { backgroundColor: p === lPri ? m.color : colors.background, borderColor: p === lPri ? m.color : colors.border }]}>
+                      <Text style={[styles.chipText, { color: p === lPri ? '#fff' : colors.textMuted }]}>{p}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Status</Text>
+              <View style={styles.chipRow}>
+                {(['Active', 'Pending', 'Resolved', 'Closed'] as LegalMatter['status'][]).map(s => (
+                  <TouchableOpacity key={s} onPress={() => setLStatus(s)}
+                    style={[styles.chip, { backgroundColor: s === lStatus ? roleColor : colors.background, borderColor: s === lStatus ? roleColor : colors.border }]}>
+                    <Text style={[styles.chipText, { color: s === lStatus ? '#fff' : colors.textMuted }]}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Notes</Text>
+              <TextInput value={lNotes} onChangeText={setLNotes} placeholder="Background, key terms, next steps…" placeholderTextColor={colors.textMuted}
+                multiline numberOfLines={3}
+                style={[styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+
+              <TouchableOpacity onPress={handleAddLegal} style={[styles.submitBtn, { backgroundColor: roleColor }]}>
+                <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                <Text style={styles.submitBtnText}>Save Legal Matter</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* List */}
+          {legalMatters.length === 0 && <EmptyState icon="scale-outline" text="No legal matters recorded" />}
+          {legalMatters.map(m => {
+            const sm = LEGAL_STATUS_META[m.status];
+            const pm = LEGAL_PRIORITY_META[m.priority];
+            return (
+              <View key={m.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.cardIcon, { backgroundColor: '#8E44AD18' }]}>
+                    <Ionicons name="scale" size={18} color="#8E44AD" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>{m.title}</Text>
+                    <Text style={[styles.cardSub, { color: colors.textMuted }]}>{m.type} · {m.party}</Text>
+                  </View>
+                  <View style={{ gap: 4, alignItems: 'flex-end' }}>
+                    <Pill label={m.status}   color={sm.color} bg={sm.bg} />
+                    <Pill label={m.priority} color={pm.color} bg={pm.bg} />
+                  </View>
+                </View>
+                {m.notes.length > 0 && (
+                  <Text style={[styles.noteText, { color: colors.textMuted }]} numberOfLines={2}>{m.notes}</Text>
+                )}
+                <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
+                  <Text style={[styles.footerDate, { color: colors.textSubtle }]}>Opened {fmtDate(m.openedAt)}</Text>
+                  {canEdit && (
+                    <View style={styles.footerActions}>
+                      {/* Quick status cycle */}
+                      {m.status !== 'Closed' && (
+                        <TouchableOpacity onPress={() => {
+                          const next: LegalMatter['status'][] = ['Active', 'Pending', 'Resolved', 'Closed'];
+                          const idx = next.indexOf(m.status);
+                          updateLegalStatus(m.id, next[(idx + 1) % next.length]);
+                        }} style={[styles.iconBtn, { borderColor: colors.border }]}>
+                          <Ionicons name="arrow-forward-circle-outline" size={15} color={colors.textMuted} />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity onPress={() => Alert.alert('Delete', `Remove "${m.title}"?`, [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Delete', style: 'destructive', onPress: () => deleteLegalMatter(m.id) },
+                      ])} style={[styles.iconBtn, { borderColor: colors.border }]}>
+                        <Ionicons name="trash-outline" size={15} color={colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+          <View style={{ height: 16 }} />
+        </ScrollView>
+      )}
+
+      {/* ════════════════════════════════════════ PROJECTS */}
+      {activeTab === 'projects' && (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          {/* Summary */}
+          <View style={styles.summaryRow}>
+            {(['Planning', 'Active', 'On Hold', 'Completed'] as CorpProject['status'][]).map(s => {
+              const m = PROJ_STATUS_META[s];
+              const n = corpProjects.filter(p => p.status === s).length;
+              return (
+                <View key={s} style={[styles.summaryCard, { backgroundColor: m.bg, borderColor: m.color + '44' }]}>
+                  <Text style={[styles.summaryNum, { color: m.color }]}>{n}</Text>
+                  <Text style={[styles.summaryLabel, { color: m.color }]}>{s}</Text>
+                </View>
+              );
+            })}
+          </View>
+
+          {canEdit && (
+            <TouchableOpacity onPress={() => setShowProjForm(v => !v)}
+              style={[styles.addBtn, { backgroundColor: roleColor }]}>
+              <Ionicons name={showProjForm ? 'close' : 'add'} size={16} color="#fff" />
+              <Text style={styles.addBtnText}>{showProjForm ? 'Cancel' : 'New Project'}</Text>
+            </TouchableOpacity>
+          )}
+
+          {showProjForm && (
+            <View style={[styles.form, { backgroundColor: colors.surface, borderColor: roleColor + '44' }]}>
+              <Text style={[styles.formTitle, { color: colors.text }]}>New Corporate Project</Text>
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Project Title *</Text>
+              <TextInput value={pTitle} onChangeText={setPTitle} placeholder="e.g. Branch Renovation — Lugbe"
+                placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Description</Text>
+              <TextInput value={pDesc} onChangeText={setPDesc} placeholder="Brief scope of work…"
+                placeholderTextColor={colors.textMuted} multiline numberOfLines={2}
+                style={[styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Project Lead *</Text>
+              <TextInput value={pLead} onChangeText={setPLead} placeholder="e.g. Ngozi Okafor"
+                placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Start Date</Text>
+                  <TextInput value={pStart} onChangeText={setPStart} placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Due Date *</Text>
+                  <TextInput value={pDue} onChangeText={setPDue} placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+                </View>
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Status</Text>
+              <View style={styles.chipRow}>
+                {(['Planning', 'Active'] as CorpProject['status'][]).map(s => {
+                  const m = PROJ_STATUS_META[s];
+                  return (
+                    <TouchableOpacity key={s} onPress={() => setPStat(s)}
+                      style={[styles.chip, { backgroundColor: s === pStat ? m.color : colors.background, borderColor: s === pStat ? m.color : colors.border }]}>
+                      <Text style={[styles.chipText, { color: s === pStat ? '#fff' : colors.textMuted }]}>{s}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity onPress={handleAddProject} style={[styles.submitBtn, { backgroundColor: roleColor }]}>
+                <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                <Text style={styles.submitBtnText}>Create Project</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {corpProjects.length === 0 && <EmptyState icon="hammer-outline" text="No projects yet" />}
+          {corpProjects.map(p => {
+            const sm = PROJ_STATUS_META[p.status];
+            const pct = Math.min(100, Math.max(0, p.progress));
+            return (
+              <View key={p.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.cardIcon, { backgroundColor: sm.bg }]}>
+                    <Ionicons name={sm.icon as any} size={18} color={sm.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>{p.title}</Text>
+                    <Text style={[styles.cardSub, { color: colors.textMuted }]}>Lead: {p.lead}</Text>
+                  </View>
+                  <Pill label={p.status} color={sm.color} bg={sm.bg} />
+                </View>
+                {p.description.length > 0 && (
+                  <Text style={[styles.noteText, { color: colors.textMuted }]} numberOfLines={2}>{p.description}</Text>
+                )}
+                {/* Progress bar */}
+                <View style={styles.progressWrap}>
+                  <View style={[styles.progressBg, { backgroundColor: colors.border }]}>
+                    <View style={[styles.progressFill, { width: `${pct}%` as any, backgroundColor: sm.color }]} />
+                  </View>
+                  <Text style={[styles.progressLabel, { color: colors.textMuted }]}>{pct}%</Text>
+                </View>
+                <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
+                  <Text style={[styles.footerDate, { color: colors.textSubtle }]}>
+                    {fmtDate(p.startDate)} → {fmtDate(p.dueDate)}
+                  </Text>
+                  {canEdit && (
+                    <View style={styles.footerActions}>
+                      {/* Increment progress by 25 */}
+                      {p.status !== 'Completed' && p.status !== 'Cancelled' && (
+                        <TouchableOpacity onPress={() => {
+                          const newPct = Math.min(100, pct + 25);
+                          const newStat: CorpProject['status'] = newPct >= 100 ? 'Completed' : p.status;
+                          updateProjectProgress(p.id, newPct, newStat);
+                        }} style={[styles.iconBtn, { borderColor: colors.border }]}>
+                          <Ionicons name="trending-up-outline" size={15} color={colors.textMuted} />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity onPress={() => Alert.alert('Delete', `Remove "${p.title}"?`, [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Delete', style: 'destructive', onPress: () => deleteCorpProject(p.id) },
+                      ])} style={[styles.iconBtn, { borderColor: colors.border }]}>
+                        <Ionicons name="trash-outline" size={15} color={colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+          <View style={{ height: 16 }} />
+        </ScrollView>
+      )}
+
+      {/* ════════════════════════════════════════ MEETING MINUTES */}
+      {activeTab === 'minutes' && (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          {canEdit && (
+            <TouchableOpacity onPress={() => setShowMinForm(v => !v)}
+              style={[styles.addBtn, { backgroundColor: roleColor }]}>
+              <Ionicons name={showMinForm ? 'close' : 'add'} size={16} color="#fff" />
+              <Text style={styles.addBtnText}>{showMinForm ? 'Cancel' : 'Record Minutes'}</Text>
+            </TouchableOpacity>
+          )}
+
+          {showMinForm && (
+            <View style={[styles.form, { backgroundColor: colors.surface, borderColor: roleColor + '44' }]}>
+              <Text style={[styles.formTitle, { color: colors.text }]}>Meeting Minutes</Text>
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Meeting Title *</Text>
+              <TextInput value={mTitle} onChangeText={setMTitle} placeholder="e.g. Board Meeting — Q3 Review"
+                placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Date</Text>
+                  <TextInput value={mDate} onChangeText={setMDate} placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Venue</Text>
+                  <TextInput value={mVenue} onChangeText={setMVenue} placeholder="e.g. HQ Boardroom"
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+                </View>
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Attendees</Text>
+              <TextInput value={mAtt} onChangeText={setMAtt} placeholder="e.g. CEO, MD, CSM, ACC"
+                placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Key Decisions / Summary *</Text>
+              <TextInput value={mSummary} onChangeText={setMSummary} placeholder="Record agenda items, key decisions, and action points…"
+                placeholderTextColor={colors.textMuted} multiline numberOfLines={5}
+                style={[styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text, minHeight: 100 }]} />
+
+              <TouchableOpacity onPress={handleAddMinutes} style={[styles.submitBtn, { backgroundColor: roleColor }]}>
+                <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                <Text style={styles.submitBtnText}>Save Minutes</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {meetingMinutes.length === 0 && <EmptyState icon="reader-outline" text="No meeting minutes recorded" />}
+          {meetingMinutes.map(m => (
+            <View key={m.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.cardIcon, { backgroundColor: roleColor + '18' }]}>
+                  <Ionicons name="reader" size={18} color={roleColor} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>{m.title}</Text>
+                  <Text style={[styles.cardSub, { color: colors.textMuted }]}>{fmtDate(m.date)} · {m.venue}</Text>
+                </View>
+              </View>
+              {m.attendees.length > 0 && (
+                <View style={[styles.attendeeRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Ionicons name="people-outline" size={12} color={colors.textMuted} />
+                  <Text style={[styles.attendeeText, { color: colors.textMuted }]}>{m.attendees}</Text>
+                </View>
+              )}
+              <Text style={[styles.noteText, { color: colors.text }]}>{m.summary}</Text>
+              <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
+                <Text style={[styles.footerDate, { color: colors.textSubtle }]}>Recorded by {m.by}</Text>
+                {canEdit && (
+                  <TouchableOpacity onPress={() => Alert.alert('Delete', `Remove "${m.title}"?`, [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Delete', style: 'destructive', onPress: () => deleteMeetingMinutes(m.id) },
+                  ])} style={[styles.iconBtn, { borderColor: colors.border }]}>
+                    <Ionicons name="trash-outline" size={15} color={colors.error} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          ))}
+          <View style={{ height: 16 }} />
+        </ScrollView>
+      )}
+
+      {/* ════════════════════════════════════════ DOCUMENTS */}
+      {activeTab === 'documents' && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {canEdit && (
             <View style={[styles.uploadPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.uploadHeader}>
                 <Ionicons name="cloud-upload" size={20} color={roleColor} />
-                <Text style={[styles.uploadTitle, { color: colors.text }]}>Upload Company File</Text>
+                <Text style={[styles.uploadTitle, { color: colors.text }]}>Upload Corporate Document</Text>
               </View>
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Category</Text>
               <View style={styles.chipRow}>
                 {FILE_CATS.map(c => (
-                  <TouchableOpacity key={c} onPress={() => setSelCat(c)} style={[styles.chip, { backgroundColor: c === selCat ? roleColor : colors.background, borderColor: c === selCat ? roleColor : colors.border }]}>
+                  <TouchableOpacity key={c} onPress={() => setSelCat(c)}
+                    style={[styles.chip, { backgroundColor: c === selCat ? roleColor : colors.background, borderColor: c === selCat ? roleColor : colors.border }]}>
                     <Text style={[styles.chipText, { color: c === selCat ? '#fff' : colors.textMuted }]}>{c}</Text>
                   </TouchableOpacity>
                 ))}
@@ -455,7 +644,8 @@ export default function CorporateScreen() {
                 {FILE_TYPES.map(t => {
                   const ti = FILE_TYPE_ICONS[t];
                   return (
-                    <TouchableOpacity key={t} onPress={() => setSelType(t)} style={[styles.typeBtn, { backgroundColor: t === selType ? ti.color + '22' : colors.background, borderColor: t === selType ? ti.color : colors.border }]}>
+                    <TouchableOpacity key={t} onPress={() => setSelType(t)}
+                      style={[styles.typeBtn, { backgroundColor: t === selType ? ti.color + '22' : colors.background, borderColor: t === selType ? ti.color : colors.border }]}>
                       <Ionicons name={ti.icon as any} size={16} color={t === selType ? ti.color : colors.textMuted} />
                       <Text style={[styles.typeBtnText, { color: t === selType ? ti.color : colors.textMuted }]}>{t.toUpperCase()}</Text>
                     </TouchableOpacity>
@@ -464,25 +654,20 @@ export default function CorporateScreen() {
               </View>
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>File Name</Text>
               <TextInput
-                style={[styles.nameInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+                style={[styles.textInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, marginBottom: 12 }]}
                 value={uploadName} onChangeText={setUploadName}
                 placeholder="e.g. Board_Resolution_July2026"
                 placeholderTextColor={colors.textSubtle}
               />
-              <TouchableOpacity onPress={handleUpload} style={[styles.uploadBtn, { backgroundColor: roleColor }]}>
+              <TouchableOpacity onPress={handleUpload} style={[styles.submitBtn, { backgroundColor: roleColor }]}>
                 <Ionicons name="cloud-upload" size={16} color="#fff" />
-                <Text style={styles.uploadBtnText}>Upload File</Text>
+                <Text style={styles.submitBtnText}>Upload Document</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Company Files ({companyFiles.length})</Text>
-          {companyFiles.length === 0 && (
-            <View style={styles.emptyState}>
-              <Ionicons name="folder-open-outline" size={40} color={colors.border} />
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No files uploaded yet</Text>
-            </View>
-          )}
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Corporate Files ({companyFiles.length})</Text>
+          {companyFiles.length === 0 && <EmptyState icon="folder-open-outline" text="No documents uploaded yet" />}
           {[...companyFiles].reverse().map(f => {
             const ti = FILE_TYPE_ICONS[f.fileType] || FILE_TYPE_ICONS.other;
             return (
@@ -495,7 +680,7 @@ export default function CorporateScreen() {
                   <Text style={[styles.fileMeta, { color: colors.textMuted }]}>{f.cat} · {f.size}</Text>
                   <Text style={[styles.fileBy, { color: colors.textSubtle }]}>by {f.by} · {fmtDateTime(f.dt)}</Text>
                 </View>
-                <TouchableOpacity style={[styles.viewBtn, { borderColor: colors.border }]}>
+                <TouchableOpacity style={[styles.iconBtn, { borderColor: colors.border }]}>
                   <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
@@ -509,101 +694,85 @@ export default function CorporateScreen() {
 }
 
 const styles = StyleSheet.create({
-  tabBar:  { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
-  tabBtn:  { flex: 1, alignItems: 'center', paddingVertical: 12, borderBottomWidth: 2 },
-  tabLabel:{ fontSize: 13 },
-  scroll:  { padding: 14 },
+  // ── Tab bar ──
+  tabBar:        { borderBottomWidth: StyleSheet.hairlineWidth, flexGrow: 0 },
+  tabBarContent: { flexDirection: 'row' },
+  tabBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 2 },
+  tabLabel:      { fontSize: 12 },
+
+  scroll: { padding: 14 },
 
   // ── Summary ──
   summaryRow:   { flexDirection: 'row', gap: 8, marginBottom: 14 },
   summaryCard:  { flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
-  summaryNum:   { fontSize: 22, fontWeight: '700' },
-  summaryLabel: { fontSize: 10, marginTop: 2, textAlign: 'center' },
+  summaryNum:   { fontSize: 20, fontWeight: '700' },
+  summaryLabel: { fontSize: 9, marginTop: 2, textAlign: 'center' },
 
-  // ── Staff ──
-  searchRow:   { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  searchWrap:  { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
-  searchInput: { flex: 1, fontSize: 13 },
-  addBtn:      { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  // ── Buttons ──
+  addBtn:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, marginBottom: 14, alignSelf: 'flex-start' },
+  addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
-  addForm:     { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 14, gap: 4 },
-  formTitle:   { fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  formHint:    { fontSize: 11, marginBottom: 10 },
-  fieldLabel:  { fontSize: 12, fontWeight: '600', marginTop: 8, marginBottom: 4 },
-  textInput:   { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
-  chipRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip:        { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7, borderWidth: 1 },
-  chipText:    { fontSize: 11, fontWeight: '600' },
-  submitBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, marginTop: 12 },
+  // ── Forms ──
+  form:         { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 14, gap: 2 },
+  formTitle:    { fontSize: 15, fontWeight: '700', marginBottom: 6 },
+  fieldLabel:   { fontSize: 12, fontWeight: '600', marginTop: 8, marginBottom: 4 },
+  textInput:    { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
+  textArea:     { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, textAlignVertical: 'top' },
+  chipRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip:         { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7, borderWidth: 1 },
+  chipText:     { fontSize: 11, fontWeight: '600' },
+  twoCol:       { flexDirection: 'row', gap: 10 },
+  submitBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, marginTop: 12 },
   submitBtnText:{ color: '#fff', fontSize: 14, fontWeight: '700' },
 
-  empCard:      { borderRadius: 14, borderWidth: 1, marginBottom: 10, overflow: 'hidden' },
-  empHeader:    { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13 },
-  avatar:       { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  avatarText:   { color: '#fff', fontSize: 14, fontWeight: '800' },
-  empTopRow:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
-  idBadge:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
-  idBadgeText:  { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  serialBadge:  { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 5 },
-  serialText:   { fontSize: 9, fontWeight: '700' },
-  pendingBubble:{ minWidth: 16, height: 16, borderRadius: 8, backgroundColor: '#E74C3C', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  pendingBubbleText:{ color: '#fff', fontSize: 9, fontWeight: '800' },
-  empName:      { fontSize: 14, fontWeight: '700' },
-  empMeta:      { fontSize: 11, marginTop: 1 },
+  // ── Cards ──
+  card:       { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10, gap: 8 },
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  cardIcon:   { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  cardTitle:  { fontSize: 14, fontWeight: '600' },
+  cardSub:    { fontSize: 11, marginTop: 2 },
+  noteText:   { fontSize: 12, lineHeight: 17 },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 2 },
+  footerDate: { fontSize: 10 },
+  footerActions:{ flexDirection: 'row', gap: 6 },
+  iconBtn:    { padding: 6, borderRadius: 7, borderWidth: 1 },
 
-  docChipRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 5, paddingHorizontal: 13, paddingBottom: 12 },
-  docChip:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
-  docChipText:  { fontSize: 9, fontWeight: '700' },
+  // ── Pill ──
+  pill:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  pillText: { fontSize: 10, fontWeight: '700' },
 
-  expandedPanel:{ borderTopWidth: StyleSheet.hairlineWidth, padding: 13, gap: 8 },
-  panelTitle:   { fontSize: 13, fontWeight: '700', marginBottom: 4 },
-  docRow:       { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  docRowIcon:   { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  docRowLabel:  { fontSize: 12, fontWeight: '600' },
-  docRowDate:   { fontSize: 10, marginTop: 1 },
-  docStatusBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 7 },
-  docStatusText:{ fontSize: 11, fontWeight: '700' },
-
-  infoGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 4 },
-  infoItem:     { width: '45%' },
-  infoLabel:    { fontSize: 10, marginBottom: 2 },
-  infoValue:    { fontSize: 12, fontWeight: '600' },
-
-  removeBtn:    { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, alignSelf: 'flex-start', marginTop: 6 },
-  removeBtnText:{ fontSize: 11, fontWeight: '600' },
-
-  // ── Compliance docs ──
-  docCard:   { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10, gap: 10 },
-  docHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  docIcon:   { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  docName:   { fontSize: 14, fontWeight: '600' },
-  docIssuer: { fontSize: 11, marginTop: 2 },
-  statusBadge:{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  statusText: { fontSize: 11, fontWeight: '700' },
-  docDates:  { flexDirection: 'row', gap: 20 },
-  dateItem:  {},
-  dateLabel: { fontSize: 10 },
-  dateValue: { fontSize: 13, fontWeight: '600', marginTop: 1 },
+  // ── Compliance ──
+  infoRow:    { flexDirection: 'row', gap: 24 },
+  infoLabel:  { fontSize: 10 },
+  infoValue:  { fontSize: 13, fontWeight: '600', marginTop: 1 },
   alertBanner:{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, padding: 10, borderRadius: 8 },
-  alertText: { flex: 1, fontSize: 12, lineHeight: 17 },
+  alertText:  { flex: 1, fontSize: 12, lineHeight: 17 },
 
-  // ── Files ──
+  // ── Projects ──
+  progressWrap:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressBg:    { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
+  progressFill:  { height: 6, borderRadius: 3 },
+  progressLabel: { fontSize: 11, fontWeight: '600', width: 32, textAlign: 'right' },
+
+  // ── Minutes ──
+  attendeeRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 7, borderWidth: 1 },
+  attendeeText: { fontSize: 11, flex: 1 },
+
+  // ── Documents ──
   uploadPanel:  { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16 },
-  uploadHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  uploadHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   uploadTitle:  { fontSize: 15, fontWeight: '700' },
-  typeRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  typeRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
   typeBtn:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
   typeBtnText:  { fontSize: 11, fontWeight: '700' },
-  nameInput:    { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, marginBottom: 12 },
-  uploadBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10 },
-  uploadBtnText:{ color: '#fff', fontSize: 14, fontWeight: '700' },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
   fileCard:     { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
   fileIconWrap: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   fileName:     { fontSize: 13, fontWeight: '600' },
   fileMeta:     { fontSize: 11, marginTop: 2 },
   fileBy:       { fontSize: 10, marginTop: 2 },
-  viewBtn:      { padding: 8, borderRadius: 8, borderWidth: 1 },
-  emptyState:   { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  emptyText:    { fontSize: 14 },
+
+  // ── Empty state ──
+  emptyState: { alignItems: 'center', paddingVertical: 40, gap: 10 },
+  emptyText:  { fontSize: 14 },
 });
