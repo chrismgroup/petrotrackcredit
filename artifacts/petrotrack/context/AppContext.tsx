@@ -97,20 +97,35 @@ export interface GeneratedLetter { id: number; type: 'appointment' | 'promotion'
 export interface HRRecommendation { id: number; empId: number; empName: string; type: 'suspend' | 'deactivate' | 'delete'; reason: string; by: string; dt: string; status: 'pending' | 'approved' | 'rejected'; resolvedBy?: string; resolvedAt?: string; }
 export interface HREmployee { id: number; empId: string; serial: number; name: string; role: string; dept: string; phone: string; email: string; address: string; dob: string; joinDate: string; nextOfKin: string; status: 'active' | 'suspended' | 'inactive'; docs: HRDoc[]; uploads: HREmployeeDoc[]; onboarding: OnboardingApproval; letters: GeneratedLetter[]; }
 
+export interface CorpAttachment {
+  id: number; name: string; fileType: string; size: string;
+  uploadedBy: string; uploadedAt: string;
+}
+export type CorpApprovalStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
+export interface CorpApproval {
+  status: CorpApprovalStatus;
+  submittedBy?: string; submittedAt?: string; submittedTo?: string;
+  reviewedBy?: string; reviewedAt?: string; rejectionReason?: string;
+}
+export type CorpRecordType = 'legal' | 'project' | 'minutes';
+
 export interface LegalMatter {
   id: number; title: string;
   type: 'Contract' | 'Dispute' | 'Regulatory' | 'Advisory' | 'Other';
   status: 'Active' | 'Pending' | 'Resolved' | 'Closed';
   party: string; openedAt: string; priority: 'High' | 'Medium' | 'Low'; notes: string;
+  approval: CorpApproval; attachments: CorpAttachment[];
 }
 export interface CorpProject {
   id: number; title: string; description: string;
   status: 'Planning' | 'Active' | 'On Hold' | 'Completed' | 'Cancelled';
   lead: string; startDate: string; dueDate: string; progress: number;
+  approval: CorpApproval; attachments: CorpAttachment[];
 }
 export interface MeetingMinutes {
   id: number; title: string; date: string; venue: string;
   attendees: string; summary: string; by: string;
+  approval: CorpApproval; attachments: CorpAttachment[];
 }
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -381,14 +396,22 @@ interface AppContextType {
   legalMatters: LegalMatter[];
   corpProjects: CorpProject[];
   meetingMinutes: MeetingMinutes[];
-  addLegalMatter: (m: Omit<LegalMatter, 'id' | 'openedAt'>) => void;
+  addLegalMatter: (m: Omit<LegalMatter, 'id' | 'openedAt' | 'approval' | 'attachments'>) => void;
+  updateLegalMatter: (id: number, updates: Partial<Omit<LegalMatter, 'id' | 'openedAt' | 'approval' | 'attachments'>>) => void;
   updateLegalStatus: (id: number, status: LegalMatter['status']) => void;
   deleteLegalMatter: (id: number) => void;
-  addCorpProject: (p: Omit<CorpProject, 'id'>) => void;
+  addCorpProject: (p: Omit<CorpProject, 'id' | 'approval' | 'attachments'>) => void;
+  updateCorpProject: (id: number, updates: Partial<Omit<CorpProject, 'id' | 'approval' | 'attachments'>>) => void;
   updateProjectProgress: (id: number, progress: number, status: CorpProject['status']) => void;
   deleteCorpProject: (id: number) => void;
-  addMeetingMinutes: (m: Omit<MeetingMinutes, 'id'>) => void;
+  addMeetingMinutes: (m: Omit<MeetingMinutes, 'id' | 'approval' | 'attachments'>) => void;
+  updateMeetingMinutes: (id: number, updates: Partial<Omit<MeetingMinutes, 'id' | 'approval' | 'attachments'>>) => void;
   deleteMeetingMinutes: (id: number) => void;
+  addCorpAttachment: (type: CorpRecordType, id: number, att: Omit<CorpAttachment, 'id' | 'uploadedAt'>) => void;
+  removeCorpAttachment: (type: CorpRecordType, id: number, attId: number) => void;
+  submitCorpItem: (type: CorpRecordType, id: number, submittedTo: string) => void;
+  approveCorpItem: (type: CorpRecordType, id: number) => void;
+  rejectCorpItem: (type: CorpRecordType, id: number, reason: string) => void;
   roleAccess: Record<string, Record<string, boolean>>;
   updateRoleAccess: (role: string, moduleId: string, enabled: boolean) => void;
   userAccess: Record<number, Record<string, boolean>>;
@@ -589,8 +612,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('corpProjects',      corpProjects); },      [corpProjects, loaded]);
   useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
 
-  const addLegalMatter = useCallback((m: Omit<LegalMatter, 'id' | 'openedAt'>) => {
-    setLegalMatters(prev => [{ ...m, id: genId(), openedAt: nowTs() }, ...prev]);
+  const DRAFT_APPROVAL: CorpApproval = { status: 'draft' };
+
+  const addLegalMatter = useCallback((m: Omit<LegalMatter, 'id' | 'openedAt' | 'approval' | 'attachments'>) => {
+    setLegalMatters(prev => [{ ...m, id: genId(), openedAt: nowTs(), approval: { status: 'draft' }, attachments: [] }, ...prev]);
+  }, []);
+  const updateLegalMatter = useCallback((id: number, updates: Partial<Omit<LegalMatter, 'id' | 'openedAt' | 'approval' | 'attachments'>>) => {
+    setLegalMatters(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
   }, []);
   const updateLegalStatus = useCallback((id: number, status: LegalMatter['status']) => {
     setLegalMatters(prev => prev.map(m => m.id === id ? { ...m, status } : m));
@@ -599,8 +627,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLegalMatters(prev => prev.filter(m => m.id !== id));
   }, []);
 
-  const addCorpProject = useCallback((p: Omit<CorpProject, 'id'>) => {
-    setCorpProjects(prev => [{ ...p, id: genId() }, ...prev]);
+  const addCorpProject = useCallback((p: Omit<CorpProject, 'id' | 'approval' | 'attachments'>) => {
+    setCorpProjects(prev => [{ ...p, id: genId(), approval: { status: 'draft' }, attachments: [] }, ...prev]);
+  }, []);
+  const updateCorpProject = useCallback((id: number, updates: Partial<Omit<CorpProject, 'id' | 'approval' | 'attachments'>>) => {
+    setCorpProjects(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
   }, []);
   const updateProjectProgress = useCallback((id: number, progress: number, status: CorpProject['status']) => {
     setCorpProjects(prev => prev.map(p => p.id === id ? { ...p, progress, status } : p));
@@ -609,12 +640,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCorpProjects(prev => prev.filter(p => p.id !== id));
   }, []);
 
-  const addMeetingMinutes = useCallback((m: Omit<MeetingMinutes, 'id'>) => {
-    setMeetingMinutes(prev => [{ ...m, id: genId() }, ...prev]);
+  const addMeetingMinutes = useCallback((m: Omit<MeetingMinutes, 'id' | 'approval' | 'attachments'>) => {
+    setMeetingMinutes(prev => [{ ...m, id: genId(), approval: { status: 'draft' }, attachments: [] }, ...prev]);
+  }, []);
+  const updateMeetingMinutes = useCallback((id: number, updates: Partial<Omit<MeetingMinutes, 'id' | 'approval' | 'attachments'>>) => {
+    setMeetingMinutes(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
   }, []);
   const deleteMeetingMinutes = useCallback((id: number) => {
     setMeetingMinutes(prev => prev.filter(m => m.id !== id));
   }, []);
+
+  // ── Corporate record attachment & approval workflow ──
+  const addCorpAttachment = useCallback((type: CorpRecordType, id: number, att: Omit<CorpAttachment, 'id' | 'uploadedAt'>) => {
+    const newAtt: CorpAttachment = { ...att, id: genId(), uploadedAt: nowTs() };
+    if (type === 'legal')   setLegalMatters(prev => prev.map(m => m.id === id ? { ...m, attachments: [...m.attachments, newAtt] } : m));
+    if (type === 'project') setCorpProjects(prev => prev.map(p => p.id === id ? { ...p, attachments: [...p.attachments, newAtt] } : p));
+    if (type === 'minutes') setMeetingMinutes(prev => prev.map(m => m.id === id ? { ...m, attachments: [...m.attachments, newAtt] } : m));
+  }, []);
+
+  const removeCorpAttachment = useCallback((type: CorpRecordType, id: number, attId: number) => {
+    if (type === 'legal')   setLegalMatters(prev => prev.map(m => m.id === id ? { ...m, attachments: m.attachments.filter(a => a.id !== attId) } : m));
+    if (type === 'project') setCorpProjects(prev => prev.map(p => p.id === id ? { ...p, attachments: p.attachments.filter(a => a.id !== attId) } : p));
+    if (type === 'minutes') setMeetingMinutes(prev => prev.map(m => m.id === id ? { ...m, attachments: m.attachments.filter(a => a.id !== attId) } : m));
+  }, []);
+
+  const submitCorpItem = useCallback((type: CorpRecordType, id: number, submittedTo: string) => {
+    const approval: CorpApproval = { status: 'submitted', submittedBy: userName, submittedAt: nowTs(), submittedTo };
+    if (type === 'legal')   setLegalMatters(prev => prev.map(m => m.id === id ? { ...m, approval } : m));
+    if (type === 'project') setCorpProjects(prev => prev.map(p => p.id === id ? { ...p, approval } : p));
+    if (type === 'minutes') setMeetingMinutes(prev => prev.map(m => m.id === id ? { ...m, approval } : m));
+  }, [userName]);
+
+  const approveCorpItem = useCallback((type: CorpRecordType, id: number) => {
+    const approval: CorpApproval = { status: 'approved', reviewedBy: userName, reviewedAt: nowTs() };
+    if (type === 'legal')   setLegalMatters(prev => prev.map(m => m.id === id ? { ...m, approval: { ...m.approval, ...approval } } : m));
+    if (type === 'project') setCorpProjects(prev => prev.map(p => p.id === id ? { ...p, approval: { ...p.approval, ...approval } } : p));
+    if (type === 'minutes') setMeetingMinutes(prev => prev.map(m => m.id === id ? { ...m, approval: { ...m.approval, ...approval } } : m));
+  }, [userName]);
+
+  const rejectCorpItem = useCallback((type: CorpRecordType, id: number, reason: string) => {
+    const approval: Partial<CorpApproval> = { status: 'rejected', reviewedBy: userName, reviewedAt: nowTs(), rejectionReason: reason };
+    if (type === 'legal')   setLegalMatters(prev => prev.map(m => m.id === id ? { ...m, approval: { ...m.approval, ...approval } } : m));
+    if (type === 'project') setCorpProjects(prev => prev.map(p => p.id === id ? { ...p, approval: { ...p.approval, ...approval } } : p));
+    if (type === 'minutes') setMeetingMinutes(prev => prev.map(m => m.id === id ? { ...m, approval: { ...m.approval, ...approval } } : m));
+  }, [userName]);
 
   const login = useCallback((r: Role, n: string, sid?: number, bid?: string) => {
     setRole(r); setUserName(n);
@@ -1323,9 +1392,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addHRHandbook, approveHRHandbook,
       forwardOnboardingForApproval, approveOnboarding, addGeneratedLetter,
       legalMatters, corpProjects, meetingMinutes,
-      addLegalMatter, updateLegalStatus, deleteLegalMatter,
-      addCorpProject, updateProjectProgress, deleteCorpProject,
-      addMeetingMinutes, deleteMeetingMinutes,
+      addLegalMatter, updateLegalMatter, updateLegalStatus, deleteLegalMatter,
+      addCorpProject, updateCorpProject, updateProjectProgress, deleteCorpProject,
+      addMeetingMinutes, updateMeetingMinutes, deleteMeetingMinutes,
+      addCorpAttachment, removeCorpAttachment,
+      submitCorpItem, approveCorpItem, rejectCorpItem,
     }}>
       {children}
     </AppContext.Provider>
