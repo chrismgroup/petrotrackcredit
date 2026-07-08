@@ -857,117 +857,237 @@ export default function CorporateScreen() {
       )}
 
       {/* ════════════════════════════════════════ MEETING MINUTES */}
-      {activeTab === 'minutes' && (
-        <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
-          {canCreate && (
-            <TouchableOpacity onPress={() => { if (showMinForm && editId === null) { setShowMinForm(false); resetMinForm(); } else if (!showMinForm) { setShowMinForm(true); setEditId(null); resetMinForm(); } }}
-              style={[sty.addBtn, { backgroundColor: showMinForm && editId === null ? colors.border : roleColor }]}>
-              <Ionicons name={showMinForm && editId === null ? 'close' : 'add'} size={16} color={showMinForm && editId === null ? colors.textMuted : '#fff'} />
-              <Text style={[sty.addBtnTxt, { color: showMinForm && editId === null ? colors.textMuted : '#fff' }]}>
-                {showMinForm && editId === null ? 'Cancel' : 'Record Minutes'}
+      {activeTab === 'minutes' && (() => {
+        const isStaffOnly = !isCSM && !isCEO && !isAdmin;
+        const sharedMinutes = meetingMinutes.filter(m => m.shared);
+
+        /* ── Staff-only view: read-only shared minutes ── */
+        if (isStaffOnly) return (
+          <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+            <View style={[sty.sharedBanner, { backgroundColor: '#DCF0FF', borderColor: '#185FA540' }]}>
+              <Ionicons name="share-social" size={16} color="#185FA5" />
+              <Text style={[sty.sharedBannerTxt, { color: '#185FA5' }]}>
+                Minutes shared with you by Corporate Services
               </Text>
-            </TouchableOpacity>
-          )}
-
-          {showMinForm && (
-            <View style={[sty.form, { backgroundColor: colors.surface, borderColor: roleColor + '44' }]}>
-              <Text style={[sty.formTitle, { color: colors.text }]}>{editId ? 'Edit Meeting Minutes' : 'Meeting Minutes'}</Text>
-              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Meeting Title *</Text>
-              <TextInput value={mTitle} onChangeText={setMTitle} placeholder="e.g. Board Meeting — Q3 Review" placeholderTextColor={colors.textMuted}
-                style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-              <View style={sty.twoCol}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Date</Text>
-                  <TextInput value={mDate} onChangeText={setMDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted}
-                    style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Venue</Text>
-                  <TextInput value={mVenue} onChangeText={setMVenue} placeholder="e.g. HQ Boardroom" placeholderTextColor={colors.textMuted}
-                    style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-                </View>
-              </View>
-              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Attendees</Text>
-              <TextInput value={mAtt} onChangeText={setMAtt} placeholder="e.g. CEO, MD, CSM, ACC" placeholderTextColor={colors.textMuted}
-                style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Key Decisions / Summary *</Text>
-              <TextInput value={mSummary} onChangeText={setMSummary}
-                placeholder="Record agenda items, key decisions, and action points…"
-                placeholderTextColor={colors.textMuted} multiline numberOfLines={5}
-                style={[sty.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text, minHeight: 100 }]} />
-              <TouchableOpacity onPress={handleSaveMinutes} style={[sty.submitBtn, { backgroundColor: roleColor }]}>
-                <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                <Text style={sty.submitBtnTxt}>{editId ? 'Save Changes' : 'Save Minutes'}</Text>
-              </TouchableOpacity>
-              {editId && (
-                <TouchableOpacity onPress={() => { setEditId(null); resetMinForm(); setShowMinForm(false); }}
-                  style={[sty.cancelEditBtn, { borderColor: colors.border }]}>
-                  <Text style={[sty.cancelEditTxt, { color: colors.textMuted }]}>Cancel Edit</Text>
-                </TouchableOpacity>
-              )}
             </View>
-          )}
+            {sharedMinutes.length === 0 && <EmptySlate icon="reader-outline" text="No minutes have been shared with staff yet" />}
+            {sharedMinutes.map(m => {
+              const expanded = expandedId === m.id;
+              return (
+                <View key={m.id} style={[sty.card, { backgroundColor: colors.surface, borderColor: '#185FA540' }]}>
+                  <TouchableOpacity style={sty.cardHeader} onPress={() => setExpandedId(expanded ? null : m.id)} activeOpacity={0.7}>
+                    <View style={[sty.cardIcon, { backgroundColor: '#185FA518' }]}>
+                      <Ionicons name="reader" size={18} color="#185FA5" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[sty.cardTitle, { color: colors.text }]}>{m.title}</Text>
+                      <Text style={[sty.cardSub, { color: colors.textMuted }]}>{fmtDate(m.date)} · {m.venue}</Text>
+                    </View>
+                    <View style={[sty.sharedPill, { backgroundColor: '#DCF0FF' }]}>
+                      <Ionicons name="share-social" size={10} color="#185FA5" />
+                      <Text style={[sty.sharedPillTxt, { color: '#185FA5' }]}>Shared</Text>
+                    </View>
+                    <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color={colors.textMuted} style={{ marginLeft: 6 }} />
+                  </TouchableOpacity>
 
-          {meetingMinutes.length === 0 && <EmptySlate icon="reader-outline" text="No meeting minutes recorded" />}
-          {meetingMinutes.map(m => {
-            const am = APPROVAL_META[m.approval.status];
-            const locked   = m.approval.status === 'approved';
-            const expanded = expandedId === m.id;
-            return (
-              <View key={m.id} style={[sty.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <TouchableOpacity style={sty.cardHeader} onPress={() => setExpandedId(expanded ? null : m.id)} activeOpacity={0.7}>
-                  <View style={[sty.cardIcon, { backgroundColor: roleColor + '18' }]}>
-                    <Ionicons name="reader" size={18} color={roleColor} />
+                  {m.attendees.length > 0 && (
+                    <View style={[sty.attendeeRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      <Ionicons name="people-outline" size={12} color={colors.textMuted} />
+                      <Text style={[sty.attendeeTxt, { color: colors.textMuted }]}>{m.attendees}</Text>
+                    </View>
+                  )}
+                  <Text style={[sty.noteText, { color: colors.text }]} numberOfLines={expanded ? undefined : 2}>{m.summary}</Text>
+
+                  {expanded && m.attachments.length > 0 && (
+                    <View style={[sty.expandBody, { borderTopColor: colors.border }]}>
+                      <Text style={[sty.attTitle, { color: colors.text, marginBottom: 6 }]}>
+                        <Ionicons name="attach" size={13} color={colors.textMuted} /> Attachments ({m.attachments.length})
+                      </Text>
+                      {m.attachments.map(a => {
+                        const fi = FILE_TYPE_MAP[a.fileType] || FILE_TYPE_MAP.other;
+                        return (
+                          <View key={a.id} style={[sty.attItem, { borderColor: colors.border }]}>
+                            <View style={[sty.attIcon, { backgroundColor: fi.color + '18' }]}>
+                              <Ionicons name={fi.icon as any} size={16} color={fi.color} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[sty.attName, { color: colors.text }]} numberOfLines={1}>{a.name}</Text>
+                              <Text style={[sty.attMeta, { color: colors.textMuted }]}>{a.size} · {fmtDate(a.uploadedAt)}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                      {m.sharedBy && (
+                        <Text style={[sty.metaTxt, { color: colors.textSubtle, marginTop: 6 }]}>
+                          Shared by {m.sharedBy} · {fmtDate(m.sharedAt ?? '')}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+            <View style={{ height: 20 }} />
+          </ScrollView>
+        );
+
+        /* ── CSM / CEO / Admin view: full management ── */
+        return (
+          <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+            {/* Sharing summary */}
+            {sharedMinutes.length > 0 && (
+              <View style={[sty.sharedBanner, { backgroundColor: '#EAF3DE', borderColor: '#27500A40' }]}>
+                <Ionicons name="share-social" size={15} color="#27500A" />
+                <Text style={[sty.sharedBannerTxt, { color: '#27500A' }]}>
+                  {sharedMinutes.length} {sharedMinutes.length === 1 ? 'record' : 'records'} shared with all staff
+                </Text>
+              </View>
+            )}
+
+            {canCreate && (
+              <TouchableOpacity onPress={() => { if (showMinForm && editId === null) { setShowMinForm(false); resetMinForm(); } else if (!showMinForm) { setShowMinForm(true); setEditId(null); resetMinForm(); } }}
+                style={[sty.addBtn, { backgroundColor: showMinForm && editId === null ? colors.border : roleColor }]}>
+                <Ionicons name={showMinForm && editId === null ? 'close' : 'add'} size={16} color={showMinForm && editId === null ? colors.textMuted : '#fff'} />
+                <Text style={[sty.addBtnTxt, { color: showMinForm && editId === null ? colors.textMuted : '#fff' }]}>
+                  {showMinForm && editId === null ? 'Cancel' : 'Record Minutes'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {showMinForm && (
+              <View style={[sty.form, { backgroundColor: colors.surface, borderColor: roleColor + '44' }]}>
+                <Text style={[sty.formTitle, { color: colors.text }]}>{editId ? 'Edit Meeting Minutes' : 'Meeting Minutes'}</Text>
+                <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Meeting Title *</Text>
+                <TextInput value={mTitle} onChangeText={setMTitle} placeholder="e.g. Board Meeting — Q3 Review" placeholderTextColor={colors.textMuted}
+                  style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+                <View style={sty.twoCol}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Date</Text>
+                    <TextInput value={mDate} onChangeText={setMDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted}
+                      style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[sty.cardTitle, { color: colors.text }]}>{m.title}</Text>
-                    <Text style={[sty.cardSub, { color: colors.textMuted }]}>{fmtDate(m.date)} · {m.venue}</Text>
+                    <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Venue</Text>
+                    <TextInput value={mVenue} onChangeText={setMVenue} placeholder="e.g. HQ Boardroom" placeholderTextColor={colors.textMuted}
+                      style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
                   </View>
-                  <Pill label={m.approval.status} color={am.color} bg={am.bg} />
-                  <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color={colors.textMuted} style={{ marginLeft: 6 }} />
+                </View>
+                <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Attendees</Text>
+                <TextInput value={mAtt} onChangeText={setMAtt} placeholder="e.g. CEO, MD, CSM, ACC" placeholderTextColor={colors.textMuted}
+                  style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+                <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Key Decisions / Summary *</Text>
+                <TextInput value={mSummary} onChangeText={setMSummary}
+                  placeholder="Record agenda items, key decisions, and action points…"
+                  placeholderTextColor={colors.textMuted} multiline numberOfLines={5}
+                  style={[sty.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text, minHeight: 100 }]} />
+                <TouchableOpacity onPress={handleSaveMinutes} style={[sty.submitBtn, { backgroundColor: roleColor }]}>
+                  <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                  <Text style={sty.submitBtnTxt}>{editId ? 'Save Changes' : 'Save Minutes'}</Text>
                 </TouchableOpacity>
-
-                {m.attendees.length > 0 && (
-                  <View style={[sty.attendeeRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                    <Ionicons name="people-outline" size={12} color={colors.textMuted} />
-                    <Text style={[sty.attendeeTxt, { color: colors.textMuted }]}>{m.attendees}</Text>
-                  </View>
-                )}
-
-                {!expanded && (
-                  <Text style={[sty.noteText, { color: colors.text }]} numberOfLines={2}>{m.summary}</Text>
-                )}
-
-                {expanded && (
-                  <View style={[sty.expandBody, { borderTopColor: colors.border }]}>
-                    <Text style={[sty.noteText, { color: colors.text }]}>{m.summary}</Text>
-                    <Text style={[sty.metaTxt, { color: colors.textSubtle }]}>Recorded by {m.by}</Text>
-
-                    <AttachmentsPanel type="minutes" id={m.id} attachments={m.attachments} locked={locked} />
-                    <ApprovalPanel type="minutes" id={m.id} approval={m.approval} />
-
-                    {!locked && canCreate && (
-                      <View style={sty.cardActions}>
-                        <TouchableOpacity onPress={() => loadMinForEdit(m)} style={[sty.editBtn, { borderColor: roleColor }]}>
-                          <Ionicons name="create-outline" size={14} color={roleColor} />
-                          <Text style={[sty.editBtnTxt, { color: roleColor }]}>Edit</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => Alert.alert('Delete', `Remove "${m.title}"?`, [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Delete', style: 'destructive', onPress: () => deleteMeetingMinutes(m.id) },
-                        ])} style={[sty.deleteBtn, { borderColor: colors.error }]}>
-                          <Ionicons name="trash-outline" size={14} color={colors.error} />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
+                {editId && (
+                  <TouchableOpacity onPress={() => { setEditId(null); resetMinForm(); setShowMinForm(false); }}
+                    style={[sty.cancelEditBtn, { borderColor: colors.border }]}>
+                    <Text style={[sty.cancelEditTxt, { color: colors.textMuted }]}>Cancel Edit</Text>
+                  </TouchableOpacity>
                 )}
               </View>
-            );
-          })}
-          <View style={{ height: 20 }} />
-        </ScrollView>
-      )}
+            )}
+
+            {meetingMinutes.length === 0 && <EmptySlate icon="reader-outline" text="No meeting minutes recorded" />}
+            {meetingMinutes.map(m => {
+              const am = APPROVAL_META[m.approval.status];
+              const locked   = m.approval.status === 'approved';
+              const expanded = expandedId === m.id;
+              return (
+                <View key={m.id} style={[sty.card, { backgroundColor: colors.surface, borderColor: m.shared ? '#185FA540' : colors.border }]}>
+                  <TouchableOpacity style={sty.cardHeader} onPress={() => setExpandedId(expanded ? null : m.id)} activeOpacity={0.7}>
+                    <View style={[sty.cardIcon, { backgroundColor: roleColor + '18' }]}>
+                      <Ionicons name="reader" size={18} color={roleColor} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[sty.cardTitle, { color: colors.text }]}>{m.title}</Text>
+                      <Text style={[sty.cardSub, { color: colors.textMuted }]}>{fmtDate(m.date)} · {m.venue}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                      <Pill label={m.approval.status} color={am.color} bg={am.bg} />
+                      {m.shared && (
+                        <View style={[sty.sharedPill, { backgroundColor: '#DCF0FF' }]}>
+                          <Ionicons name="share-social" size={10} color="#185FA5" />
+                          <Text style={[sty.sharedPillTxt, { color: '#185FA5' }]}>Shared</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color={colors.textMuted} style={{ marginLeft: 6 }} />
+                  </TouchableOpacity>
+
+                  {m.attendees.length > 0 && (
+                    <View style={[sty.attendeeRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      <Ionicons name="people-outline" size={12} color={colors.textMuted} />
+                      <Text style={[sty.attendeeTxt, { color: colors.textMuted }]}>{m.attendees}</Text>
+                    </View>
+                  )}
+
+                  {!expanded && (
+                    <Text style={[sty.noteText, { color: colors.text }]} numberOfLines={2}>{m.summary}</Text>
+                  )}
+
+                  {expanded && (
+                    <View style={[sty.expandBody, { borderTopColor: colors.border }]}>
+                      <Text style={[sty.noteText, { color: colors.text }]}>{m.summary}</Text>
+                      <Text style={[sty.metaTxt, { color: colors.textSubtle }]}>Recorded by {m.by}</Text>
+
+                      <AttachmentsPanel type="minutes" id={m.id} attachments={m.attachments} locked={locked} />
+                      <ApprovalPanel type="minutes" id={m.id} approval={m.approval} />
+
+                      <View style={sty.cardActions}>
+                        {!locked && canCreate && (
+                          <>
+                            <TouchableOpacity onPress={() => loadMinForEdit(m)} style={[sty.editBtn, { borderColor: roleColor }]}>
+                              <Ionicons name="create-outline" size={14} color={roleColor} />
+                              <Text style={[sty.editBtnTxt, { color: roleColor }]}>Edit</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => Alert.alert('Delete', `Remove "${m.title}"?`, [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Delete', style: 'destructive', onPress: () => deleteMeetingMinutes(m.id) },
+                            ])} style={[sty.deleteBtn, { borderColor: colors.error }]}>
+                              <Ionicons name="trash-outline" size={14} color={colors.error} />
+                            </TouchableOpacity>
+                          </>
+                        )}
+                        {/* Share toggle — CSM and admin */}
+                        {canCreate && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              if (m.shared) {
+                                Alert.alert('Stop Sharing', `Remove "${m.title}" from staff view?`, [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  { text: 'Stop Sharing', style: 'destructive', onPress: () => updateMeetingMinutes(m.id, { shared: false, sharedAt: undefined, sharedBy: undefined }) },
+                                ]);
+                              } else {
+                                updateMeetingMinutes(m.id, { shared: true, sharedAt: new Date().toISOString(), sharedBy: userName || 'System' });
+                                Alert.alert('Shared', 'These minutes are now visible to all staff.');
+                              }
+                            }}
+                            style={[sty.shareBtn, {
+                              backgroundColor: m.shared ? '#DCF0FF' : colors.background,
+                              borderColor: m.shared ? '#185FA5' : colors.border,
+                            }]}>
+                            <Ionicons name={m.shared ? 'share-social' : 'share-social-outline'} size={13} color={m.shared ? '#185FA5' : colors.textMuted} />
+                            <Text style={[sty.shareBtnTxt, { color: m.shared ? '#185FA5' : colors.textMuted }]}>
+                              {m.shared ? 'Shared' : 'Share with Staff'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+            <View style={{ height: 20 }} />
+          </ScrollView>
+        );
+      })()}
 
       {/* ════════════════════════════════ SUBMIT MODAL */}
       <Modal visible={!!submitTarget} transparent animationType="fade">
@@ -1129,6 +1249,13 @@ const sty = StyleSheet.create({
 
   divider:         { borderTopWidth: StyleSheet.hairlineWidth, marginVertical: 18 },
   subSectionTitle: { fontSize: 13, fontWeight: '600', marginBottom: 8, marginTop: 4 },
+
+  sharedBanner:    { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
+  sharedBannerTxt: { flex: 1, fontSize: 12, fontWeight: '600' },
+  sharedPill:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 7 },
+  sharedPillTxt:   { fontSize: 10, fontWeight: '700' },
+  shareBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
+  shareBtnTxt:     { fontSize: 12, fontWeight: '600' },
 
   // Documents section
   uploadPanel:   { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16 },
