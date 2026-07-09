@@ -187,6 +187,18 @@ export default function ReportsScreen() {
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const perms = getPerms(role);
 
+  /* Safety guards: persisted state restored from AsyncStorage may occasionally
+     arrive as a non-array (e.g. corrupted JSON → object). Guard here once so
+     every downstream computation stays crash-free. */
+  const safeSales        = Array.isArray(sales)         ? sales         : [];
+  const safeDeliveries   = Array.isArray(deliveries)    ? deliveries    : [];
+  const safeExpenses     = Array.isArray(expenses)      ? expenses      : [];
+  const safeBranches     = Array.isArray(branches)      ? branches      : [];
+  const safeMaintenance  = Array.isArray(maintenance)   ? maintenance   : [];
+  const safeDips         = Array.isArray(dips)          ? dips          : [];
+  const safeHrEmployees  = Array.isArray(hrEmployees)   ? hrEmployees   : [];
+  const safeProposals    = Array.isArray(priceProposals) ? priceProposals : [];
+
   const [selBranch,  setSelBranch]  = useState<string | null>(isMgr ? (branchId ?? null) : null);
   const [reportType, setReportType] = useState<ReportType>(perms.canGenerate[0] ?? perms.visible[0] ?? 'summary');
   const [period,     setPeriod]     = useState<Period>('Monthly');
@@ -198,23 +210,23 @@ export default function ReportsScreen() {
   const scale = SCALE[period];
   const branchName = selBranch === null
     ? 'All Branches'
-    : (branches.find(b => b.id === selBranch)?.name ?? selBranch);
+    : (safeBranches.find(b => b.id === selBranch)?.name ?? selBranch);
   const periodStr   = `${fmtDate(from.toISOString())} – ${fmtDate(to.toISOString())}`;
   const generatedAt = new Date().toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' });
   const canDownload = perms.canGenerate.includes(reportType);
-  const meta = REPORT_META[reportType];
+  const meta = REPORT_META[reportType] ?? REPORT_META.summary;
 
   /* ─ Filtered data ─ */
   const fb = <T extends { branchId?: string }>(arr: T[]) =>
     selBranch === null ? arr : arr.filter(x => x.branchId === selBranch || !x.branchId);
 
-  const fSales = useMemo(() => fb(sales),      [sales,      selBranch]);
-  const fDelvs = useMemo(() => fb(deliveries), [deliveries, selBranch]);
-  const fExps  = useMemo(() => fb(expenses),   [expenses,   selBranch]);
+  const fSales = useMemo(() => fb(safeSales),      [safeSales,      selBranch]);
+  const fDelvs = useMemo(() => fb(safeDeliveries), [safeDeliveries, selBranch]);
+  const fExps  = useMemo(() => fb(safeExpenses),   [safeExpenses,   selBranch]);
 
   const approved    = fExps.filter(e => e.status === 'approved');
   const totalExp    = approved.reduce((s, e) => s + e.amt, 0);
-  const totalRev    = branches.filter(b => selBranch === null || b.id === selBranch).reduce((s, b) => s + b.rev, 0);
+  const totalRev    = safeBranches.filter(b => selBranch === null || b.id === selBranch).reduce((s, b) => s + b.rev, 0);
   const scaledExp   = Math.round(totalExp / 30 * scale);
   const scaledRev   = Math.round(totalRev / 30 * scale);
   const scaledSales = Math.round(fSales.reduce((s, e) => s + e.L * e.price, 0) / 30 * scale);
@@ -284,38 +296,38 @@ export default function ReportsScreen() {
 
   /* branch breakdown */
   const branchBD = useMemo(() => {
-    if (selBranch !== null || branches.length === 0) return [];
-    return branches.map(b => {
-      const bS = sales.filter(s => s.branchId === b.id);
-      const bE = expenses.filter(e => e.status === 'approved' && e.branchId === b.id);
+    if (selBranch !== null || safeBranches.length === 0) return [];
+    return safeBranches.map(b => {
+      const bS = safeSales.filter(s => s.branchId === b.id);
+      const bE = safeExpenses.filter(e => e.status === 'approved' && e.branchId === b.id);
       const bR = Math.round(b.rev / 30 * scale);
       const bX = Math.round(bE.reduce((s, e) => s + e.amt, 0) / 30 * scale);
       const bSR= Math.round(bS.reduce((s, e) => s + e.L * e.price, 0) / 30 * scale);
       return { id: b.id, name: b.name, rev: bR, exp: bX, salesRev: bSR, net: bR - bX };
     });
-  }, [branches, sales, expenses, selBranch, scale]);
+  }, [safeBranches, safeSales, safeExpenses, selBranch, scale]);
 
   /* maintenance stats */
-  const maintOpen   = maintenance.filter(m => m.st === 'Open').length;
-  const maintDone   = maintenance.filter(m => m.st === 'Done').length;
-  const maintUrgent = maintenance.filter(m => m.pri === 'Urgent').length;
-  const maintCost   = maintenance.reduce((s, m) => s + (m.cost ?? 0), 0);
+  const maintOpen   = safeMaintenance.filter(m => m.st === 'Open').length;
+  const maintDone   = safeMaintenance.filter(m => m.st === 'Done').length;
+  const maintUrgent = safeMaintenance.filter(m => m.pri === 'Urgent').length;
+  const maintCost   = safeMaintenance.reduce((s, m) => s + (m.cost ?? 0), 0);
 
   /* operations stats */
-  const dipApproved = dips.filter(d => d.status === 'approved').length;
-  const dipPending  = dips.filter(d => d.status === 'pending').length;
+  const dipApproved = safeDips.filter(d => d.status === 'approved').length;
+  const dipPending  = safeDips.filter(d => d.status === 'pending').length;
 
   /* HR stats */
-  const hrActive    = hrEmployees.filter(e => e.status === 'active').length;
-  const hrSuspended = hrEmployees.filter(e => e.status === 'suspended').length;
-  const hrInactive  = hrEmployees.filter(e => e.status === 'inactive').length;
+  const hrActive    = safeHrEmployees.filter(e => e.status === 'active').length;
+  const hrSuspended = safeHrEmployees.filter(e => e.status === 'suspended').length;
+  const hrInactive  = safeHrEmployees.filter(e => e.status === 'inactive').length;
   const deptMap: Record<string,number> = {};
-  hrEmployees.forEach(e => { deptMap[e.dept] = (deptMap[e.dept] || 0) + 1; });
+  safeHrEmployees.forEach(e => { deptMap[e.dept] = (deptMap[e.dept] || 0) + 1; });
 
   /* marketing stats */
-  const propPending  = priceProposals.filter(p => p.status === 'pending').length;
-  const propApproved = priceProposals.filter(p => p.status === 'approved').length;
-  const propRejected = priceProposals.filter(p => p.status === 'rejected').length;
+  const propPending  = safeProposals.filter(p => p.status === 'pending').length;
+  const propApproved = safeProposals.filter(p => p.status === 'approved').length;
+  const propRejected = safeProposals.filter(p => p.status === 'rejected').length;
 
   /* ─ PDF export ─ */
   function exportPdf() {
@@ -381,31 +393,31 @@ export default function ReportsScreen() {
     } else if (reportType === 'maintenance') {
       doPrint(buildPdf({ ...common, title: 'Maintenance Report',
         sections: [{ heading:'Maintenance Overview', rows: [
-          { label:'Total Items',    value: `${maintenance.length}` },
+          { label:'Total Items',    value: `${safeMaintenance.length}` },
           { label:'Open Items',     value: `${maintOpen}` },
           { label:'Done Items',     value: `${maintDone}` },
           { label:'Urgent Items',   value: `${maintUrgent}` },
           { label:'Total Cost',     value: nfmt(maintCost) },
         ]}],
         tables: [{ heading:'Maintenance Log', headers:['Title','Priority','Status','Cost','By','Date'],
-          rows: maintenance.map(m => [m.title, m.pri, m.st, m.cost ? nfmt(m.cost) : '—', m.by, fmtDate(m.date)]) }],
+          rows: safeMaintenance.map(m => [m.title, m.pri, m.st, m.cost ? nfmt(m.cost) : '—', m.by, fmtDate(m.date)]) }],
       }));
     } else if (reportType === 'operations') {
       doPrint(buildPdf({ ...common, title: 'Operations Report',
         sections: [{ heading:'Dip Records Overview', rows: [
-          { label:'Total Dip Records',   value: `${dips.length}` },
+          { label:'Total Dip Records',   value: `${safeDips.length}` },
           { label:'Approved Records',    value: `${dipApproved}` },
           { label:'Pending Approval',    value: `${dipPending}`  },
-          { label:'Total Deliveries',    value: `${deliveries.length}` },
+          { label:'Total Deliveries',    value: `${safeDeliveries.length}` },
         ]}],
         tables: [{ heading:'Recent Dip Records', headers:['Date','By','Status','Observations'],
-          rows: [...dips].sort((a,b)=>b.id-a.id).slice(0,30).map(d => [fmtDate(d.dt), d.by, d.status, d.obs || '—']) }],
+          rows: [...safeDips].sort((a,b)=>b.id-a.id).slice(0,30).map(d => [fmtDate(d.dt), d.by, d.status, d.obs || '—']) }],
       }));
     } else if (reportType === 'hr') {
       doPrint(buildPdf({ ...common, title: 'HR Report',
         sections: [
           { heading:'Staff Overview', rows: [
-            { label:'Total HR Records', value: `${hrEmployees.length}` },
+            { label:'Total HR Records', value: `${safeHrEmployees.length}` },
             { label:'Active',           value: `${hrActive}` },
             { label:'Suspended',        value: `${hrSuspended}` },
             { label:'Inactive',         value: `${hrInactive}` },
@@ -414,19 +426,19 @@ export default function ReportsScreen() {
           { heading:'Headcount by Department', rows: Object.entries(deptMap).map(([dept, count]) => ({ label: dept, value: `${count}` })) },
         ],
         tables: [{ heading:'Employee Records', headers:['Name','Role','Department','Status','Join Date'],
-          rows: hrEmployees.map(e => [e.name, e.role, e.dept, e.status, fmtDate(e.joinDate)]) }],
+          rows: safeHrEmployees.map(e => [e.name, e.role, e.dept, e.status, fmtDate(e.joinDate)]) }],
       }));
     } else if (reportType === 'marketing') {
       doPrint(buildPdf({ ...common, title: 'Marketing Report',
         sections: [{ heading:'Price Proposals Summary', rows: [
-          { label:'Total Proposals', value: `${priceProposals.length}` },
+          { label:'Total Proposals', value: `${safeProposals.length}` },
           { label:'Pending',         value: `${propPending}` },
           { label:'Approved',        value: `${propApproved}` },
           { label:'Rejected',        value: `${propRejected}` },
         ]}],
         tables: [
           { heading:'Price Proposals', headers:['Product','Current','Proposed','Change','Status','By','Date'],
-            rows: [...priceProposals].sort((a,b)=>b.id-a.id).map(p => [
+            rows: [...safeProposals].sort((a,b)=>b.id-a.id).map(p => [
               p.prod, nfmt(p.currentPrice), nfmt(p.proposedPrice),
               `${p.proposedPrice>p.currentPrice?'+':''}${nfmt(p.proposedPrice-p.currentPrice)}`,
               p.status, p.proposedBy, fmtDate(p.proposedAt),
@@ -453,11 +465,11 @@ export default function ReportsScreen() {
             { label:'Total Cost',   value: nfmt(maintCost) },
           ]},
           { heading:'HR', rows: [
-            { label:'Total Employees', value: `${hrEmployees.length}` },
+            { label:'Total Employees', value: `${safeHrEmployees.length}` },
             { label:'Active',          value: `${hrActive}` },
           ]},
           { heading:'Marketing', rows: [
-            { label:'Price Proposals', value: `${priceProposals.length}` },
+            { label:'Price Proposals', value: `${safeProposals.length}` },
             { label:'Pending',         value: `${propPending}` },
           ]},
         ],
@@ -479,8 +491,8 @@ export default function ReportsScreen() {
   return (
     <ScreenLayout title="Reports">
       {/* Branch selector */}
-      {!isMgr && branches.length > 0 ? (
-        <BranchBar branches={branches} selected={selBranch} onSelect={id => { setSelBranch(id); setGenerated(false); }} rc={rc} colors={colors} />
+      {!isMgr && safeBranches.length > 0 ? (
+        <BranchBar branches={safeBranches} selected={selBranch} onSelect={id => { setSelBranch(id); setGenerated(false); }} rc={rc} colors={colors} />
       ) : null}
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -775,8 +787,8 @@ export default function ReportsScreen() {
                     </View>
                   ))}
                 </View>
-                {maintenance.length === 0 ? <EmptyState icon="construct-outline" label="No maintenance records" colors={colors} /> : null}
-                {maintenance.map(m => (
+                {safeMaintenance.length === 0 ? <EmptyState icon="construct-outline" label="No maintenance records" colors={colors} /> : null}
+                {safeMaintenance.map(m => (
                   <View key={m.id} style={[styles.maintCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={[styles.priBadge, { backgroundColor: priBg(m.pri) }]}>
                       <Text style={[styles.priBadgeText, { color: priColor(m.pri) }]}>{m.pri}</Text>
@@ -801,10 +813,10 @@ export default function ReportsScreen() {
               <>
                 <View style={styles.kpiRow}>
                   {[
-                    { label:'Total Dips',   value: dips.length,  color:'#185FA5', icon:'layers-outline'         },
-                    { label:'Approved',     value: dipApproved,  color:'#27500A', icon:'checkmark-done-outline'  },
-                    { label:'Pending',      value: dipPending,   color:'#BA7517', icon:'time-outline'            },
-                    { label:'Deliveries',   value: deliveries.length, color:'#633806', icon:'cube-outline'       },
+                    { label:'Total Dips',   value: safeDips.length,        color:'#185FA5', icon:'layers-outline'         },
+                    { label:'Approved',     value: dipApproved,            color:'#27500A', icon:'checkmark-done-outline'  },
+                    { label:'Pending',      value: dipPending,             color:'#BA7517', icon:'time-outline'            },
+                    { label:'Deliveries',   value: safeDeliveries.length,  color:'#633806', icon:'cube-outline'            },
                   ].map(k => (
                     <View key={k.label} style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                       <Ionicons name={k.icon as any} size={13} color={k.color} />
@@ -814,8 +826,8 @@ export default function ReportsScreen() {
                   ))}
                 </View>
                 <SectionTitle label="Recent Dip Records" colors={colors} />
-                {dips.length === 0 ? <EmptyState icon="speedometer-outline" label="No dip records yet" colors={colors} /> : null}
-                {[...dips].sort((a,b)=>b.id-a.id).slice(0, 20).map(d => (
+                {safeDips.length === 0 ? <EmptyState icon="speedometer-outline" label="No dip records yet" colors={colors} /> : null}
+                {[...safeDips].sort((a,b)=>b.id-a.id).slice(0, 20).map(d => (
                   <View key={d.id} style={[styles.expCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={{ flex:1 }}>
                       <Text style={[{ fontSize:13, fontWeight:'700', color: colors.text }]}>{fmtDate(d.dt)}</Text>
@@ -834,7 +846,7 @@ export default function ReportsScreen() {
               <>
                 <View style={styles.kpiRow}>
                   {[
-                    { label:'Total',     value: hrEmployees.length, color:'#7B3FA8', icon:'people-outline'          },
+                    { label:'Total',     value: safeHrEmployees.length, color:'#7B3FA8', icon:'people-outline'          },
                     { label:'Active',    value: hrActive,           color:'#27500A', icon:'person-outline'           },
                     { label:'Suspended', value: hrSuspended,        color:'#791F1F', icon:'person-remove-outline'    },
                     { label:'Inactive',  value: hrInactive,         color:'#999',    icon:'person-outline'           },
@@ -857,7 +869,7 @@ export default function ReportsScreen() {
                             <Text style={[{ fontSize:13, fontWeight:'700', color:'#7B3FA8' }]}>{count} {count === 1 ? 'person' : 'people'}</Text>
                           </View>
                           <View style={[styles.progressBg, { backgroundColor: colors.border }]}>
-                            <View style={[styles.progressBar, { width:`${Math.round((count/hrEmployees.length)*100)}%` as any, backgroundColor:'#7B3FA8' }]} />
+                            <View style={[styles.progressBar, { width:`${safeHrEmployees.length > 0 ? Math.round((count/safeHrEmployees.length)*100) : 0}%` as any, backgroundColor:'#7B3FA8' }]} />
                           </View>
                         </View>
                       </View>
@@ -865,8 +877,8 @@ export default function ReportsScreen() {
                   </>
                 ) : null}
                 <SectionTitle label="Employee Records" colors={colors} />
-                {hrEmployees.length === 0 ? <EmptyState icon="people-outline" label="No employee records" colors={colors} /> : null}
-                {hrEmployees.map(e => (
+                {safeHrEmployees.length === 0 ? <EmptyState icon="people-outline" label="No employee records" colors={colors} /> : null}
+                {safeHrEmployees.map(e => (
                   <View key={e.id} style={[styles.expCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={{ flex:1 }}>
                       <Text style={[{ fontSize:13, fontWeight:'700', color: colors.text }]}>{e.name}</Text>
@@ -886,7 +898,7 @@ export default function ReportsScreen() {
               <>
                 <View style={styles.kpiRow}>
                   {[
-                    { label:'Proposals', value: priceProposals.length, color:'#C45C1A', icon:'megaphone-outline'   },
+                    { label:'Proposals', value: safeProposals.length, color:'#C45C1A', icon:'megaphone-outline'   },
                     { label:'Pending',   value: propPending,           color:'#BA7517', icon:'time-outline'         },
                     { label:'Approved',  value: propApproved,          color:'#27500A', icon:'checkmark-outline'    },
                     { label:'Rejected',  value: propRejected,          color:'#791F1F', icon:'close-outline'        },
@@ -899,8 +911,8 @@ export default function ReportsScreen() {
                   ))}
                 </View>
                 <SectionTitle label="Price Proposals" colors={colors} />
-                {priceProposals.length === 0 ? <EmptyState icon="megaphone-outline" label="No proposals yet" colors={colors} /> : null}
-                {[...priceProposals].sort((a,b)=>b.id-a.id).map(p => {
+                {safeProposals.length === 0 ? <EmptyState icon="megaphone-outline" label="No proposals yet" colors={colors} /> : null}
+                {[...safeProposals].sort((a,b)=>b.id-a.id).map(p => {
                   const pc = PROD_COLORS[p.prod] || rc;
                   const up = p.proposedPrice > p.currentPrice;
                   const statusColor = p.status==='approved'?'#27500A':p.status==='rejected'?'#791F1F':'#BA7517';

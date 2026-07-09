@@ -15,7 +15,7 @@ const PROD_ICONS: Record<string, string> = {
 };
 
 const STATUS_CFG = {
-  pending:  { label: 'Pending CEO approval', color: '#BA7517', bg: '#FAEEDA', icon: 'time' },
+  pending:  { label: 'Pending approval',     color: '#BA7517', bg: '#FAEEDA', icon: 'time' },
   approved: { label: 'Approved',             color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle' },
   rejected: { label: 'Rejected',             color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle' },
 } as const;
@@ -27,8 +27,8 @@ export default function PricesScreen() {
 
   const isCeo = role === 'ceo' || role === 'admin';
   const isMd  = role === 'md';
-  const canPropose = isMd;
-  const canApprove = isCeo;
+  const canApprove = isCeo || isMd;
+  const canPropose = isMd && !canApprove;
 
   /* ── propose modal (MD) ── */
   const [proposeProd, setProposeProd] = useState<keyof Prices | null>(null);
