@@ -160,5 +160,5 @@ overrides:
   esbuild: "0.28.1"
   # postcss <8.5.x has a known vulnerability (GHSA-qx2v-qp2m-jg93)
   postcss: "^8.5.16"
-  # uuid <9.0.0 has insufficient randomness (GHSA-w5hq-g745-h8pq); force all transitive deps to v9+
-  uuid: "^9.0.0"
+  # uuid <=9.x has insufficient randomness (GHSA-w5hq-g745-h8pq); force all transitive deps to v10+
+  uuid: "^10.0.0"
