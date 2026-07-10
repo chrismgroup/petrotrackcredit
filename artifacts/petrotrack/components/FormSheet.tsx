@@ -11,14 +11,16 @@ interface ModalSheetProps {
 }
 
 /**
- * Keyboard-safe modal bottom sheet for forms.
+ * Keyboard-safe modal bottom sheet.
  *
- * Fixes:
- *  1. animationType="none"  — eliminates keyboard flicker caused by "slide" animation competing
- *                             with the iOS keyboard slide-up animation.
- *  2. KeyboardAvoidingView  — automatically pushes sheet content above the keyboard on both
- *                             iOS (padding) and Android (height).
- *  3. Pressable backdrop    — dismisses on outside tap without swallowing inner touches.
+ * Layout (flex column, top→bottom):
+ *   KeyboardAvoidingView  flex:1
+ *     Pressable           flex:1  ← expands to fill space ABOVE the sheet only
+ *     children                    ← sheet card, sits at the bottom in normal flow
+ *
+ * The Pressable does NOT use absoluteFillObject, so it never sits behind the sheet
+ * content. This prevents backdrop taps from also firing when the user taps a
+ * TextInput, which was causing the keyboard to dismiss on every keystroke.
  */
 export function ModalSheet({ visible, onClose, children }: ModalSheetProps) {
   return (
@@ -29,12 +31,11 @@ export function ModalSheet({ visible, onClose, children }: ModalSheetProps) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onClose} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.kav}
-        pointerEvents="box-none"
       >
+        <Pressable style={styles.backdrop} onPress={onClose} />
         {children}
       </KeyboardAvoidingView>
     </Modal>
@@ -42,14 +43,11 @@ export function ModalSheet({ visible, onClose, children }: ModalSheetProps) {
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
   kav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    flex: 1,
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
 });
