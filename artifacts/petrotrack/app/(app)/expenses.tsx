@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert, Modal, ScrollView,
+  Alert, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
+import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { Expense, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -331,9 +332,7 @@ export default function ExpensesScreen() {
       </ScrollView>
 
       {/* Add / Edit Modal */}
-      <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowForm(false)} />
+      <ModalSheet visible={showForm} onClose={() => setShowForm(false)}>
           <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>
@@ -350,13 +349,10 @@ export default function ExpensesScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </View>
-      </Modal>
+      </ModalSheet>
 
       {/* Acc Forward to MD Modal */}
-      <Modal visible={fwdTarget !== null} transparent animationType="fade" onRequestClose={() => setFwdTarget(null)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setFwdTarget(null)} />
+      <ModalSheet visible={fwdTarget !== null} onClose={() => setFwdTarget(null)}>
           <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={[styles.fwdIconBox, { backgroundColor: '#E6F1FB' }]}>
@@ -385,8 +381,7 @@ export default function ExpensesScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+      </ModalSheet>
     </ScreenLayout>
   );
 }

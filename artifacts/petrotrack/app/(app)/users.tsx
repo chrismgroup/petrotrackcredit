@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert, Modal, ScrollView, StyleSheet, Text, TextInput,
+  Alert, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 
+import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, ROLE_LABELS, UserAccount, useApp, type Role } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -185,7 +186,7 @@ export default function UsersScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* ── PENDING TAB ── */}
         {tab === 'pending' && (
@@ -337,9 +338,7 @@ export default function UsersScreen() {
       </ScrollView>
 
       {/* ── APPROVE MODAL ── */}
-      <Modal visible={!!approving} transparent animationType="slide" onRequestClose={() => setApproving(null)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setApproving(null)} />
+      <ModalSheet visible={!!approving} onClose={() => setApproving(null)}>
           <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <View style={styles.modalHeader}>
               <View style={[styles.modalIconBox, { backgroundColor: '#1a6e3c22' }]}>
@@ -437,13 +436,10 @@ export default function UsersScreen() {
               </View>
             </ScrollView>
           </View>
-        </View>
-      </Modal>
+      </ModalSheet>
 
       {/* ── EDIT ACCOUNT MODAL (admin only) ── */}
-      <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setEditing(null)} />
+      <ModalSheet visible={!!editing} onClose={() => setEditing(null)}>
           {editing && (
             <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
               <View style={styles.modalHeader}>
@@ -574,13 +570,10 @@ export default function UsersScreen() {
               </ScrollView>
             </View>
           )}
-        </View>
-      </Modal>
+      </ModalSheet>
 
       {/* ── VIEW ACCOUNT MODAL (non-admin) ── */}
-      <Modal visible={!!viewAcc} transparent animationType="slide" onRequestClose={() => setViewAcc(null)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setViewAcc(null)} />
+      <ModalSheet visible={!!viewAcc} onClose={() => setViewAcc(null)}>
           {viewAcc && (
             <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
               <View style={styles.modalHeader}>
@@ -612,8 +605,7 @@ export default function UsersScreen() {
               ))}
             </View>
           )}
-        </View>
-      </Modal>
+      </ModalSheet>
     </ScreenLayout>
   );
 }

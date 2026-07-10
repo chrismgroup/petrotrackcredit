@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert, Modal,
+  Alert,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
@@ -223,9 +224,7 @@ export default function BranchesScreen() {
       </ScrollView>
 
       {/* ── Add Branch Modal ── */}
-      <Modal visible={showAddForm} transparent animationType="slide" onRequestClose={() => setShowAddForm(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAddForm(false)} />
+      <ModalSheet visible={showAddForm} onClose={() => setShowAddForm(false)}>
           <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Add Branch</Text>
             <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none" showsVerticalScrollIndicator={false}>
@@ -251,13 +250,10 @@ export default function BranchesScreen() {
               </View>
             </ScrollView>
           </View>
-        </View>
-      </Modal>
+      </ModalSheet>
 
       {/* ── Edit Branch Modal ── */}
-      <Modal visible={editingId !== null} transparent animationType="slide" onRequestClose={() => setEditingId(null)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setEditingId(null)} />
+      <ModalSheet visible={editingId !== null} onClose={() => setEditingId(null)}>
           <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Branch</Text>
@@ -291,8 +287,7 @@ export default function BranchesScreen() {
               </View>
             </ScrollView>
           </View>
-        </View>
-      </Modal>
+      </ModalSheet>
     </ScreenLayout>
   );
 }
