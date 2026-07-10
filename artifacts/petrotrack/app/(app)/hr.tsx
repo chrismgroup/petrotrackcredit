@@ -2,10 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import React, { useState } from 'react';
 import {
-  Alert, Modal, ScrollView, StyleSheet, Text, TextInput,
+  Alert, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 
+import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   GeneratedLetter, HRDocType, HRDocStatus, HREmployee, OnboardingStatus,
@@ -783,9 +784,7 @@ export default function HRScreen() {
       )}
 
       {/* ── Generate Letter Modal ── */}
-      <Modal visible={!!letterModal} transparent animationType="slide" onRequestClose={() => setLetterModal(null)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setLetterModal(null)} />
+      <ModalSheet visible={!!letterModal} onClose={() => setLetterModal(null)}>
           <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>
@@ -849,12 +848,10 @@ export default function HRScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </View>
-      </Modal>
+      </ModalSheet>
 
       {/* ── View Letter Modal ── */}
-      <Modal visible={!!viewLetter} transparent animationType="slide" onRequestClose={() => setViewLetter(null)}>
-        <View style={[styles.overlay, { justifyContent: 'flex-end' }]}>
+      <ModalSheet visible={!!viewLetter} onClose={() => setViewLetter(null)}>
           <View style={[styles.sheet, { backgroundColor: colors.background, maxHeight: '90%' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <Ionicons name={viewLetter?.type === 'promotion' ? 'ribbon' : 'document-text'} size={18}
@@ -879,8 +876,7 @@ export default function HRScreen() {
               <Text style={[styles.submitBtnText, { color: colors.text }]}>Close</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+      </ModalSheet>
     </ScreenLayout>
   );
 }

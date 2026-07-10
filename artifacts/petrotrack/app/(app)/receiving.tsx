@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { Delivery, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
@@ -564,9 +565,7 @@ export default function ReceivingScreen() {
       </ScrollView>
 
       {/* Add Modal */}
-      <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowForm(false)} />
+      <ModalSheet visible={showForm} onClose={() => setShowForm(false)}>
           <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Record Product Receipt</Text>
             <FormFields f={form} setF={setForm} roleColor={roleColor} sellPrice={(prices as any)[form.prod] ?? 0} />
@@ -579,13 +578,10 @@ export default function ReceivingScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </View>
-      </Modal>
+      </ModalSheet>
 
       {/* Edit Modal */}
-      <Modal visible={editTarget !== null} transparent animationType="slide" onRequestClose={() => setEditTarget(null)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setEditTarget(null)} />
+      <ModalSheet visible={editTarget !== null} onClose={() => setEditTarget(null)}>
           <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
             <View style={styles.editHeader}>
               <View style={[styles.editIconBox, { backgroundColor: '#E8F0FC' }]}>
@@ -607,13 +603,10 @@ export default function ReceivingScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </View>
-      </Modal>
+      </ModalSheet>
 
       {/* Accountant Date-Only Edit Modal */}
-      <Modal visible={dateTarget !== null} transparent animationType="fade" onRequestClose={() => setDateTarget(null)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setDateTarget(null)} />
+      <ModalSheet visible={dateTarget !== null} onClose={() => setDateTarget(null)}>
           <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
             <View style={styles.editHeader}>
               <View style={[styles.editIconBox, { backgroundColor: '#E6F1FB' }]}>
@@ -651,13 +644,10 @@ export default function ReceivingScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+      </ModalSheet>
 
       {/* CEO Reject Modal */}
-      <Modal visible={rejectTarget !== null} transparent animationType="fade" onRequestClose={() => setRejectTarget(null)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setRejectTarget(null)} />
+      <ModalSheet visible={rejectTarget !== null} onClose={() => setRejectTarget(null)}>
           <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
             <View style={styles.editHeader}>
               <View style={[styles.editIconBox, { backgroundColor: '#FCEBEB' }]}>
@@ -687,8 +677,7 @@ export default function ReceivingScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+      </ModalSheet>
     </ScreenLayout>
   );
 }
