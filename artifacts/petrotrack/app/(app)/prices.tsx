@@ -1,69 +1,133 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert, KeyboardAvoidingView, Platform, Pressable,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+} from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { PriceProposal, Prices, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PRODUCTS: (keyof Prices)[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
-const PROD_COLORS: Record<string, string> = {
-  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11',
-};
-const PROD_ICONS: Record<string, string> = {
-  PMS: 'flame', AGO: 'car', DPK: 'bulb', LPG: 'thermometer', 'Lube Oil': 'settings',
+
+const PROD_META: Record<string, { color: string; icon: string; unit: string }> = {
+  PMS:        { color: '#1a6e3c', icon: 'flame',       unit: '/L' },
+  AGO:        { color: '#185FA5', icon: 'car',         unit: '/L' },
+  DPK:        { color: '#BA7517', icon: 'bulb-outline',unit: '/L' },
+  LPG:        { color: '#0F6E56', icon: 'thermometer', unit: '/kg' },
+  'Lube Oil': { color: '#5c3d11', icon: 'settings',    unit: '/L' },
 };
 
 const STATUS_CFG = {
-  pending:  { label: 'Pending approval',     color: '#BA7517', bg: '#FAEEDA', icon: 'time' },
-  approved: { label: 'Approved',             color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle' },
-  rejected: { label: 'Rejected',             color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle' },
+  pending:  { label: 'Pending', color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline'           },
+  approved: { label: 'Approved', color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle-outline'},
+  rejected: { label: 'Rejected', color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle-outline'  },
 } as const;
 
+/* ─── Modal shell (iOS + Android safe) ─────────────────── */
+function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
+  if (!visible) return null;
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      <Pressable style={sh.overlay} onPress={onClose} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={sh.kvWrapper}
+        pointerEvents="box-none"
+      >
+        {children}
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
+const sh = StyleSheet.create({
+  overlay:   { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  kvWrapper: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+});
+
+/* ═══════════════════════════════════════════════════════════
+   SCREEN
+═══════════════════════════════════════════════════════════ */
 export default function PricesScreen() {
-  const { role, userName, prices, priceHistory, priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal } = useApp();
+  const {
+    role, userName,
+    prices, priceHistory, priceProposals,
+    updatePrice, addPriceProposal,
+    approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
+  } = useApp();
   const colors = useColors();
-  const roleColor = ROLE_COLORS[role || 'md'] || colors.primary;
+  const rc = ROLE_COLORS[role || 'md'] || colors.primary;
 
-  const isCeo = role === 'ceo' || role === 'admin';
-  const isMd  = role === 'md';
-  const canApprove = isCeo || isMd;
-  const canPropose = isMd && !canApprove;
+  /* Role capabilities */
+  const canSetDirect = role === 'ceo' || role === 'admin' || role === 'md';
+  const canApprove   = role === 'ceo' || role === 'admin';
+  const canPropose   = !canSetDirect;
 
-  /* ── propose modal (MD) ── */
-  const [proposeProd, setProposeProd] = useState<keyof Prices | null>(null);
+  /* ── Set-price sheet (CEO / MD / admin) ── */
+  const [setProd,  setSetProd]  = useState<keyof Prices | null>(null);
+  const [setDraft, setSetDraft] = useState('');
+
+  function openSet(prod: keyof Prices) {
+    setSetProd(prod);
+    setSetDraft(((prices as any)[prod] ?? 0) > 0 ? String((prices as any)[prod]) : '');
+  }
+  function handleSet() {
+    if (!setProd) return;
+    const val = parseFloat(setDraft);
+    if (!setDraft || isNaN(val) || val <= 0) {
+      Alert.alert('Invalid price', 'Enter a valid price greater than 0.');
+      return;
+    }
+    const current = (prices as any)[setProd] ?? 0;
+    if (val === current) {
+      Alert.alert('No change', 'The new price is the same as the current price.');
+      return;
+    }
+    updatePrice(setProd, val);
+    setSetProd(null);
+    Alert.alert('Price updated', `${setProd} price set to ₦${val.toLocaleString()}/L`);
+  }
+
+  /* ── Propose sheet (other roles) ── */
+  const [proposeProd,  setProposeProd]  = useState<keyof Prices | null>(null);
   const [proposeDraft, setProposeDraft] = useState('');
 
   function openPropose(prod: keyof Prices) { setProposeProd(prod); setProposeDraft(''); }
   function handlePropose() {
     if (!proposeProd) return;
     const val = parseFloat(proposeDraft);
-    if (!proposeDraft || isNaN(val) || val <= 0) { Alert.alert('Invalid', 'Enter a valid price greater than 0.'); return; }
+    if (!proposeDraft || isNaN(val) || val <= 0) {
+      Alert.alert('Invalid price', 'Enter a valid price greater than 0.');
+      return;
+    }
     const current = (prices as any)[proposeProd] ?? 0;
-    if (val === current) { Alert.alert('No change', 'Proposed price is the same as the current price.'); return; }
+    if (val === current) {
+      Alert.alert('No change', 'Proposed price is the same as the current price.');
+      return;
+    }
     addPriceProposal(proposeProd, val);
     setProposeProd(null);
-    Alert.alert('Submitted', `Your price proposal for ${proposeProd} has been sent to the CEO for approval.`);
+    Alert.alert('Proposal submitted', `Your ${proposeProd} price proposal has been sent for approval.`);
   }
 
-  /* ── reject modal (CEO) ── */
-  const [rejectId, setRejectId] = useState<number | null>(null);
-  const [rejectNote, setRejectNote] = useState('');
+  /* ── Approve / update / reject (CEO / admin) ── */
+  const [rejectTarget, setRejectTarget] = useState<PriceProposal | null>(null);
+  const [rejectNote,   setRejectNote]   = useState('');
 
-  /* ── update modal (CEO) ── */
-  const [updateProposal, setUpdateProposal] = useState<PriceProposal | null>(null);
-  const [updateDraft, setUpdateDraft] = useState('');
+  const [updateTarget, setUpdateTarget] = useState<PriceProposal | null>(null);
+  const [updateDraft,  setUpdateDraft]  = useState('');
 
-  function openUpdate(p: PriceProposal) {
-    setUpdateProposal(p);
-    setUpdateDraft(p.proposedPrice.toString());
-  }
+  function openUpdate(p: PriceProposal) { setUpdateTarget(p); setUpdateDraft(String(p.proposedPrice)); }
   function handleUpdate() {
-    if (!updateProposal) return;
+    if (!updateTarget) return;
     const val = parseFloat(updateDraft);
-    if (!updateDraft || isNaN(val) || val <= 0) { Alert.alert('Invalid', 'Enter a valid price greater than 0.'); return; }
-    updateAndApprovePriceProposal(updateProposal.id, val);
-    setUpdateProposal(null);
+    if (!updateDraft || isNaN(val) || val <= 0) {
+      Alert.alert('Invalid price', 'Enter a valid price greater than 0.');
+      return;
+    }
+    updateAndApprovePriceProposal(updateTarget.id, val);
+    setUpdateTarget(null);
   }
 
   function handleApprove(p: PriceProposal) {
@@ -76,179 +140,205 @@ export default function PricesScreen() {
       ]
     );
   }
+
   function handleReject() {
-    if (rejectId === null) return;
-    rejectPriceProposal(rejectId, rejectNote || undefined);
-    setRejectId(null); setRejectNote('');
+    if (!rejectTarget) return;
+    rejectPriceProposal(rejectTarget.id, rejectNote || undefined);
+    setRejectTarget(null);
+    setRejectNote('');
   }
 
-  const pendingProposals  = priceProposals.filter(p => p.status === 'pending');
-  const resolvedProposals = priceProposals.filter(p => p.status !== 'pending').slice(0, 10);
-  const recentHistory     = [...priceHistory].sort((a, b) => b.id - a.id).slice(0, 15);
+  const pending  = priceProposals.filter(p => p.status === 'pending');
+  const resolved = priceProposals.filter(p => p.status !== 'pending').slice(0, 10);
+  const history  = [...priceHistory].sort((a, b) => b.id - a.id).slice(0, 15);
 
-  function myPendingFor(prod: string) {
+  function myPending(prod: string) {
     return priceProposals.find(p => p.prod === prod && p.status === 'pending' && p.proposedBy === userName);
   }
 
+  /* ════════════════════════════════════════════════════════
+     RENDER
+  ════════════════════════════════════════════════════════ */
   return (
     <ScreenLayout title="Selling Prices">
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* CEO: pending approvals banner */}
-        {canApprove && pendingProposals.length > 0 && (
-          <View style={[styles.banner, { backgroundColor: '#FAEEDA', borderColor: '#BA7517' }]}>
-            <Ionicons name="time" size={16} color="#BA7517" />
-            <Text style={[styles.bannerText, { color: '#BA7517' }]}>
-              {pendingProposals.length} price proposal{pendingProposals.length > 1 ? 's' : ''} awaiting your approval
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* Pending banner */}
+        {canApprove && pending.length > 0 ? (
+          <View style={[s.banner, { backgroundColor: '#FAEEDA', borderColor: '#BA7517' }]}>
+            <Ionicons name="time-outline" size={16} color="#BA7517" />
+            <Text style={[s.bannerTxt, { color: '#BA7517' }]}>
+              {pending.length} price proposal{pending.length > 1 ? 's' : ''} awaiting your approval
             </Text>
           </View>
-        )}
+        ) : null}
 
-        {/* Current prices grid */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Current Prices</Text>
-        <View style={styles.grid}>
-          {PRODUCTS.map(prod => {
-            const price = (prices as any)[prod] ?? 0;
-            const pc    = PROD_COLORS[prod] || roleColor;
-            const myPending = myPendingFor(prod);
-            return (
-              <View key={prod} style={[styles.priceCard, { backgroundColor: colors.surface, borderColor: myPending ? '#BA7517' : colors.border }]}>
-                <View style={[styles.prodIcon, { backgroundColor: pc + '18' }]}>
-                  <Ionicons name={(PROD_ICONS[prod] || 'pricetag') as any} size={20} color={pc} />
-                </View>
-                <Text style={[styles.prodName, { color: colors.textMuted }]}>{prod}</Text>
-                <Text style={[styles.prodPrice, { color: price > 0 ? colors.text : colors.textSubtle }]}>
-                  {price > 0 ? fmt(price) : '—'}
-                </Text>
-                <Text style={[styles.perL, { color: colors.textSubtle }]}>/litre</Text>
-                {canPropose && !myPending && (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: pc + '15', borderColor: pc + '40' }]}
-                    onPress={() => openPropose(prod)}
-                  >
-                    <Ionicons name="send" size={12} color={pc} />
-                    <Text style={[styles.actionBtnText, { color: pc }]}>Propose</Text>
-                  </TouchableOpacity>
-                )}
-                {canPropose && myPending && (
-                  <View style={[styles.pendingBadge, { backgroundColor: '#FAEEDA' }]}>
-                    <Ionicons name="time" size={11} color="#BA7517" />
-                    <Text style={[styles.pendingText, { color: '#BA7517' }]}>₦{myPending.proposedPrice.toLocaleString()} pending</Text>
-                  </View>
-                )}
+        {/* ── Current prices ── */}
+        <Text style={[s.secLabel, { color: colors.textMuted }]}>Current Selling Prices</Text>
+        {PRODUCTS.map(prod => {
+          const price = (prices as any)[prod] ?? 0;
+          const meta  = PROD_META[prod];
+          const mp    = myPending(prod);
+          return (
+            <View key={prod} style={[s.priceRow, { backgroundColor: colors.surface, borderColor: mp ? '#BA7517' : colors.border }]}>
+              <View style={[s.prodIconWrap, { backgroundColor: meta.color + '18' }]}>
+                <Ionicons name={meta.icon as any} size={20} color={meta.color} />
               </View>
-            );
-          })}
-        </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.prodName, { color: colors.text }]}>{prod}</Text>
+                <Text style={[s.prodUnit, { color: colors.textSubtle }]}>{meta.unit}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <Text style={[s.prodPrice, { color: price > 0 ? colors.text : colors.textSubtle }]}>
+                  {price > 0 ? `₦${price.toLocaleString()}` : '—'}
+                </Text>
+                {/* CEO / MD / admin: set price directly */}
+                {canSetDirect ? (
+                  <TouchableOpacity
+                    onPress={() => openSet(prod)}
+                    style={[s.actionBtn, { backgroundColor: meta.color + '15', borderColor: meta.color + '50' }]}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="pencil" size={12} color={meta.color} />
+                    <Text style={[s.actionBtnTxt, { color: meta.color }]}>Set Price</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {/* Other roles: propose */}
+                {canPropose && !mp ? (
+                  <TouchableOpacity
+                    onPress={() => openPropose(prod)}
+                    style={[s.actionBtn, { backgroundColor: meta.color + '15', borderColor: meta.color + '50' }]}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="send-outline" size={12} color={meta.color} />
+                    <Text style={[s.actionBtnTxt, { color: meta.color }]}>Propose</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {/* Other roles: pending badge */}
+                {canPropose && mp ? (
+                  <View style={[s.pendingBadge, { backgroundColor: '#FAEEDA' }]}>
+                    <Ionicons name="time-outline" size={11} color="#BA7517" />
+                    <Text style={[s.pendingTxt, { color: '#BA7517' }]}>₦{mp.proposedPrice.toLocaleString()} pending</Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          );
+        })}
 
-        {/* CEO: pending proposals to approve / update / reject */}
-        {canApprove && pendingProposals.length > 0 && (
+        {/* ── Pending approvals (CEO / admin) ── */}
+        {canApprove && pending.length > 0 ? (
           <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Pending Approvals</Text>
-            {pendingProposals.map(p => {
-              const pc  = PROD_COLORS[p.prod] || roleColor;
-              const up  = p.proposedPrice > p.currentPrice;
+            <Text style={[s.secLabel, { color: colors.textMuted }]}>Pending Approvals</Text>
+            {pending.map(p => {
+              const meta = PROD_META[p.prod] ?? PROD_META.PMS;
+              const up   = p.proposedPrice > p.currentPrice;
               return (
-                <View key={p.id} style={[styles.proposalCard, { backgroundColor: colors.surface, borderColor: '#BA7517' }]}>
-                  <View style={styles.proposalTop}>
-                    <View style={[styles.prodBadge, { backgroundColor: pc + '18' }]}>
-                      <Text style={[styles.prodBadgeText, { color: pc }]}>{p.prod}</Text>
+                <View key={p.id} style={[s.proposalCard, { backgroundColor: colors.surface, borderColor: '#BA7517' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={[s.prodIconWrap, { backgroundColor: meta.color + '18' }]}>
+                      <Ionicons name={meta.icon as any} size={18} color={meta.color} />
                     </View>
-                    <View style={styles.proposalPrices}>
-                      <Text style={[styles.propOld, { color: colors.textMuted }]}>₦{p.currentPrice.toLocaleString()}</Text>
-                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={14} color={up ? '#27500A' : '#791F1F'} />
-                      <Text style={[styles.propNew, { color: colors.text }]}>₦{p.proposedPrice.toLocaleString()}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.prodName, { color: colors.text }]}>{p.prod}</Text>
+                      <Text style={[s.prodUnit, { color: colors.textSubtle }]}>by {p.proposedBy} · {fmtDateTime(p.proposedAt)}</Text>
                     </View>
-                    <View style={[styles.diffBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB' }]}>
-                      <Text style={[styles.diffText, { color: up ? '#27500A' : '#791F1F' }]}>
-                        {up ? '+' : ''}₦{(p.proposedPrice - p.currentPrice).toLocaleString()}
-                      </Text>
+                    <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Text style={[s.strikePrice, { color: colors.textMuted }]}>₦{p.currentPrice.toLocaleString()}</Text>
+                        <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={13} color={up ? '#27500A' : '#791F1F'} />
+                        <Text style={[s.propNew, { color: colors.text }]}>₦{p.proposedPrice.toLocaleString()}</Text>
+                      </View>
+                      <View style={[s.diffBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB' }]}>
+                        <Text style={[s.diffTxt, { color: up ? '#27500A' : '#791F1F' }]}>
+                          {up ? '+' : ''}₦{(p.proposedPrice - p.currentPrice).toLocaleString()}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                  <Text style={[styles.proposalMeta, { color: colors.textSubtle }]}>
-                    Proposed by {p.proposedBy} · {fmtDateTime(p.proposedAt)}
-                  </Text>
-                  <View style={styles.proposalBtns}>
+                  <View style={s.proposalBtns}>
                     <TouchableOpacity
-                      style={[styles.rejectBtn, { borderColor: '#791F1F' }]}
-                      onPress={() => { setRejectId(p.id); setRejectNote(''); }}
+                      style={[s.propBtn, { borderColor: '#791F1F' }]}
+                      onPress={() => { setRejectTarget(p); setRejectNote(''); }}
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                     >
                       <Ionicons name="close" size={14} color="#791F1F" />
-                      <Text style={[styles.rejectBtnText, { color: '#791F1F' }]}>Reject</Text>
+                      <Text style={[s.propBtnTxt, { color: '#791F1F' }]}>Reject</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.updateBtn, { borderColor: '#185FA5' }]}
+                      style={[s.propBtn, { borderColor: '#185FA5' }]}
                       onPress={() => openUpdate(p)}
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                     >
                       <Ionicons name="create-outline" size={14} color="#185FA5" />
-                      <Text style={[styles.updateBtnText, { color: '#185FA5' }]}>Update</Text>
+                      <Text style={[s.propBtnTxt, { color: '#185FA5' }]}>Adjust</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.approveBtn, { backgroundColor: '#27500A' }]}
+                      style={[s.propBtnFill, { backgroundColor: '#27500A' }]}
                       onPress={() => handleApprove(p)}
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                     >
                       <Ionicons name="checkmark" size={14} color="#fff" />
-                      <Text style={styles.approveBtnText}>Approve</Text>
+                      <Text style={s.propBtnFillTxt}>Approve</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               );
             })}
           </>
-        )}
+        ) : null}
 
-        {/* Resolved proposals (recent) */}
-        {resolvedProposals.length > 0 && (
+        {/* ── Recent decisions ── */}
+        {resolved.length > 0 ? (
           <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Decisions</Text>
-            {resolvedProposals.map(p => {
-              const pc  = PROD_COLORS[p.prod] || roleColor;
-              const cfg = STATUS_CFG[p.status];
+            <Text style={[s.secLabel, { color: colors.textMuted }]}>Recent Decisions</Text>
+            {resolved.map(p => {
+              const meta = PROD_META[p.prod] ?? PROD_META.PMS;
+              const cfg  = STATUS_CFG[p.status];
               return (
-                <View key={p.id} style={[styles.resolvedRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={[styles.prodBadge, { backgroundColor: pc + '18' }]}>
-                    <Text style={[styles.prodBadgeText, { color: pc }]}>{p.prod}</Text>
+                <View key={p.id} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[s.prodIconWrap, { backgroundColor: meta.color + '18' }]}>
+                    <Ionicons name={meta.icon as any} size={16} color={meta.color} />
                   </View>
-                  <View style={styles.resolvedMid}>
-                    <Text style={[styles.resolvedPrices, { color: colors.text }]}>
-                      ₦{p.currentPrice.toLocaleString()} → ₦{p.proposedPrice.toLocaleString()}/L
-                    </Text>
-                    <Text style={[styles.resolvedMeta, { color: colors.textSubtle }]}>
-                      by {p.proposedBy} · {fmtDateTime(p.proposedAt)}
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={[s.prodName, { color: colors.text }]}>{p.prod}</Text>
+                    <Text style={[s.prodUnit, { color: colors.textSubtle }]}>
+                      ₦{p.currentPrice.toLocaleString()} → ₦{p.proposedPrice.toLocaleString()} · by {p.proposedBy}
                     </Text>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
+                  <View style={[s.statusBadge, { backgroundColor: cfg.bg }]}>
                     <Ionicons name={cfg.icon as any} size={12} color={cfg.color} />
-                    <Text style={[styles.statusText, { color: cfg.color }]}>{p.status}</Text>
+                    <Text style={[s.statusTxt, { color: cfg.color }]}>{cfg.label}</Text>
                   </View>
                 </View>
               );
             })}
           </>
-        )}
+        ) : null}
 
-        {/* Price change history */}
-        {recentHistory.length > 0 && (
+        {/* ── Price history ── */}
+        {history.length > 0 ? (
           <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Price History</Text>
-            {recentHistory.map(h => {
-              const pc = PROD_COLORS[h.prod] || roleColor;
-              const up = h.newPrice > h.oldPrice;
+            <Text style={[s.secLabel, { color: colors.textMuted }]}>Price History</Text>
+            {history.map(h => {
+              const meta = PROD_META[h.prod] ?? PROD_META.PMS;
+              const up   = h.newPrice > h.oldPrice;
               return (
-                <View key={h.id} style={[styles.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={[styles.histIcon, { backgroundColor: pc + '18' }]}>
-                    <Text style={[styles.histProd, { color: pc }]}>{h.prod}</Text>
+                <View key={h.id} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[s.prodIconWrap, { backgroundColor: meta.color + '18' }]}>
+                    <Ionicons name={meta.icon as any} size={16} color={meta.color} />
                   </View>
-                  <View style={styles.histMid}>
-                    <View style={styles.histPrices}>
-                      <Text style={[styles.histOld, { color: colors.textMuted }]}>₦{h.oldPrice.toLocaleString()}</Text>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[s.strikePrice, { color: colors.textMuted }]}>₦{h.oldPrice.toLocaleString()}</Text>
                       <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
-                      <Text style={[styles.histNew, { color: colors.text }]}>₦{h.newPrice.toLocaleString()}</Text>
+                      <Text style={[s.propNew, { color: colors.text }]}>₦{h.newPrice.toLocaleString()}</Text>
                     </View>
-                    <Text style={[styles.histBy, { color: colors.textSubtle }]}>by {h.by} · {fmtDateTime(h.dt)}</Text>
+                    <Text style={[s.prodUnit, { color: colors.textSubtle }]}>{h.prod} · by {h.by} · {fmtDateTime(h.dt)}</Text>
                   </View>
-                  <View style={[styles.changeBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB', borderColor: up ? '#27500A' : '#791F1F' }]}>
-                    <Text style={[styles.changeText, { color: up ? '#27500A' : '#791F1F' }]}>
+                  <View style={[s.diffBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB', borderWidth: 1, borderColor: up ? '#27500A30' : '#791F1F30' }]}>
+                    <Text style={[s.diffTxt, { color: up ? '#27500A' : '#791F1F' }]}>
                       {up ? '+' : ''}₦{(h.newPrice - h.oldPrice).toLocaleString()}
                     </Text>
                   </View>
@@ -256,212 +346,244 @@ export default function PricesScreen() {
               );
             })}
           </>
-        )}
+        ) : null}
 
-        {recentHistory.length === 0 && pendingProposals.length === 0 && (
-          <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {history.length === 0 && pending.length === 0 ? (
+          <View style={[s.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="pricetag-outline" size={36} color={colors.textSubtle} />
-            <Text style={[styles.emptyText, { color: colors.textMuted }]}>No price activity yet</Text>
+            <Text style={[s.emptyTxt, { color: colors.textMuted }]}>No price activity yet</Text>
           </View>
-        )}
+        ) : null}
 
+        <View style={{ height: 32 }} />
       </ScrollView>
 
-      {/* MD: Propose change modal */}
-      <Modal visible={proposeProd !== null} transparent animationType="fade">
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setProposeProd(null)} />
-          <View style={[styles.modal, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <View style={[styles.modalIcon, { backgroundColor: (PROD_COLORS[proposeProd || ''] || roleColor) + '18' }]}>
-                <Ionicons name="send" size={20} color={PROD_COLORS[proposeProd || ''] || roleColor} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>Propose {proposeProd} Price</Text>
-                <Text style={[styles.modalSub, { color: colors.textMuted }]}>
-                  Current: {proposeProd ? fmt((prices as any)[proposeProd] || 0) : '—'}/L · Requires CEO approval
-                </Text>
-              </View>
+      {/* ══ Set Price Sheet (CEO / MD / admin) ══ */}
+      <Sheet visible={setProd !== null} onClose={() => setSetProd(null)}>
+        <View style={[s.sheet, { backgroundColor: colors.surface }]}>
+          <View style={s.sheetHandle} />
+          <View style={s.sheetHeader}>
+            <View style={[s.sheetIcon, { backgroundColor: (PROD_META[setProd || 'PMS']?.color ?? rc) + '18' }]}>
+              <Ionicons name={(PROD_META[setProd || 'PMS']?.icon ?? 'pricetag') as any} size={22} color={PROD_META[setProd || 'PMS']?.color ?? rc} />
             </View>
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Proposed Price per Litre (₦)</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              keyboardType="numeric"
-              value={proposeDraft}
-              onChangeText={setProposeDraft}
-              placeholder="e.g. 950"
-              placeholderTextColor={colors.textSubtle}
-              autoFocus
-            />
-            <Text style={[styles.approvalNote, { color: colors.textMuted, backgroundColor: colors.background }]}>
-              <Ionicons name="information-circle-outline" size={13} color={colors.textMuted} />
-              {' '}This proposal will be sent to the CEO for approval before the price changes.
-            </Text>
-            <View style={styles.modalBtns}>
-              <TouchableOpacity style={[styles.cancelBtn, { borderColor: colors.border }]} onPress={() => setProposeProd(null)}>
-                <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveBtn, { backgroundColor: PROD_COLORS[proposeProd || ''] || roleColor }]}
-                onPress={handlePropose}
-              >
-                <Ionicons name="send" size={15} color="#fff" />
-                <Text style={styles.saveBtnText}>Submit for Approval</Text>
-              </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.sheetTitle, { color: colors.text }]}>Set {setProd} Price</Text>
+              <Text style={[s.sheetSub, { color: colors.textMuted }]}>
+                Current: {setProd ? (((prices as any)[setProd] ?? 0) > 0 ? `₦${((prices as any)[setProd]).toLocaleString()}/L` : 'Not set') : '—'}
+              </Text>
             </View>
           </View>
+          <Text style={[s.inputLabel, { color: colors.textMuted }]}>New Selling Price (₦ per litre)</Text>
+          <TextInput
+            style={[s.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+            keyboardType="decimal-pad"
+            returnKeyType="done"
+            value={setDraft}
+            onChangeText={setSetDraft}
+            onSubmitEditing={handleSet}
+            placeholder="e.g. 950"
+            placeholderTextColor={colors.textSubtle}
+            autoFocus
+            selectTextOnFocus
+          />
+          {role === 'md' ? (
+            <View style={[s.noteBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
+              <Text style={[s.noteTxt, { color: colors.textMuted }]}>As MD, you can set prices directly. This takes effect immediately.</Text>
+            </View>
+          ) : null}
+          <View style={s.sheetBtns}>
+            <TouchableOpacity style={[s.btnOutline, { borderColor: colors.border }]} onPress={() => setSetProd(null)}>
+              <Text style={[s.btnOutlineTxt, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.btnFill, { backgroundColor: PROD_META[setProd || 'PMS']?.color ?? rc }]}
+              onPress={handleSet}
+            >
+              <Ionicons name="checkmark-circle" size={16} color="#fff" />
+              <Text style={s.btnFillTxt}>Update Price</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </Modal>
+      </Sheet>
 
-      {/* CEO: Update price modal */}
-      <Modal visible={updateProposal !== null} transparent animationType="fade">
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setUpdateProposal(null)} />
-          <View style={[styles.modal, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <View style={[styles.modalIcon, { backgroundColor: '#E8F0FC' }]}>
-                <Ionicons name="create" size={20} color="#185FA5" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>
-                  Update {updateProposal?.prod} Price
-                </Text>
-                <Text style={[styles.modalSub, { color: colors.textMuted }]}>
-                  MD proposed ₦{updateProposal?.proposedPrice.toLocaleString()}/L · Set your own price to approve
-                </Text>
-              </View>
+      {/* ══ Propose Sheet (other roles) ══ */}
+      <Sheet visible={proposeProd !== null} onClose={() => setProposeProd(null)}>
+        <View style={[s.sheet, { backgroundColor: colors.surface }]}>
+          <View style={s.sheetHandle} />
+          <View style={s.sheetHeader}>
+            <View style={[s.sheetIcon, { backgroundColor: (PROD_META[proposeProd || 'PMS']?.color ?? rc) + '18' }]}>
+              <Ionicons name="send-outline" size={22} color={PROD_META[proposeProd || 'PMS']?.color ?? rc} />
             </View>
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>New Price per Litre (₦)</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              keyboardType="numeric"
-              value={updateDraft}
-              onChangeText={setUpdateDraft}
-              placeholder="e.g. 950"
-              placeholderTextColor={colors.textSubtle}
-              autoFocus
-            />
-            <Text style={[styles.approvalNote, { color: colors.textMuted, backgroundColor: colors.background }]}>
-              <Ionicons name="information-circle-outline" size={13} color={colors.textMuted} />
-              {' '}The MD will be notified of the adjusted price. This takes effect immediately.
-            </Text>
-            <View style={styles.modalBtns}>
-              <TouchableOpacity style={[styles.cancelBtn, { borderColor: colors.border }]} onPress={() => setUpdateProposal(null)}>
-                <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveBtn, { backgroundColor: '#185FA5' }]}
-                onPress={handleUpdate}
-              >
-                <Ionicons name="checkmark-circle" size={15} color="#fff" />
-                <Text style={styles.saveBtnText}>Update & Approve</Text>
-              </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.sheetTitle, { color: colors.text }]}>Propose {proposeProd} Price</Text>
+              <Text style={[s.sheetSub, { color: colors.textMuted }]}>
+                Current: {proposeProd ? (((prices as any)[proposeProd] ?? 0) > 0 ? `₦${((prices as any)[proposeProd]).toLocaleString()}/L` : 'Not set') : '—'} · Requires approval
+              </Text>
             </View>
           </View>
+          <Text style={[s.inputLabel, { color: colors.textMuted }]}>Proposed Price per Litre (₦)</Text>
+          <TextInput
+            style={[s.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+            keyboardType="decimal-pad"
+            returnKeyType="done"
+            value={proposeDraft}
+            onChangeText={setProposeDraft}
+            onSubmitEditing={handlePropose}
+            placeholder="e.g. 950"
+            placeholderTextColor={colors.textSubtle}
+            autoFocus
+            selectTextOnFocus
+          />
+          <View style={[s.noteBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
+            <Text style={[s.noteTxt, { color: colors.textMuted }]}>This proposal will be reviewed by management before the price changes.</Text>
+          </View>
+          <View style={s.sheetBtns}>
+            <TouchableOpacity style={[s.btnOutline, { borderColor: colors.border }]} onPress={() => setProposeProd(null)}>
+              <Text style={[s.btnOutlineTxt, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.btnFill, { backgroundColor: PROD_META[proposeProd || 'PMS']?.color ?? rc }]}
+              onPress={handlePropose}
+            >
+              <Ionicons name="send" size={15} color="#fff" />
+              <Text style={s.btnFillTxt}>Submit Proposal</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </Modal>
+      </Sheet>
 
-      {/* CEO: Reject reason modal */}
-      <Modal visible={rejectId !== null} transparent animationType="fade">
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setRejectId(null)} />
-          <View style={[styles.modal, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <View style={[styles.modalIcon, { backgroundColor: '#FCEBEB' }]}>
-                <Ionicons name="close-circle" size={20} color="#791F1F" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>Reject Proposal</Text>
-                <Text style={[styles.modalSub, { color: colors.textMuted }]}>Optionally add a reason</Text>
-              </View>
+      {/* ══ Adjust & Approve Sheet (CEO / admin) ══ */}
+      <Sheet visible={updateTarget !== null} onClose={() => setUpdateTarget(null)}>
+        <View style={[s.sheet, { backgroundColor: colors.surface }]}>
+          <View style={s.sheetHandle} />
+          <View style={s.sheetHeader}>
+            <View style={[s.sheetIcon, { backgroundColor: '#E8F0FC' }]}>
+              <Ionicons name="create-outline" size={22} color="#185FA5" />
             </View>
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Reason (optional)</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              value={rejectNote}
-              onChangeText={setRejectNote}
-              placeholder="e.g. Market rate review needed"
-              placeholderTextColor={colors.textSubtle}
-              autoFocus
-            />
-            <View style={styles.modalBtns}>
-              <TouchableOpacity style={[styles.cancelBtn, { borderColor: colors.border }]} onPress={() => setRejectId(null)}>
-                <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#791F1F' }]} onPress={handleReject}>
-                <Ionicons name="close" size={15} color="#fff" />
-                <Text style={styles.saveBtnText}>Reject</Text>
-              </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.sheetTitle, { color: colors.text }]}>Adjust {updateTarget?.prod} Price</Text>
+              <Text style={[s.sheetSub, { color: colors.textMuted }]}>
+                Proposed: ₦{updateTarget?.proposedPrice.toLocaleString()}/L · Set your price to approve
+              </Text>
             </View>
           </View>
+          <Text style={[s.inputLabel, { color: colors.textMuted }]}>Approved Price per Litre (₦)</Text>
+          <TextInput
+            style={[s.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+            keyboardType="decimal-pad"
+            returnKeyType="done"
+            value={updateDraft}
+            onChangeText={setUpdateDraft}
+            onSubmitEditing={handleUpdate}
+            placeholder="e.g. 950"
+            placeholderTextColor={colors.textSubtle}
+            autoFocus
+            selectTextOnFocus
+          />
+          <View style={s.sheetBtns}>
+            <TouchableOpacity style={[s.btnOutline, { borderColor: colors.border }]} onPress={() => setUpdateTarget(null)}>
+              <Text style={[s.btnOutlineTxt, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.btnFill, { backgroundColor: '#185FA5' }]} onPress={handleUpdate}>
+              <Ionicons name="checkmark-circle" size={16} color="#fff" />
+              <Text style={s.btnFillTxt}>Adjust & Approve</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </Modal>
+      </Sheet>
+
+      {/* ══ Reject Sheet (CEO / admin) ══ */}
+      <Sheet visible={rejectTarget !== null} onClose={() => setRejectTarget(null)}>
+        <View style={[s.sheet, { backgroundColor: colors.surface }]}>
+          <View style={s.sheetHandle} />
+          <View style={s.sheetHeader}>
+            <View style={[s.sheetIcon, { backgroundColor: '#FCEBEB' }]}>
+              <Ionicons name="close-circle-outline" size={22} color="#791F1F" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.sheetTitle, { color: colors.text }]}>Reject Proposal</Text>
+              <Text style={[s.sheetSub, { color: colors.textMuted }]}>{rejectTarget?.prod} · ₦{rejectTarget?.proposedPrice.toLocaleString()}/L by {rejectTarget?.proposedBy}</Text>
+            </View>
+          </View>
+          <Text style={[s.inputLabel, { color: colors.textMuted }]}>Reason (optional)</Text>
+          <TextInput
+            style={[s.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+            value={rejectNote}
+            onChangeText={setRejectNote}
+            onSubmitEditing={handleReject}
+            returnKeyType="done"
+            placeholder="e.g. Market rate review needed"
+            placeholderTextColor={colors.textSubtle}
+            autoFocus
+          />
+          <View style={s.sheetBtns}>
+            <TouchableOpacity style={[s.btnOutline, { borderColor: colors.border }]} onPress={() => setRejectTarget(null)}>
+              <Text style={[s.btnOutlineTxt, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.btnFill, { backgroundColor: '#791F1F' }]} onPress={handleReject}>
+              <Ionicons name="close" size={15} color="#fff" />
+              <Text style={s.btnFillTxt}>Reject Proposal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Sheet>
+
     </ScreenLayout>
   );
 }
 
-const styles = StyleSheet.create({
-  scroll:         { padding: 16, paddingBottom: 40 },
-  banner:         { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 16 },
-  bannerText:     { fontSize: 13, fontWeight: '600', flex: 1 },
-  sectionTitle:   { fontSize: 12, fontWeight: '700', marginBottom: 10, marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.6 },
-  grid:           { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
-  priceCard:      { width: '47%', borderRadius: 12, borderWidth: 1, padding: 14, alignItems: 'center', gap: 4 },
-  prodIcon:       { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
-  prodName:       { fontSize: 12, fontWeight: '500' },
-  prodPrice:      { fontSize: 20, fontWeight: '700' },
-  perL:           { fontSize: 11, marginTop: -4 },
-  actionBtn:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, marginTop: 6 },
-  actionBtnText:  { fontSize: 12, fontWeight: '600' },
-  pendingBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 6 },
-  pendingText:    { fontSize: 11, fontWeight: '600' },
-  proposalCard:   { borderRadius: 12, borderWidth: 1.5, padding: 14, marginBottom: 10, gap: 8 },
-  proposalTop:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  prodBadge:      { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  prodBadgeText:  { fontSize: 12, fontWeight: '700' },
-  proposalPrices: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  propOld:        { fontSize: 13, textDecorationLine: 'line-through' },
-  propNew:        { fontSize: 14, fontWeight: '700' },
-  diffBadge:      { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  diffText:       { fontSize: 12, fontWeight: '700' },
-  proposalMeta:   { fontSize: 12 },
-  proposalBtns:   { flexDirection: 'row', gap: 8, marginTop: 4 },
-  rejectBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 8, borderWidth: 1.5, paddingVertical: 10 },
-  rejectBtnText:  { fontSize: 13, fontWeight: '600' },
-  updateBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 8, borderWidth: 1.5, paddingVertical: 10 },
-  updateBtnText:  { fontSize: 13, fontWeight: '600' },
-  approveBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 8, paddingVertical: 10 },
-  approveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  resolvedRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 8 },
-  resolvedMid:    { flex: 1, gap: 3 },
-  resolvedPrices: { fontSize: 13, fontWeight: '600' },
-  resolvedMeta:   { fontSize: 11 },
-  statusBadge:    { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  statusText:     { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
-  histRow:        { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 8 },
-  histIcon:       { width: 42, height: 42, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  histProd:       { fontSize: 11, fontWeight: '700' },
-  histMid:        { flex: 1, gap: 3 },
-  histPrices:     { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  histOld:        { fontSize: 13, textDecorationLine: 'line-through' },
-  histNew:        { fontSize: 13, fontWeight: '700' },
-  histBy:         { fontSize: 11 },
-  changeBadge:    { borderRadius: 6, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4 },
-  changeText:     { fontSize: 12, fontWeight: '700' },
-  emptyBox:       { borderRadius: 12, borderWidth: 1, padding: 32, alignItems: 'center', gap: 8 },
-  emptyText:      { fontSize: 14 },
-  overlay:        { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modal:          { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 14 },
-  modalHeader:    { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  modalIcon:      { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  modalTitle:     { fontSize: 16, fontWeight: '700' },
-  modalSub:       { fontSize: 12, marginTop: 2 },
-  inputLabel:     { fontSize: 13, fontWeight: '500', marginBottom: -6 },
-  input:          { borderRadius: 10, borderWidth: 1, padding: 14, fontSize: 16 },
-  approvalNote:   { fontSize: 12, borderRadius: 8, padding: 10, lineHeight: 18 },
-  modalBtns:      { flexDirection: 'row', gap: 10, marginTop: 2 },
-  cancelBtn:      { flex: 1, borderRadius: 10, borderWidth: 1, padding: 14, alignItems: 'center' },
-  cancelText:     { fontSize: 15, fontWeight: '600' },
-  saveBtn:        { flex: 2, borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  saveBtnText:    { color: '#fff', fontSize: 14, fontWeight: '700' },
+/* ─── Styles ─────────────────────────────────────────────── */
+const s = StyleSheet.create({
+  scroll:        { padding: 16, paddingBottom: 40 },
+  banner:        { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 16 },
+  bannerTxt:     { fontSize: 13, fontWeight: '600', flex: 1 },
+  secLabel:      { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10, marginTop: 8 },
+
+  priceRow:      { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
+  prodIconWrap:  { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  prodName:      { fontSize: 15, fontWeight: '700' },
+  prodUnit:      { fontSize: 11, marginTop: 2 },
+  prodPrice:     { fontSize: 20, fontWeight: '800' },
+
+  actionBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
+  actionBtnTxt:  { fontSize: 12, fontWeight: '600' },
+  pendingBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  pendingTxt:    { fontSize: 11, fontWeight: '600' },
+
+  proposalCard:  { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 10, gap: 12 },
+  strikePrice:   { fontSize: 13, textDecorationLine: 'line-through' },
+  propNew:       { fontSize: 14, fontWeight: '700' },
+  diffBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  diffTxt:       { fontSize: 12, fontWeight: '700' },
+  proposalBtns:  { flexDirection: 'row', gap: 8 },
+  propBtn:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 10, borderWidth: 1.5, paddingVertical: 10 },
+  propBtnTxt:    { fontSize: 13, fontWeight: '600' },
+  propBtnFill:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 10, paddingVertical: 10 },
+  propBtnFillTxt:{ color: '#fff', fontSize: 13, fontWeight: '700' },
+
+  histRow:       { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 8 },
+  statusBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  statusTxt:     { fontSize: 11, fontWeight: '700' },
+
+  emptyBox:      { borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', padding: 40, alignItems: 'center', gap: 12, marginTop: 8 },
+  emptyTxt:      { fontSize: 14, textAlign: 'center' },
+
+  /* Sheet */
+  sheet:         { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24, gap: 14, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 16 },
+  sheetHandle:   { width: 36, height: 4, borderRadius: 2, backgroundColor: '#ccc', alignSelf: 'center', marginBottom: 4 },
+  sheetHeader:   { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sheetIcon:     { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  sheetTitle:    { fontSize: 17, fontWeight: '800' },
+  sheetSub:      { fontSize: 12, marginTop: 2 },
+  inputLabel:    { fontSize: 12, fontWeight: '600', marginBottom: -8 },
+  input:         { borderRadius: 12, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 14 : 10, fontSize: 16, fontWeight: '600' },
+  noteBox:       { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 10, borderWidth: 1, padding: 10 },
+  noteTxt:       { fontSize: 12, flex: 1, lineHeight: 17 },
+  sheetBtns:     { flexDirection: 'row', gap: 10, marginTop: 4 },
+  btnOutline:    { flex: 1, borderRadius: 12, borderWidth: 1.5, paddingVertical: 13, alignItems: 'center' },
+  btnOutlineTxt: { fontSize: 14, fontWeight: '600' },
+  btnFill:       { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 12, paddingVertical: 13 },
+  btnFillTxt:    { color: '#fff', fontSize: 14, fontWeight: '800' },
 });
