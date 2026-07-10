@@ -1,8 +1,10 @@
-const BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN;
+const BASE = DOMAIN ? `https://${DOMAIN}/api` : null;
 
 async function get<T>(path: string): Promise<T | null> {
+  if (!BASE) return null;
   try {
-    const r = await fetch(`${BASE}${path}`);
+    const r = await fetch(`${BASE}${path}`, { headers: { Accept: 'application/json' } });
     if (!r.ok) return null;
     return r.json() as Promise<T>;
   } catch {
@@ -11,6 +13,7 @@ async function get<T>(path: string): Promise<T | null> {
 }
 
 async function put(path: string, data: unknown): Promise<void> {
+  if (!BASE) return;
   try {
     await fetch(`${BASE}${path}`, {
       method: 'PUT',
