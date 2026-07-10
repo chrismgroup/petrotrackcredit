@@ -1,8 +1,5 @@
 import React from 'react';
-import {
-  KeyboardAvoidingView, Modal, Platform,
-  Pressable, StyleSheet,
-} from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
 interface ModalSheetProps {
   visible: boolean;
@@ -13,14 +10,15 @@ interface ModalSheetProps {
 /**
  * Keyboard-safe modal bottom sheet.
  *
- * Layout (flex column, top→bottom):
- *   KeyboardAvoidingView  flex:1
- *     Pressable           flex:1  ← expands to fill space ABOVE the sheet only
- *     children                    ← sheet card, sits at the bottom in normal flow
+ * Layout (flex column, top → bottom):
+ *   View  flex:1
+ *     Pressable  flex:1  ← expands to fill space ABOVE the sheet only
+ *     children           ← sheet card, at the bottom in normal flow
  *
- * The Pressable does NOT use absoluteFillObject, so it never sits behind the sheet
- * content. This prevents backdrop taps from also firing when the user taps a
- * TextInput, which was causing the keyboard to dismiss on every keystroke.
+ * No KeyboardAvoidingView here — the root KeyboardProvider from
+ * react-native-keyboard-controller manages the keyboard globally.
+ * Adding KAV inside it caused the "keyboard flip" (KAV + KeyboardProvider
+ * fighting each other on every keystroke).
  */
 export function ModalSheet({ visible, onClose, children }: ModalSheetProps) {
   return (
@@ -31,19 +29,16 @@ export function ModalSheet({ visible, onClose, children }: ModalSheetProps) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.kav}
-      >
+      <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={onClose} />
         {children}
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  kav: {
+  root: {
     flex: 1,
   },
   backdrop: {

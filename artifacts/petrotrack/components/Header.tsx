@@ -5,6 +5,7 @@ import {
   Alert, Modal, Platform, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
+import { ModalSheet } from '@/components/FormSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ROLE_COLORS, ROLE_LABELS, UINFO, useApp } from '@/context/AppContext';
@@ -122,9 +123,8 @@ export function Header({ title, rightAction }: Props) {
       </Modal>
 
       {/* ── Change Password modal ── */}
-      <Modal visible={showChangePw} transparent animationType="slide" onRequestClose={() => setShowChangePw(false)}>
-        <TouchableOpacity style={styles.pwOverlay} activeOpacity={1} onPress={() => setShowChangePw(false)}>
-          <View style={[styles.pwCard, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+      <ModalSheet visible={showChangePw} onClose={() => setShowChangePw(false)}>
+          <View style={[styles.pwCard, { backgroundColor: colors.background }]}>
             {/* Header */}
             <View style={styles.pwHeader}>
               <View style={[styles.pwIconBox, { backgroundColor: roleColor + '22' }]}>
@@ -222,8 +222,7 @@ export function Header({ title, rightAction }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-        </TouchableOpacity>
-      </Modal>
+      </ModalSheet>
     </>
   );
 }
@@ -249,7 +248,6 @@ const styles = StyleSheet.create({
   menuDivider:    { height: 1, marginVertical: 12 },
   menuItem:       { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   menuItemText:   { fontSize: 14, fontWeight: '600' },
-  pwOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   pwCard:         { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 22, gap: 0 },
   pwHeader:       { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
   pwIconBox:      { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

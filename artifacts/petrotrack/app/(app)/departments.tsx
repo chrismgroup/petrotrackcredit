@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert, Modal,
+  Alert,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { Department, ROLE_COLORS, ROLE_LABELS, useApp } from '@/context/AppContext';
@@ -47,17 +48,15 @@ function DeptFormModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>{title}</Text>
+    <ModalSheet visible={visible} onClose={onClose}>
+      <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>{title}</Text>
 
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="none"
-            >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="none"
+          >
               {/* Name */}
               <TextInput
                 style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
@@ -137,8 +136,7 @@ function DeptFormModal({
               </View>
             </ScrollView>
           </View>
-      </View>
-    </Modal>
+    </ModalSheet>
   );
 }
 
@@ -364,54 +362,51 @@ export default function DepartmentsScreen() {
       />
 
       {/* ── Post Staff Modal ── */}
-      <Modal visible={!!postingDept} transparent animationType="slide" onRequestClose={() => setPostingDept(null)}>
-        <View style={styles.overlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPostingDept(null)} />
-          {postingDept && (
-            <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                <View style={[styles.icon, { width: 36, height: 36, borderRadius: 10, backgroundColor: postingDept.col.fg + '22' }]}>
-                  <Ionicons name={postingDept.icon as any} size={18} color={postingDept.col.fg} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 0 }]}>Post to {postingDept.name}</Text>
-                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Select staff to assign</Text>
-                </View>
-                <TouchableOpacity onPress={() => setPostingDept(null)}>
-                  <Ionicons name="close-circle" size={22} color={colors.textMuted} />
-                </TouchableOpacity>
+      <ModalSheet visible={!!postingDept} onClose={() => setPostingDept(null)}>
+        {postingDept && (
+          <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <View style={[styles.icon, { width: 36, height: 36, borderRadius: 10, backgroundColor: postingDept.col.fg + '22' }]}>
+                <Ionicons name={postingDept.icon as any} size={18} color={postingDept.col.fg} />
               </View>
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
-                {unassigned.length === 0 ? (
-                  <View style={{ alignItems: 'center', padding: 32 }}>
-                    <Ionicons name="checkmark-circle" size={32} color={colors.success} />
-                    <Text style={{ color: colors.textMuted, marginTop: 8, textAlign: 'center' }}>All staff have been assigned to departments</Text>
-                  </View>
-                ) : (
-                  unassigned.map(m => (
-                    <TouchableOpacity
-                      key={m.id}
-                      onPress={() => { assignStaffDept(m.id, postingDept.id); }}
-                      style={[styles.staffPickRow, { borderBottomColor: colors.border }]}
-                    >
-                      <View style={[styles.staffPickAvatar, { backgroundColor: ROLE_COLORS[m.role] + '22' }]}>
-                        <Text style={[styles.staffPickAvatarText, { color: ROLE_COLORS[m.role] }]}>
-                          {m.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.staffPickName, { color: colors.text }]}>{m.name}</Text>
-                        <Text style={[styles.staffPickRole, { color: colors.textMuted }]}>{ROLE_LABELS[m.role] ?? m.role}</Text>
-                      </View>
-                      <Ionicons name="add-circle-outline" size={22} color={postingDept.col.fg} />
-                    </TouchableOpacity>
-                  ))
-                )}
-              </ScrollView>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 0 }]}>Post to {postingDept.name}</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted }}>Select staff to assign</Text>
+              </View>
+              <TouchableOpacity onPress={() => setPostingDept(null)}>
+                <Ionicons name="close-circle" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
             </View>
-          )}
-        </View>
-      </Modal>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
+              {unassigned.length === 0 ? (
+                <View style={{ alignItems: 'center', padding: 32 }}>
+                  <Ionicons name="checkmark-circle" size={32} color={colors.success} />
+                  <Text style={{ color: colors.textMuted, marginTop: 8, textAlign: 'center' }}>All staff have been assigned to departments</Text>
+                </View>
+              ) : (
+                unassigned.map(m => (
+                  <TouchableOpacity
+                    key={m.id}
+                    onPress={() => { assignStaffDept(m.id, postingDept.id); }}
+                    style={[styles.staffPickRow, { borderBottomColor: colors.border }]}
+                  >
+                    <View style={[styles.staffPickAvatar, { backgroundColor: ROLE_COLORS[m.role] + '22' }]}>
+                      <Text style={[styles.staffPickAvatarText, { color: ROLE_COLORS[m.role] }]}>
+                        {m.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.staffPickName, { color: colors.text }]}>{m.name}</Text>
+                      <Text style={[styles.staffPickRole, { color: colors.textMuted }]}>{ROLE_LABELS[m.role] ?? m.role}</Text>
+                    </View>
+                    <Ionicons name="add-circle-outline" size={22} color={postingDept.col.fg} />
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        )}
+      </ModalSheet>
     </ScreenLayout>
   );
 }

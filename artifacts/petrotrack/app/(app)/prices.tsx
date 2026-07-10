@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform, Pressable,
+  Alert, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
+import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { PriceProposal, Prices, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -25,26 +26,10 @@ const STATUS_CFG = {
   rejected: { label: 'Rejected', color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle-outline'  },
 } as const;
 
-/* ─── Modal shell (iOS + Android safe) ─────────────────── */
+/* ─── Modal shell — thin wrapper around ModalSheet ─────── */
 function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
-  if (!visible) return null;
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Pressable style={sh.overlay} onPress={onClose} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={sh.kvWrapper}
-        pointerEvents="box-none"
-      >
-        {children}
-      </KeyboardAvoidingView>
-    </View>
-  );
+  return <ModalSheet visible={visible} onClose={onClose}>{children}</ModalSheet>;
 }
-const sh = StyleSheet.create({
-  overlay:   { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
-  kvWrapper: { position: 'absolute', bottom: 0, left: 0, right: 0 },
-});
 
 /* ═══════════════════════════════════════════════════════════
    SCREEN

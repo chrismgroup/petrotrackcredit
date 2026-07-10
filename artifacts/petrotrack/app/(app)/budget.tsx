@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Modal, Platform,
+  Alert, Modal,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
@@ -367,8 +367,7 @@ export default function BudgetScreen() {
               </View>
             </View>
 
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-              <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
                 <Text style={[styles.section, { color: colors.text }]}>Budget Items</Text>
                 {selected.items.map((item, i) => (
@@ -484,14 +483,12 @@ export default function BudgetScreen() {
                   </View>
                 ) : null}
               </ScrollView>
-            </KeyboardAvoidingView>
           </View>
         ) : null}
       </Modal>
 
       {/* ═══ CREATE / EDIT MODAL ═══ */}
       <Modal visible={showForm} animationType="slide" onRequestClose={() => setShowForm(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={{ flex: 1, backgroundColor: colors.background }}>
             <View style={[styles.modalHeader, { backgroundColor: roleColor, paddingTop: 52 }]}>
               <TouchableOpacity onPress={() => setShowForm(false)} style={styles.headerBack}>
@@ -536,7 +533,6 @@ export default function BudgetScreen() {
               <View style={{ height: 32 }} />
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
       </Modal>
     </ScreenLayout>
   );
