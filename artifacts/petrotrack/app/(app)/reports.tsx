@@ -177,6 +177,7 @@ function BranchBar({ branches, selected, onSelect, rc, colors }: {
    MAIN SCREEN
 ═══════════════════════════════════════════════════════════ */
 export default function ReportsScreen() {
+  'use no memo';
   const {
     role, userName, branchId,
     expenses, sales, branches, deliveries, prices, priceHistory, priceProposals,
