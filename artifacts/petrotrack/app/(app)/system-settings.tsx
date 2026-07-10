@@ -177,7 +177,7 @@ export default function SystemSettingsScreen() {
     Alert.alert('Pump Added', `"${newPump.name.trim()}" is now available in the Sales screen.`);
   }
 
-  function createStaff() {
+  async function createStaff() {
     const name = newStaff.name.trim();
     const email = newStaff.email.trim();
     const username = newStaff.username.trim();
@@ -196,7 +196,7 @@ export default function SystemSettingsScreen() {
     const sal = parseInt(newStaff.sal) || 0;
     const deptId = (newStaff as any).dept as string | undefined;
     addStaff({ name, email, role: newStaff.role, sal, st: 'Active', dept: deptId });
-    addActiveUserAccount({
+    await addActiveUserAccount({
       empName: name,
       username,
       password,
@@ -207,7 +207,7 @@ export default function SystemSettingsScreen() {
     });
     setNewStaff(BLANK_STAFF);
     setShowNewStaff(false);
-    Alert.alert('User Created', `${name} has been added as ${ROLE_LABELS[newStaff.role]}.\n\nLogin credentials:\nUsername: ${username}\nPassword: ${password}`);
+    Alert.alert('User Created', `${name} has been added as ${ROLE_LABELS[newStaff.role]}.\n\nUsername: ${username}\n\nShare the login password you set securely — it is not displayed here.`);
   }
 
   /* ── helpers ── */

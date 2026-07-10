@@ -71,14 +71,14 @@ export default function UsersScreen() {
     setApproving(acc);
   }
 
-  function handleApprove() {
+  async function handleApprove() {
     if (!approving) return;
     if (!aUsername.trim()) { Alert.alert('Required', 'Username is required.'); return; }
     if (!aPassword.trim()) { Alert.alert('Required', 'Set a temporary password.'); return; }
     if (aRole === 'mgr' && !aBranch) { Alert.alert('Required', 'Assign a branch for this Station Manager.'); return; }
     const duplicate = userAccounts.find(a => a.username === aUsername.trim() && a.id !== approving.id);
     if (duplicate) { Alert.alert('Username Taken', 'That username is already in use. Choose another.'); return; }
-    approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch || undefined);
+    await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch || undefined);
     Alert.alert('Account Approved', `${approving.empName} can now log in as ${aUsername.trim()}.`);
     setApproving(null);
   }
@@ -100,7 +100,7 @@ export default function UsersScreen() {
     setEditing(acc);
   }
 
-  function handleSaveEdit() {
+  async function handleSaveEdit() {
     if (!editing) return;
     if (!eUsername.trim()) { Alert.alert('Required', 'Username cannot be empty.'); return; }
     if (ePassword.trim() && ePassword.trim().length < 6) {
@@ -119,7 +119,7 @@ export default function UsersScreen() {
     };
     if (ePassword.trim()) updates.password = ePassword.trim();
 
-    updateUserAccount(editing.id, updates, userName || 'Admin');
+    await updateUserAccount(editing.id, updates, userName || 'Admin');
     Alert.alert('Account Updated', `${editing.empName}'s account has been updated.`);
     setEditing(null);
   }
