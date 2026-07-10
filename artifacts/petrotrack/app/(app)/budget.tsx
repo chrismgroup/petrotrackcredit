@@ -230,9 +230,9 @@ export default function BudgetScreen() {
               <Text style={[styles.tabLabel, { color: t.key === tab ? roleColor : colors.textMuted, fontWeight: t.key === tab ? '700' : '400' }]}>
                 {t.label}
               </Text>
-              {'count' in t && t.count > 0 ? (
+              {'count' in t && (t as { count: number }).count > 0 ? (
                 <View style={[styles.badge, { backgroundColor: roleColor }]}>
-                  <Text style={styles.badgeText}>{t.count}</Text>
+                  <Text style={styles.badgeText}>{(t as { count: number }).count}</Text>
                 </View>
               ) : null}
             </TouchableOpacity>
