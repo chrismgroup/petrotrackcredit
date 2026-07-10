@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Petrack",
-    "slug": "petrack",
+    "name": "Gastsmarts",
+    "slug": "gastsmarts",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "petrack",
+    "scheme": "gastsmarts",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
