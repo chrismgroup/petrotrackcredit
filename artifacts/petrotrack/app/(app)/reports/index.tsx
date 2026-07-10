@@ -1,0 +1,918 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import React, { useMemo, useState } from 'react';
+import {
+  Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+} from 'react-native';
+
+import { ScreenLayout } from '@/components/ScreenLayout';
+import { Branch, ROLE_COLORS, fmt, fmtDate, useApp } from '@/context/AppContext';
+import { useColors } from '@/hooks/useColors';
+import {
+  PERIODS, PROD_COLORS, REPORT_META, SCALE,
+  Period, ReportType,
+  buildPdf, getPerms, matchesProd, nfmt, periodRange,
+  priBg, priColor, stColor,
+} from './_helpers';
+
+/* ═══════════════════════════════════════════════════════════
+   EXPORT — iOS-native share sheet (no print dialog)
+═══════════════════════════════════════════════════════════ */
+async function shareAsPdf(html: string, title: string) {
+  try {
+    const { uri } = await Print.printToFileAsync({ html });
+    const available = await Sharing.isAvailableAsync();
+    if (available) {
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: `Share ${title}`,
+        UTI: 'com.adobe.pdf',
+      });
+    } else {
+      Alert.alert('Sharing unavailable', 'PDF sharing is not available on this device.');
+    }
+  } catch (e: any) {
+    if (!e?.message?.toLowerCase().includes('cancel')) {
+      Alert.alert('Export failed', e?.message ?? 'Could not generate PDF');
+    }
+  }
+}
+
+/* ─── Small UI atoms ────────────────────────────────────── */
+function SecTitle({ label, colors }: { label: string; colors: any }) {
+  return <Text style={[s.secTitle, { color: colors.text }]}>{label}</Text>;
+}
+function EmptyState({ icon, label, colors }: { icon: string; label: string; colors: any }) {
+  return (
+    <View style={s.empty}>
+      <Ionicons name={icon as any} size={34} color={colors.border} />
+      <Text style={{ fontSize: 14, color: colors.textMuted }}>{label}</Text>
+    </View>
+  );
+}
+function KpiCards({ items, colors }: { items: Array<{ label: string; value: string | number; color: string; icon: string }>; colors: any }) {
+  return (
+    <View style={s.kpiRow}>
+      {items.map(k => (
+        <View key={k.label} style={[s.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name={k.icon as any} size={13} color={k.color} />
+          <Text style={[s.kpiLabel, { color: colors.textMuted }]}>{k.label}</Text>
+          <Text style={[s.kpiValue, { color: k.color }]}>{k.value}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+function ProgressRow({ label, pct, colors }: { label: string; pct: number; colors: any }) {
+  const pos = pct >= 0;
+  return (
+    <View style={[s.marginRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <Text style={[s.marginLabel, { color: colors.textMuted }]}>{label}</Text>
+      <View style={[s.progBg, { flex: 1, backgroundColor: colors.border, marginHorizontal: 10 }]}>
+        <View style={[s.progBar, { width: `${Math.max(0, Math.min(Math.abs(pct), 100))}%` as any, backgroundColor: pos ? '#27500A' : '#791F1F' }]} />
+      </View>
+      <Text style={[s.marginPct, { color: pos ? '#27500A' : '#791F1F' }]}>{pct}%</Text>
+    </View>
+  );
+}
+function DiffBadge({ diff }: { diff: number }) {
+  const pos = diff >= 0;
+  return (
+    <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, backgroundColor: pos ? '#EAF3DE' : '#FCEBEB' }}>
+      <Text style={{ fontSize: 11, fontWeight: '700', color: pos ? '#27500A' : '#791F1F' }}>
+        {pos ? '+' : ''}₦{Math.abs(diff).toLocaleString()}
+      </Text>
+    </View>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN SCREEN
+═══════════════════════════════════════════════════════════ */
+export default function ReportsScreen() {
+  const {
+    role, userName, branchId,
+    expenses, sales, branches, deliveries, prices, priceHistory, priceProposals,
+    maintenance, dips, staff, hrEmployees,
+  } = useApp();
+  const colors = useColors();
+  const rc = ROLE_COLORS[role || 'acc'] || colors.primary;
+  const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
+  const perms = getPerms(role);
+  const [exporting, setExporting] = useState(false);
+
+  /* Safety guards */
+  const safeSales       = Array.isArray(sales)          ? sales          : [];
+  const safeDeliveries  = Array.isArray(deliveries)     ? deliveries     : [];
+  const safeExpenses    = Array.isArray(expenses)        ? expenses       : [];
+  const safeBranches    = Array.isArray(branches)        ? branches       : [];
+  const safeMaintenance = Array.isArray(maintenance)     ? maintenance    : [];
+  const safeDips        = Array.isArray(dips)            ? dips           : [];
+  const safeHrEmployees = Array.isArray(hrEmployees)     ? hrEmployees    : [];
+  const safeProposals   = Array.isArray(priceProposals)  ? priceProposals : [];
+
+  const defaultType: ReportType = perms.visible[0] ?? 'summary';
+  const [selBranch,  setSelBranch]  = useState<string | null>(isMgr ? (branchId ?? null) : null);
+  const [reportType, setReportType] = useState<ReportType>(defaultType);
+  const [period,     setPeriod]     = useState<Period>('Monthly');
+
+  const { from, to } = useMemo(() => periodRange(period), [period]);
+  const scale = SCALE[period];
+  const branchName  = selBranch === null ? 'All Branches' : (safeBranches.find(b => b.id === selBranch)?.name ?? selBranch);
+  const periodStr   = `${fmtDate(from.toISOString())} – ${fmtDate(to.toISOString())}`;
+  const generatedAt = new Date().toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' });
+  const canExport   = perms.canGenerate.includes(reportType);
+  const meta        = REPORT_META[reportType] ?? REPORT_META.summary;
+
+  /* Branch-filtered helpers */
+  const fb = (arr: any[]) =>
+    selBranch === null ? arr : arr.filter((x: any) => x.branchId === selBranch || !x.branchId);
+
+  const fSales = useMemo(() => fb(safeSales),      [safeSales, selBranch]);
+  const fDelvs = useMemo(() => fb(safeDeliveries), [safeDeliveries, selBranch]);
+  const fExps  = useMemo(() => fb(safeExpenses),   [safeExpenses, selBranch]);
+
+  const approved  = useMemo(() => fExps.filter((e: any) => e.status === 'approved'), [fExps]);
+  const totalExp  = useMemo(() => approved.reduce((s: number, e: any) => s + e.amt, 0), [approved]);
+  const totalRev  = safeBranches.filter(b => selBranch === null || b.id === selBranch).reduce((s, b) => s + b.rev, 0);
+  const scaledExp = Math.round(totalExp / 30 * scale);
+  const scaledRev = Math.round(totalRev / 30 * scale);
+  const scaledSales = Math.round(fSales.reduce((s: number, e: any) => s + e.L * e.price, 0) / 30 * scale);
+  const scaledNet = scaledRev - scaledExp;
+  const margin    = scaledRev > 0 ? Math.round((scaledNet / scaledRev) * 100) : 0;
+
+  const allProds = useMemo(() => {
+    const set = new Set<string>();
+    fDelvs.forEach((d: any) => { if (d.costPrice) set.add(d.prod); });
+    const K = ['PMS','AGO','DPK','LPG','Lube Oil','Others'];
+    fSales.forEach((sale: any) => { const m = K.find(p => matchesProd(sale.pump, p)); if (m) set.add(m); });
+    const order = ['PMS','AGO','LPG','Lube Oil','Others','DPK'];
+    return [...order.filter(p => set.has(p)), ...[...set].filter(p => !order.includes(p))];
+  }, [fSales, fDelvs]);
+
+  const pnlByProd = useMemo(() => allProds.map(prod => {
+    const pe  = fSales.filter((sale: any) => matchesProd(sale.pump, prod));
+    const vol = pe.reduce((sum: number, e: any) => sum + e.L, 0);
+    const rev = pe.reduce((sum: number, e: any) => sum + e.L * e.price, 0);
+    const sr  = Math.round(rev * scale);
+    const avg = vol > 0 ? Math.round(rev / vol) : ((prices as any)[prod] ?? 0);
+    const dv  = fDelvs.filter((d: any) => d.prod === prod && d.costPrice);
+    const vr  = dv.reduce((sum: number, d: any) => sum + d.rec, 0);
+    const ct  = dv.reduce((sum: number, d: any) => sum + d.rec * (d.costPrice ?? 0), 0);
+    const ac  = vr > 0 ? ct / vr : 0;
+    const cogs = Math.round(ac * vol * scale);
+    const gp   = sr - cogs;
+    return {
+      prod, totalVolumeSold: vol, avgSellPrice: avg,
+      salesRevenue: sr, avgCostPerL: Math.round(ac), scaledCOGS: cogs, grossProfit: gp,
+      grossMargin: sr > 0 ? Math.round((gp / sr) * 100) : null,
+      hasCostData: dv.length > 0,
+      priceChanges: priceHistory.filter(h => h.prod === prod).slice(0, 3),
+    };
+  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fSales, fDelvs, prices, priceHistory, scale]);
+
+  const totSR   = pnlByProd.reduce((s, p) => s + p.salesRevenue, 0);
+  const totCOGS = pnlByProd.reduce((s, p) => s + p.scaledCOGS,  0);
+  const totGP   = totSR - totCOGS;
+  const gmPct   = totSR > 0 ? Math.round((totGP / totSR) * 100) : 0;
+  const netPnl  = totGP - scaledExp;
+  const nmPct   = totSR > 0 ? Math.round((netPnl / totSR) * 100) : 0;
+
+  const catTotals: Record<string, number> = {};
+  for (const e of approved) catTotals[(e as any).cat] = (catTotals[(e as any).cat] || 0) + (e as any).amt;
+  const catScaled = Object.entries(catTotals).map(([cat, total]) => ({
+    cat, total: Math.round(total / 30 * scale),
+    pct: totalExp > 0 ? Math.round((total / totalExp) * 100) : 0,
+  })).sort((a, b) => b.total - a.total);
+
+  const prodSales = ['PMS','AGO','DPK','LPG'].map(prod => {
+    const color = PROD_COLORS[prod] || rc;
+    const L = fSales.filter((sale: any) => sale.pump.includes(prod)).reduce((sum: number, e: any) => sum + e.L, 0);
+    const price = (prices as any)[prod] ?? 0;
+    return { prod, color, L, price, scaledL: Math.round(L * scale), scaledRev: Math.round(L * scale * price) };
+  }).filter(p => p.L > 0);
+
+  const branchBD = useMemo(() => {
+    if (selBranch !== null || safeBranches.length === 0) return [];
+    return safeBranches.map(b => {
+      const bS  = safeSales.filter((sale: any) => sale.branchId === b.id);
+      const bE  = safeExpenses.filter((e: any) => e.status === 'approved' && e.branchId === b.id);
+      const bR  = Math.round(b.rev / 30 * scale);
+      const bX  = Math.round(bE.reduce((sum: number, e: any) => sum + e.amt, 0) / 30 * scale);
+      const bSR = Math.round(bS.reduce((sum: number, e: any) => sum + e.L * e.price, 0) / 30 * scale);
+      return { id: b.id, name: b.name, rev: bR, exp: bX, salesRev: bSR, net: bR - bX };
+    });
+  }, [safeBranches, safeSales, safeExpenses, selBranch, scale]);
+
+  const maintOpen   = safeMaintenance.filter((m: any) => m.st === 'Open').length;
+  const maintDone   = safeMaintenance.filter((m: any) => m.st === 'Done').length;
+  const maintUrgent = safeMaintenance.filter((m: any) => m.pri === 'Urgent').length;
+  const maintCost   = safeMaintenance.reduce((s: number, m: any) => s + (m.cost ?? 0), 0);
+  const dipApproved = safeDips.filter((d: any) => d.status === 'approved').length;
+  const dipPending  = safeDips.filter((d: any) => d.status === 'pending').length;
+  const hrActive    = safeHrEmployees.filter((e: any) => e.status === 'active').length;
+  const hrSuspended = safeHrEmployees.filter((e: any) => e.status === 'suspended').length;
+  const hrInactive  = safeHrEmployees.filter((e: any) => e.status === 'inactive').length;
+  const deptMap: Record<string, number> = {};
+  safeHrEmployees.forEach((e: any) => { deptMap[e.dept] = (deptMap[e.dept] || 0) + 1; });
+  const propPending  = safeProposals.filter((p: any) => p.status === 'pending').length;
+  const propApproved = safeProposals.filter((p: any) => p.status === 'approved').length;
+  const propRejected = safeProposals.filter((p: any) => p.status === 'rejected').length;
+
+  /* ─ Export ─ */
+  async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    const common = { branchName, generatedAt, generatedBy: userName, period: `${period} · ${periodStr}` };
+    let html = '';
+    if (reportType === 'summary') {
+      html = buildPdf({ ...common, title: 'Summary Report',
+        sections: [
+          { heading: 'Financial Overview', rows: [
+            { label: 'Total Revenue',  value: nfmt(scaledRev)   },
+            { label: 'Total Sales',    value: nfmt(scaledSales) },
+            { label: 'Total Expenses', value: nfmt(scaledExp)   },
+            { label: 'Net Balance',    value: nfmt(scaledNet)   },
+            { label: 'Margin',         value: `${margin}%`      },
+          ]},
+          { heading: 'Expense Breakdown', rows: catScaled.map(c => ({ label: c.cat, value: `${nfmt(c.total)} (${c.pct}%)` })) },
+        ],
+        tables: branchBD.length > 0 ? [{ heading: 'Branch Breakdown', headers: ['Branch','Revenue','Sales','Expenses','Net'],
+          rows: branchBD.map(b => [b.name, nfmt(b.rev), nfmt(b.salesRev), nfmt(b.exp), nfmt(b.net)]) }] : [],
+      });
+    } else if (reportType === 'pnl') {
+      html = buildPdf({ ...common, title: 'P&L Report',
+        sections: [{ heading: 'P&L Summary', rows: [
+          { label: 'Sales Revenue',       value: nfmt(totSR)    },
+          { label: 'Cost of Goods',       value: nfmt(totCOGS)  },
+          { label: 'Gross Profit',        value: nfmt(totGP)    },
+          { label: 'Gross Margin',        value: `${gmPct}%`    },
+          { label: 'Operating Expenses',  value: nfmt(scaledExp)},
+          { label: 'Net Profit/(Loss)',   value: nfmt(netPnl)   },
+          { label: 'Net Margin',          value: `${nmPct}%`    },
+        ]}],
+        tables: [
+          { heading: 'Product P&L', headers: ['Product','Volume (L)','Revenue','COGS','Gross Profit','Margin'],
+            rows: pnlByProd.map(p => [p.prod, (p.totalVolumeSold*scale).toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
+          { heading: 'Operating Expenses', headers: ['Category','Amount'], rows: catScaled.map(c => [c.cat, nfmt(c.total)]) },
+        ],
+      });
+    } else if (reportType === 'expenses') {
+      html = buildPdf({ ...common, title: 'Expense Report',
+        sections: [{ heading: 'Summary', rows: [
+          { label: 'Total Approved', value: nfmt(scaledExp) },
+          { label: 'Records',        value: `${approved.length}` },
+        ]}],
+        tables: [{ heading: 'Expense Records', headers: ['Category','Description','By','Amount','Approved By'],
+          rows: [...approved].reverse().map((e: any) => [e.cat, e.desc, e.byName, nfmt(e.amt), e.approvedBy ?? '—']) }],
+      });
+    } else if (reportType === 'sales') {
+      html = buildPdf({ ...common, title: 'Sales Report',
+        sections: [{ heading: 'Summary', rows: [{ label: 'Total Sales Revenue', value: nfmt(scaledSales) }] }],
+        tables: [{ heading: 'Sales by Product', headers: ['Product','Volume (L)','Unit Price','Revenue'],
+          rows: prodSales.map(p => [p.prod, p.scaledL.toLocaleString(), nfmt(p.price), nfmt(p.scaledRev)]) }],
+      });
+    } else if (reportType === 'prices') {
+      html = buildPdf({ ...common, title: 'Price Report',
+        sections: [{ heading: 'Current Prices', rows: (['PMS','AGO','DPK','LPG','Lube Oil'] as const).map(prod => ({
+          label: prod, value: (prices as any)[prod] > 0 ? `${nfmt((prices as any)[prod])}/L` : 'Not set',
+        }))}],
+        tables: [{ heading: 'Price Change History', headers: ['Product','Old Price','New Price','Change','By','Date'],
+          rows: [...priceHistory].sort((a,b) => b.id-a.id).map(h => [h.prod, nfmt(h.oldPrice), nfmt(h.newPrice), `${h.newPrice>h.oldPrice?'+':''}${nfmt(h.newPrice-h.oldPrice)}`, h.by, fmtDate(h.dt)]) }],
+      });
+    } else if (reportType === 'maintenance') {
+      html = buildPdf({ ...common, title: 'Maintenance Report',
+        sections: [{ heading: 'Overview', rows: [
+          { label: 'Total Items',  value: `${safeMaintenance.length}` },
+          { label: 'Open',         value: `${maintOpen}` },
+          { label: 'Done',         value: `${maintDone}` },
+          { label: 'Urgent',       value: `${maintUrgent}` },
+          { label: 'Total Cost',   value: nfmt(maintCost) },
+        ]}],
+        tables: [{ heading: 'Maintenance Log', headers: ['Title','Priority','Status','Cost','By','Date'],
+          rows: safeMaintenance.map((m: any) => [m.title, m.pri, m.st, m.cost ? nfmt(m.cost) : '—', m.by, fmtDate(m.date)]) }],
+      });
+    } else if (reportType === 'operations') {
+      html = buildPdf({ ...common, title: 'Operations Report',
+        sections: [{ heading: 'Dip Records', rows: [
+          { label: 'Total Dip Records', value: `${safeDips.length}` },
+          { label: 'Approved',          value: `${dipApproved}` },
+          { label: 'Pending',           value: `${dipPending}` },
+          { label: 'Total Deliveries',  value: `${safeDeliveries.length}` },
+        ]}],
+        tables: [{ heading: 'Recent Dip Records', headers: ['Date','By','Status','Observations'],
+          rows: [...safeDips].sort((a: any, b: any) => b.id-a.id).slice(0,30).map((d: any) => [fmtDate(d.dt), d.by, d.status, d.obs || '—']) }],
+      });
+    } else if (reportType === 'hr') {
+      html = buildPdf({ ...common, title: 'HR Report',
+        sections: [
+          { heading: 'Staff Overview', rows: [
+            { label: 'Total HR Records', value: `${safeHrEmployees.length}` },
+            { label: 'Active',           value: `${hrActive}` },
+            { label: 'Suspended',        value: `${hrSuspended}` },
+            { label: 'Inactive',         value: `${hrInactive}` },
+            { label: 'Staff Roster',     value: `${staff.length}` },
+          ]},
+          { heading: 'By Department', rows: Object.entries(deptMap).map(([dept, count]) => ({ label: dept, value: `${count}` })) },
+        ],
+        tables: [{ heading: 'Employee Records', headers: ['Name','Role','Department','Status','Join Date'],
+          rows: safeHrEmployees.map((e: any) => [e.name, e.role, e.dept, e.status, fmtDate(e.joinDate)]) }],
+      });
+    } else if (reportType === 'marketing') {
+      html = buildPdf({ ...common, title: 'Marketing Report',
+        sections: [{ heading: 'Price Proposals', rows: [
+          { label: 'Total',    value: `${safeProposals.length}` },
+          { label: 'Pending',  value: `${propPending}` },
+          { label: 'Approved', value: `${propApproved}` },
+          { label: 'Rejected', value: `${propRejected}` },
+        ]}],
+        tables: [
+          { heading: 'Price Proposals', headers: ['Product','Current','Proposed','Change','Status','By','Date'],
+            rows: [...safeProposals].sort((a: any,b: any) => b.id-a.id).map((p: any) => [
+              p.prod, nfmt(p.currentPrice), nfmt(p.proposedPrice),
+              `${p.proposedPrice>p.currentPrice?'+':''}${nfmt(p.proposedPrice-p.currentPrice)}`,
+              p.status, p.proposedBy, fmtDate(p.proposedAt),
+            ]) },
+          { heading: 'Recent Price Changes', headers: ['Product','Old','New','Change','By','Date'],
+            rows: [...priceHistory].sort((a,b) => b.id-a.id).slice(0,20).map(h => [
+              h.prod, nfmt(h.oldPrice), nfmt(h.newPrice),
+              `${h.newPrice>h.oldPrice?'+':''}${nfmt(h.newPrice-h.oldPrice)}`, h.by, fmtDate(h.dt),
+            ]) },
+        ],
+      });
+    } else {
+      html = buildPdf({ ...common, title: 'Full Report',
+        sections: [
+          { heading: 'Financial Overview', rows: [
+            { label: 'Total Revenue',  value: nfmt(scaledRev)   },
+            { label: 'Total Sales',    value: nfmt(scaledSales) },
+            { label: 'Total Expenses', value: nfmt(scaledExp)   },
+            { label: 'Net Balance',    value: nfmt(scaledNet)   },
+            { label: 'Net Profit',     value: nfmt(netPnl)      },
+          ]},
+          { heading: 'Maintenance', rows: [
+            { label: 'Open Items', value: `${maintOpen}` },
+            { label: 'Total Cost', value: nfmt(maintCost) },
+          ]},
+          { heading: 'HR', rows: [
+            { label: 'Total Employees', value: `${safeHrEmployees.length}` },
+            { label: 'Active',          value: `${hrActive}` },
+          ]},
+        ],
+        tables: [
+          ...(branchBD.length > 0 ? [{ heading: 'Branch Breakdown', headers: ['Branch','Revenue','Sales','Expenses','Net'],
+            rows: branchBD.map(b => [b.name, nfmt(b.rev), nfmt(b.salesRev), nfmt(b.exp), nfmt(b.net)]) }] : []),
+          { heading: 'Product P&L', headers: ['Product','Volume','Revenue','COGS','Gross Profit','Margin'],
+            rows: pnlByProd.map(p => [p.prod, (p.totalVolumeSold*scale).toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
+        ],
+      });
+    }
+    await shareAsPdf(html, meta.label);
+    setExporting(false);
+  }
+
+  /* ════════════════════════════════════════════════════════
+     RENDER
+  ════════════════════════════════════════════════════════ */
+  return (
+    <ScreenLayout title="Reports">
+
+      {/* ── Branch bar (non-managers only) ── */}
+      {!isMgr && safeBranches.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
+          contentContainerStyle={s.filterBar}>
+          {([{ id: null, name: 'All Branches' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
+            const active = selBranch === b.id;
+            return (
+              <TouchableOpacity key={String(b.id)} onPress={() => setSelBranch(b.id)}
+                style={[s.pill, { backgroundColor: active ? rc : colors.surface, borderColor: active ? rc : colors.border }]}>
+                <Text style={[s.pillTxt, { color: active ? '#fff' : colors.textMuted }]}>{b.name}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
+      {/* ── Report type tabs ── */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
+        contentContainerStyle={s.filterBar}>
+        {perms.visible.map(rt => {
+          const m = REPORT_META[rt];
+          const active = reportType === rt;
+          return (
+            <TouchableOpacity key={rt} onPress={() => setReportType(rt)}
+              style={[s.pill, { backgroundColor: active ? m.color : colors.surface, borderColor: active ? m.color : colors.border }]}>
+              <Ionicons name={m.icon as any} size={12} color={active ? '#fff' : colors.textMuted} />
+              <Text style={[s.pillTxt, { color: active ? '#fff' : colors.textMuted }]}>{m.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* ── Period pills ── */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
+        contentContainerStyle={s.filterBar}>
+        {PERIODS.map(p => {
+          const active = period === p;
+          return (
+            <TouchableOpacity key={p} onPress={() => setPeriod(p)}
+              style={[s.pill, { backgroundColor: active ? rc : colors.surface, borderColor: active ? rc : colors.border }]}>
+              <Text style={[s.pillTxt, { color: active ? '#fff' : colors.textMuted }]}>{p}</Text>
+            </TouchableOpacity>
+          );
+        })}
+        <Text style={[s.dateRange, { color: colors.textSubtle }]}>{periodStr}</Text>
+      </ScrollView>
+
+      {/* ── Data ── */}
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* Report header strip */}
+        <View style={[s.reportStrip, { backgroundColor: meta.color }]}>
+          <Ionicons name={meta.icon as any} size={18} color="rgba(255,255,255,0.9)" />
+          <View style={{ flex: 1 }}>
+            <Text style={s.stripTitle}>{meta.label}</Text>
+            <Text style={s.stripSub}>{period} · {branchName}</Text>
+          </View>
+          {!canExport ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name="eye-outline" size={13} color="rgba(255,255,255,0.7)" />
+              <Text style={s.viewOnlyBadge}>View only</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* ── SUMMARY ── */}
+        {reportType === 'summary' || reportType === 'full' ? (
+          <>
+            <KpiCards colors={colors} items={[
+              { label:'Revenue',  value: fmt(scaledRev),   color:'#27500A', icon:'trending-up-outline'  },
+              { label:'Sales',    value: fmt(scaledSales), color:'#185FA5', icon:'bar-chart-outline'     },
+              { label:'Expenses', value: fmt(scaledExp),   color:'#791F1F', icon:'trending-down-outline' },
+              { label:'Net',      value: fmt(scaledNet),   color: scaledNet >= 0 ? '#27500A' : '#791F1F', icon:'wallet-outline' },
+            ]} />
+            <ProgressRow label="Net Margin" pct={margin} colors={colors} />
+            {branchBD.length > 0 ? (
+              <>
+                <SecTitle label="Branch Breakdown" colors={colors} />
+                {branchBD.map(b => (
+                  <View key={b.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.rowCardTitle, { color: colors.text }]}>{b.name}</Text>
+                      <Text style={[s.rowCardSub, { color: colors.textMuted }]}>Rev {fmt(b.rev)} · Sales {fmt(b.salesRev)}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: b.net >= 0 ? '#27500A' : '#791F1F' }}>{fmt(b.net)}</Text>
+                      <Text style={{ fontSize: 10, color: colors.textMuted }}>Exp {fmt(b.exp)}</Text>
+                    </View>
+                  </View>
+                ))}
+              </>
+            ) : null}
+            <SecTitle label="Expense Breakdown" colors={colors} />
+            {catScaled.length === 0 ? <EmptyState icon="receipt-outline" label="No approved expenses" colors={colors} /> : null}
+            {catScaled.map(c => (
+              <View key={c.cat} style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{c.cat}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: rc }}>{fmt(c.total)}</Text>
+                </View>
+                <View style={[s.progBg, { backgroundColor: colors.border }]}>
+                  <View style={[s.progBar, { width: `${c.pct}%` as any, backgroundColor: rc }]} />
+                </View>
+                <Text style={{ fontSize: 10, marginTop: 4, color: colors.textMuted }}>{c.pct}% of expenses</Text>
+              </View>
+            ))}
+            {reportType === 'full' ? (
+              <>
+                <SecTitle label="Profit & Loss" colors={colors} />
+                <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} catScaled={catScaled} scale={scale} colors={colors} rc={rc} />
+                <SecTitle label="Sales by Product" colors={colors} />
+                {prodSales.length === 0 ? <EmptyState icon="bar-chart-outline" label="No sales data" colors={colors} /> : null}
+                {prodSales.map(p => <ProdSaleRow key={p.prod} p={p} colors={colors} />)}
+              </>
+            ) : null}
+          </>
+        ) : null}
+
+        {/* ── P&L ── */}
+        {reportType === 'pnl' ? (
+          <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} catScaled={catScaled} scale={scale} colors={colors} rc={rc} />
+        ) : null}
+
+        {/* ── EXPENSES ── */}
+        {reportType === 'expenses' ? (
+          <>
+            <View style={[s.totalPill, { backgroundColor: rc + '18', borderColor: rc + '33' }]}>
+              <Text style={[s.totalPillLabel, { color: rc }]}>Total Approved Expenses</Text>
+              <Text style={[s.totalPillValue, { color: rc }]}>{fmt(scaledExp)}</Text>
+            </View>
+            {approved.length === 0 ? <EmptyState icon="receipt-outline" label="No approved expenses" colors={colors} /> : null}
+            {[...approved].reverse().map((e: any) => (
+              <View key={e.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.rowCardTitle, { color: colors.text }]}>{e.cat}</Text>
+                  <Text style={[s.rowCardSub, { color: colors.textMuted }]}>{e.desc}</Text>
+                  <Text style={{ fontSize: 10, marginTop: 3, color: colors.textSubtle }}>by {e.byName} · Approved by {e.approvedBy}</Text>
+                </View>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: rc }}>{fmt(e.amt)}</Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {/* ── SALES ── */}
+        {reportType === 'sales' ? (
+          <>
+            <View style={[s.totalPill, { backgroundColor: rc + '18', borderColor: rc + '33' }]}>
+              <Text style={[s.totalPillLabel, { color: rc }]}>Total Sales Revenue</Text>
+              <Text style={[s.totalPillValue, { color: rc }]}>{fmt(scaledSales)}</Text>
+            </View>
+            {prodSales.length === 0 ? <EmptyState icon="bar-chart-outline" label="No sales data" colors={colors} /> : null}
+            {prodSales.map(p => <ProdSaleRow key={p.prod} p={p} colors={colors} />)}
+          </>
+        ) : null}
+
+        {/* ── PRICES ── */}
+        {reportType === 'prices' ? (
+          <>
+            <SecTitle label="Current Selling Prices" colors={colors} />
+            {(['PMS','AGO','DPK','LPG','Lube Oil'] as const).map(prod => {
+              const price = (prices as any)[prod] ?? 0;
+              const pc = PROD_COLORS[prod] || rc;
+              const last = priceHistory.filter(h => h.prod === prod).sort((a,b) => b.id-a.id)[0];
+              return (
+                <View key={prod} style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[s.prodDot, { backgroundColor: pc }]} />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{prod}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: price > 0 ? pc : colors.textSubtle }}>
+                        {price > 0 ? `₦${price.toLocaleString()}/L` : 'Not set'}
+                      </Text>
+                    </View>
+                    {last ? <Text style={{ fontSize: 10, color: colors.textMuted }}>Last changed by {last.by} · {fmtDate(last.dt)}</Text> : null}
+                  </View>
+                </View>
+              );
+            })}
+            <SecTitle label="Price Change History" colors={colors} />
+            {priceHistory.length === 0 ? <EmptyState icon="pricetag-outline" label="No price changes recorded" colors={colors} /> : null}
+            {[...priceHistory].sort((a,b) => b.id-a.id).map(h => {
+              const pc = PROD_COLORS[h.prod] || rc;
+              const up = h.newPrice > h.oldPrice;
+              return (
+                <View key={h.id} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[s.histTag, { backgroundColor: pc + '18' }]}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: pc }}>{h.prod}</Text>
+                  </View>
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 13, textDecorationLine: 'line-through', color: colors.textMuted }}>₦{h.oldPrice.toLocaleString()}</Text>
+                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>₦{h.newPrice.toLocaleString()}</Text>
+                      <DiffBadge diff={h.newPrice - h.oldPrice} />
+                    </View>
+                    <Text style={{ fontSize: 11, color: colors.textSubtle }}>{h.by} · {fmtDate(h.dt)}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </>
+        ) : null}
+
+        {/* ── MAINTENANCE ── */}
+        {reportType === 'maintenance' ? (
+          <>
+            <KpiCards colors={colors} items={[
+              { label:'Open',   value: maintOpen,          color:'#791F1F', icon:'alert-circle-outline'   },
+              { label:'Done',   value: maintDone,          color:'#27500A', icon:'checkmark-circle-outline'},
+              { label:'Urgent', value: maintUrgent,        color:'#BA7517', icon:'warning-outline'         },
+              { label:'Cost',   value: fmt(maintCost),     color:'#633806', icon:'cash-outline'            },
+            ]} />
+            {safeMaintenance.length === 0 ? <EmptyState icon="construct-outline" label="No maintenance records" colors={colors} /> : null}
+            {safeMaintenance.map((m: any) => (
+              <View key={m.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[s.priBadge, { backgroundColor: priBg(m.pri) }]}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: priColor(m.pri) }}>{m.pri}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.rowCardTitle, { color: colors.text }]}>{m.title}</Text>
+                  <Text style={[s.rowCardSub, { color: colors.textMuted }]}>by {m.by} · {fmtDate(m.date)}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 3 }}>
+                  <View style={[s.stBadge, { backgroundColor: m.st === 'Open' ? '#FCEBEB' : '#EAF3DE' }]}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: m.st === 'Open' ? '#791F1F' : '#27500A' }}>{m.st}</Text>
+                  </View>
+                  {m.cost ? <Text style={{ fontSize: 12, fontWeight: '700', color: '#633806' }}>{fmt(m.cost)}</Text> : null}
+                </View>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {/* ── OPERATIONS ── */}
+        {reportType === 'operations' ? (
+          <>
+            <KpiCards colors={colors} items={[
+              { label:'Total Dips',  value: safeDips.length,       color:'#185FA5', icon:'layers-outline'       },
+              { label:'Approved',    value: dipApproved,           color:'#27500A', icon:'checkmark-done-outline'},
+              { label:'Pending',     value: dipPending,            color:'#BA7517', icon:'time-outline'          },
+              { label:'Deliveries',  value: safeDeliveries.length, color:'#633806', icon:'cube-outline'          },
+            ]} />
+            <SecTitle label="Recent Dip Records" colors={colors} />
+            {safeDips.length === 0 ? <EmptyState icon="speedometer-outline" label="No dip records yet" colors={colors} /> : null}
+            {[...safeDips].sort((a: any,b: any) => b.id-a.id).slice(0, 20).map((d: any) => (
+              <View key={d.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.rowCardTitle, { color: colors.text }]}>{fmtDate(d.dt)}</Text>
+                  <Text style={[s.rowCardSub, { color: colors.textMuted }]}>by {d.by}{d.obs ? ` · ${d.obs}` : ''}</Text>
+                </View>
+                <View style={[s.stBadge, { backgroundColor: d.status === 'approved' ? '#EAF3DE' : d.status === 'rejected' ? '#FCEBEB' : '#FAEEDA' }]}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: d.status === 'approved' ? '#27500A' : d.status === 'rejected' ? '#791F1F' : '#BA7517', textTransform: 'capitalize' }}>{d.status}</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {/* ── HR ── */}
+        {reportType === 'hr' ? (
+          <>
+            <KpiCards colors={colors} items={[
+              { label:'Total',     value: safeHrEmployees.length, color:'#7B3FA8', icon:'people-outline'       },
+              { label:'Active',    value: hrActive,               color:'#27500A', icon:'person-outline'       },
+              { label:'Suspended', value: hrSuspended,            color:'#791F1F', icon:'person-remove-outline'},
+              { label:'Inactive',  value: hrInactive,             color:'#999',    icon:'person-outline'       },
+            ]} />
+            {Object.keys(deptMap).length > 0 ? (
+              <>
+                <SecTitle label="By Department" colors={colors} />
+                {Object.entries(deptMap).sort((a,b) => b[1]-a[1]).map(([dept, count]) => (
+                  <View key={dept} style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{dept}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#7B3FA8' }}>{count} {count === 1 ? 'person' : 'people'}</Text>
+                    </View>
+                    <View style={[s.progBg, { backgroundColor: colors.border }]}>
+                      <View style={[s.progBar, { width: `${safeHrEmployees.length > 0 ? Math.round((count / safeHrEmployees.length) * 100) : 0}%` as any, backgroundColor: '#7B3FA8' }]} />
+                    </View>
+                  </View>
+                ))}
+              </>
+            ) : null}
+            <SecTitle label="Employee Records" colors={colors} />
+            {safeHrEmployees.length === 0 ? <EmptyState icon="people-outline" label="No employee records" colors={colors} /> : null}
+            {safeHrEmployees.map((e: any) => (
+              <View key={e.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.rowCardTitle, { color: colors.text }]}>{e.name}</Text>
+                  <Text style={[s.rowCardSub, { color: colors.textMuted }]}>{e.role} · {e.dept}</Text>
+                  <Text style={{ fontSize: 10, marginTop: 2, color: colors.textSubtle }}>Joined {fmtDate(e.joinDate)}</Text>
+                </View>
+                <View style={[s.stBadge, { backgroundColor: e.status === 'active' ? '#EAF3DE' : e.status === 'suspended' ? '#FCEBEB' : '#f5f5f3' }]}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: stColor(e.status), textTransform: 'capitalize' }}>{e.status}</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {/* ── MARKETING ── */}
+        {reportType === 'marketing' ? (
+          <>
+            <KpiCards colors={colors} items={[
+              { label:'Proposals', value: safeProposals.length, color:'#C45C1A', icon:'megaphone-outline'},
+              { label:'Pending',   value: propPending,          color:'#BA7517', icon:'time-outline'     },
+              { label:'Approved',  value: propApproved,         color:'#27500A', icon:'checkmark-outline'},
+              { label:'Rejected',  value: propRejected,         color:'#791F1F', icon:'close-outline'    },
+            ]} />
+            <SecTitle label="Price Proposals" colors={colors} />
+            {safeProposals.length === 0 ? <EmptyState icon="megaphone-outline" label="No proposals yet" colors={colors} /> : null}
+            {[...safeProposals].sort((a: any,b: any) => b.id-a.id).map((p: any) => {
+              const pc = PROD_COLORS[p.prod] || rc;
+              const up = p.proposedPrice > p.currentPrice;
+              const sc = p.status==='approved' ? '#27500A' : p.status==='rejected' ? '#791F1F' : '#BA7517';
+              const sb = p.status==='approved' ? '#EAF3DE' : p.status==='rejected' ? '#FCEBEB' : '#FAEEDA';
+              return (
+                <View key={p.id} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[s.histTag, { backgroundColor: pc + '18' }]}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: pc }}>{p.prod}</Text>
+                  </View>
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 13, textDecorationLine: 'line-through', color: colors.textMuted }}>₦{p.currentPrice.toLocaleString()}</Text>
+                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>₦{p.proposedPrice.toLocaleString()}</Text>
+                      <DiffBadge diff={p.proposedPrice - p.currentPrice} />
+                    </View>
+                    <Text style={{ fontSize: 11, color: colors.textSubtle }}>By {p.proposedBy}{p.reviewedBy ? ` · ${p.status==='approved'?'Approved':'Rejected'} by ${p.reviewedBy}` : ''} · {fmtDate(p.proposedAt)}</Text>
+                  </View>
+                  <View style={[s.stBadge, { backgroundColor: sb }]}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: sc, textTransform: 'capitalize' }}>{p.status}</Text>
+                  </View>
+                </View>
+              );
+            })}
+            <SecTitle label="Recent Price Changes" colors={colors} />
+            {[...priceHistory].sort((a,b) => b.id-a.id).slice(0, 15).map(h => {
+              const pc = PROD_COLORS[h.prod] || rc;
+              const up = h.newPrice > h.oldPrice;
+              return (
+                <View key={h.id} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[s.histTag, { backgroundColor: pc + '18' }]}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: pc }}>{h.prod}</Text>
+                  </View>
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 13, textDecorationLine: 'line-through', color: colors.textMuted }}>₦{h.oldPrice.toLocaleString()}</Text>
+                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>₦{h.newPrice.toLocaleString()}</Text>
+                      <DiffBadge diff={h.newPrice - h.oldPrice} />
+                    </View>
+                    <Text style={{ fontSize: 11, color: colors.textSubtle }}>{h.by} · {fmtDate(h.dt)}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </>
+        ) : null}
+
+        {/* ── Export / View-only footer ── */}
+        {canExport ? (
+          <TouchableOpacity onPress={handleExport} disabled={exporting}
+            style={[s.exportBtn, { backgroundColor: exporting ? colors.textSubtle : meta.color }]}>
+            <Ionicons name={exporting ? 'hourglass-outline' : 'share-outline'} size={16} color="#fff" />
+            <Text style={s.exportBtnTxt}>{exporting ? 'Preparing PDF…' : `Share ${meta.label} as PDF`}</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={[s.viewOnlyFooter, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="lock-closed-outline" size={15} color={colors.textMuted} />
+            <Text style={[s.viewOnlyFooterTxt, { color: colors.textMuted }]}>
+              PDF export for this report is available to authorised roles only.
+            </Text>
+          </View>
+        )}
+        <View style={{ height: 28 }} />
+      </ScrollView>
+    </ScreenLayout>
+  );
+}
+
+/* ─── P&L block ─────────────────────────────────────────── */
+function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scaledExp, catScaled, scale, colors, rc }: any) {
+  return (
+    <>
+      <View style={[s.plHeader, { backgroundColor: netPnl >= 0 ? '#0a2318' : '#791F1F' }]}>
+        <Text style={s.plHeaderLabel}>Profit & Loss</Text>
+        <Text style={s.plHeaderNet}>{fmt(netPnl)}</Text>
+        <Text style={s.plHeaderSub}>{netPnl >= 0 ? 'Net Profit' : 'Net Loss'} · {nmPct}% net margin</Text>
+        <View style={{ flexDirection: 'row' }}>
+          {[
+            { label: 'Sales Revenue', value: totSR },
+            { label: 'Cost of Goods', value: totCOGS },
+            { label: 'Gross Profit',  value: totGP  },
+          ].map(it => (
+            <View key={it.label} style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9, marginBottom: 3 }}>{it.label}</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: it.label === 'Cost of Goods' ? '#ffb3b3' : '#fff' }}>{fmt(it.value)}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+      <ProgressRow label="Gross Margin" pct={gmPct} colors={colors} />
+      {pnlByProd.length === 0 ? <EmptyState icon="trending-up-outline" label="No P&L data" colors={colors} /> : null}
+      {pnlByProd.map((p: any) => {
+        const pc = PROD_COLORS[p.prod] || rc;
+        const profitable = p.grossProfit >= 0;
+        return (
+          <View key={p.prod} style={[s.plCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: pc + '15' }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: pc }}>{p.prod}</Text>
+              </View>
+              <View style={{ flex: 1 }} />
+              {p.grossMargin !== null ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: profitable ? '#EAF3DE' : '#FCEBEB' }}>
+                  <Ionicons name={profitable ? 'trending-up' : 'trending-down'} size={11} color={profitable ? '#27500A' : '#791F1F'} />
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: profitable ? '#27500A' : '#791F1F' }}>{p.grossMargin}% gross margin</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+              {[
+                { label: 'Volume Sold', val: `${(p.totalVolumeSold * scale).toLocaleString()} L` },
+                { label: 'Avg Sell',    val: `₦${p.avgSellPrice.toLocaleString()}/L`, color: pc },
+                { label: 'Avg Cost',    val: p.hasCostData ? `₦${p.avgCostPerL.toLocaleString()}/L` : '—' },
+              ].map(g => (
+                <View key={g.label} style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ fontSize: 10, color: colors.textMuted }}>{g.label}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: (g as any).color ?? colors.text }}>{g.val}</Text>
+                </View>
+              ))}
+            </View>
+            {[
+              { label: 'Sales Revenue', value: p.salesRevenue, color: '#185FA5', icon: 'cash-outline' },
+              { label: 'COGS',          value: p.scaledCOGS,   color: '#791F1F', icon: 'pricetag-outline' },
+              { label: 'Gross Profit',  value: p.grossProfit,  color: profitable ? '#27500A' : '#791F1F', icon: profitable ? 'trending-up' : 'trending-down' },
+            ].map(row => (
+              <View key={row.label} style={[s.plRow, { borderTopColor: colors.border }]}>
+                <Ionicons name={row.icon as any} size={13} color={row.color} />
+                <Text style={{ flex: 1, fontSize: 12, color: colors.textMuted }}>{row.label}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: row.color }}>{fmt(row.value)}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      })}
+      <View style={[s.plOpex, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 6, color: colors.text }}>Operating Expenses</Text>
+        {catScaled.slice(0, 5).map((c: any) => (
+          <View key={c.cat} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.textMuted }}>{c.cat}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#791F1F' }}>{fmt(c.total)}</Text>
+          </View>
+        ))}
+        {catScaled.length > 5 ? <Text style={{ fontSize: 11, color: colors.textSubtle }}>+ {catScaled.length - 5} more</Text> : null}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Total</Text>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: '#791F1F' }}>{fmt(scaledExp)}</Text>
+        </View>
+      </View>
+      <View style={[s.plFinal, { backgroundColor: netPnl >= 0 ? '#EAF3DE' : '#FCEBEB', borderColor: netPnl >= 0 ? '#27500A33' : '#791F1F33' }]}>
+        <View>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: netPnl >= 0 ? '#27500A' : '#791F1F' }}>{netPnl >= 0 ? 'Net Profit' : 'Net Loss'}</Text>
+          <Text style={{ fontSize: 10, marginTop: 3, color: netPnl >= 0 ? '#3a6e1c' : '#aa2222' }}>Gross Profit − Operating Expenses</Text>
+        </View>
+        <Text style={{ fontSize: 22, fontWeight: '900', marginLeft: 'auto', color: netPnl >= 0 ? '#27500A' : '#791F1F' }}>{fmt(netPnl)}</Text>
+      </View>
+    </>
+  );
+}
+
+function ProdSaleRow({ p, colors }: { p: any; colors: any }) {
+  return (
+    <View style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={[s.prodDot, { backgroundColor: p.color }]} />
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{p.prod}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: p.color }}>{fmt(p.scaledRev)}</Text>
+        </View>
+        <Text style={{ fontSize: 10, color: colors.textMuted }}>{p.scaledL.toLocaleString()} L · ₦{p.price.toLocaleString()}/L</Text>
+      </View>
+    </View>
+  );
+}
+
+/* ─── Styles ─────────────────────────────────────────────── */
+const s = StyleSheet.create({
+  filterBar:      { flexDirection: 'row', gap: 6, padding: 10, paddingHorizontal: 12, alignItems: 'center' },
+  pill:           { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  pillTxt:        { fontSize: 12, fontWeight: '600' },
+  dateRange:      { fontSize: 11, marginLeft: 4 },
+  scroll:         { padding: 16 },
+  reportStrip:    { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, marginBottom: 14 },
+  stripTitle:     { color: '#fff', fontSize: 16, fontWeight: '800' },
+  stripSub:       { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 },
+  viewOnlyBadge:  { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontStyle: 'italic' },
+  kpiRow:         { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  kpiCard:        { flex: 1, borderRadius: 12, borderWidth: 1, padding: 10, alignItems: 'center', gap: 3 },
+  kpiLabel:       { fontSize: 9, fontWeight: '600', textTransform: 'uppercase' },
+  kpiValue:       { fontSize: 13, fontWeight: '800' },
+  secTitle:       { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  marginRow:      { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
+  marginLabel:    { fontSize: 12, fontWeight: '600', width: 90 },
+  marginPct:      { fontSize: 14, fontWeight: '800', width: 42, textAlign: 'right' },
+  progBg:         { height: 6, borderRadius: 3, overflow: 'hidden' },
+  progBar:        { height: 6, borderRadius: 3 },
+  rowCard:        { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
+  rowCardTitle:   { fontSize: 13, fontWeight: '700' },
+  rowCardSub:     { fontSize: 11, marginTop: 2 },
+  catCard:        { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
+  prodDot:        { width: 10, height: 10, borderRadius: 5 },
+  histRow:        { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 8 },
+  histTag:        { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, alignItems: 'center', minWidth: 44 },
+  totalPill:      { padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 14, alignItems: 'center' },
+  totalPillLabel: { fontSize: 12, fontWeight: '600', marginBottom: 4 },
+  totalPillValue: { fontSize: 28, fontWeight: '800' },
+  priBadge:       { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  stBadge:        { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  plHeader:       { borderRadius: 16, padding: 20, marginBottom: 14, gap: 4 },
+  plHeaderLabel:  { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
+  plHeaderNet:    { color: '#fff', fontSize: 34, fontWeight: '800' },
+  plHeaderSub:    { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginBottom: 8 },
+  plCard:         { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
+  plRow:          { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  plOpex:         { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
+  plFinal:        { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
+  empty:          { alignItems: 'center', paddingVertical: 40, gap: 10 },
+  exportBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, borderRadius: 14, marginTop: 16, marginBottom: 8 },
+  exportBtnTxt:   { color: '#fff', fontSize: 15, fontWeight: '800' },
+  viewOnlyFooter: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, marginTop: 16 },
+  viewOnlyFooterTxt: { flex: 1, fontSize: 12, lineHeight: 17 },
+});
