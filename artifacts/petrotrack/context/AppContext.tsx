@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { stateApi } from '@/lib/api';
+import { stateApi, apiLogin, saveToken, clearToken } from '@/lib/api';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
@@ -695,6 +695,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     setRole(null); setUserName(''); setBranchId(null); setStaffId(null);
     AsyncStorage.removeItem('auth');
+    clearToken();
   }, []);
 
   const updateMgrPerms = useCallback((bid: string, perms: Partial<MgrPermissions>) => {
@@ -1111,9 +1112,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const validateCredentials = useCallback((username: string, password: string): UserAccount | null => {
-    if (username.toLowerCase() === 'admin' && password === 'Myfatherson123@') {
-      return { id: 0, empName: 'System Admin', username: 'admin', password: 'Myfatherson123@', role: 'admin', status: 'active', createdBy: 'system', createdAt: '' };
-    }
     return userAccounts.find(a => a.username === username && a.password === password && a.status === 'active') ?? null;
   }, [userAccounts]);
 
