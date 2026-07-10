@@ -179,7 +179,7 @@ export default function OperationsScreen() {
 
           {/* Dip Form */}
           {dipSubTab === 0 && (
-            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
               {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
               {!perms.canPetrolTanks && isMgr && (
                 <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -311,7 +311,7 @@ export default function OperationsScreen() {
 
           {/* Log & Delivery */}
           {dipSubTab === 1 && (
-            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
               {isMD && dips.some(d => d.status === 'pending') && (
                 <View style={[styles.mdBanner, { backgroundColor: '#4527a018', borderColor: '#4527a0' }]}>
                   <Ionicons name="alert-circle" size={16} color="#4527a0" />
@@ -441,7 +441,7 @@ export default function OperationsScreen() {
 
           {/* Inventory */}
           {dipSubTab === 2 && (
-            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
               {visibleTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>}
               {visibleTanks.map(t => {
                 const stock = t.op + t.rv - t.sl;
@@ -678,7 +678,7 @@ export default function OperationsScreen() {
 
       {/* ══════════════════════════════════════════════════ MAINTENANCE ══ */}
       {topTab === 'maint' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {canMaint && (
             <TouchableOpacity onPress={() => setShowMaintForm(v => !v)}
               style={[styles.addOutlineBtn, { borderColor: roleColor, marginBottom: showMaintForm ? 0 : 12 }]}>
