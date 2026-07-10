@@ -48,7 +48,7 @@ export default function HomeScreen() {
             <Ionicons name="shield-checkmark" size={32} color="#4CAF50" />
             <View style={{ flex: 1 }}>
               <Text style={styles.adminBannerTitle}>Administrator Portal</Text>
-              <Text style={styles.adminBannerSub}>PetroTrack NG — Full system access</Text>
+              <Text style={styles.adminBannerSub}>Gastsmarts — Full system access</Text>
             </View>
           </View>
           <View style={styles.statsGrid}>
