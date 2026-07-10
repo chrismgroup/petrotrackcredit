@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform, ScrollView,
+  Alert, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
@@ -60,7 +60,6 @@ export default function ShiftScreen() {
 
   return (
     <ScreenLayout title="Shift Reconciliation">
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
           {/* ─── Attendant view ─── */}
@@ -257,7 +256,6 @@ export default function ShiftScreen() {
           })}
           <View style={{ height: 20 }} />
         </ScrollView>
-      </KeyboardAvoidingView>
     </ScreenLayout>
   );
 }

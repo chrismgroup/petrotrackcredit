@@ -12,13 +12,13 @@ interface ModalSheetProps {
  *
  * Layout (flex column, top → bottom):
  *   View  flex:1
- *     Pressable  flex:1  ← expands to fill space ABOVE the sheet only
- *     children           ← sheet card, at the bottom in normal flow
+ *     Pressable  flex:1  ← fills space ABOVE the sheet; tapping it closes the sheet
+ *     children           ← sheet card sits at the bottom in normal flow
  *
- * No KeyboardAvoidingView here — the root KeyboardProvider from
- * react-native-keyboard-controller manages the keyboard globally.
- * Adding KAV inside it caused the "keyboard flip" (KAV + KeyboardProvider
- * fighting each other on every keystroke).
+ * No KeyboardAvoidingView here. The app uses native iOS/Android keyboard
+ * handling (softwareKeyboardLayoutMode:"pan" on Android, native on iOS)
+ * with keyboardShouldPersistTaps="handled" on all ScrollViews.
+ * Adding KAV inside Modal causes the keyboard to flip on every keystroke.
  */
 export function ModalSheet({ visible, onClose, children }: ModalSheetProps) {
   return (
