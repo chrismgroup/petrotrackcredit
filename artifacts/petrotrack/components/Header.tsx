@@ -54,14 +54,14 @@ export function Header({ title, rightAction }: Props) {
     setShowChangePw(true);
   }
 
-  function handleSavePassword() {
+  async function handleSavePassword() {
     if (!currentPw.trim()) { Alert.alert('Required', 'Enter your current password.'); return; }
     if (!newPw.trim()) { Alert.alert('Required', 'Enter a new password.'); return; }
     if (newPw.trim().length < 6) { Alert.alert('Too Short', 'New password must be at least 6 characters.'); return; }
     if (newPw.trim() !== confirmPw.trim()) { Alert.alert('Mismatch', 'New password and confirmation do not match.'); return; }
     if (newPw.trim() === currentPw.trim()) { Alert.alert('Same Password', 'New password must be different from the current one.'); return; }
 
-    const ok = changeOwnPassword(currentPw.trim(), newPw.trim());
+    const ok = await changeOwnPassword(currentPw.trim(), newPw.trim());
     if (!ok) {
       Alert.alert('Incorrect Password', 'Your current password is incorrect. Please try again.');
       return;

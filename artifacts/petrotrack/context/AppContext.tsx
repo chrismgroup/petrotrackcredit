@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { stateApi, apiLogin, saveToken, clearToken } from '@/lib/api';
+import { hashPassword, verifyPassword } from '@/lib/crypto';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
@@ -290,6 +291,7 @@ const INIT_MEETING_MINUTES: MeetingMinutes[] = [];
 interface AppContextType {
   companyInfo: CompanyInfo; updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
   role: Role | null; userName: string; branchId: string | null; staffId: number | null;
+  isServerAuthenticated: boolean;
   navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
   login: (role: Role, name: string, staffId?: number, branchId?: string) => void; logout: () => void;
   updateMgrPerms: (branchId: string, perms: Partial<MgrPermissions>) => void;
@@ -360,15 +362,15 @@ interface AppContextType {
   assignStaffDept: (staffId: number, deptId: string | null) => void;
   userAccounts: UserAccount[];
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
-  addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => void;
-  updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => void;
-  changeOwnPassword: (currentPassword: string, newPassword: string) => boolean;
-  approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => void;
+  addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => Promise<void>;
+  updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => Promise<void>;
+  changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
+  approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => Promise<void>;
   suspendUserAccount: (id: number) => void;
   reactivateUserAccount: (id: number) => void;
   rejectUserAccount: (id: number) => void;
   deleteUserAccount: (id: number) => void;
-  validateCredentials: (username: string, password: string) => UserAccount | null;
+  validateCredentials: (username: string, password: string) => Promise<UserAccount | null>;
   getConversation: (peer: Role) => Message[];
   unreadCount: () => number;
   tasks: Task[];
@@ -432,6 +434,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [userName, setUserName] = useState('');
   const [branchId, setBranchId] = useState<string | null>(null);
   const [staffId, setStaffId] = useState<number | null>(null);
+  const [isServerAuthenticated, setIsServerAuthenticated] = useState(false);
   const [mgrPerms, setMgrPerms] = useState<Record<string, MgrPermissions>>(INIT_MGR_PERMS);
   const [roleAccess, setRoleAccess] = useState<Record<string, Record<string, boolean>>>(defaultRoleAccess);
   const [userAccess, setUserAccess] = useState<Record<number, Record<string, boolean>>>({});
@@ -486,7 +489,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (n === 'Solomon Okon' && !sid) {
           AsyncStorage.removeItem('auth');
         } else {
-          setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null);
+          // Only restore session if a server-issued JWT token is also present
+          AsyncStorage.getItem('pt_auth_token').then(token => {
+            if (token) {
+              setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null);
+              setIsServerAuthenticated(true);
+            } else {
+              // No token means no valid server session; discard the stale auth record
+              AsyncStorage.removeItem('auth');
+            }
+          });
         }
       }
       if (s.companyInfo)       setCompanyInfo(s.companyInfo);
@@ -689,11 +701,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback((r: Role, n: string, sid?: number, bid?: string) => {
     setRole(r); setUserName(n);
     setBranchId(bid ?? null); setStaffId(sid ?? null);
+    setIsServerAuthenticated(true);
     AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null }));
   }, []);
 
   const logout = useCallback(() => {
     setRole(null); setUserName(''); setBranchId(null); setStaffId(null);
+    setIsServerAuthenticated(false);
     AsyncStorage.removeItem('auth');
     clearToken();
   }, []);
@@ -1067,31 +1081,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUserAccounts(prev => [...prev, { ...acc, id: genId(), createdAt: nowTs(), status: 'pending', username: '', password: '', role: null }]);
   }, []);
 
-  const addActiveUserAccount = useCallback((acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => {
+  const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => {
+    const hashedPw = await hashPassword(acc.password);
     setUserAccounts(prev => [...prev, {
       id: genId(), createdAt: nowTs(), status: 'active',
       approvedBy: acc.createdBy, approvedAt: nowTs(),
-      empName: acc.empName, username: acc.username, password: acc.password,
+      empName: acc.empName, username: acc.username, password: hashedPw,
       role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept, createdBy: acc.createdBy,
     }]);
     setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
   }, []);
 
-  const updateUserAccount = useCallback((id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => {
-    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+  const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => {
+    const resolved = { ...updates };
+    if (resolved.password) {
+      resolved.password = await hashPassword(resolved.password);
+    }
+    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, ...resolved } : a));
     setAudit(a => [{ id: genId(), action: 'Account updated', user: by, detail: `Account #${id} credentials/role updated`, ts: nowTs() }, ...a]);
   }, []);
 
-  const changeOwnPassword = useCallback((currentPassword: string, newPassword: string): boolean => {
-    const acc = userAccounts.find(a => a.username === userName && a.password === currentPassword);
+  const changeOwnPassword = useCallback(async (currentPassword: string, newPassword: string): Promise<boolean> => {
+    const acc = userAccounts.find(a => a.username === userName);
     if (!acc) return false;
-    setUserAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, password: newPassword } : a));
+    const valid = await verifyPassword(currentPassword, acc.password);
+    if (!valid) return false;
+    const hashedPw = await hashPassword(newPassword);
+    setUserAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, password: hashedPw } : a));
     setAudit(a => [{ id: genId(), action: 'Password changed', user: userName, detail: `${userName} changed their own password`, ts: nowTs() }, ...a]);
     return true;
   }, [userAccounts, userName]);
 
-  const approveUserAccount = useCallback((id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
-    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, role, username, password, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId } : a));
+  const approveUserAccount = useCallback(async (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
+    const hashedPw = await hashPassword(password);
+    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, role, username, password: hashedPw, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId } : a));
     setAudit(a => [{ id: genId(), action: 'Account approved', user: by, detail: `Account for ${username} approved as ${role}`, ts: nowTs() }, ...a]);
   }, []);
 
@@ -1111,8 +1134,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUserAccounts(prev => prev.filter(a => a.id !== id));
   }, []);
 
-  const validateCredentials = useCallback((username: string, password: string): UserAccount | null => {
-    return userAccounts.find(a => a.username === username && a.password === password && a.status === 'active') ?? null;
+  const validateCredentials = useCallback(async (username: string, password: string): Promise<UserAccount | null> => {
+    const candidates = userAccounts.filter(a => a.username === username && a.status === 'active');
+    for (const acc of candidates) {
+      const ok = await verifyPassword(password, acc.password);
+      if (ok) return acc;
+    }
+    return null;
   }, [userAccounts]);
 
   const addAudit = useCallback((entry: Omit<AuditEntry, 'id' | 'ts'>) => {
@@ -1367,7 +1395,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       companyInfo, updateCompanyInfo,
-      role, userName, branchId, staffId, navItems, mgrPerms,
+      role, userName, branchId, staffId, isServerAuthenticated, navItems, mgrPerms,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages,

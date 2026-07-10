@@ -4,9 +4,9 @@ import React from 'react';
 import { useApp } from '@/context/AppContext';
 
 export default function AppLayout() {
-  const { role } = useApp();
+  const { role, isServerAuthenticated } = useApp();
 
-  if (!role) {
+  if (!role || !isServerAuthenticated) {
     return <Redirect href="/" />;
   }
 

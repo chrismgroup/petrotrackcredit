@@ -12,7 +12,7 @@ import { useColors } from '@/hooks/useColors';
 import { apiLogin } from '@/lib/api';
 
 export default function LoginScreen() {
-  const { role, login, validateCredentials } = useApp();
+  const { role, login } = useApp();
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -47,14 +47,9 @@ export default function LoginScreen() {
       return;
     }
 
-    // Fall back to local credential check (offline mode / server unreachable)
-    const acc = validateCredentials(u, p);
     setLoading(false);
-    if (!acc || !acc.role) {
-      Alert.alert('Login Failed', 'Incorrect username or password, or your account is not yet active.');
-      return;
-    }
-    login(acc.role, acc.empName, undefined, acc.branchId);
+    // Server authentication is required — no local credential fallback.
+    Alert.alert('Login Failed', 'Unable to sign in. Check your username and password, or try again when the server is reachable.');
   }
 
   return (
