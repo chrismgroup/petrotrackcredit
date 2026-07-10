@@ -18,7 +18,8 @@
       "bundleIdentifier": "com.petrack.app"
     },
     "android": {
-      "package": "com.petrack.app"
+      "package": "com.petrack.app",
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/images/icon.png"

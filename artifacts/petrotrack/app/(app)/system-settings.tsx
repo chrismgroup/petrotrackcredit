@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform,
+  Alert,
   ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
@@ -291,7 +291,6 @@ export default function SystemSettingsScreen() {
 
   return (
     <ScreenLayout title="System Settings">
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Tab bar */}
         <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScroll}>
@@ -1066,7 +1065,6 @@ export default function SystemSettingsScreen() {
 
           <View style={{ height: 24 }} />
         </ScrollView>
-      </KeyboardAvoidingView>
     </ScreenLayout>
   );
 }
