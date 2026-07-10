@@ -67,7 +67,7 @@ export default function TanksScreen() {
       </View>
 
       {activeTab === 0 && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
           {!perms.canPetrolTanks && role === 'mgr' && (
             <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -198,7 +198,7 @@ export default function TanksScreen() {
       )}
 
       {activeTab === 1 && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {isMD && dips.some(d => d.status === 'pending') && (
             <View style={[styles.mdBanner, { backgroundColor: '#4527a018', borderColor: '#4527a0' }]}>
               <Ionicons name="alert-circle" size={16} color="#4527a0" />
@@ -341,7 +341,7 @@ export default function TanksScreen() {
       )}
 
       {activeTab === 2 && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {visibleTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>}
           {!perms.canPetrolTanks && role === 'mgr' && (
             <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>

@@ -530,7 +530,7 @@ export default function HRScreen() {
       </View>
 
       {activeTab === 'employees' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={styles.statsRow}>
             {[
               { n: hrEmployees.length,                                       label: 'Total',     col: roleColor,    bg: roleColor + '12' },
@@ -603,7 +603,7 @@ export default function HRScreen() {
       )}
 
       {activeTab === 'approvals' && canApprove && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {(() => {
             const list = hrEmployees.filter(e => {
               if (isMD)  return e.onboarding?.status === 'forwarded';
@@ -656,7 +656,7 @@ export default function HRScreen() {
       )}
 
       {activeTab === 'handbooks' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {isCSM && (
             <View style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -718,7 +718,7 @@ export default function HRScreen() {
       )}
 
       {activeTab === 'recommendations' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={styles.statsRow}>
             {(['pending', 'approved', 'rejected'] as const).map(s => {
               const sm  = REC_STATUS_META[s];
