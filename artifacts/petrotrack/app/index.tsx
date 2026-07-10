@@ -54,7 +54,7 @@ export default function LoginScreen() {
         <View style={styles.logoWrap}>
           <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
         </View>
-        <Text style={styles.appName}>PetroTrack NG</Text>
+        <Text style={styles.appName}>Gastsmarts</Text>
         <Text style={styles.tagline}>Fuel Station Management System</Text>
       </View>
 
