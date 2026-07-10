@@ -167,7 +167,7 @@ export default function DepartmentsScreen() {
   }
 
   function openEdit(dept: Department) {
-    setEditForm({ name: dept.name, icon: dept.icon, col: dept.col, roles: [...dept.roles] });
+    setEditForm({ name: dept.name, icon: dept.icon, col: COLOR_PRESETS.find(c => c.fg === dept.col.fg) ?? COLOR_PRESETS[0], roles: [...dept.roles] });
     setEditDept(dept);
   }
 
