@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { apiLogin } from '@/lib/api';
 
 export default function LoginScreen() {
   const { role, login, validateCredentials } = useApp();
@@ -31,21 +32,29 @@ export default function LoginScreen() {
     }
   }, [role]);
 
-  function handleLogin() {
+  async function handleLogin() {
     const u = username.trim();
     const p = password.trim();
     if (!u || !p) { Alert.alert('Required', 'Please enter your username and password.'); return; }
 
     setLoading(true);
-    setTimeout(() => {
-      const acc = validateCredentials(u, p);
+
+    // Try server-side authentication first (issues a JWT for all subsequent API calls)
+    const serverResult = await apiLogin(u, p);
+    if (serverResult) {
       setLoading(false);
-      if (!acc || !acc.role) {
-        Alert.alert('Login Failed', 'Incorrect username or password, or your account is not yet active.');
-        return;
-      }
-      login(acc.role, acc.empName, undefined, acc.branchId);
-    }, 400);
+      login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, undefined, serverResult.branchId ?? undefined);
+      return;
+    }
+
+    // Fall back to local credential check (offline mode / server unreachable)
+    const acc = validateCredentials(u, p);
+    setLoading(false);
+    if (!acc || !acc.role) {
+      Alert.alert('Login Failed', 'Incorrect username or password, or your account is not yet active.');
+      return;
+    }
+    login(acc.role, acc.empName, undefined, acc.branchId);
   }
 
   return (

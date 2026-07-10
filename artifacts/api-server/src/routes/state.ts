@@ -14,6 +14,15 @@ const ALLOWED_KEYS = new Set([
   "legalMatters", "corpProjects", "meetingMinutes",
 ]);
 
+// Keys that modify access control, credentials, or HR/legal/financial records.
+// Only admin-role users may write to these.
+const ADMIN_WRITE_KEYS = new Set([
+  "userAccounts", "roleAccess", "userAccess", "mgrPerms",
+  "hrEmployees", "hrHandbooks", "hrRecommendations",
+  "companyFiles", "legalMatters", "meetingMinutes", "corpProjects",
+  "budgets", "companyInfo", "departments", "branches",
+]);
+
 router.get("/state", async (_req, res): Promise<void> => {
   const rows = await db.select().from(appStateTable);
   const result: Record<string, unknown> = {};
@@ -43,6 +52,13 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Unknown state key" });
     return;
   }
+
+  // Sensitive keys require admin role
+  if (ADMIN_WRITE_KEYS.has(key) && req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
   const data = req.body;
   if (data === undefined || data === null) {
     res.status(400).json({ error: "Body required" });
