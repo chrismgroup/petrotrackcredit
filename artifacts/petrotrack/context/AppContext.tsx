@@ -64,6 +64,8 @@ export interface Department { id: string; name: string; icon: string; col: { bg:
 export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; 'Lube Oil': number; }
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; }
 export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; }
+export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
+export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; duration?: string; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
 export interface CompanyInfo {
   name: string; rcNumber: string; tin: string; address: string;
@@ -193,6 +195,7 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'recv',     icon: 'cube',             label: 'Receiving'  },
   { id: 'shift',    icon: 'time',             label: 'Shift'      },
   { id: 'corp',     icon: 'briefcase',        label: 'Corporate'  },
+  { id: 'comms',    icon: 'chatbubbles',      label: 'Comms'      },
 ];
 
 const INIT_MGR_PERMS: Record<string, MgrPermissions> = {};
@@ -231,6 +234,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   recv: '/(app)/receiving',
   hr: '/(app)/hr',
   prices: '/(app)/prices',
+  comms: '/(app)/comms',
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
@@ -306,7 +310,10 @@ interface AppContextType {
   forwardBudget: (id: number, note: string) => void;
   approveBudget: (id: number, note: string) => void;
   rejectBudget: (id: number, note: string) => void;
-  messages: Record<string, Message[]>; audit: AuditEntry[]; departments: Department[];
+  messages: Record<string, Message[]>; broadcasts: Broadcast[]; callLog: CallRecord[];
+  addBroadcast: (b: Omit<Broadcast, 'id' | 'ts'>) => void;
+  addCallRecord: (r: Omit<CallRecord, 'id' | 'ts'>) => void;
+  audit: AuditEntry[]; departments: Department[];
   companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[]; shiftReports: ShiftReport[];
   updatePrice: (prod: string, price: number) => void;
   priceProposals: PriceProposal[];
@@ -468,6 +475,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [legalMatters, setLegalMatters] = useState<LegalMatter[]>(INIT_LEGAL);
   const [corpProjects, setCorpProjects] = useState<CorpProject[]>(INIT_CORP_PROJECTS);
   const [meetingMinutes, setMeetingMinutes] = useState<MeetingMinutes[]>(INIT_MEETING_MINUTES);
+  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
+  const [callLog, setCallLog] = useState<CallRecord[]>([]);
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
   const [loaded, setLoaded] = useState(false);
@@ -479,6 +488,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'shiftReports', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
+      'broadcasts', 'callLog',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -534,6 +544,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.legalMatters)      setLegalMatters(s.legalMatters);
       if (s.corpProjects)      setCorpProjects(s.corpProjects);
       if (s.meetingMinutes)    setMeetingMinutes(s.meetingMinutes);
+      if (s.broadcasts)        setBroadcasts(s.broadcasts);
+      if (s.callLog)           setCallLog(s.callLog);
       setLoaded(true);
     });
   }, []);
@@ -581,6 +593,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.priceProposals)    setPriceProposals(s.priceProposals as PriceProposal[]);
       if (s.legalMatters)      setLegalMatters(s.legalMatters as LegalMatter[]);
       if (s.corpProjects)      setCorpProjects(s.corpProjects as CorpProject[]);
+      if (Array.isArray(s.broadcasts)) setBroadcasts(s.broadcasts as Broadcast[]);
+      if (Array.isArray(s.callLog))    setCallLog(s.callLog as CallRecord[]);
       if (s.meetingMinutes)    setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -612,6 +626,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('maintenance',       maintenance); },       [maintenance, loaded]);
   useEffect(() => { if (loaded) syncSlice('audit',             audit); },             [audit, loaded]);
   useEffect(() => { if (loaded) syncSlice('messages',          messages); },          [messages, loaded]);
+  useEffect(() => { if (loaded) syncSlice('broadcasts',        broadcasts); },        [broadcasts, loaded]);
+  useEffect(() => { if (loaded) syncSlice('callLog',           callLog); },           [callLog, loaded]);
   useEffect(() => { if (loaded) syncSlice('tasks',             tasks); },             [tasks, loaded]);
   useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
   useEffect(() => { if (loaded) syncSlice('companyFiles',      companyFiles); },      [companyFiles, loaded]);
@@ -1381,6 +1397,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const baseNav: NavItem[] = role === 'admin'
     ? (NAVDEF.admin ?? [])
     : FULL_NAV_CATALOG;
+  const addBroadcast = useCallback((b: Omit<Broadcast, 'id' | 'ts'>) => {
+    setBroadcasts(prev => [{ ...b, id: genId(), ts: nowTs() }, ...prev]);
+  }, []);
+
+  const addCallRecord = useCallback((r: Omit<CallRecord, 'id' | 'ts'>) => {
+    setCallLog(prev => [{ ...r, id: genId(), ts: nowTs() }, ...prev]);
+  }, []);
+
   const navItems: NavItem[] = role === 'admin'
     ? baseNav
     : baseNav.filter(item => {
@@ -1398,7 +1422,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       role, userName, branchId, staffId, isServerAuthenticated, navItems, mgrPerms,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
-      maintenance, sales, staff, branches, docs, expenses, budgets, messages,
+      maintenance, sales, staff, branches, docs, expenses, budgets, messages, broadcasts, callLog,
+      addBroadcast, addCallRecord,
       audit, departments, companyFiles, deliveryEvidences, shiftReports,
       priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,
