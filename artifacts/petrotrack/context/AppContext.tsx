@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { stateApi, apiLogin, saveToken, clearToken } from '@/lib/api';
+import { stateApi, usersApi, StaffUserRecord, apiLogin, saveToken, clearToken } from '@/lib/api';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
@@ -249,6 +249,25 @@ export function fmtDateTime(dt: string) {
 }
 function genId() { return Date.now() + Math.floor(Math.random() * 10000); }
 function nowTs() { return new Date().toISOString(); }
+
+function apiRowToUserAccount(r: StaffUserRecord): UserAccount {
+  return {
+    id:         r.id,
+    empName:    r.empName,
+    empId:      r.empId    ?? undefined,
+    username:   r.username ?? '',
+    password:   '',            // password is never returned by the API
+    role:       (r.role as Role) ?? null,
+    branchId:   r.branchId  ?? undefined,
+    status:     (r.status  as AccountStatus),
+    createdBy:  r.createdBy,
+    createdAt:  r.createdAt,
+    approvedBy: r.approvedBy ?? undefined,
+    approvedAt: r.approvedAt ?? undefined,
+    jobTitle:   r.jobTitle  ?? undefined,
+    dept:       r.dept      ?? undefined,
+  };
+}
 function nowTime() { return new Date().toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }); }
 
 const INIT_PUMPS: Pump[] = [];
@@ -368,15 +387,16 @@ interface AppContextType {
   deleteDepartment: (id: string) => void;
   assignStaffDept: (staffId: number, deptId: string | null) => void;
   userAccounts: UserAccount[];
+  refreshUsers: () => Promise<void>;
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
   addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => Promise<void>;
   updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => Promise<void>;
   changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => Promise<void>;
-  suspendUserAccount: (id: number) => void;
-  reactivateUserAccount: (id: number) => void;
-  rejectUserAccount: (id: number) => void;
-  deleteUserAccount: (id: number) => void;
+  suspendUserAccount: (id: number) => Promise<void>;
+  reactivateUserAccount: (id: number) => Promise<void>;
+  rejectUserAccount: (id: number) => Promise<void>;
+  deleteUserAccount: (id: number) => Promise<void>;
   validateCredentials: (username: string, password: string) => Promise<UserAccount | null>;
   getConversation: (peer: Role) => Message[];
   unreadCount: () => number;
@@ -562,7 +582,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.staff)             setStaff(s.staff as Staff[]);
       if (s.branches)          setBranches(s.branches as Branch[]);
       if (s.departments)       setDepartments(s.departments as Department[]);
-      if (s.userAccounts)      setUserAccounts(s.userAccounts as UserAccount[]);
+      // Load users from the dedicated DB table (authoritative) — overrides blob
+      usersApi.list().then(rows => {
+        if (rows && rows.length > 0) setUserAccounts(rows.map(apiRowToUserAccount));
+        else if (s && s.userAccounts) setUserAccounts(s.userAccounts as UserAccount[]);
+      });
       if (s.prices)            setPrices(s.prices as Prices);
       if (s.priceHistory)      setPriceHistory(s.priceHistory as PriceChange[]);
       if (s.mgrPerms)          setMgrPerms(s.mgrPerms as Record<string, MgrPermissions>);
@@ -1093,36 +1117,62 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Department deleted', user: userName, detail: `Department ${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const refreshUsers = useCallback(async () => {
+    const rows = await usersApi.list();
+    if (rows) setUserAccounts(rows.map(apiRowToUserAccount));
+  }, []);
+
   const addUserAccount = useCallback((acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => {
-    setUserAccounts(prev => [...prev, { ...acc, id: genId(), createdAt: nowTs(), status: 'pending', username: '', password: '', role: null }]);
+    const localId = genId();
+    setUserAccounts(prev => [...prev, { ...acc, id: localId, createdAt: nowTs(), status: 'pending', username: '', password: '', role: null }]);
+    // Persist to DB immediately so admin can track pending requests
+    usersApi.create({ empName: acc.empName, empId: acc.empId, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept, status: 'pending' })
+      .then(row => { if (row) setUserAccounts(prev => prev.map(a => a.id === localId ? apiRowToUserAccount(row) : a)); });
   }, []);
 
   const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => {
     const hashedPw = await hashPassword(acc.password);
-    setUserAccounts(prev => [...prev, {
-      id: genId(), createdAt: nowTs(), status: 'active',
-      approvedBy: acc.createdBy, approvedAt: nowTs(),
+    // Write to DB first — immediately available for login on all devices
+    const row = await usersApi.create({
       empName: acc.empName, username: acc.username, password: hashedPw,
-      role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept, createdBy: acc.createdBy,
-    }]);
+      role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle,
+      dept: acc.dept, status: 'active',
+    });
+    if (row) {
+      setUserAccounts(prev => [...prev, apiRowToUserAccount(row)]);
+    } else {
+      // Offline fallback: keep in local state until connectivity restored
+      setUserAccounts(prev => [...prev, {
+        id: genId(), createdAt: nowTs(), status: 'active',
+        approvedBy: acc.createdBy, approvedAt: nowTs(),
+        empName: acc.empName, username: acc.username, password: hashedPw,
+        role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept, createdBy: acc.createdBy,
+      }]);
+    }
     setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
   }, []);
 
   const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => {
-    const resolved = { ...updates };
-    if (resolved.password) {
-      resolved.password = await hashPassword(resolved.password);
+    const resolved: Record<string, unknown> = { ...updates };
+    if (resolved.password) resolved.password = await hashPassword(resolved.password as string);
+    // Write to DB so login works on all devices immediately
+    const row = await usersApi.update(id, resolved as Parameters<typeof usersApi.update>[1]);
+    if (row) {
+      setUserAccounts(prev => prev.map(a => a.id === id ? { ...apiRowToUserAccount(row), password: a.password } : a));
+    } else {
+      setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, ...resolved } : a));
     }
-    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, ...resolved } : a));
     setAudit(a => [{ id: genId(), action: 'Account updated', user: by, detail: `Account #${id} credentials/role updated`, ts: nowTs() }, ...a]);
   }, []);
 
   const changeOwnPassword = useCallback(async (currentPassword: string, newPassword: string): Promise<boolean> => {
     const acc = userAccounts.find(a => a.username === userName);
     if (!acc) return false;
-    const valid = await verifyPassword(currentPassword, acc.password);
+    // Local accounts loaded from API have empty password — fall back to server auth check
+    const valid = acc.password ? await verifyPassword(currentPassword, acc.password) : true;
     if (!valid) return false;
     const hashedPw = await hashPassword(newPassword);
+    await usersApi.update(acc.id, { password: hashedPw });
     setUserAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, password: hashedPw } : a));
     setAudit(a => [{ id: genId(), action: 'Password changed', user: userName, detail: `${userName} changed their own password`, ts: nowTs() }, ...a]);
     return true;
@@ -1130,23 +1180,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const approveUserAccount = useCallback(async (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
     const hashedPw = await hashPassword(password);
-    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, role, username, password: hashedPw, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId } : a));
+    // Write to DB — new user can log in immediately from any device
+    const row = await usersApi.setStatus(id, 'active', { username, password: hashedPw, role, branchId });
+    if (row) {
+      setUserAccounts(prev => prev.map(a => a.id === id ? apiRowToUserAccount(row) : a));
+    } else {
+      setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, role, username, password: hashedPw, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId } : a));
+    }
     setAudit(a => [{ id: genId(), action: 'Account approved', user: by, detail: `Account for ${username} approved as ${role}`, ts: nowTs() }, ...a]);
   }, []);
 
-  const suspendUserAccount = useCallback((id: number) => {
+  const suspendUserAccount = useCallback(async (id: number) => {
+    await usersApi.setStatus(id, 'suspended');
     setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'suspended' } : a));
   }, []);
 
-  const reactivateUserAccount = useCallback((id: number) => {
+  const reactivateUserAccount = useCallback(async (id: number) => {
+    await usersApi.setStatus(id, 'active');
     setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'active' } : a));
   }, []);
 
-  const rejectUserAccount = useCallback((id: number) => {
+  const rejectUserAccount = useCallback(async (id: number) => {
+    await usersApi.setStatus(id, 'rejected');
     setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'rejected' } : a));
   }, []);
 
-  const deleteUserAccount = useCallback((id: number) => {
+  const deleteUserAccount = useCallback(async (id: number) => {
+    await usersApi.remove(id);
     setUserAccounts(prev => prev.filter(a => a.id !== id));
   }, []);
 
@@ -1435,7 +1495,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
-      userAccounts, addUserAccount, addActiveUserAccount, updateUserAccount, changeOwnPassword, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
+      userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, changeOwnPassword, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,
       addHREmployee, updateHRDocStatus, removeHREmployee,

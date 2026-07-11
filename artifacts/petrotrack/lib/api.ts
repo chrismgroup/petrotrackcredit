@@ -52,6 +52,65 @@ async function put(path: string, data: unknown): Promise<void> {
   }
 }
 
+async function post<T>(path: string, data: unknown): Promise<T | null> {
+  if (!BASE) return null;
+  try {
+    const headers = await authHeaders();
+    const r = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(data),
+    });
+    if (!r.ok) return null;
+    return r.json() as Promise<T>;
+  } catch {
+    return null;
+  }
+}
+
+async function putR<T>(path: string, data: unknown): Promise<T | null> {
+  if (!BASE) return null;
+  try {
+    const headers = await authHeaders();
+    const r = await fetch(`${BASE}${path}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(data),
+    });
+    if (!r.ok) return null;
+    return r.json() as Promise<T>;
+  } catch {
+    return null;
+  }
+}
+
+async function patchR<T>(path: string, data: unknown): Promise<T | null> {
+  if (!BASE) return null;
+  try {
+    const headers = await authHeaders();
+    const r = await fetch(`${BASE}${path}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(data),
+    });
+    if (!r.ok) return null;
+    return r.json() as Promise<T>;
+  } catch {
+    return null;
+  }
+}
+
+async function del(path: string): Promise<boolean> {
+  if (!BASE) return false;
+  try {
+    const headers = await authHeaders();
+    const r = await fetch(`${BASE}${path}`, { method: 'DELETE', headers });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 export interface LoginResult {
   token: string;
   role: string;
@@ -80,4 +139,64 @@ export const stateApi = {
   getAll: () => get<Record<string, unknown>>('/state'),
   get: <T>(key: string) => get<T>(`/state/${key}`),
   put: (key: string, data: unknown) => put(`/state/${key}`, data),
+};
+
+// ─── Staff Users API — dedicated DB table, real-time ─────────────────────────
+
+export interface StaffUserRecord {
+  id: number;
+  empName: string;
+  empId: string | null;
+  username: string | null;
+  role: string | null;
+  branchId: string | null;
+  status: string;
+  jobTitle: string | null;
+  dept: string | null;
+  createdBy: string;
+  createdAt: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+}
+
+export const usersApi = {
+  /** Fetch all staff user accounts from the database */
+  list: () => get<StaffUserRecord[]>('/users'),
+
+  /** Create a new staff user account (admin only) */
+  create: (data: {
+    empName: string;
+    empId?: string | null;
+    username?: string | null;
+    password?: string;
+    role?: string | null;
+    branchId?: string | null;
+    status?: string;
+    jobTitle?: string | null;
+    dept?: string | null;
+  }) => post<StaffUserRecord>('/users', data),
+
+  /** Update credentials, role, or other fields (admin only) */
+  update: (id: number, data: Partial<{
+    empName: string;
+    empId: string | null;
+    username: string | null;
+    password: string;
+    role: string | null;
+    branchId: string | null;
+    status: string;
+    jobTitle: string | null;
+    dept: string | null;
+  }>) => putR<StaffUserRecord>(`/users/${id}`, data),
+
+  /** Approve / suspend / reject with optional credential assignment (admin only) */
+  setStatus: (id: number, status: string, extra?: {
+    username?: string;
+    password?: string;
+    role?: string;
+    branchId?: string;
+  }) => patchR<StaffUserRecord>(`/users/${id}/status`, { status, ...extra }),
+
+  /** Permanently delete a user account (admin only) */
+  remove: (id: number) => del(`/users/${id}`),
 };

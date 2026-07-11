@@ -12,6 +12,7 @@ const ALLOWED_KEYS = new Set([
   "companyFiles", "deliveryEvidences", "shiftReports", "hrEmployees",
   "hrHandbooks", "hrRecommendations", "complianceDocs", "priceProposals",
   "legalMatters", "corpProjects", "meetingMinutes",
+  "broadcasts", "callLog",
 ]);
 
 // Keys that modify access control, credentials, or HR/legal/financial records.
