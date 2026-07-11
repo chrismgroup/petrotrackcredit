@@ -51,6 +51,134 @@ function autoUsername(name: string): string {
   return parts[0] + '.' + parts[parts.length - 1];
 }
 
+// ─── Module-level sub-components ─────────────────────────────────────────────
+// IMPORTANT: These must live outside SystemSettingsScreen at module scope.
+// Defining components inside a render function creates a new function reference
+// on every parent re-render. React sees a new component type, unmounts the old
+// one, and remounts — causing TextInput to lose focus and the iOS keyboard to
+// dismiss on every keystroke. Moving them here fixes that.
+
+type Colors = ReturnType<typeof useColors>;
+
+function LockBanner({ staffTab = false, isAdmin, canManageStaff, colors }: {
+  staffTab?: boolean;
+  isAdmin: boolean;
+  canManageStaff: boolean;
+  colors: Colors;
+}) {
+  if (staffTab ? canManageStaff : isAdmin) return null;
+  return (
+    <View style={[styles.lockBanner, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}>
+      <Ionicons name="lock-closed" size={16} color={colors.error} />
+      <Text style={[styles.lockText, { color: colors.error }]}>View only — {staffTab ? 'Admin or CSM' : 'System Admin'} can make changes.</Text>
+    </View>
+  );
+}
+
+function AddBtn({ label, onPress, roleColor, colors }: {
+  label: string;
+  onPress: () => void;
+  roleColor: string;
+  colors: Colors;
+}) {
+  return (
+    <TouchableOpacity style={[styles.addBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]} onPress={onPress} activeOpacity={0.8}>
+      <Ionicons name="add-circle-outline" size={18} color={roleColor} />
+      <Text style={[styles.addBtnText, { color: roleColor }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function SaveBtn({ label, onPress, roleColor }: {
+  label: string;
+  onPress: () => void;
+  roleColor: string;
+}) {
+  return (
+    <TouchableOpacity style={[styles.saveBtn, { backgroundColor: roleColor }]} onPress={onPress} activeOpacity={0.85}>
+      <Ionicons name="save" size={16} color="#fff" />
+      <Text style={styles.saveBtnText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function FieldInput({
+  label, value, onChangeText, keyboardType = 'default', placeholder = '',
+  editable = true, autoCapitalize = 'sentences', colors,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  keyboardType?: 'default' | 'numeric' | 'email-address' | 'decimal-pad' | 'phone-pad' | 'url';
+  placeholder?: string;
+  editable?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words';
+  colors: Colors;
+}) {
+  return (
+    <View style={{ marginBottom: 4 }}>
+      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{label}</Text>
+      <TextInput
+        style={[styles.fieldInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text, opacity: editable ? 1 : 0.55 }]}
+        value={value} onChangeText={onChangeText} editable={editable}
+        keyboardType={keyboardType} placeholder={placeholder} placeholderTextColor={colors.textSubtle}
+        autoCapitalize={autoCapitalize}
+      />
+    </View>
+  );
+}
+
+function ProdPicker({ value, onChange, opts, isAdmin, colors }: {
+  value: string;
+  onChange: (v: any) => void;
+  opts: string[];
+  isAdmin: boolean;
+  colors: Colors;
+}) {
+  return (
+    <View style={{ marginBottom: 4 }}>
+      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Product Type</Text>
+      <View style={styles.prodRow}>
+        {opts.map(p => (
+          <TouchableOpacity key={p} disabled={!isAdmin}
+            onPress={() => onChange(p)}
+            style={[styles.prodChip, { backgroundColor: value === p ? PROD_COLORS[p] : colors.background, borderColor: value === p ? PROD_COLORS[p] : colors.border }]}
+          >
+            <Text style={[styles.prodChipText, { color: value === p ? '#fff' : colors.textMuted }]}>{p}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function RolePicker({ value, onChange, isAdmin, colors, roleColor }: {
+  value: string;
+  onChange: (v: any) => void;
+  isAdmin: boolean;
+  colors: Colors;
+  roleColor: string;
+}) {
+  return (
+    <View style={{ marginBottom: 4 }}>
+      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Role</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={styles.prodRow}>
+          {ROLE_OPTS.map(r => (
+            <TouchableOpacity key={r} disabled={!isAdmin}
+              onPress={() => onChange(r)}
+              style={[styles.prodChip, { backgroundColor: value === r ? roleColor : colors.background, borderColor: value === r ? roleColor : colors.border }]}
+            >
+              <Text style={[styles.prodChipText, { color: value === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r]}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function SystemSettingsScreen() {
   const {
     role, tanks, lpgTanks, pumps, staff, branches, mgrPerms, updateMgrPerms,
@@ -210,85 +338,6 @@ export default function SystemSettingsScreen() {
     Alert.alert('User Created', `${name} has been added as ${ROLE_LABELS[newStaff.role]}.\n\nUsername: ${username}\n\nShare the login password you set securely — it is not displayed here.`);
   }
 
-  /* ── helpers ── */
-  const LockBanner = ({ staffTab = false }: { staffTab?: boolean }) => {
-    if (staffTab ? canManageStaff : isAdmin) return null;
-    return (
-      <View style={[styles.lockBanner, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}>
-        <Ionicons name="lock-closed" size={16} color={colors.error} />
-        <Text style={[styles.lockText, { color: colors.error }]}>View only — {staffTab ? 'Admin or CSM' : 'System Admin'} can make changes.</Text>
-      </View>
-    );
-  };
-
-  const AddBtn = ({ label, onPress }: { label: string; onPress: () => void }) => (
-    <TouchableOpacity style={[styles.addBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]} onPress={onPress} activeOpacity={0.8}>
-      <Ionicons name="add-circle-outline" size={18} color={roleColor} />
-      <Text style={[styles.addBtnText, { color: roleColor }]}>{label}</Text>
-    </TouchableOpacity>
-  );
-
-  const SaveBtn = ({ label, onPress }: { label: string; onPress: () => void }) => (
-    <TouchableOpacity style={[styles.saveBtn, { backgroundColor: roleColor }]} onPress={onPress} activeOpacity={0.85}>
-      <Ionicons name="save" size={16} color="#fff" />
-      <Text style={styles.saveBtnText}>{label}</Text>
-    </TouchableOpacity>
-  );
-
-  const FieldInput = ({
-    label, value, onChangeText, keyboardType = 'default', placeholder = '', editable = isAdmin, autoCapitalize = 'sentences',
-  }: {
-    label: string; value: string; onChangeText: (v: string) => void;
-    keyboardType?: 'default' | 'numeric' | 'email-address'; placeholder?: string;
-    editable?: boolean; autoCapitalize?: 'none' | 'sentences' | 'words';
-  }) => (
-    <View style={{ marginBottom: 4 }}>
-      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{label}</Text>
-      <TextInput
-        style={[styles.fieldInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text, opacity: editable ? 1 : 0.55 }]}
-        value={value} onChangeText={onChangeText} editable={editable}
-        keyboardType={keyboardType} placeholder={placeholder} placeholderTextColor={colors.textSubtle}
-        autoCapitalize={autoCapitalize}
-      />
-    </View>
-  );
-
-  const ProdPicker = ({
-    value, onChange, opts,
-  }: { value: string; onChange: (v: any) => void; opts: string[] }) => (
-    <View style={{ marginBottom: 4 }}>
-      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Product Type</Text>
-      <View style={styles.prodRow}>
-        {opts.map(p => (
-          <TouchableOpacity key={p} disabled={!isAdmin}
-            onPress={() => onChange(p)}
-            style={[styles.prodChip, { backgroundColor: value === p ? PROD_COLORS[p] : colors.background, borderColor: value === p ? PROD_COLORS[p] : colors.border }]}
-          >
-            <Text style={[styles.prodChipText, { color: value === p ? '#fff' : colors.textMuted }]}>{p}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-
-  const RolePicker = ({ value, onChange }: { value: string; onChange: (v: any) => void }) => (
-    <View style={{ marginBottom: 4 }}>
-      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Role</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.prodRow}>
-          {ROLE_OPTS.map(r => (
-            <TouchableOpacity key={r} disabled={!isAdmin}
-              onPress={() => onChange(r)}
-              style={[styles.prodChip, { backgroundColor: value === r ? roleColor : colors.background, borderColor: value === r ? roleColor : colors.border }]}
-            >
-              <Text style={[styles.prodChipText, { color: value === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r]}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
-    </View>
-  );
-
   return (
     <ScreenLayout title="System Settings">
         {/* Tab bar */}
@@ -437,6 +486,7 @@ export default function SystemSettingsScreen() {
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <SaveBtn
                     label="Save Company Settings"
+                    roleColor={roleColor}
                     onPress={() => {
                       if (!cDraft.name.trim()) { Alert.alert('Required', 'Company name cannot be empty.'); return; }
                       updateCompanyInfo(cDraft);
@@ -464,7 +514,7 @@ export default function SystemSettingsScreen() {
           {/* ── TANKS ── */}
           {activeTab === 'tanks' && (
             <>
-              <LockBanner />
+              <LockBanner isAdmin={isAdmin} canManageStaff={canManageStaff} colors={colors} />
 
               {/* Petroleum tanks — existing */}
               <View style={styles.sectionRow}>
@@ -498,22 +548,22 @@ export default function SystemSettingsScreen() {
                         </TouchableOpacity>
                       )}
                     </View>
-                    <FieldInput label="Tank Name" value={e.name} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, name: v } }))} placeholder="e.g. Main PMS Storage Tank" />
+                    <FieldInput colors={colors} editable={isAdmin} label="Tank Name" value={e.name} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, name: v } }))} placeholder="e.g. Main PMS Storage Tank" />
                     <View style={styles.twoCol}>
                       <View style={{ flex: 1 }}>
-                        <FieldInput label="Capacity (L)" value={e.cap} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, cap: v } }))} keyboardType="numeric" placeholder="25000" />
+                        <FieldInput colors={colors} editable={isAdmin} label="Capacity (L)" value={e.cap} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, cap: v } }))} keyboardType="numeric" placeholder="25000" />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <FieldInput label="Full Dip (mm)" value={e.dip} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, dip: v } }))} keyboardType="numeric" placeholder="2500" />
+                        <FieldInput colors={colors} editable={isAdmin} label="Full Dip (mm)" value={e.dip} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, dip: v } }))} keyboardType="numeric" placeholder="2500" />
                       </View>
                     </View>
-                    <ProdPicker value={e.prod} onChange={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, prod: v } }))} opts={PROD_OPTS} />
+                    <ProdPicker isAdmin={isAdmin} colors={colors} value={e.prod} onChange={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, prod: v } }))} opts={PROD_OPTS} />
                   </View>
                 );
               })}
 
               {/* Add new petroleum tank */}
-              {isAdmin && !showNewTank && <AddBtn label="Add New Petroleum Tank" onPress={() => { setShowNewTank(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
+              {isAdmin && !showNewTank && <AddBtn roleColor={roleColor} colors={colors} label="Add New Petroleum Tank" onPress={() => { setShowNewTank(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
               {isAdmin && showNewTank && (
                 <View style={[styles.newCard, { backgroundColor: colors.infoBg, borderColor: roleColor + '55' }]}>
                   <View style={styles.newCardHeader}>
@@ -525,16 +575,16 @@ export default function SystemSettingsScreen() {
                       <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
-                  <FieldInput label="Tank Name *" value={newTank.name} onChangeText={v => setNewTank(n => ({ ...n, name: v }))} placeholder="e.g. PMS Tank 5" />
+                  <FieldInput colors={colors} label="Tank Name *" value={newTank.name} onChangeText={v => setNewTank(n => ({ ...n, name: v }))} placeholder="e.g. PMS Tank 5" />
                   <View style={styles.twoCol}>
                     <View style={{ flex: 1 }}>
-                      <FieldInput label="Capacity (L) *" value={newTank.cap} onChangeText={v => setNewTank(n => ({ ...n, cap: v }))} keyboardType="numeric" placeholder="25000" />
+                      <FieldInput colors={colors} label="Capacity (L) *" value={newTank.cap} onChangeText={v => setNewTank(n => ({ ...n, cap: v }))} keyboardType="numeric" placeholder="25000" />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <FieldInput label="Full Dip (mm)" value={newTank.dip} onChangeText={v => setNewTank(n => ({ ...n, dip: v }))} keyboardType="numeric" placeholder="auto" />
+                      <FieldInput colors={colors} label="Full Dip (mm)" value={newTank.dip} onChangeText={v => setNewTank(n => ({ ...n, dip: v }))} keyboardType="numeric" placeholder="auto" />
                     </View>
                   </View>
-                  <ProdPicker value={newTank.prod} onChange={v => setNewTank(n => ({ ...n, prod: v }))} opts={PROD_OPTS} />
+                  <ProdPicker isAdmin={isAdmin} colors={colors} value={newTank.prod} onChange={v => setNewTank(n => ({ ...n, prod: v }))} opts={PROD_OPTS} />
                   <TouchableOpacity style={[styles.createBtn, { backgroundColor: roleColor }]} onPress={createTank} activeOpacity={0.85}>
                     <Ionicons name="checkmark-circle" size={16} color="#fff" />
                     <Text style={styles.createBtnText}>Create Tank</Text>
@@ -574,14 +624,14 @@ export default function SystemSettingsScreen() {
                         </TouchableOpacity>
                       )}
                     </View>
-                    <FieldInput label="Tank Name" value={e.name} onChangeText={v => setLpgEdits(l => ({ ...l, [tank.id]: { ...e, name: v } }))} />
-                    <FieldInput label="Capacity (kg)" value={e.cap} onChangeText={v => setLpgEdits(l => ({ ...l, [tank.id]: { ...e, cap: v } }))} keyboardType="numeric" />
+                    <FieldInput colors={colors} editable={isAdmin} label="Tank Name" value={e.name} onChangeText={v => setLpgEdits(l => ({ ...l, [tank.id]: { ...e, name: v } }))} />
+                    <FieldInput colors={colors} editable={isAdmin} label="Capacity (kg)" value={e.cap} onChangeText={v => setLpgEdits(l => ({ ...l, [tank.id]: { ...e, cap: v } }))} keyboardType="numeric" />
                   </View>
                 );
               })}
 
               {/* Add new LPG tank */}
-              {isAdmin && !showNewLpg && <AddBtn label="Add New LPG Tank" onPress={() => { setShowNewLpg(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
+              {isAdmin && !showNewLpg && <AddBtn roleColor={roleColor} colors={colors} label="Add New LPG Tank" onPress={() => { setShowNewLpg(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
               {isAdmin && showNewLpg && (
                 <View style={[styles.newCard, { backgroundColor: colors.infoBg, borderColor: '#0F6E5655' }]}>
                   <View style={styles.newCardHeader}>
@@ -593,8 +643,8 @@ export default function SystemSettingsScreen() {
                       <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
-                  <FieldInput label="Tank Name *" value={newLpg.name} onChangeText={v => setNewLpg(n => ({ ...n, name: v }))} placeholder="e.g. LPG Storage A" />
-                  <FieldInput label="Capacity (kg) *" value={newLpg.cap} onChangeText={v => setNewLpg(n => ({ ...n, cap: v }))} keyboardType="numeric" placeholder="5000" />
+                  <FieldInput colors={colors} label="Tank Name *" value={newLpg.name} onChangeText={v => setNewLpg(n => ({ ...n, name: v }))} placeholder="e.g. LPG Storage A" />
+                  <FieldInput colors={colors} label="Capacity (kg) *" value={newLpg.cap} onChangeText={v => setNewLpg(n => ({ ...n, cap: v }))} keyboardType="numeric" placeholder="5000" />
                   <TouchableOpacity style={[styles.createBtn, { backgroundColor: '#0F6E56' }]} onPress={createLpgTank} activeOpacity={0.85}>
                     <Ionicons name="checkmark-circle" size={16} color="#fff" />
                     <Text style={styles.createBtnText}>Create LPG Tank</Text>
@@ -603,7 +653,7 @@ export default function SystemSettingsScreen() {
               )}
 
               {isAdmin && (
-                <SaveBtn label="Save Tank Configuration" onPress={saveTanks} />
+                <SaveBtn roleColor={roleColor} label="Save Tank Configuration" onPress={saveTanks} />
               )}
             </>
           )}
@@ -611,7 +661,7 @@ export default function SystemSettingsScreen() {
           {/* ── PUMPS ── */}
           {activeTab === 'pumps' && (
             <>
-              <LockBanner />
+              <LockBanner isAdmin={isAdmin} canManageStaff={canManageStaff} colors={colors} />
               <View style={styles.sectionRow}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>Pump Configuration</Text>
                 <Text style={[styles.sectionCount, { color: colors.textMuted }]}>{pumps.filter(p => p.active).length}/{pumps.length} active</Text>
@@ -644,14 +694,14 @@ export default function SystemSettingsScreen() {
                         </TouchableOpacity>
                       )}
                     </View>
-                    <FieldInput label="Pump Name" value={e.name} onChangeText={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, name: v } }))} placeholder="e.g. Forecourt Pump A" />
-                    <ProdPicker value={e.prod} onChange={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, prod: v } }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
+                    <FieldInput colors={colors} editable={isAdmin} label="Pump Name" value={e.name} onChangeText={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, name: v } }))} placeholder="e.g. Forecourt Pump A" />
+                    <ProdPicker isAdmin={isAdmin} colors={colors} value={e.prod} onChange={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, prod: v } }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
                   </View>
                 );
               })}
 
               {/* Add new pump */}
-              {isAdmin && !showNewPump && <AddBtn label="Add New Pump" onPress={() => { setShowNewPump(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
+              {isAdmin && !showNewPump && <AddBtn roleColor={roleColor} colors={colors} label="Add New Pump" onPress={() => { setShowNewPump(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
               {isAdmin && showNewPump && (
                 <View style={[styles.newCard, { backgroundColor: colors.infoBg, borderColor: roleColor + '55' }]}>
                   <View style={styles.newCardHeader}>
@@ -663,8 +713,8 @@ export default function SystemSettingsScreen() {
                       <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
-                  <FieldInput label="Pump Name *" value={newPump.name} onChangeText={v => setNewPump(n => ({ ...n, name: v }))} placeholder="e.g. Pump #6 PMS" />
-                  <ProdPicker value={newPump.prod} onChange={v => setNewPump(n => ({ ...n, prod: v }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
+                  <FieldInput colors={colors} label="Pump Name *" value={newPump.name} onChangeText={v => setNewPump(n => ({ ...n, name: v }))} placeholder="e.g. Pump #6 PMS" />
+                  <ProdPicker isAdmin={isAdmin} colors={colors} value={newPump.prod} onChange={v => setNewPump(n => ({ ...n, prod: v }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
                   <View style={[styles.settingRow, { borderTopWidth: 0, paddingTop: 4 }]}>
                     <Text style={[styles.settingLabel, { color: colors.textMuted }]}>Active from the start</Text>
                     <Switch value={newPump.active} onValueChange={v => setNewPump(n => ({ ...n, active: v }))} trackColor={{ true: roleColor, false: colors.border }} thumbColor="#fff" />
@@ -676,14 +726,14 @@ export default function SystemSettingsScreen() {
                 </View>
               )}
 
-              {isAdmin && <SaveBtn label="Save Pump Configuration" onPress={savePumps} />}
+              {isAdmin && <SaveBtn roleColor={roleColor} label="Save Pump Configuration" onPress={savePumps} />}
             </>
           )}
 
           {/* ── STAFF ── */}
           {activeTab === 'staff' && (
             <>
-              <LockBanner staffTab />
+              <LockBanner staffTab isAdmin={isAdmin} canManageStaff={canManageStaff} colors={colors} />
               <View style={styles.sectionRow}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>Staff Directory</Text>
                 <Text style={[styles.sectionCount, { color: colors.textMuted }]}>{staff.filter(m => m.st === 'Active').length} active</Text>
@@ -716,8 +766,8 @@ export default function SystemSettingsScreen() {
                         </TouchableOpacity>
                       )}
                     </View>
-                    <FieldInput label="Full Name" value={e.name} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, name: v } }))} placeholder="Enter full name" autoCapitalize="words" editable={canManageStaff} />
-                    <FieldInput label="Email Address" value={e.email} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, email: v } }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" editable={canManageStaff} />
+                    <FieldInput colors={colors} editable={canManageStaff} label="Full Name" value={e.name} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, name: v } }))} placeholder="Enter full name" autoCapitalize="words" />
+                    <FieldInput colors={colors} editable={canManageStaff} label="Email Address" value={e.email} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, email: v } }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
                     {/* Department assignment */}
                     {departments.length > 0 && canManageStaff && (
                       <View style={{ marginTop: 4 }}>
@@ -747,7 +797,7 @@ export default function SystemSettingsScreen() {
               })}
 
               {/* Add new user */}
-              {canManageStaff && !showNewStaff && <AddBtn label="Create New User" onPress={() => { setShowNewStaff(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
+              {canManageStaff && !showNewStaff && <AddBtn roleColor={roleColor} colors={colors} label="Create New User" onPress={() => { setShowNewStaff(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
               {canManageStaff && showNewStaff && (
                 <View style={[styles.newCard, { backgroundColor: colors.infoBg, borderColor: roleColor + '55' }]}>
                   <View style={styles.newCardHeader}>
@@ -759,10 +809,10 @@ export default function SystemSettingsScreen() {
                       <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
-                  <FieldInput label="Full Name *" value={newStaff.name} onChangeText={v => setNewStaff(n => ({ ...n, name: v, username: autoUsername(v) }))} placeholder="e.g. Chukwuma Adeyemi" autoCapitalize="words" />
-                  <FieldInput label="Email Address *" value={newStaff.email} onChangeText={v => setNewStaff(n => ({ ...n, email: v }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
-                  <FieldInput label="Monthly Salary (₦)" value={newStaff.sal} onChangeText={v => setNewStaff(n => ({ ...n, sal: v }))} keyboardType="numeric" placeholder="150000" />
-                  <RolePicker value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v, branchId: '' }))} />
+                  <FieldInput colors={colors} label="Full Name *" value={newStaff.name} onChangeText={v => setNewStaff(n => ({ ...n, name: v, username: autoUsername(v) }))} placeholder="e.g. Chukwuma Adeyemi" autoCapitalize="words" />
+                  <FieldInput colors={colors} label="Email Address *" value={newStaff.email} onChangeText={v => setNewStaff(n => ({ ...n, email: v }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
+                  <FieldInput colors={colors} label="Monthly Salary (₦)" value={newStaff.sal} onChangeText={v => setNewStaff(n => ({ ...n, sal: v }))} keyboardType="numeric" placeholder="150000" />
+                  <RolePicker isAdmin={isAdmin} colors={colors} roleColor={roleColor} value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v, branchId: '' }))} />
                   {newStaff.role === 'mgr' && (
                     <View style={{ marginBottom: 10 }}>
                       <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
@@ -800,8 +850,8 @@ export default function SystemSettingsScreen() {
 
                   <View style={[{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginVertical: 10, paddingTop: 10 }]}>
                     <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 6 }]}>Login Credentials</Text>
-                    <FieldInput label="Username *" value={newStaff.username} onChangeText={v => setNewStaff(n => ({ ...n, username: v.toLowerCase().replace(/\s/g, '.') }))} autoCapitalize="none" placeholder="firstname.lastname" />
-                    <FieldInput label="Password *" value={newStaff.password} onChangeText={v => setNewStaff(n => ({ ...n, password: v }))} autoCapitalize="none" placeholder="Min. 6 characters" />
+                    <FieldInput colors={colors} label="Username *" value={newStaff.username} onChangeText={v => setNewStaff(n => ({ ...n, username: v.toLowerCase().replace(/\s/g, '.') }))} autoCapitalize="none" placeholder="firstname.lastname" />
+                    <FieldInput colors={colors} label="Password *" value={newStaff.password} onChangeText={v => setNewStaff(n => ({ ...n, password: v }))} autoCapitalize="none" placeholder="Min. 6 characters" />
                   </View>
                   <TouchableOpacity style={[styles.createBtn, { backgroundColor: roleColor }]} onPress={createStaff} activeOpacity={0.85}>
                     <Ionicons name="checkmark-circle" size={16} color="#fff" />
@@ -810,7 +860,7 @@ export default function SystemSettingsScreen() {
                 </View>
               )}
 
-              {canManageStaff && <SaveBtn label="Save Staff Information" onPress={saveStaff} />}
+              {canManageStaff && <SaveBtn roleColor={roleColor} label="Save Staff Information" onPress={saveStaff} />}
             </>
           )}
 
@@ -940,7 +990,6 @@ export default function SystemSettingsScreen() {
                 const expanded = expandedUsers[member.id] ?? false;
                 const initials = member.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
 
-                // Effective access: user override > role default
                 const effectiveEnabled = (id: string) => {
                   if (overrides[id] !== undefined) return overrides[id];
                   return (roleAccess[member.role] ?? {})[id] !== false;
@@ -949,7 +998,6 @@ export default function SystemSettingsScreen() {
 
                 return (
                   <View key={member.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: hasOverrides ? rc + '55' : colors.border, marginBottom: 10 }]}>
-                    {/* Tappable header — expand/collapse */}
                     <TouchableOpacity
                       onPress={() => setExpandedUsers(e => ({ ...e, [member.id]: !expanded }))}
                       activeOpacity={0.7}
@@ -975,7 +1023,6 @@ export default function SystemSettingsScreen() {
                       <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
                     </TouchableOpacity>
 
-                    {/* Expanded module toggles */}
                     {expanded && (
                       <>
                         {modules.map(({ id, icon, label }, idx) => {
