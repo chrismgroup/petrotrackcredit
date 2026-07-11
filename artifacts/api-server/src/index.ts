@@ -41,9 +41,9 @@ interface LegacyAccount {
 
 /**
  * Ensures staff_users table is seeded.
- * - If it already has rows: no-op.
  * - If empty but app_state/userAccounts has data: migrate all those accounts.
  * - If both are empty: seed a default admin account.
+ * - Always: ensure at least one active admin exists (seeds one if missing).
  */
 async function seedAndMigrateUsers(): Promise<void> {
   try {
@@ -53,7 +53,30 @@ async function seedAndMigrateUsers(): Promise<void> {
       .from(staffUsersTable);
 
     if (count > 0) {
-      logger.info({ count }, "staff_users already populated — skipping seed/migration");
+      logger.info({ count }, "staff_users already populated — checking for admin");
+      // Ensure at least one active admin exists
+      const [{ adminCount }] = await db
+        .select({ adminCount: sql<number>`cast(count(*) as int)` })
+        .from(staffUsersTable)
+        .where(sql`role = 'admin' AND status = 'active'`);
+
+      if (adminCount === 0) {
+        logger.info("No active admin found — seeding default admin account");
+        await db
+          .insert(staffUsersTable)
+          .values({
+            empName:    "Administrator",
+            username:   "admin",
+            password:   serverHash("Admin1234"),
+            role:       "admin",
+            status:     "active",
+            createdBy:  "system",
+            approvedBy: "system",
+            approvedAt: new Date(),
+          })
+          .onConflictDoNothing();
+        logger.info("Default admin seeded (username: admin, password: Admin1234)");
+      }
       return;
     }
 
