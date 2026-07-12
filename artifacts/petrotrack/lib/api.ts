@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN;
-const BASE = DOMAIN ? `https://${DOMAIN}/api` : null;
+const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? 'gastsmart.replit.app';
+const BASE = `https://${DOMAIN}/api`;
 const TOKEN_KEY = 'pt_auth_token';
 
 async function getToken(): Promise<string | null> {
