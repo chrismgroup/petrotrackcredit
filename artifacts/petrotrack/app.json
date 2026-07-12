@@ -15,7 +15,11 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.petrack.app"
+      "bundleIdentifier": "app.replit.petrotrack",
+      "buildNumber": "17",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.petrack.app",
@@ -28,7 +32,7 @@
       [
         "expo-router",
         {
-          "origin": "https://replit.com/"
+          "origin": "https://gastsmart.replit.app/"
         }
       ],
       "expo-font",
@@ -37,6 +41,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "abb91eb6-23bc-46ee-a5b6-37315c8b56f6"
+      }
     }
   }
 }
