@@ -7,7 +7,7 @@ import {
 import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
+import { LPGTank, Pump, ROLE_COLORS, Tank, fmt, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const ST_STYLES: Record<string, { color: string; bg: string }> = {
@@ -16,17 +16,79 @@ const ST_STYLES: Record<string, { color: string; bg: string }> = {
   Suspended: { color: '#791F1F', bg: '#FCEBEB' },
 };
 
-const BRANCH_FIELDS = [
-  { key: 'name',  label: 'Branch Name *' },
-  { key: 'mgr',   label: 'Manager Name' },
-  { key: 'pumps', label: 'Pump Count',  kb: 'numeric' as const },
-  { key: 'tanks', label: 'Tank Count',  kb: 'numeric' as const },
-] as const;
+/* ── module-level chip picker (iOS keyboard rule: no sub-components in render) ── */
+interface AssetPickerProps {
+  label: string;
+  items: { id: string; label: string }[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  accent: string;
+  colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
+}
+function AssetPicker({ label, items, selected, onToggle, accent, colors }: AssetPickerProps) {
+  if (items.length === 0) {
+    return (
+      <View style={{ marginBottom: 10 }}>
+        <Text style={[apStyles.label, { color: colors.textMuted }]}>{label}</Text>
+        <Text style={[apStyles.empty, { color: colors.textSubtle }]}>
+          No {label.toLowerCase()} available — add some in System Settings first.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <Text style={[apStyles.label, { color: colors.textMuted }]}>{label}</Text>
+      <View style={apStyles.chipRow}>
+        {items.map(item => {
+          const active = selected.includes(item.id);
+          return (
+            <TouchableOpacity
+              key={item.id}
+              onPress={() => onToggle(item.id)}
+              style={[apStyles.chip, {
+                borderColor: active ? accent : colors.border,
+                backgroundColor: active ? accent + '1A' : colors.surface,
+              }]}
+            >
+              <Text style={[apStyles.chipText, { color: active ? accent : colors.textMuted }]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+const apStyles = StyleSheet.create({
+  label:    { fontSize: 11, fontWeight: '600', marginBottom: 6 },
+  empty:    { fontSize: 12, fontStyle: 'italic', marginTop: 2 },
+  chipRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip:     { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5 },
+  chipText: { fontSize: 12, fontWeight: '600' },
+});
 
-type BranchForm = { name: string; mgr: string; pumps: string; tanks: string };
+/* ── helpers ── */
+function toggle(arr: string[], id: string): string[] {
+  return arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id];
+}
+
+type BranchForm = {
+  name: string;
+  mgr: string;
+  tankIds: string[];
+  lpgIds: string[];
+  pumpIds: string[];
+};
+
+const BLANK_FORM: BranchForm = { name: '', mgr: '', tankIds: [], lpgIds: [], pumpIds: [] };
 
 export default function BranchesScreen() {
-  const { role, branches, addBranch, updateBranch, deleteBranch } = useApp();
+  const {
+    role, branches, addBranch, updateBranch, deleteBranch,
+    tanks, lpgTanks, pumps, updateTank, updateLpgTank, updatePump,
+  } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
   const isAdmin   = role === 'admin';
@@ -34,15 +96,71 @@ export default function BranchesScreen() {
   const totalRev    = branches.reduce((s, b) => s + b.rev, 0);
   const activeCount = branches.filter(b => b.st === 'Active').length;
 
-  // ── Add form ──────────────────────────────────────────────────────────
+  /* ── helpers to get assets assigned to a branch ── */
+  const tanksFor    = (bid: string) => tanks.filter(t => t.branchId === bid);
+  const lpgFor      = (bid: string) => lpgTanks.filter(l => l.branchId === bid);
+  const pumpsFor    = (bid: string) => pumps.filter(p => p.branchId === bid);
+
+  /* ── persist branch assignments ──
+     When saving, update branchId on every tank/pump:
+     - Selected in this branch  → set branchId = branchId
+     - Was assigned here but deselected → clear branchId  */
+  function applyAssignments(
+    branchId: string,
+    form: BranchForm,
+    prevTankIds: string[],
+    prevLpgIds: string[],
+    prevPumpIds: string[],
+  ) {
+    // tanks
+    const allTankIds = [...new Set([...form.tankIds, ...prevTankIds])];
+    for (const id of allTankIds) {
+      const isSelected = form.tankIds.includes(id);
+      const wasHere    = prevTankIds.includes(id);
+      if (isSelected) updateTank(id, { branchId });
+      else if (wasHere) updateTank(id, { branchId: undefined });
+    }
+    // lpg tanks
+    const allLpgIds = [...new Set([...form.lpgIds, ...prevLpgIds])];
+    for (const id of allLpgIds) {
+      const isSelected = form.lpgIds.includes(id);
+      const wasHere    = prevLpgIds.includes(id);
+      if (isSelected) updateLpgTank(id, { branchId });
+      else if (wasHere) updateLpgTank(id, { branchId: undefined });
+    }
+    // pumps
+    const allPumpIds = [...new Set([...form.pumpIds, ...prevPumpIds])];
+    for (const id of allPumpIds) {
+      const isSelected = form.pumpIds.includes(id);
+      const wasHere    = prevPumpIds.includes(id);
+      if (isSelected) updatePump(id, { branchId });
+      else if (wasHere) updatePump(id, { branchId: undefined });
+    }
+  }
+
+  /* ── Add form ──────────────────────────────────────────────────────────── */
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm]         = useState<BranchForm>({ name: '', mgr: '', pumps: '2', tanks: '2' });
+  const [addForm, setAddForm]         = useState<BranchForm>(BLANK_FORM);
 
   function handleAdd() {
     if (!addForm.name.trim()) { Alert.alert('Required', 'Branch name is required.'); return; }
-    // Admin-created branches go straight to Active; other roles submit as Pending
-    addBranch({ name: addForm.name.trim(), st: isAdmin ? 'Active' : 'Pending', rev: 0, mgr: addForm.mgr.trim(), pumps: parseInt(addForm.pumps) || 2, tanks: parseInt(addForm.tanks) || 2 });
-    setAddForm({ name: '', mgr: '', pumps: '2', tanks: '2' });
+    const tempId = `B${Date.now()}`;
+    addBranch({
+      name:  addForm.name.trim(),
+      st:    isAdmin ? 'Active' : 'Pending',
+      rev:   0,
+      mgr:   addForm.mgr.trim(),
+      pumps: addForm.pumpIds.length,
+      tanks: addForm.tankIds.length + addForm.lpgIds.length,
+    });
+    // Apply assignments — the new branch id is generated inside addBranch as tempId pattern.
+    // We look it up by name right after since addBranch is synchronous state update.
+    // Use a short timeout to let state settle, then find the new branch by name.
+    setTimeout(() => {
+      const newBranch = [...branches].reverse().find(b => b.name === addForm.name.trim());
+      if (newBranch) applyAssignments(newBranch.id, addForm, [], [], []);
+    }, 0);
+    setAddForm(BLANK_FORM);
     setShowAddForm(false);
   }
 
@@ -57,28 +175,40 @@ export default function BranchesScreen() {
     );
   }
 
-  // ── Edit form ─────────────────────────────────────────────────────────
+  /* ── Edit form ─────────────────────────────────────────────────────────── */
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm,  setEditForm]  = useState<BranchForm>({ name: '', mgr: '', pumps: '', tanks: '' });
+  const [editForm,  setEditForm]  = useState<BranchForm>(BLANK_FORM);
 
   function openEdit(b: typeof branches[number]) {
-    setEditForm({ name: b.name, mgr: b.mgr || '', pumps: String(b.pumps), tanks: String(b.tanks) });
+    setEditForm({
+      name:    b.name,
+      mgr:     b.mgr || '',
+      tankIds: tanksFor(b.id).map(t => t.id),
+      lpgIds:  lpgFor(b.id).map(l => l.id),
+      pumpIds: pumpsFor(b.id).map(p => p.id),
+    });
     setEditingId(b.id);
   }
 
   function handleSaveEdit() {
     if (!editForm.name.trim()) { Alert.alert('Required', 'Branch name cannot be empty.'); return; }
-    updateBranch(editingId!, {
+    const bid = editingId!;
+    const prevTankIds = tanksFor(bid).map(t => t.id);
+    const prevLpgIds  = lpgFor(bid).map(l => l.id);
+    const prevPumpIds = pumpsFor(bid).map(p => p.id);
+
+    updateBranch(bid, {
       name:  editForm.name.trim(),
       mgr:   editForm.mgr.trim(),
-      pumps: parseInt(editForm.pumps) || 0,
-      tanks: parseInt(editForm.tanks) || 0,
+      pumps: editForm.pumpIds.length,
+      tanks: editForm.tankIds.length + editForm.lpgIds.length,
     });
+    applyAssignments(bid, editForm, prevTankIds, prevLpgIds, prevPumpIds);
     setEditingId(null);
-    Alert.alert('Updated', 'Branch details saved.');
+    Alert.alert('Updated', 'Branch and assignments saved.');
   }
 
-  // ── Suspend / Delete ──────────────────────────────────────────────────
+  /* ── Suspend / Delete ──────────────────────────────────────────────────── */
   function handleSuspend(b: typeof branches[number]) {
     const nextSt = b.st === 'Suspended' ? 'Active' : 'Suspended';
     Alert.alert(
@@ -97,11 +227,23 @@ export default function BranchesScreen() {
       `Permanently remove "${b.name}"? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteBranch(b.id) },
+        { text: 'Delete', style: 'destructive', onPress: () => {
+          // Unassign all items from this branch before deleting
+          tanksFor(b.id).forEach(t => updateTank(t.id, { branchId: undefined }));
+          lpgFor(b.id).forEach(l => updateLpgTank(l.id, { branchId: undefined }));
+          pumpsFor(b.id).forEach(p => updatePump(p.id, { branchId: undefined }));
+          deleteBranch(b.id);
+        }},
       ]
     );
   }
 
+  /* ── picker item lists ── */
+  const tankItems = tanks.map(t => ({ id: t.id, label: `${t.name} (${t.prod})` }));
+  const lpgItems  = lpgTanks.map(l => ({ id: l.id, label: l.name }));
+  const pumpItems = pumps.map(p => ({ id: p.id, label: `${p.name} (${p.prod})` }));
+
+  /* ── render ────────────────────────────────────────────────────────────── */
   return (
     <ScreenLayout
       title="Branches"
@@ -133,7 +275,10 @@ export default function BranchesScreen() {
         </View>
 
         {branches.map(b => {
-          const st = ST_STYLES[b.st] || ST_STYLES.Pending;
+          const st           = ST_STYLES[b.st] || ST_STYLES.Pending;
+          const assignedTanks = tanksFor(b.id);
+          const assignedLpg   = lpgFor(b.id);
+          const assignedPumps = pumpsFor(b.id);
           return (
             <View key={b.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: b.st === 'Suspended' ? colors.warningBorder : colors.border }]}>
               <View style={styles.cardHeader}>
@@ -142,7 +287,7 @@ export default function BranchesScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.branchName, { color: colors.text }]}>{b.name}</Text>
-                  <Text style={[styles.branchId, { color: colors.textMuted }]}>ID: {b.id}</Text>
+                  <Text style={[styles.branchIdText, { color: colors.textMuted }]}>ID: {b.id}</Text>
                 </View>
                 <View style={[styles.stBadge, { backgroundColor: st.bg }]}>
                   <Text style={[styles.stText, { color: st.color }]}>{b.st}</Text>
@@ -156,26 +301,64 @@ export default function BranchesScreen() {
                 </View>
               ) : null}
 
-              <View style={styles.statsRow}>
-                <View style={[styles.statItem, { backgroundColor: colors.background }]}>
-                  <Ionicons name="water" size={14} color={roleColor} />
-                  <Text style={[styles.statVal, { color: colors.text }]}>{b.pumps} pumps</Text>
+              {/* Assigned tanks */}
+              {(assignedTanks.length > 0 || assignedLpg.length > 0) && (
+                <View style={styles.assetSection}>
+                  <Text style={[styles.assetSectionLabel, { color: colors.textMuted }]}>
+                    <Ionicons name="cube-outline" size={11} /> Tanks
+                  </Text>
+                  <View style={styles.assetChipRow}>
+                    {assignedTanks.map(t => (
+                      <View key={t.id} style={[styles.assetChip, { backgroundColor: roleColor + '12', borderColor: roleColor + '30' }]}>
+                        <Text style={[styles.assetChipText, { color: roleColor }]}>{t.name}</Text>
+                        <Text style={[styles.assetChipSub, { color: roleColor + 'BB' }]}>{t.prod}</Text>
+                      </View>
+                    ))}
+                    {assignedLpg.map(l => (
+                      <View key={l.id} style={[styles.assetChip, { backgroundColor: '#0F6E5612', borderColor: '#0F6E5630' }]}>
+                        <Text style={[styles.assetChipText, { color: '#0F6E56' }]}>{l.name}</Text>
+                        <Text style={[styles.assetChipSub, { color: '#0F6E56BB' }]}>LPG</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-                <View style={[styles.statItem, { backgroundColor: colors.background }]}>
-                  <Ionicons name="cube" size={14} color={roleColor} />
-                  <Text style={[styles.statVal, { color: colors.text }]}>{b.tanks} tanks</Text>
+              )}
+
+              {/* Assigned pumps */}
+              {assignedPumps.length > 0 && (
+                <View style={styles.assetSection}>
+                  <Text style={[styles.assetSectionLabel, { color: colors.textMuted }]}>
+                    <Ionicons name="water-outline" size={11} /> Pumps
+                  </Text>
+                  <View style={styles.assetChipRow}>
+                    {assignedPumps.map(p => (
+                      <View key={p.id} style={[styles.assetChip, { backgroundColor: colors.infoBg, borderColor: colors.border }]}>
+                        <Text style={[styles.assetChipText, { color: colors.text }]}>{p.name}</Text>
+                        <Text style={[styles.assetChipSub, { color: colors.textMuted }]}>{p.prod}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-                {b.rev > 0 && (
+              )}
+
+              {/* Fallback when nothing assigned yet */}
+              {assignedTanks.length === 0 && assignedLpg.length === 0 && assignedPumps.length === 0 && (
+                <Text style={[styles.noAssignments, { color: colors.textSubtle }]}>
+                  No tanks or pumps assigned yet
+                </Text>
+              )}
+
+              {b.rev > 0 && (
+                <View style={styles.statsRow}>
                   <View style={[styles.statItem, { backgroundColor: roleColor + '12' }]}>
                     <Ionicons name="trending-up" size={14} color={roleColor} />
                     <Text style={[styles.statVal, { color: roleColor }]}>{fmt(b.rev)}</Text>
                   </View>
-                )}
-              </View>
+                </View>
+              )}
 
               {isAdmin && (
                 <View style={styles.adminActions}>
-                  {/* Approve — only shown for Pending branches */}
                   {b.st === 'Pending' && (
                     <TouchableOpacity
                       onPress={() => handleApprove(b)}
@@ -225,105 +408,181 @@ export default function BranchesScreen() {
 
       {/* ── Add Branch Modal ── */}
       <ModalSheet visible={showAddForm} onClose={() => setShowAddForm(false)}>
-          <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Branch</Text>
-            <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none" showsVerticalScrollIndicator={false}>
-              {BRANCH_FIELDS.map(f => (
-                <TextInput
-                  key={f.key}
-                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                  placeholder={f.label}
-                  placeholderTextColor={colors.textSubtle}
-                  keyboardType={'kb' in f ? f.kb : 'default'}
-                  value={addForm[f.key]}
-                  onChangeText={v => setAddForm(fr => ({ ...fr, [f.key]: v }))}
-                  autoCorrect={false}
-                />
-              ))}
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
-                  <Text style={styles.submitBtnText}>Add Branch</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowAddForm(false)}>
-                  <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
+        <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Add Branch</Text>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="none"
+            showsVerticalScrollIndicator={false}
+            style={{ maxHeight: 520 }}
+          >
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Name *</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="e.g. Lekki Station"
+              placeholderTextColor={colors.textSubtle}
+              value={addForm.name}
+              onChangeText={v => setAddForm(f => ({ ...f, name: v }))}
+              autoCorrect={false}
+            />
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Manager Name</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="e.g. Chukwuemeka Obi"
+              placeholderTextColor={colors.textSubtle}
+              value={addForm.mgr}
+              onChangeText={v => setAddForm(f => ({ ...f, mgr: v }))}
+              autoCorrect={false}
+            />
+            <AssetPicker
+              label="Petroleum Tanks"
+              items={tankItems}
+              selected={addForm.tankIds}
+              onToggle={id => setAddForm(f => ({ ...f, tankIds: toggle(f.tankIds, id) }))}
+              accent={roleColor}
+              colors={colors}
+            />
+            <AssetPicker
+              label="LPG Tanks"
+              items={lpgItems}
+              selected={addForm.lpgIds}
+              onToggle={id => setAddForm(f => ({ ...f, lpgIds: toggle(f.lpgIds, id) }))}
+              accent="#0F6E56"
+              colors={colors}
+            />
+            <AssetPicker
+              label="Pumps"
+              items={pumpItems}
+              selected={addForm.pumpIds}
+              onToggle={id => setAddForm(f => ({ ...f, pumpIds: toggle(f.pumpIds, id) }))}
+              accent={roleColor}
+              colors={colors}
+            />
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
+                <Text style={styles.submitBtnText}>Add Branch</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => { setShowAddForm(false); setAddForm(BLANK_FORM); }}>
+                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ height: 24 }} />
+          </ScrollView>
+        </View>
       </ModalSheet>
 
       {/* ── Edit Branch Modal ── */}
       <ModalSheet visible={editingId !== null} onClose={() => setEditingId(null)}>
-          <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Branch</Text>
-              <TouchableOpacity onPress={() => setEditingId(null)}>
-                <Ionicons name="close" size={22} color={colors.textMuted} />
+        <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Branch</Text>
+            <TouchableOpacity onPress={() => setEditingId(null)}>
+              <Ionicons name="close" size={22} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="none"
+            showsVerticalScrollIndicator={false}
+            style={{ maxHeight: 520 }}
+          >
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Name *</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="Branch name"
+              placeholderTextColor={colors.textSubtle}
+              value={editForm.name}
+              onChangeText={v => setEditForm(f => ({ ...f, name: v }))}
+              autoCorrect={false}
+            />
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Manager Name</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="Manager name"
+              placeholderTextColor={colors.textSubtle}
+              value={editForm.mgr}
+              onChangeText={v => setEditForm(f => ({ ...f, mgr: v }))}
+              autoCorrect={false}
+            />
+            <AssetPicker
+              label="Petroleum Tanks"
+              items={tankItems}
+              selected={editForm.tankIds}
+              onToggle={id => setEditForm(f => ({ ...f, tankIds: toggle(f.tankIds, id) }))}
+              accent={roleColor}
+              colors={colors}
+            />
+            <AssetPicker
+              label="LPG Tanks"
+              items={lpgItems}
+              selected={editForm.lpgIds}
+              onToggle={id => setEditForm(f => ({ ...f, lpgIds: toggle(f.lpgIds, id) }))}
+              accent="#0F6E56"
+              colors={colors}
+            />
+            <AssetPicker
+              label="Pumps"
+              items={pumpItems}
+              selected={editForm.pumpIds}
+              onToggle={id => setEditForm(f => ({ ...f, pumpIds: toggle(f.pumpIds, id) }))}
+              accent={roleColor}
+              colors={colors}
+            />
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleSaveEdit}>
+                <Ionicons name="checkmark" size={16} color="#fff" />
+                <Text style={styles.submitBtnText}>Save Changes</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setEditingId(null)}>
+                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none" showsVerticalScrollIndicator={false}>
-              {BRANCH_FIELDS.map(f => (
-                <View key={f.key}>
-                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                    placeholder={f.label}
-                    placeholderTextColor={colors.textSubtle}
-                    keyboardType={'kb' in f ? f.kb : 'default'}
-                    value={editForm[f.key]}
-                    onChangeText={v => setEditForm(fr => ({ ...fr, [f.key]: v }))}
-                    autoCorrect={false}
-                  />
-                </View>
-              ))}
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleSaveEdit}>
-                  <Ionicons name="checkmark" size={16} color="#fff" />
-                  <Text style={styles.submitBtnText}>Save Changes</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setEditingId(null)}>
-                  <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
+            <View style={{ height: 24 }} />
+          </ScrollView>
+        </View>
       </ModalSheet>
     </ScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll:         { padding: 16 },
-  readonlyBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
-  readonlyText:   { flex: 1, fontSize: 12 },
-  metricsRow:     { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  metricCard:     { flex: 1, padding: 14, borderRadius: 12, borderWidth: 1 },
-  metricValue:    { fontSize: 18, fontWeight: '700' },
-  metricLabel:    { fontSize: 11, marginTop: 2 },
-  card:           { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10, gap: 10 },
-  cardHeader:     { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  branchIcon:     { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  branchName:     { fontSize: 15, fontWeight: '700' },
-  branchId:       { fontSize: 11, marginTop: 1 },
-  stBadge:        { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  stText:         { fontSize: 11, fontWeight: '700' },
-  infoRow:        { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  infoText:       { fontSize: 12 },
-  statsRow:       { flexDirection: 'row', gap: 6 },
-  statItem:       { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8 },
-  statVal:        { fontSize: 12, fontWeight: '600' },
-  adminActions:   { flexDirection: 'row', gap: 6, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e5e5e3' },
-  actionBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
-  actionBtnText:  { fontSize: 11, fontWeight: '600' },
-  headerBtn:      { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  modalOverlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modalCard:      { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 10 },
-  modalHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  modalTitle:     { fontSize: 18, fontWeight: '700' },
-  fieldLabel:     { fontSize: 11, fontWeight: '600', marginBottom: 3 },
-  input:          { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, marginBottom: 2 },
-  submitBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12 },
-  submitBtnText:  { color: '#fff', fontSize: 14, fontWeight: '700' },
-  cancelBtn:      { alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: '#e5e5e3' },
-  cancelBtnText:  { fontSize: 14, fontWeight: '600' },
+  scroll:           { padding: 16 },
+  readonlyBanner:   { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
+  readonlyText:     { flex: 1, fontSize: 12 },
+  metricsRow:       { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  metricCard:       { flex: 1, padding: 14, borderRadius: 12, borderWidth: 1 },
+  metricValue:      { fontSize: 18, fontWeight: '700' },
+  metricLabel:      { fontSize: 11, marginTop: 2 },
+  card:             { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10, gap: 10 },
+  cardHeader:       { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  branchIcon:       { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  branchName:       { fontSize: 15, fontWeight: '700' },
+  branchIdText:     { fontSize: 11, marginTop: 1 },
+  stBadge:          { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  stText:           { fontSize: 11, fontWeight: '700' },
+  infoRow:          { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  infoText:         { fontSize: 12 },
+  statsRow:         { flexDirection: 'row', gap: 6 },
+  statItem:         { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8 },
+  statVal:          { fontSize: 12, fontWeight: '600' },
+  assetSection:     { gap: 4 },
+  assetSectionLabel:{ fontSize: 10, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  assetChipRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  assetChip:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
+  assetChipText:    { fontSize: 12, fontWeight: '600' },
+  assetChipSub:     { fontSize: 10 },
+  noAssignments:    { fontSize: 11, fontStyle: 'italic' },
+  adminActions:     { flexDirection: 'row', gap: 6, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e5e5e3' },
+  actionBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  actionBtnText:    { fontSize: 11, fontWeight: '600' },
+  headerBtn:        { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  modalCard:        { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 10 },
+  modalHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  modalTitle:       { fontSize: 18, fontWeight: '700' },
+  fieldLabel:       { fontSize: 11, fontWeight: '600', marginBottom: 3 },
+  input:            { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, marginBottom: 10 },
+  submitBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12 },
+  submitBtnText:    { color: '#fff', fontSize: 14, fontWeight: '700' },
+  cancelBtn:        { alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: '#e5e5e3' },
+  cancelBtnText:    { fontSize: 14, fontWeight: '600' },
 });
