@@ -116,6 +116,7 @@ export default function TanksScreen() {
       </View>
 
       {activeTab === 0 && (
+        <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
           {!perms.canPetrolTanks && role === 'mgr' && (
@@ -231,19 +232,6 @@ export default function TanksScreen() {
             ) : null;
           })()}
 
-          {canEdit && hasPendingDip && (
-            <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517' }]}>
-              <Ionicons name="time" size={16} color="#BA7517" />
-              <Text style={[styles.pendingText, { color: '#BA7517' }]}>You have a dip record awaiting MD approval. Submit another after it is resolved.</Text>
-            </View>
-          )}
-          {canEdit && !hasPendingDip && (
-            <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor }]} onPress={handleDipSubmit} activeOpacity={0.85}>
-              <Ionicons name="save" size={18} color="#fff" />
-              <Text style={styles.submitBtnText}>Submit Dip Record</Text>
-            </TouchableOpacity>
-          )}
-
           <Text style={[styles.formSection, { color: colors.text }]}>Record Delivery</Text>
           {!showDeliveryForm ? (
             <TouchableOpacity style={[styles.addBtn, { borderColor: roleColor }]} onPress={() => setShowDeliveryForm(true)}>
@@ -289,8 +277,25 @@ export default function TanksScreen() {
               </View>
             </View>
           )}
-          <View style={{ height: 16 }} />
+          <View style={{ height: 8 }} />
         </ScrollView>
+
+        {canEdit && (
+          <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
+            {hasPendingDip ? (
+              <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517', marginBottom: 0 }]}>
+                <Ionicons name="time-outline" size={16} color="#BA7517" />
+                <Text style={[styles.pendingText, { color: '#BA7517', flex: 1 }]}>Dip record pending MD approval — submit again after it is resolved.</Text>
+              </View>
+            ) : (
+              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor, marginBottom: 0 }]} onPress={handleDipSubmit} activeOpacity={0.85}>
+                <Ionicons name="send" size={18} color="#fff" />
+                <Text style={styles.submitBtnText}>Submit Dip to MD</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+        </View>
       )}
 
       {activeTab === 1 && (
@@ -531,6 +536,7 @@ const styles = StyleSheet.create({
   prodText: { fontSize: 11, fontWeight: '700' },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   calcResult: { fontSize: 13, fontWeight: '600' },
+  stickyFooter: { borderTopWidth: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20 },
   analysisRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 10, borderWidth: 1, padding: 10 },
   analysisProd: { fontSize: 13, fontWeight: '700' },
   analysisDetail: { fontSize: 12, marginTop: 1 },
