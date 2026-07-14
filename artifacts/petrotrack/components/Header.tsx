@@ -102,7 +102,7 @@ export function Header({ title, rightAction }: Props) {
             <View style={[styles.menuAvatar, { backgroundColor: roleColor }]}>
               <Text style={styles.menuAvatarText}>{info?.initials || 'U'}</Text>
             </View>
-            <Text style={[styles.menuName, { color: colors.text }]}>{info?.name || userName}</Text>
+            <Text style={[styles.menuName, { color: colors.text }]}>{userName || info?.name}</Text>
             <Text style={[styles.menuRole, { color: colors.textMuted }]}>{ROLE_LABELS[role]}</Text>
             <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
 
