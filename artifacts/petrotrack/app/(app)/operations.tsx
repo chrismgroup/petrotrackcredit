@@ -337,21 +337,21 @@ export default function OperationsScreen() {
                       </View>
                     </View>
                     <View style={styles.readingsGrid}>
-                      {Object.entries(dip.rd).map(([tid, mm]) => {
+                      {Object.entries(dip.rd).map(([tid, litres]) => {
                         const tank = tanks.find(t => t.id === tid);
                         return (
                           <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
                             <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{tank?.name.replace('Tank ', 'T')}</Text>
-                            <Text style={[styles.readingVal, { color: roleColor }]}>{mm}mm</Text>
+                            <Text style={[styles.readingVal, { color: roleColor }]}>{Number(litres).toLocaleString()}L</Text>
                           </View>
                         );
                       })}
-                      {Object.entries(dip.lpg).map(([lid, pct]) => {
+                      {Object.entries(dip.lpg).map(([lid, kg]) => {
                         const lt = lpgTanks.find(l => l.id === lid);
                         return (
                           <View key={lid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
                             <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{lt?.name.replace('LPG Tank ', 'L')}</Text>
-                            <Text style={[styles.readingVal, { color: colors.teal }]}>{pct}%</Text>
+                            <Text style={[styles.readingVal, { color: colors.teal }]}>{Number(kg).toLocaleString()} kg</Text>
                           </View>
                         );
                       })}

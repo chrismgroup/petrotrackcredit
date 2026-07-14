@@ -918,9 +918,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const approveDip = useCallback((id: number) => {
-    setDips(d => d.map(rec => rec.id === id ? { ...rec, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : rec));
+    const rec = dips.find(r => r.id === id);
+    if (rec) {
+      setTanks(ts => ts.map(tank => {
+        const lvl = rec.rd[tank.id];
+        return lvl !== undefined ? { ...tank, op: lvl } : tank;
+      }));
+      setLpgTanks(ts => ts.map(lt => {
+        const lvl = rec.lpg[lt.id];
+        return lvl !== undefined ? { ...lt, op: lvl } : lt;
+      }));
+    }
+    setDips(d => d.map(r => r.id === id ? { ...r, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : r));
     setAudit(a => [{ id: genId(), action: 'Dip approved', user: userName, detail: `Dip record #${id} approved.`, ts: nowTs() }, ...a]);
-  }, [userName]);
+  }, [userName, dips]);
 
   const rejectDip = useCallback((id: number) => {
     setDips(d => d.map(rec => rec.id === id ? { ...rec, status: 'rejected', approvedBy: userName, approvedDt: nowTs() } : rec));

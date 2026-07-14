@@ -122,16 +122,16 @@ export default function HomeScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Last Tank Dip</Text>
             <Text style={[styles.dipMeta, { color: colors.textMuted }]}>{fmtDateTime(lastDip.dt)} by {lastDip.by}</Text>
             <View style={styles.dipGrid}>
-              {Object.entries(lastDip.rd).map(([tid, mm]) => {
+              {Object.entries(lastDip.rd).map(([tid, litres]) => {
                 const tank = tanks.find(t => t.id === tid);
                 if (!tank) return null;
-                const pct = Math.round((mm / tank.dip) * 100);
+                const pct = tank.cap > 0 ? Math.round((Number(litres) / tank.cap) * 100) : 0;
                 return (
                   <View key={tid} style={[styles.dipItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Text style={[styles.dipTankName, { color: colors.text }]}>{tank.name}</Text>
-                    <Text style={[styles.dipReading, { color: roleColor }]}>{mm}mm</Text>
+                    <Text style={[styles.dipReading, { color: roleColor }]}>{Number(litres).toLocaleString()}L</Text>
                     <View style={[styles.progressBg, { backgroundColor: colors.border }]}>
-                      <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary }]} />
+                      <View style={[styles.progressBar, { width: `${Math.min(pct, 100)}%` as any, backgroundColor: pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary }]} />
                     </View>
                     <Text style={[styles.dipPct, { color: colors.textMuted }]}>{pct}%</Text>
                   </View>
