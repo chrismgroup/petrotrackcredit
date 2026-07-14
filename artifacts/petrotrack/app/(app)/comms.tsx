@@ -18,8 +18,10 @@ import {
   Broadcast,
   CallRecord,
   ROLE_COLORS,
+  ROLE_LABELS,
   Role,
   UINFO,
+  resolveUserInfo,
   useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -49,16 +51,15 @@ function fmtDuration(secs: number) {
 // ─── Module-scope sub-components ─────────────────────────────────────────────
 
 function Avatar({ role, size = 40, colors }: { role: string; size?: number; colors: Colors }) {
-  const info = UINFO[role];
-  const color = info?.color || ROLE_COLORS[role] || colors.primary;
-  const initials = info?.initials || role.slice(0, 2).toUpperCase();
+  const { userAccounts } = useApp();
+  const resolved = resolveUserInfo(role, userAccounts);
   return (
     <View style={{
       width: size, height: size, borderRadius: size / 2,
-      backgroundColor: color + '22', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1.5, borderColor: color + '44',
+      backgroundColor: resolved.color + '22', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1.5, borderColor: resolved.color + '44',
     }}>
-      <Text style={{ fontSize: size * 0.32, fontWeight: '800', color }}>{initials}</Text>
+      <Text style={{ fontSize: size * 0.32, fontWeight: '800', color: resolved.color }}>{resolved.initials}</Text>
     </View>
   );
 }
@@ -85,17 +86,18 @@ function CallOverlay({
   onDecline: () => void;
   colors: Colors;
 }) {
-  const info = UINFO[peer];
-  const peerColor = info?.color || '#1a6e3c';
+  const { userAccounts } = useApp();
+  const resolved = resolveUserInfo(peer, userAccounts);
+  const peerColor = resolved.color;
 
   return (
     <View style={[styles.callOverlay, { backgroundColor: '#0d1f17' }]}>
       <View style={styles.callContent}>
         <Animated.View style={[styles.callAvatarWrap, { transform: [{ scale: pulse }], backgroundColor: peerColor + '22', borderColor: peerColor + '66' }]}>
-          <Text style={[styles.callAvatarText, { color: peerColor }]}>{info?.initials || peer.slice(0, 2).toUpperCase()}</Text>
+          <Text style={[styles.callAvatarText, { color: peerColor }]}>{resolved.initials}</Text>
         </Animated.View>
-        <Text style={styles.callingName}>{info?.name || peer}</Text>
-        <Text style={styles.callingRole}>{info?.role}</Text>
+        <Text style={styles.callingName}>{resolved.name}</Text>
+        <Text style={styles.callingRole}>{ROLE_LABELS[peer] ?? peer}</Text>
         <Text style={styles.callStatusText}>
           {callState === 'ringing' ? 'Calling…' : fmtDuration(duration)}
         </Text>
@@ -132,7 +134,7 @@ function CallOverlay({
 
 export default function CommsScreen() {
   const {
-    role, userName,
+    role, userName, userAccounts,
     sendMessage, markRead, getConversation, unreadCount,
     broadcasts, addBroadcast,
     callLog, addCallRecord,
@@ -140,8 +142,12 @@ export default function CommsScreen() {
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
 
-  // All contactable peers (everyone except self)
-  const peers = (Object.keys(UINFO) as Role[]).filter(r => r !== role);
+  // Contactable peers — real accounts, excluding self; fall back to UINFO role list if no accounts yet
+  const peers = (
+    userAccounts.filter(a => a.role && a.role !== role && a.status === 'active').length > 0
+      ? userAccounts.filter(a => a.role && a.role !== role && a.status === 'active').map(a => a.role as Role)
+      : (Object.keys(UINFO) as Role[]).filter(r => r !== role)
+  );
 
   // ── Tab state ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>('chats');
@@ -248,7 +254,7 @@ export default function CommsScreen() {
     if (callingPeer) {
       addCallRecord({
         from: role!, fromName: userName,
-        to: callingPeer, toName: UINFO[callingPeer]?.name || callingPeer,
+        to: callingPeer, toName: resolveUserInfo(callingPeer, userAccounts).name,
         status: callDuration === 0 ? 'missed' : status,
         duration: callDuration > 0 ? fmtDuration(callDuration) : undefined,
       });
@@ -258,12 +264,12 @@ export default function CommsScreen() {
 
   // ── Chat thread view ───────────────────────────────────────────────────────
   if (chatPeer) {
-    const peerInfo = UINFO[chatPeer];
-    const peerColor = peerInfo?.color || ROLE_COLORS[chatPeer] || colors.primary;
+    const peerResolved = resolveUserInfo(chatPeer, userAccounts);
+    const peerColor = peerResolved.color;
     const conv = getConversation(chatPeer);
 
     return (
-      <ScreenLayout title={peerInfo?.name || chatPeer}>
+      <ScreenLayout title={peerResolved.name}>
         {/* Thread header */}
         <View style={[styles.chatHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={() => { markRead(chatPeer); setChatPeer(null); }} style={styles.backBtn}>
@@ -271,12 +277,11 @@ export default function CommsScreen() {
           </TouchableOpacity>
           <View style={{ position: 'relative' }}>
             <Avatar role={chatPeer} size={36} colors={colors} />
-            <OnlineDot online={peerInfo?.online ?? false} colors={colors} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.chatHeaderName, { color: colors.text }]}>{peerInfo?.name}</Text>
+            <Text style={[styles.chatHeaderName, { color: colors.text }]}>{peerResolved.name}</Text>
             <Text style={[styles.chatHeaderSub, { color: colors.textMuted }]}>
-              {peerInfo?.role} · {peerInfo?.online ? 'Online' : 'Offline'}
+              {ROLE_LABELS[chatPeer] ?? chatPeer}
             </Text>
           </View>
           <TouchableOpacity
@@ -397,7 +402,7 @@ export default function CommsScreen() {
       {activeTab === 'chats' && (
         <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false}>
           {peers.map(peer => {
-            const info = UINFO[peer];
+            const peerR = resolveUserInfo(peer, userAccounts);
             const unread = peerUnread(peer);
             return (
               <TouchableOpacity
@@ -408,10 +413,9 @@ export default function CommsScreen() {
               >
                 <View style={{ position: 'relative', marginRight: 12 }}>
                   <Avatar role={peer} size={46} colors={colors} />
-                  <OnlineDot online={info?.online ?? false} colors={colors} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.contactName, { color: colors.text }]}>{info?.name || peer}</Text>
+                  <Text style={[styles.contactName, { color: colors.text }]}>{peerR.name}</Text>
                   <Text style={[styles.contactSub, { color: colors.textMuted }]} numberOfLines={1}>{lastMsg(peer)}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -539,16 +543,15 @@ export default function CommsScreen() {
         <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Contacts</Text>
           {peers.map(peer => {
-            const info = UINFO[peer];
+            const peerR = resolveUserInfo(peer, userAccounts);
             return (
               <View key={peer} style={[styles.callContactRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={{ position: 'relative', marginRight: 12 }}>
                   <Avatar role={peer} size={42} colors={colors} />
-                  <OnlineDot online={info?.online ?? false} colors={colors} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.contactName, { color: colors.text }]}>{info?.name || peer}</Text>
-                  <Text style={[styles.contactSub, { color: colors.textMuted }]}>{info?.role}</Text>
+                  <Text style={[styles.contactName, { color: colors.text }]}>{peerR.name}</Text>
+                  <Text style={[styles.contactSub, { color: colors.textMuted }]}>{ROLE_LABELS[peer] ?? peer}</Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => initiateCall(peer)}

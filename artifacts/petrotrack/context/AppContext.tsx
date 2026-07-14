@@ -186,14 +186,28 @@ export const TASK_CAN_ASSIGN: Record<string, Role[]> = {
 
 export const UINFO: Record<string, UserInfo> = {
   admin: { name: 'System Admin', color: '#0a2318', initials: 'SA', role: 'Admin', online: true },
-  ceo: { name: 'Amaka Osei', color: '#1a6e3c', initials: 'AO', role: 'CEO', online: true },
-  md: { name: 'Adaeze Obi', color: '#4527a0', initials: 'AD', role: 'MD', online: true },
-  mktg: { name: 'Funmi Adesanya', color: '#D85A30', initials: 'FA', role: 'Mktg', online: false },
-  csm: { name: 'Ngozi Eze', color: '#0F6E56', initials: 'NE', role: 'CSM', online: true },
-  acc: { name: 'Grace Adeyemi', color: '#185FA5', initials: 'GA', role: 'Acct', online: true },
-  mgr: { name: 'Chukwuma Adeyemi', color: '#BA7517', initials: 'CA', role: 'Mgr', online: true },
-  att: { name: 'Emeka Okafor', color: '#633806', initials: 'EO', role: 'Att', online: true },
+  ceo: { name: 'CEO', color: '#1a6e3c', initials: 'CE', role: 'CEO', online: true },
+  md: { name: 'MD', color: '#4527a0', initials: 'MD', role: 'MD', online: true },
+  mktg: { name: 'Marketing', color: '#D85A30', initials: 'MK', role: 'Mktg', online: false },
+  csm: { name: 'CSM', color: '#0F6E56', initials: 'CS', role: 'CSM', online: true },
+  acc: { name: 'Accountant', color: '#185FA5', initials: 'AC', role: 'Acct', online: true },
+  mgr: { name: 'Manager', color: '#BA7517', initials: 'MG', role: 'Mgr', online: true },
+  att: { name: 'Attendant', color: '#633806', initials: 'AT', role: 'Att', online: true },
 };
+
+/** Resolve a real display name + initials for any role, using live userAccounts first. */
+export function resolveUserInfo(
+  role: string,
+  accounts: UserAccount[],
+): { name: string; initials: string; color: string } {
+  const acc = accounts.find(a => a.role === role && a.status === 'active');
+  const base = UINFO[role];
+  const name = acc?.empName || base?.name || role;
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const initials = words.map((w: string) => w[0]).slice(0, 2).join('').toUpperCase() || role.slice(0, 2).toUpperCase();
+  const color = base?.color || ROLE_COLORS[role] || '#1a6e3c';
+  return { name, initials, color };
+}
 
 // Admin-only nav (system management panels not shown to other roles)
 export const NAVDEF: Record<string, NavItem[]> = {

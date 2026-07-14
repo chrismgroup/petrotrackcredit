@@ -35,6 +35,9 @@ export function Header({ title, rightAction }: Props) {
   const roleColor = ROLE_COLORS[role] || colors.primary;
   const info = UINFO[role];
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const userInitials = userName
+    ? userName.trim().split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
+    : (info?.initials || 'U');
   const unread = unreadCount();
   const isAdmin = role === 'admin';
 
@@ -89,7 +92,7 @@ export function Header({ title, rightAction }: Props) {
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.avatar} onPress={() => setShowMenu(true)}>
-              <Text style={styles.avatarText}>{info?.initials || 'U'}</Text>
+              <Text style={styles.avatarText}>{userInitials}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -100,7 +103,7 @@ export function Header({ title, rightAction }: Props) {
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowMenu(false)}>
           <View style={[styles.menu, { backgroundColor: colors.card, borderColor: colors.border, top: topPad + 58 }]}>
             <View style={[styles.menuAvatar, { backgroundColor: roleColor }]}>
-              <Text style={styles.menuAvatarText}>{info?.initials || 'U'}</Text>
+              <Text style={styles.menuAvatarText}>{userInitials}</Text>
             </View>
             <Text style={[styles.menuName, { color: colors.text }]}>{userName || info?.name}</Text>
             <Text style={[styles.menuRole, { color: colors.textMuted }]}>{ROLE_LABELS[role]}</Text>
