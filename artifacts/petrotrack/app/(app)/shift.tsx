@@ -97,7 +97,11 @@ export default function ShiftReportScreen() {
   const canView = isAtt || isMgr || isAcc || isAdmin;
 
   const today = new Date().toISOString().slice(0, 10);
-  const activePumps = pumps.filter(p => p.active);
+  const activePumps = pumps.filter(p => {
+    if (!p.active) return false;
+    if (!branchId || !p.branchId) return true;   // admin or legacy pump — show all
+    return p.branchId === branchId;               // attendant/mgr — branch-scoped
+  });
 
   /* ── derive opening meter from last closing or admin initial ── */
   const getOpeningMeter = useCallback((pumpId: string) => {

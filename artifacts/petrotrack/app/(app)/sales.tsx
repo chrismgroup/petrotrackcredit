@@ -26,12 +26,14 @@ const SHIFT_STATUS_ICON: Record<string, string> = {
 };
 
 export default function SalesScreen() {
-  const { role, sales, pumpDailyReports } = useApp();
+  const { role, branchId, sales, pumpDailyReports } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
 
+  const inMyBranch = (bId?: string) => !branchId || !bId || bId === branchId;
+
   const today      = new Date().toISOString().slice(0, 10);
-  const todaySales = sales.filter(s => s.dt.startsWith(today));
+  const todaySales = sales.filter(s => s.dt.startsWith(today) && inMyBranch(s.branchId));
   const totalL     = todaySales.reduce((s, e) => s + e.L, 0);
   const totalAmt   = todaySales.reduce((s, e) => s + e.L * e.price, 0);
   const totalPOS   = todaySales.reduce((s, e) => s + (e.pos || 0), 0);
@@ -41,9 +43,9 @@ export default function SalesScreen() {
   const agoSales = todaySales.filter(s => s.pump.includes('AGO'));
   const dkpSales = todaySales.filter(s => s.pump.includes('DPK'));
 
-  const sortedReports = [...pumpDailyReports].sort(
-    (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
-  );
+  const sortedReports = [...pumpDailyReports]
+    .filter(r => inMyBranch(r.branchId))
+    .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 
   return (
     <ScreenLayout title="Sales">
