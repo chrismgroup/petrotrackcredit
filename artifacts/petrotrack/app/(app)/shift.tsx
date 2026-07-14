@@ -273,9 +273,9 @@ export default function ShiftReportScreen() {
 
   /* ── tab definitions ── */
   const tabs: { key: Tab; label: string; badge?: number; roles: string[] }[] = [
-    { key: 'dashboard',   label: 'Dashboard',   badge: returnedReports.length || undefined, roles: ['att'] },
-    { key: 'submit',      label: 'New Report',  roles: ['att'] },
-    { key: 'history',     label: 'My History',  roles: ['att', 'mgr', 'admin', 'ceo', 'md'] },
+    { key: 'dashboard',   label: 'My Summary',      badge: returnedReports.length || undefined, roles: ['att'] },
+    { key: 'submit',      label: 'Record Meters',   roles: ['att'] },
+    { key: 'history',     label: 'My History',      roles: ['att', 'mgr', 'admin', 'ceo', 'md'] },
     { key: 'review',      label: 'Review',      badge: pendingMgr.length + returnedMgr.length, roles: ['mgr'] },
     { key: 'pending_acc', label: 'Approvals',   badge: pendingAcc.length, roles: ['acc'] },
     { key: 'approved',    label: 'Approved',    roles: ['acc', 'admin', 'ceo', 'md'] },
@@ -320,7 +320,7 @@ export default function ShiftReportScreen() {
       </ScrollView>
 
       {/* ══ ATTENDANT: DASHBOARD ══ */}
-      {tab === 'dashboard' && isAtt && (
+      {tab === 'dashboard' && (
         <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
 
           {/* Returned alert banner */}
@@ -476,8 +476,8 @@ export default function ShiftReportScreen() {
         </ScrollView>
       )}
 
-      {/* ══ ATTENDANT: NEW REPORT ══ */}
-      {tab === 'submit' && isAtt && (
+      {/* ══ RECORD METERS ══ */}
+      {tab === 'submit' && (
         <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
 
           {activePumps.length === 0 && (
