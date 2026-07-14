@@ -6,10 +6,22 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDate, fmtDateTime,
-  mmToLiters, useApp,
+  DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+
+const SHIFT_REPORT_LABEL: Record<string, string> = {
+  pending_manager:    'Pending Manager',
+  pending_accountant: 'Pending Accountant',
+  returned:           'Returned',
+  approved:           'Approved',
+};
+const SHIFT_REPORT_COLOR: Record<string, string> = {
+  pending_manager:    '#BA7517',
+  pending_accountant: '#185FA5',
+  returned:           '#A32D2D',
+  approved:           '#1a6e3c',
+};
 
 const DIP_SUBTABS_ALL = ['Dip Form', 'Log & Delivery', 'Inventory'];
 const DIP_SUBTABS_MD  = ['Log & Delivery', 'Inventory'];
@@ -32,7 +44,7 @@ export default function OperationsScreen() {
     tanks, lpgTanks, dips, deliveries,
     addDip, approveDip, rejectDip, addDelivery,
     prices, deliveryEvidences, addDeliveryEvidence,
-    sales, addSales, pumps,
+    sales, pumpDailyReports,
     maintenance, addMaintenance,
   } = useApp();
 
@@ -87,17 +99,7 @@ export default function OperationsScreen() {
     return Math.round(((t.op + t.rv - t.sl) / t.cap) * 100);
   }
 
-  // ── Sales state ──────────────────────────────────────────────────────────
-  const activePumps = pumps.filter(p => p.active);
-  const PUMP_PRODS  = Object.fromEntries(activePumps.map(p => [p.name, p.prod]));
-  const canRecord   = isMgr || isAtt || role === 'admin';
-
-  const [pump,         setPump]         = useState(() => activePumps[0]?.name || '');
-  const [openMeter,    setOpenMeter]    = useState('');
-  const [closeMeter,   setCloseMeter]   = useState('');
-  const [posAmt,       setPosAmt]       = useState('');
-  const [showSaleForm, setShowSaleForm] = useState(false);
-
+  // ── Sales metrics (from approved shift reports via SalesEntry) ───────────
   const today      = new Date().toISOString().slice(0, 10);
   const todaySales = sales.filter(s => s.dt.startsWith(today));
   const totalL     = todaySales.reduce((s, e) => s + e.L, 0);
@@ -107,24 +109,6 @@ export default function OperationsScreen() {
   const pmsSales   = todaySales.filter(s => s.pump.includes('PMS'));
   const agoSales   = todaySales.filter(s => s.pump.includes('AGO'));
   const dkpSales   = todaySales.filter(s => s.pump.includes('DPK'));
-
-  const openVal   = parseFloat(openMeter);
-  const closeVal  = parseFloat(closeMeter);
-  const liters    = (!isNaN(openVal) && !isNaN(closeVal) && closeVal > openVal) ? Math.round(closeVal - openVal) : 0;
-  const prod      = PUMP_PRODS[pump] || 'PMS';
-  const unitPrice = (prices as any)[prod] || 0;
-  const saleAmt   = liters * unitPrice;
-  const posVal    = parseFloat(posAmt.replace(/,/g, '')) || 0;
-  const cashAmt   = saleAmt - posVal;
-
-  function handleSaleSubmit() {
-    if (!liters || liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
-    if (posVal < 0 || posVal > saleAmt) { Alert.alert('Error', `POS amount cannot exceed ${fmt(saleAmt)}.`); return; }
-    addSales({ pump, by: userName, L: liters, price: unitPrice, dt: new Date().toISOString(), pos: posVal > 0 ? posVal : undefined });
-    setOpenMeter(''); setCloseMeter(''); setPosAmt('');
-    setShowSaleForm(false);
-    Alert.alert('Sales Recorded', `${liters.toLocaleString()}L · Total: ${fmt(saleAmt)}`);
-  }
 
   // ── Maintenance state ────────────────────────────────────────────────────
   const canMaint = isMgr || isAtt || role === 'csm' || role === 'admin';
@@ -189,7 +173,7 @@ export default function OperationsScreen() {
               )}
               {visibleTanks.map(t => {
                 const mm = parseFloat(readings[t.id] || '');
-                const L  = !isNaN(mm) ? mmToLiters(t, mm) : null;
+                const L  = !isNaN(mm) ? mm : null;
                 return (
                   <View key={t.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={styles.dipCardHeader}>
@@ -572,106 +556,61 @@ export default function OperationsScreen() {
             ))}
           </View>
 
-          {canRecord && (
-            <TouchableOpacity onPress={() => setShowSaleForm(v => !v)}
-              style={[styles.addOutlineBtn, { borderColor: roleColor, marginBottom: showSaleForm ? 0 : 12 }]}>
-              <Ionicons name={showSaleForm ? 'close' : 'add'} size={17} color={roleColor} />
-              <Text style={[styles.addOutlineBtnText, { color: roleColor }]}>{showSaleForm ? 'Cancel' : 'Record Sales Entry'}</Text>
-            </TouchableOpacity>
-          )}
-
-          {showSaleForm && canRecord && (
-            <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.formSectionTitle, { color: colors.text }]}>Record Sales Entry</Text>
-              <Text style={[styles.subLabel, { color: colors.textMuted }]}>Pump</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {activePumps.map(p => (
-                    <TouchableOpacity key={p.name} onPress={() => setPump(p.name)}
-                      style={[styles.prodBtn, { backgroundColor: pump === p.name ? roleColor : colors.background, borderColor: pump === p.name ? roleColor : colors.border }]}>
-                      <Text style={{ color: pump === p.name ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{p.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.subLabel, { color: colors.textMuted }]}>Opening Meter (L)</Text>
-                  <TextInput style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                    placeholder="0.00" placeholderTextColor={colors.textSubtle} keyboardType="numeric" value={openMeter} onChangeText={setOpenMeter} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.subLabel, { color: colors.textMuted }]}>Closing Meter (L)</Text>
-                  <TextInput style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                    placeholder="0.00" placeholderTextColor={colors.textSubtle} keyboardType="numeric" value={closeMeter} onChangeText={setCloseMeter} />
-                </View>
-              </View>
-              <Text style={[styles.subLabel, { color: colors.textMuted }]}>POS / Transfer ₦ (optional)</Text>
-              <TextInput style={[styles.input, { backgroundColor: colors.background, borderColor: posVal > saleAmt && saleAmt > 0 ? colors.error : colors.inputBorder, color: colors.text }]}
-                placeholder="0" placeholderTextColor={colors.textSubtle} keyboardType="numeric" value={posAmt} onChangeText={setPosAmt} />
-              {liters > 0 && (
-                <View style={[styles.calcPreview, { backgroundColor: roleColor + '10', borderColor: roleColor + '30' }]}>
-                  <View style={styles.calcRow}>
-                    <Text style={[styles.calcLabel, { color: colors.textMuted }]}>Volume</Text>
-                    <Text style={[styles.calcValue, { color: colors.text }]}>{liters.toLocaleString()} L</Text>
-                  </View>
-                  <View style={styles.calcRow}>
-                    <Text style={[styles.calcLabel, { color: colors.textMuted }]}>Total Sale</Text>
-                    <Text style={[styles.calcValue, { color: roleColor }]}>{fmt(saleAmt)}</Text>
-                  </View>
-                  {posVal > 0 && (
-                    <>
-                      <View style={[styles.calcDivider, { backgroundColor: colors.border }]} />
-                      <View style={styles.calcRow}>
-                        <Text style={[styles.calcLabel, { color: '#185FA5' }]}>POS</Text>
-                        <Text style={[styles.calcValue, { color: '#185FA5' }]}>− {fmt(posVal)}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>Shift Reports</Text>
+          {[...pumpDailyReports]
+            .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+            .map(r => {
+              const sc         = SHIFT_REPORT_COLOR[r.status] || '#888';
+              const isApproved = r.status === 'approved';
+              const isReturned = r.status === 'returned';
+              return (
+                <View key={r.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: isApproved ? sc + '55' : colors.border, borderWidth: isApproved ? 1.5 : 1 }]}>
+                  <View style={styles.logHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.logDate, { color: colors.text }]}>{r.pumpName}</Text>
+                      <Text style={[styles.logBy, { color: colors.textMuted }]}>by {r.submittedByName} · {fmtDateTime(r.submittedAt)}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                      <View style={[styles.shiftStatusBadge, { backgroundColor: sc + '18' }]}>
+                        <Text style={[styles.shiftStatusText, { color: sc }]}>{SHIFT_REPORT_LABEL[r.status]}</Text>
                       </View>
-                      <View style={styles.calcRow}>
-                        <Text style={[styles.calcLabel, { color: '#27500A' }]}>Cash to Collect</Text>
-                        <Text style={[styles.calcValue, { color: '#27500A', fontWeight: '800' }]}>{fmt(Math.max(0, cashAmt))}</Text>
+                      {isApproved && (
+                        <Text style={[styles.saleAmt, { color: roleColor }]}>{fmt(r.grossAmount)}</Text>
+                      )}
+                    </View>
+                  </View>
+                  {isApproved && (
+                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                      <View style={[styles.posChip, { backgroundColor: '#27500A12', borderColor: '#27500A30' }]}>
+                        <Ionicons name="water-outline" size={11} color="#27500A" />
+                        <Text style={[styles.posChipText, { color: '#27500A' }]}>{r.liters.toLocaleString()}L</Text>
                       </View>
-                    </>
+                      <View style={[styles.posChip, { backgroundColor: '#185FA512', borderColor: '#185FA530' }]}>
+                        <Ionicons name="cash-outline" size={11} color="#185FA5" />
+                        <Text style={[styles.posChipText, { color: '#185FA5' }]}>Cash {fmt(r.cashAmount)}</Text>
+                      </View>
+                      {r.posAmount > 0 && (
+                        <View style={[styles.posChip, { backgroundColor: '#4527a012', borderColor: '#4527a030' }]}>
+                          <Ionicons name="card-outline" size={11} color="#4527a0" />
+                          <Text style={[styles.posChipText, { color: '#4527a0' }]}>POS {fmt(r.posAmount)}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  {isReturned && r.rejectionReason && (
+                    <View style={[{ marginTop: 6, padding: 6, borderRadius: 7, backgroundColor: '#A32D2D0F', borderWidth: 1, borderColor: '#A32D2D33' }]}>
+                      <Text style={[styles.posChipText, { color: '#A32D2D' }]}>⚠ {r.rejectionReason}</Text>
+                    </View>
                   )}
                 </View>
-              )}
-              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor, marginTop: 8 }]} onPress={handleSaleSubmit} activeOpacity={0.85}>
-                <Text style={styles.submitBtnText}>Record Sales</Text>
-              </TouchableOpacity>
+              );
+            })
+          }
+          {pumpDailyReports.length === 0 && (
+            <View style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border, alignItems: 'center', padding: 24 }]}>
+              <Text style={[styles.logBy, { color: colors.textMuted }]}>No shift reports yet</Text>
             </View>
           )}
-
-          <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>Sales Log</Text>
-          {sales.slice().reverse().map(entry => {
-            const amt  = entry.L * entry.price;
-            const pos  = entry.pos || 0;
-            const cash = amt - pos;
-            return (
-              <View key={entry.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.logHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.logDate, { color: colors.text }]}>{entry.pump}</Text>
-                    <Text style={[styles.logBy, { color: colors.textMuted }]}>by {entry.by} · {fmtDateTime(entry.dt)}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[styles.saleAmt, { color: roleColor }]}>{fmt(amt)}</Text>
-                    <Text style={[styles.saleL, { color: colors.textMuted }]}>{entry.L.toLocaleString()}L @ ₦{entry.price}/L</Text>
-                  </View>
-                </View>
-                {pos > 0 && (
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
-                    <View style={[styles.posChip, { backgroundColor: '#27500A12', borderColor: '#27500A30' }]}>
-                      <Ionicons name="cash-outline" size={11} color="#27500A" />
-                      <Text style={[styles.posChipText, { color: '#27500A' }]}>Cash {fmt(cash)}</Text>
-                    </View>
-                    <View style={[styles.posChip, { backgroundColor: '#185FA512', borderColor: '#185FA530' }]}>
-                      <Ionicons name="card-outline" size={11} color="#185FA5" />
-                      <Text style={[styles.posChipText, { color: '#185FA5' }]}>POS {fmt(pos)}</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-            );
-          })}
           <View style={{ height: 16 }} />
         </ScrollView>
       )}
@@ -880,8 +819,10 @@ const styles = StyleSheet.create({
   calcLabel:    { fontSize: 12 },
   calcValue:    { fontSize: 14, fontWeight: '700' },
   calcDivider:  { height: StyleSheet.hairlineWidth, marginVertical: 2 },
-  saleAmt:      { fontSize: 15, fontWeight: '700' },
-  saleL:        { fontSize: 11, marginTop: 2 },
+  saleAmt:          { fontSize: 15, fontWeight: '700' },
+  saleL:            { fontSize: 11, marginTop: 2 },
+  shiftStatusBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+  shiftStatusText:  { fontSize: 10, fontWeight: '600' },
   posChip:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, borderWidth: 1 },
   posChipText:  { fontSize: 11, fontWeight: '600' },
 
