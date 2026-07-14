@@ -576,7 +576,7 @@ export default function ShiftReportScreen() {
                         <TextInput
                           style={[c.textInput, { backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border, color: colors.text }]}
                           placeholder="Enter reading" placeholderTextColor={colors.textSubtle}
-                          keyboardType="numeric" value={closeMeter} onChangeText={setCloseMeter}
+                          keyboardType="decimal-pad" value={closeMeter} onChangeText={setCloseMeter}
                         />
                       </View>
                     </View>
@@ -608,7 +608,7 @@ export default function ShiftReportScreen() {
                           <TextInput
                             style={[c.payInput, { color: colors.text }]}
                             placeholder="0.00" placeholderTextColor={colors.textSubtle}
-                            keyboardType="numeric" value={f.val} onChangeText={f.set}
+                            keyboardType="decimal-pad" value={f.val} onChangeText={f.set}
                           />
                         </View>
                       </View>
@@ -775,7 +775,7 @@ export default function ShiftReportScreen() {
                     style={[c.textInput, { flex: 1, backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border, color: colors.text }]}
                     placeholder={current !== undefined ? String(current) : 'Enter initial meter (L)'}
                     placeholderTextColor={colors.textSubtle}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
                     value={initMeters[p.id] ?? ''}
                     onChangeText={v => setInitMeters(m => ({ ...m, [p.id]: v }))}
                   />
