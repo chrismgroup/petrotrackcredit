@@ -147,7 +147,8 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
 
 export default function ReceivingScreen() {
   const {
-    role, userName, branchId, deliveries, prices, sales,
+    role, userName, branchId,
+    tanks, lpgTanks, deliveries, prices, sales, pumpDailyReports,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery,
   } = useApp();
@@ -193,20 +194,47 @@ export default function ReceivingScreen() {
   const pendingAccCount = sortedDeliveries.filter(d => d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending').length;
   const pendingMdCount  = sortedDeliveries.filter(d => d.approvalStatus === 'pending_md').length;
 
-  const inventory = PRODUCTS.map(prod => {
-    const totalReceived = deliveries
-      .filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
-      .reduce((s, d) => s + d.rec, 0);
-    const totalSold = sales
-      .filter(s => s.pump.toLowerCase().includes(prod.toLowerCase()))
-      .reduce((s, e) => s + e.L, 0);
-    const available = totalReceived - totalSold;
-    const approved = deliveries.filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
-    const avgCost = approved.length > 0
-      ? approved.reduce((s, d) => s + (d.costPrice ?? 0) * d.rec, 0) / totalReceived
-      : 0;
-    return { prod, totalReceived, totalSold, available, avgCost };
-  }).filter(s => s.totalReceived > 0);
+  // Branch-scoped tanks
+  const myTanks    = tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
+  const myLpgTanks = lpgTanks.filter(l => !branchId || !l.branchId || l.branchId === branchId);
+
+  // Inventory driven by actual tank dip levels (op + rv - sl), with deliveries &
+  // pump shift reports as supporting received/sold metrics.
+  const petrolProds = ['PMS', 'AGO', 'DPK'] as const;
+  const petrolInv = petrolProds
+    .map(prod => {
+      const prodTanks = myTanks.filter(t => t.prod === prod);
+      const currentStock = prodTanks.reduce((s, t) => s + Math.max(0, t.op + t.rv - t.sl), 0);
+      const totalCap     = prodTanks.reduce((s, t) => s + t.cap, 0);
+      // Received: all deliveries not in draft/rejected
+      const received = deliveries
+        .filter(d => d.prod === prod && d.approvalStatus !== 'draft' && d.approvalStatus !== 'rejected')
+        .reduce((s, d) => s + d.rec, 0);
+      // Sold: from approved pump shift reports
+      const sold = pumpDailyReports
+        .filter(r => r.product === prod && r.status === 'approved')
+        .reduce((s, r) => s + r.liters, 0);
+      // Avg cost from fully approved deliveries
+      const appDlv    = deliveries.filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
+      const appRec    = appDlv.reduce((s, d) => s + d.rec, 0);
+      const avgCost   = appRec > 0 ? appDlv.reduce((s, d) => s + (d.costPrice ?? 0) * d.rec, 0) / appRec : 0;
+      if (prodTanks.length === 0 && received === 0) return null;
+      return { prod, currentStock, totalCap, totalReceived: received, totalSold: sold, avgCost, unit: 'L' };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  const lpgStock    = myLpgTanks.reduce((s, l) => s + Math.max(0, l.op + l.rv - l.sl), 0);
+  const lpgCap      = myLpgTanks.reduce((s, l) => s + l.cap, 0);
+  const lpgReceived = deliveries.filter(d => d.prod === 'LPG' && d.approvalStatus !== 'draft' && d.approvalStatus !== 'rejected').reduce((s, d) => s + d.rec, 0);
+  const lpgSold     = pumpDailyReports.filter(r => r.product === 'LPG' && r.status === 'approved').reduce((s, r) => s + r.liters, 0);
+  const lpgAppDlv   = deliveries.filter(d => d.prod === 'LPG' && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
+  const lpgAppRec   = lpgAppDlv.reduce((s, d) => s + d.rec, 0);
+  const lpgAvgCost  = lpgAppRec > 0 ? lpgAppDlv.reduce((s, d) => s + (d.costPrice ?? 0) * d.rec, 0) / lpgAppRec : 0;
+  const lpgInv = (myLpgTanks.length > 0 || lpgReceived > 0)
+    ? [{ prod: 'LPG', currentStock: lpgStock, totalCap: lpgCap, totalReceived: lpgReceived, totalSold: lpgSold, avgCost: lpgAvgCost, unit: 'kg' }]
+    : [];
+
+  const inventory = [...petrolInv, ...lpgInv];
 
   function validateMgrForm(f: MgrFormState) {
     const ordN = parseFloat(f.ord);
@@ -387,8 +415,8 @@ export default function ReceivingScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Current Inventory</Text>
             <View style={styles.inventoryGrid}>
               {inventory.map(inv => {
-                const pc = PROD_COLORS[inv.prod] || roleColor;
-                const low = inv.available < inv.totalReceived * 0.2;
+                const pc  = PROD_COLORS[inv.prod] || roleColor;
+                const low = inv.totalCap > 0 ? inv.currentStock < inv.totalCap * 0.2 : false;
                 return (
                   <View key={inv.prod} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: low ? '#BA7517' : colors.border }]}>
                     <View style={[styles.invProdBadge, { backgroundColor: pc + '18' }]}>
@@ -396,18 +424,23 @@ export default function ReceivingScreen() {
                       <Text style={[styles.invProdText, { color: pc }]}>{inv.prod}</Text>
                     </View>
                     <Text style={[styles.invAvail, { color: low ? '#BA7517' : '#27500A' }]}>
-                      {inv.available.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      <Text style={[styles.invUnit, { color: colors.textMuted }]}>{' L available'}</Text>
+                      {inv.currentStock.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      <Text style={[styles.invUnit, { color: colors.textMuted }]}>{' ' + inv.unit + ' in stock'}</Text>
                     </Text>
+                    {inv.totalCap > 0 ? (
+                      <View style={[styles.progressBg, { backgroundColor: colors.border, marginBottom: 8 }]}>
+                        <View style={[styles.progressBar, { width: `${Math.min(100, Math.round((inv.currentStock / inv.totalCap) * 100))}%` as any, backgroundColor: low ? '#BA7517' : pc }]} />
+                      </View>
+                    ) : null}
                     <View style={styles.invDetail}>
                       <View style={styles.invDetailItem}>
                         <Text style={[styles.invDetailLabel, { color: colors.textMuted }]}>Received</Text>
-                        <Text style={[styles.invDetailVal, { color: colors.text }]}>{inv.totalReceived.toLocaleString()}{' L'}</Text>
+                        <Text style={[styles.invDetailVal, { color: colors.text }]}>{inv.totalReceived.toLocaleString()}{' ' + inv.unit}</Text>
                       </View>
                       <View style={[styles.invDetailDivider, { backgroundColor: colors.border }]} />
                       <View style={styles.invDetailItem}>
                         <Text style={[styles.invDetailLabel, { color: colors.textMuted }]}>Sold</Text>
-                        <Text style={[styles.invDetailVal, { color: '#791F1F' }]}>{inv.totalSold.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' L'}</Text>
+                        <Text style={[styles.invDetailVal, { color: '#791F1F' }]}>{inv.totalSold.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' ' + inv.unit}</Text>
                       </View>
                       {inv.avgCost > 0 ? (
                         <>
@@ -790,6 +823,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, marginTop: 4 },
   inventoryGrid: { gap: 8, marginBottom: 16 },
   invCard: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 8 },
+  progressBg:  { height: 6, borderRadius: 3, overflow: 'hidden' },
+  progressBar: { height: 6, borderRadius: 3 },
   invProdBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   invProdText: { fontSize: 12, fontWeight: '700' },
   invAvail: { fontSize: 24, fontWeight: '800' },
