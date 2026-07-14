@@ -22,6 +22,7 @@ export default function UsersScreen() {
   const {
     role, userName,
     userAccounts, branches,
+    addActiveUserAccount,
     approveUserAccount, updateUserAccount,
     suspendUserAccount, reactivateUserAccount,
     rejectUserAccount, deleteUserAccount,
@@ -51,6 +52,15 @@ export default function UsersScreen() {
 
   /* ── view modal state (non-admin) ── */
   const [viewAcc, setViewAcc] = useState<UserAccount | null>(null);
+
+  /* ── create account modal state (admin only) ── */
+  const [showCreate, setShowCreate] = useState(false);
+  const [cEmpName, setCEmpName]     = useState('');
+  const [cUsername, setCUsername]   = useState('');
+  const [cPassword, setCPassword]   = useState('');
+  const [cRole, setCRole]           = useState<Role>('att');
+  const [cBranch, setCBranch]       = useState('');
+  const [showCreatePw, setShowCreatePw] = useState(false);
 
   const pending  = userAccounts.filter(a => a.status === 'pending');
   const active   = userAccounts.filter(a => ['active', 'suspended'].includes(a.status));
@@ -149,6 +159,36 @@ export default function UsersScreen() {
     ]);
   }
 
+  /* ─── create helpers (admin only) ─── */
+  function openCreate() {
+    setCEmpName(''); setCUsername(''); setCPassword('');
+    setCRole('att'); setCBranch(''); setShowCreatePw(false);
+    setShowCreate(true);
+  }
+
+  async function handleCreate() {
+    if (!cEmpName.trim()) { Alert.alert('Required', 'Full name is required.'); return; }
+    if (!cUsername.trim()) { Alert.alert('Required', 'Username is required.'); return; }
+    if (!cPassword.trim() || cPassword.trim().length < 6) {
+      Alert.alert('Required', 'Password must be at least 6 characters.'); return;
+    }
+    if (cRole === 'mgr' && !cBranch) {
+      Alert.alert('Required', 'Assign a branch for Station Manager.'); return;
+    }
+    const duplicate = userAccounts.find(a => a.username === cUsername.trim());
+    if (duplicate) { Alert.alert('Username Taken', 'That username is already in use. Choose another.'); return; }
+    await addActiveUserAccount({
+      empName: cEmpName.trim(),
+      username: cUsername.trim(),
+      password: cPassword.trim(),
+      role: cRole,
+      branchId: cRole === 'mgr' ? cBranch : undefined,
+      createdBy: userName || 'Admin',
+    });
+    Alert.alert('Account Created', `${cEmpName.trim()} can now log in as @${cUsername.trim()}.`);
+    setShowCreate(false);
+  }
+
   const initials = (name: string) =>
     name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
@@ -172,9 +212,9 @@ export default function UsersScreen() {
         ))}
       </View>
 
-      {/* Search */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      {/* Search + admin create button */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border, flex: 1 }]}>
           <Ionicons name="search" size={16} color={colors.textMuted} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
@@ -184,6 +224,14 @@ export default function UsersScreen() {
             onChangeText={setSearch}
           />
         </View>
+        {isAdmin && tab === 'active' && (
+          <TouchableOpacity
+            onPress={openCreate}
+            style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: roleColor, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="person-add" size={18} color="#fff" />
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -570,6 +618,121 @@ export default function UsersScreen() {
               </ScrollView>
             </View>
           )}
+      </ModalSheet>
+
+      {/* ── CREATE ACCOUNT MODAL (admin only) ── */}
+      <ModalSheet visible={showCreate} onClose={() => setShowCreate(false)}>
+          <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
+            <View style={styles.modalHeader}>
+              <View style={[styles.modalIconBox, { backgroundColor: roleColor + '18' }]}>
+                <Ionicons name="person-add" size={20} color={roleColor} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Create User Account</Text>
+                <Text style={[styles.modalSub, { color: colors.textMuted }]}>Directly activate a new login</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowCreate(false)}>
+                <Ionicons name="close-circle" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+              {/* Full name */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Full Name *</Text>
+              <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="person-outline" size={16} color={colors.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  value={cEmpName}
+                  onChangeText={setCEmpName}
+                  placeholder="e.g. Kelechi Nwosu"
+                  placeholderTextColor={colors.textSubtle}
+                />
+              </View>
+
+              {/* Role */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Role *</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                {ROLE_OPTS.map(r => (
+                  <TouchableOpacity
+                    key={r}
+                    onPress={() => { setCRole(r); if (r !== 'mgr') setCBranch(''); }}
+                    style={[styles.roleChip, { backgroundColor: cRole === r ? (ROLE_COLORS[r] || roleColor) : colors.surface, borderColor: cRole === r ? (ROLE_COLORS[r] || roleColor) : colors.border }]}
+                  >
+                    <Text style={[styles.roleChipText, { color: cRole === r ? '#fff' : colors.textMuted }]}>
+                      {ROLE_LABELS[r] ?? r}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Branch (mgr only) */}
+              {cRole === 'mgr' && (
+                <>
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                    {branches
+                      .filter((b): b is typeof b & { id: string } => !!b.id)
+                      .map(b => (
+                        <TouchableOpacity
+                          key={b.id}
+                          onPress={() => setCBranch(b.id)}
+                          style={[styles.roleChip, { backgroundColor: cBranch === b.id ? ROLE_COLORS.mgr : colors.surface, borderColor: cBranch === b.id ? ROLE_COLORS.mgr : colors.border }]}
+                        >
+                          <Text style={[styles.roleChipText, { color: cBranch === b.id ? '#fff' : colors.textMuted }]}>{b.name}</Text>
+                        </TouchableOpacity>
+                      ))
+                    }
+                  </View>
+                </>
+              )}
+
+              {/* Username */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username *</Text>
+              <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="at" size={16} color={colors.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  value={cUsername}
+                  onChangeText={v => setCUsername(v.toLowerCase().replace(/\s/g, '.'))}
+                  placeholder="username"
+                  placeholderTextColor={colors.textSubtle}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              {/* Password */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Password *</Text>
+              <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="lock-closed-outline" size={16} color={colors.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  value={cPassword}
+                  onChangeText={setCPassword}
+                  placeholder="Min 6 characters"
+                  placeholderTextColor={colors.textSubtle}
+                  secureTextEntry={!showCreatePw}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setShowCreatePw(v => !v)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Ionicons name={showCreatePw ? 'eye-off-outline' : 'eye-outline'} size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Action buttons */}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <TouchableOpacity onPress={handleCreate} style={[styles.confirmBtn, { backgroundColor: roleColor, flex: 1 }]} activeOpacity={0.85}>
+                  <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                  <Text style={styles.confirmBtnText}>Create Account</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowCreate(false)} style={[styles.cancelBtn, { borderColor: colors.border, flex: 0.55 }]} activeOpacity={0.8}>
+                  <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ height: 16 }} />
+            </ScrollView>
+          </View>
       </ModalSheet>
 
       {/* ── VIEW ACCOUNT MODAL (non-admin) ── */}
