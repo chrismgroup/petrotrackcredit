@@ -161,22 +161,35 @@ export default function TanksScreen() {
               <Text style={[styles.noBannerText, { color: colors.textMuted }]}>LPG tank access not granted for this branch</Text>
             </View>
           )}
-          {visibleLpgTanks.map(l => (
-            <View key={l.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.dipCardTitle, { color: colors.text }]}>{l.name}</Text>
-              <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Cap: {l.cap.toLocaleString()} kg</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                placeholder="Fill percentage (0-100)"
-                placeholderTextColor={colors.textSubtle}
-                keyboardType="numeric"
-                value={lpgReadings[l.id] || ''}
-                onChangeText={v => setLpgReadings(r => ({ ...r, [l.id]: v }))}
-                editable={canEdit}
-              />
-              {lpgReadings[l.id] ? <Text style={[styles.calcResult, { color: roleColor }]}>≈ {Math.round((parseFloat(lpgReadings[l.id] || '0') / 100) * l.cap).toLocaleString()} kg</Text> : null}
-            </View>
-          ))}
+          {visibleLpgTanks.map(l => {
+            const enteredKg = parseFloat(lpgReadings[l.id] || '');
+            const pctFull = !isNaN(enteredKg) && l.cap > 0 ? Math.round((enteredKg / l.cap) * 100) : null;
+            return (
+              <View key={l.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.dipCardHeader}>
+                  <Text style={[styles.dipCardTitle, { color: colors.text }]}>{l.name}</Text>
+                  <View style={[styles.prodBadge, { backgroundColor: colors.teal + '22' }]}>
+                    <Text style={[styles.prodText, { color: colors.teal }]}>LPG</Text>
+                  </View>
+                </View>
+                <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Capacity: {l.cap.toLocaleString()} kg</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                  placeholder={`Current level in kg (max ${l.cap.toLocaleString()} kg)`}
+                  placeholderTextColor={colors.textSubtle}
+                  keyboardType="numeric"
+                  value={lpgReadings[l.id] || ''}
+                  onChangeText={v => setLpgReadings(r => ({ ...r, [l.id]: v }))}
+                  editable={canEdit}
+                />
+                {pctFull !== null && (
+                  <Text style={[styles.calcResult, { color: pctFull < 20 ? '#A32D2D' : pctFull < 50 ? '#BA7517' : colors.teal }]}>
+                    {enteredKg.toLocaleString()} kg — {pctFull}% full
+                  </Text>
+                )}
+              </View>
+            );
+          })}
 
           <TextInput
             style={[styles.obsInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
@@ -316,12 +329,12 @@ export default function TanksScreen() {
                       </View>
                     );
                   })}
-                  {Object.entries(dip.lpg).map(([lid, pct]) => {
+                  {Object.entries(dip.lpg).map(([lid, kg]) => {
                     const lt = lpgTanks.find(l => l.id === lid);
                     return (
                       <View key={lid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
                         <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{lt?.name.replace('LPG Tank ', 'L')}</Text>
-                        <Text style={[styles.readingVal, { color: colors.teal }]}>{pct}%</Text>
+                        <Text style={[styles.readingVal, { color: colors.teal }]}>{Number(kg).toLocaleString()} kg</Text>
                       </View>
                     );
                   })}
