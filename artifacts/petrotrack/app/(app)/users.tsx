@@ -85,10 +85,10 @@ export default function UsersScreen() {
     if (!approving) return;
     if (!aUsername.trim()) { Alert.alert('Required', 'Username is required.'); return; }
     if (!aPassword.trim()) { Alert.alert('Required', 'Set a temporary password.'); return; }
-    if (aRole === 'mgr' && !aBranch) { Alert.alert('Required', 'Assign a branch for this Station Manager.'); return; }
+    if (!aBranch) { Alert.alert('Required', 'Please assign a branch — every user must belong to a branch.'); return; }
     const duplicate = userAccounts.find(a => a.username === aUsername.trim() && a.id !== approving.id);
     if (duplicate) { Alert.alert('Username Taken', 'That username is already in use. Choose another.'); return; }
-    await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch || undefined);
+    await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch);
     Alert.alert('Account Approved', `${approving.empName} can now log in as ${aUsername.trim()}.`);
     setApproving(null);
   }
@@ -116,8 +116,8 @@ export default function UsersScreen() {
     if (ePassword.trim() && ePassword.trim().length < 6) {
       Alert.alert('Invalid', 'New password must be at least 6 characters.'); return;
     }
-    if (eRole === 'mgr' && !eBranch) {
-      Alert.alert('Required', 'Please assign a branch for this Station Manager.'); return;
+    if (!eBranch) {
+      Alert.alert('Required', 'Please assign a branch — every user must belong to a branch.'); return;
     }
     const duplicate = userAccounts.find(a => a.username === eUsername.trim() && a.id !== editing.id);
     if (duplicate) { Alert.alert('Username Taken', 'That username is already in use. Choose another.'); return; }
@@ -125,7 +125,7 @@ export default function UsersScreen() {
     const updates: { username?: string; password?: string; role?: Role; branchId?: string } = {
       username: eUsername.trim(),
       role: eRole,
-      branchId: eRole === 'mgr' ? eBranch : undefined,
+      branchId: eBranch,
     };
     if (ePassword.trim()) updates.password = ePassword.trim();
 
@@ -172,8 +172,8 @@ export default function UsersScreen() {
     if (!cPassword.trim() || cPassword.trim().length < 6) {
       Alert.alert('Required', 'Password must be at least 6 characters.'); return;
     }
-    if (cRole === 'mgr' && !cBranch) {
-      Alert.alert('Required', 'Assign a branch for Station Manager.'); return;
+    if (!cBranch) {
+      Alert.alert('Required', 'Please assign a branch — every user must belong to a branch.'); return;
     }
     const duplicate = userAccounts.find(a => a.username === cUsername.trim());
     if (duplicate) { Alert.alert('Username Taken', 'That username is already in use. Choose another.'); return; }
@@ -182,7 +182,7 @@ export default function UsersScreen() {
       username: cUsername.trim(),
       password: cPassword.trim(),
       role: cRole,
-      branchId: cRole === 'mgr' ? cBranch : undefined,
+      branchId: cBranch,
       createdBy: userName || 'Admin',
     });
     Alert.alert('Account Created', `${cEmpName.trim()} can now log in as @${cUsername.trim()}.`);
@@ -410,7 +410,7 @@ export default function UsersScreen() {
                     return (
                       <TouchableOpacity
                         key={r}
-                        onPress={() => { setARole(r); if (r !== 'mgr') setABranch(''); }}
+                        onPress={() => setARole(r)}
                         style={[styles.roleChip, { backgroundColor: aRole === r ? rc : colors.surface, borderColor: aRole === r ? rc : colors.border }]}
                       >
                         <Text style={[styles.roleChipText, { color: aRole === r ? '#fff' : colors.textMuted }]}>
@@ -422,25 +422,22 @@ export default function UsersScreen() {
                 </View>
               </ScrollView>
 
-              {aRole === 'mgr' && (
-                <>
-                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch *</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-                    {branches.length === 0
-                      ? <Text style={{ color: colors.textMuted, fontSize: 12, fontStyle: 'italic' }}>No branches yet — add one first.</Text>
-                      : branches.map(b => (
-                          <TouchableOpacity
-                            key={b.id}
-                            onPress={() => setABranch(b.id)}
-                            style={[styles.roleChip, { backgroundColor: aBranch === b.id ? ROLE_COLORS.mgr : colors.surface, borderColor: aBranch === b.id ? ROLE_COLORS.mgr : colors.border }]}
-                          >
-                            <Text style={[styles.roleChipText, { color: aBranch === b.id ? '#fff' : colors.textMuted }]}>{b.name}</Text>
-                          </TouchableOpacity>
-                        ))
-                    }
-                  </View>
-                </>
-              )}
+              {/* Branch — required for all roles */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch * <Text style={{ color: '#c0392b', fontWeight: '400', fontSize: 11 }}>(required)</Text></Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                {branches.length === 0
+                  ? <Text style={{ color: colors.textMuted, fontSize: 12, fontStyle: 'italic' }}>No branches yet — add one first.</Text>
+                  : branches.map(b => (
+                      <TouchableOpacity
+                        key={b.id}
+                        onPress={() => setABranch(b.id)}
+                        style={[styles.roleChip, { backgroundColor: aBranch === b.id ? (ROLE_COLORS[aRole] || roleColor) : colors.surface, borderColor: aBranch === b.id ? (ROLE_COLORS[aRole] || roleColor) : colors.border }]}
+                      >
+                        <Text style={[styles.roleChipText, { color: aBranch === b.id ? '#fff' : colors.textMuted }]}>{b.name}</Text>
+                      </TouchableOpacity>
+                    ))
+                }
+              </View>
 
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username *</Text>
               <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -513,7 +510,7 @@ export default function UsersScreen() {
                       return (
                         <TouchableOpacity
                           key={r}
-                          onPress={() => { setERole(r); if (r !== 'mgr') setEBranch(''); }}
+                          onPress={() => setERole(r)}
                           style={[styles.roleChip, { backgroundColor: eRole === r ? rc : colors.surface, borderColor: eRole === r ? rc : colors.border }]}
                         >
                           <Text style={[styles.roleChipText, { color: eRole === r ? '#fff' : colors.textMuted }]}>
@@ -525,26 +522,22 @@ export default function UsersScreen() {
                   </View>
                 </ScrollView>
 
-                {/* Branch — only for mgr */}
-                {eRole === 'mgr' && (
-                  <>
-                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-                      {branches.length === 0
-                        ? <Text style={{ color: colors.textMuted, fontSize: 12, fontStyle: 'italic' }}>No branches yet — add one first.</Text>
-                        : branches.map(b => (
-                            <TouchableOpacity
-                              key={b.id}
-                              onPress={() => setEBranch(b.id)}
-                              style={[styles.roleChip, { backgroundColor: eBranch === b.id ? ROLE_COLORS.mgr : colors.surface, borderColor: eBranch === b.id ? ROLE_COLORS.mgr : colors.border }]}
-                            >
-                              <Text style={[styles.roleChipText, { color: eBranch === b.id ? '#fff' : colors.textMuted }]}>{b.name}</Text>
-                            </TouchableOpacity>
-                          ))
-                      }
-                    </View>
-                  </>
-                )}
+                {/* Branch — required for all roles */}
+                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch * <Text style={{ color: '#c0392b', fontWeight: '400', fontSize: 11 }}>(required)</Text></Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                  {branches.length === 0
+                    ? <Text style={{ color: colors.textMuted, fontSize: 12, fontStyle: 'italic' }}>No branches yet — add one first.</Text>
+                    : branches.map(b => (
+                        <TouchableOpacity
+                          key={b.id}
+                          onPress={() => setEBranch(b.id)}
+                          style={[styles.roleChip, { backgroundColor: eBranch === b.id ? (ROLE_COLORS[eRole] || roleColor) : colors.surface, borderColor: eBranch === b.id ? (ROLE_COLORS[eRole] || roleColor) : colors.border }]}
+                        >
+                          <Text style={[styles.roleChipText, { color: eBranch === b.id ? '#fff' : colors.textMuted }]}>{b.name}</Text>
+                        </TouchableOpacity>
+                      ))
+                  }
+                </View>
 
                 {/* Username */}
                 <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username</Text>
@@ -656,7 +649,7 @@ export default function UsersScreen() {
                 {ROLE_OPTS.map(r => (
                   <TouchableOpacity
                     key={r}
-                    onPress={() => { setCRole(r); if (r !== 'mgr') setCBranch(''); }}
+                    onPress={() => setCRole(r)}
                     style={[styles.roleChip, { backgroundColor: cRole === r ? (ROLE_COLORS[r] || roleColor) : colors.surface, borderColor: cRole === r ? (ROLE_COLORS[r] || roleColor) : colors.border }]}
                   >
                     <Text style={[styles.roleChipText, { color: cRole === r ? '#fff' : colors.textMuted }]}>
@@ -666,26 +659,24 @@ export default function UsersScreen() {
                 ))}
               </View>
 
-              {/* Branch (mgr only) */}
-              {cRole === 'mgr' && (
-                <>
-                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                    {branches
+              {/* Branch — required for all roles */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch * <Text style={{ color: '#c0392b', fontWeight: '400', fontSize: 11 }}>(required)</Text></Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                {branches.length === 0
+                  ? <Text style={{ color: colors.textMuted, fontSize: 12, fontStyle: 'italic' }}>No branches yet — add one in System Settings first.</Text>
+                  : branches
                       .filter((b): b is typeof b & { id: string } => !!b.id)
                       .map(b => (
                         <TouchableOpacity
                           key={b.id}
                           onPress={() => setCBranch(b.id)}
-                          style={[styles.roleChip, { backgroundColor: cBranch === b.id ? ROLE_COLORS.mgr : colors.surface, borderColor: cBranch === b.id ? ROLE_COLORS.mgr : colors.border }]}
+                          style={[styles.roleChip, { backgroundColor: cBranch === b.id ? (ROLE_COLORS[cRole] || roleColor) : colors.surface, borderColor: cBranch === b.id ? (ROLE_COLORS[cRole] || roleColor) : colors.border }]}
                         >
                           <Text style={[styles.roleChipText, { color: cBranch === b.id ? '#fff' : colors.textMuted }]}>{b.name}</Text>
                         </TouchableOpacity>
                       ))
-                    }
-                  </View>
-                </>
-              )}
+                }
+              </View>
 
               {/* Username */}
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username *</Text>
