@@ -318,8 +318,8 @@ export default function SystemSettingsScreen() {
     if (userAccounts.some(a => a.username === username)) {
       Alert.alert('Error', `Username "${username}" is already taken. Please choose another.`); return;
     }
-    if (newStaff.role === 'mgr' && !newStaff.branchId) {
-      Alert.alert('Error', 'Please select a branch for this Station Manager.'); return;
+    if (!newStaff.branchId) {
+      Alert.alert('Error', 'Please select a branch for this user. Every user must be assigned a branch.'); return;
     }
     const sal = parseInt(newStaff.sal) || 0;
     const deptId = (newStaff as any).dept as string | undefined;
@@ -329,7 +329,7 @@ export default function SystemSettingsScreen() {
       username,
       password,
       role: newStaff.role,
-      branchId: newStaff.role === 'mgr' ? newStaff.branchId : undefined,
+      branchId: newStaff.branchId,
       jobTitle: ROLE_LABELS[newStaff.role],
       createdBy: 'System Admin',
     });
@@ -813,22 +813,20 @@ export default function SystemSettingsScreen() {
                   <FieldInput colors={colors} label="Email Address *" value={newStaff.email} onChangeText={v => setNewStaff(n => ({ ...n, email: v }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
                   <FieldInput colors={colors} label="Monthly Salary (₦)" value={newStaff.sal} onChangeText={v => setNewStaff(n => ({ ...n, sal: v }))} keyboardType="numeric" placeholder="150000" />
                   <RolePicker isAdmin={isAdmin} colors={colors} roleColor={roleColor} value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v, branchId: '' }))} />
-                  {newStaff.role === 'mgr' && (
-                    <View style={{ marginBottom: 10 }}>
-                      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
-                      {branches.length === 0
-                        ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
-                        : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
-                            {branches.map(b => (
-                              <TouchableOpacity key={b.id} onPress={() => setNewStaff(n => ({ ...n, branchId: b.id }))}
-                                style={[styles.roleChip, { borderColor: newStaff.branchId === b.id ? roleColor : colors.border, backgroundColor: newStaff.branchId === b.id ? roleColor + '18' : colors.surface }]}>
-                                <Text style={[styles.roleChipText, { color: newStaff.branchId === b.id ? roleColor : colors.textMuted }]}>{b.name}</Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                      }
-                    </View>
-                  )}
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch * <Text style={{ color: '#c0392b', fontSize: 11 }}>(required for all users)</Text></Text>
+                    {branches.length === 0
+                      ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
+                      : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                          {branches.map(b => (
+                            <TouchableOpacity key={b.id} onPress={() => setNewStaff(n => ({ ...n, branchId: b.id }))}
+                              style={[styles.roleChip, { borderColor: newStaff.branchId === b.id ? roleColor : colors.border, backgroundColor: newStaff.branchId === b.id ? roleColor + '18' : colors.surface }]}>
+                              <Text style={[styles.roleChipText, { color: newStaff.branchId === b.id ? roleColor : colors.textMuted }]}>{b.name}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                    }
+                  </View>
                   {/* Department picker */}
                   {departments.length > 0 && (
                     <View style={{ marginBottom: 10 }}>

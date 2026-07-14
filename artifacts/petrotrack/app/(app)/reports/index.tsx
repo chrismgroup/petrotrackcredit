@@ -98,7 +98,9 @@ export default function ReportsScreen() {
   } = useApp();
   const colors = useColors();
   const rc = ROLE_COLORS[role || 'acc'] || colors.primary;
+  const isAtt = role === 'att';
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
+  const isBranchLocked = isAtt || role === 'mgr'; // att and mgr see only their own branch
   const perms = getPerms(role);
   const [exporting, setExporting] = useState(false);
 
@@ -113,7 +115,8 @@ export default function ReportsScreen() {
   const safeProposals   = Array.isArray(priceProposals)  ? priceProposals : [];
 
   const defaultType: ReportType = perms.visible[0] ?? 'summary';
-  const [selBranch,  setSelBranch]  = useState<string | null>(isMgr ? (branchId ?? null) : null);
+  // att and mgr are locked to their own branch; other roles can switch branches
+  const [selBranch,  setSelBranch]  = useState<string | null>(isBranchLocked ? (branchId ?? null) : null);
   const [reportType, setReportType] = useState<ReportType>(defaultType);
   const [period,     setPeriod]     = useState<Period>('Monthly');
 
@@ -392,8 +395,8 @@ export default function ReportsScreen() {
             );
           })}
         </ScrollView>
-        {/* Branch chips (non-managers only) */}
-        {!isMgr && safeBranches.length > 0 && (
+        {/* Branch chips — hidden for att and mgr (locked to their branch) */}
+        {!isBranchLocked && safeBranches.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 5, paddingRight: 4 }}>
             {([{ id: null, name: 'All' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
               const active = selBranch === b.id;
