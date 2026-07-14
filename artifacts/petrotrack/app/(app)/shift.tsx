@@ -88,12 +88,11 @@ export default function ShiftReportScreen() {
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
 
-  const isAtt      = role === 'att';
-  const isMgr      = role === 'mgr';
-  const isAcc      = role === 'acc';
-  const isAdmin    = role === 'admin';
-  const canRecord  = !!role && role !== 'admin'; // every non-admin can record meter readings
-  const canView    = !!role; // all authenticated users can view
+  const isAtt   = role === 'att';
+  const isMgr   = role === 'mgr';
+  const isAcc   = role === 'acc';
+  const isAdmin = role === 'admin';
+  const canView = isAtt || isMgr || isAcc || isAdmin;
 
   const today = new Date().toISOString().slice(0, 10);
   const activePumps = pumps.filter(p => p.active);
@@ -109,12 +108,7 @@ export default function ShiftReportScreen() {
 
   /* ── tab state ── */
   type Tab = 'dashboard' | 'submit' | 'history' | 'review' | 'pending_acc' | 'approved' | 'initial';
-  const defaultTab: Tab = isAtt ? 'dashboard'
-    : isMgr   ? 'review'
-    : isAcc   ? 'pending_acc'
-    : isAdmin ? 'initial'
-    : canRecord ? 'submit'   // all other roles (csm, mktg, ceo, md…) land on the recording form
-    : 'history';
+  const defaultTab: Tab = isAtt ? 'dashboard' : isMgr ? 'review' : isAcc ? 'pending_acc' : 'initial';
   const [tab, setTab] = useState<Tab>(defaultTab);
 
   /* ── selected pump (att) ── */
@@ -291,17 +285,14 @@ export default function ShiftReportScreen() {
     [attReports]
   );
 
-  const ALL_ROLES = ['att', 'mgr', 'acc', 'admin', 'ceo', 'md', 'csm', 'mktg'];
-  const RECORD_ROLES = ALL_ROLES.filter(r => r !== 'admin');
-
   /* ── tab definitions ── */
   const tabs: { key: Tab; label: string; badge?: number; roles: string[] }[] = [
     { key: 'dashboard',   label: 'My Summary',    badge: returnedReports.length || undefined, roles: ['att'] },
-    { key: 'submit',      label: 'Record Meters', roles: RECORD_ROLES },
-    { key: 'history',     label: 'My History',    roles: ALL_ROLES },
+    { key: 'submit',      label: 'Record Meters', roles: ['att'] },
+    { key: 'history',     label: 'My History',    roles: ['att'] },
     { key: 'review',      label: 'Review',        badge: pendingMgr.length + returnedMgr.length, roles: ['mgr'] },
     { key: 'pending_acc', label: 'Approvals',     badge: pendingAcc.length, roles: ['acc'] },
-    { key: 'approved',    label: 'Approved',      roles: ['acc', 'admin', 'ceo', 'md'] },
+    { key: 'approved',    label: 'Approved',      roles: ['acc', 'mgr'] },
     { key: 'initial',     label: 'Set Meters',    roles: ['admin'] },
   ];
   const visibleTabs = tabs.filter(t => role && t.roles.includes(role));
