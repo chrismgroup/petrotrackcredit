@@ -549,14 +549,7 @@ export default function SystemSettingsScreen() {
                       )}
                     </View>
                     <FieldInput colors={colors} editable={isAdmin} label="Tank Name" value={e.name} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, name: v } }))} placeholder="e.g. Main PMS Storage Tank" />
-                    <View style={styles.twoCol}>
-                      <View style={{ flex: 1 }}>
-                        <FieldInput colors={colors} editable={isAdmin} label="Capacity (L)" value={e.cap} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, cap: v } }))} keyboardType="numeric" placeholder="25000" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <FieldInput colors={colors} editable={isAdmin} label="Full Dip (mm)" value={e.dip} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, dip: v } }))} keyboardType="numeric" placeholder="2500" />
-                      </View>
-                    </View>
+                    <FieldInput colors={colors} editable={isAdmin} label="Capacity (L)" value={e.cap} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, cap: v } }))} keyboardType="numeric" placeholder="25000" />
                     <ProdPicker isAdmin={isAdmin} colors={colors} value={e.prod} onChange={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, prod: v } }))} opts={PROD_OPTS} />
                   </View>
                 );
@@ -576,14 +569,7 @@ export default function SystemSettingsScreen() {
                     </TouchableOpacity>
                   </View>
                   <FieldInput colors={colors} label="Tank Name *" value={newTank.name} onChangeText={v => setNewTank(n => ({ ...n, name: v }))} placeholder="e.g. PMS Tank 5" />
-                  <View style={styles.twoCol}>
-                    <View style={{ flex: 1 }}>
-                      <FieldInput colors={colors} label="Capacity (L) *" value={newTank.cap} onChangeText={v => setNewTank(n => ({ ...n, cap: v }))} keyboardType="numeric" placeholder="25000" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <FieldInput colors={colors} label="Full Dip (mm)" value={newTank.dip} onChangeText={v => setNewTank(n => ({ ...n, dip: v }))} keyboardType="numeric" placeholder="auto" />
-                    </View>
-                  </View>
+                  <FieldInput colors={colors} label="Capacity (L) *" value={newTank.cap} onChangeText={v => setNewTank(n => ({ ...n, cap: v }))} keyboardType="numeric" placeholder="25000" />
                   <ProdPicker isAdmin={isAdmin} colors={colors} value={newTank.prod} onChange={v => setNewTank(n => ({ ...n, prod: v }))} opts={PROD_OPTS} />
                   <TouchableOpacity style={[styles.createBtn, { backgroundColor: roleColor }]} onPress={createTank} activeOpacity={0.85}>
                     <Ionicons name="checkmark-circle" size={16} color="#fff" />

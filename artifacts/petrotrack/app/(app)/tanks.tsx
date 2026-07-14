@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDateTime, mmToLiters, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const TABS = ['Dip Form', 'Log & Delivery', 'Inventory'];
@@ -16,7 +16,7 @@ const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', 
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, addDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms } = useApp();
+  const { role, tanks, lpgTanks, dips, deliveries, sales, addDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms, sendMessage } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const [activeTab, setActiveTab] = useState(0);
@@ -34,14 +34,63 @@ export default function TanksScreen() {
   const visibleTanks    = role === 'mgr' && !perms.canPetrolTanks ? [] : tanks;
   const visibleLpgTanks = role === 'mgr' && !perms.canLpgTanks   ? [] : lpgTanks;
 
+  function computeDipAnalysis(rdMap: Record<string, number>) {
+    const expectedByProd: Record<string, number> = {};
+    for (const t of tanks) {
+      const totalReceived = deliveries
+        .filter(d => d.prod === t.prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
+        .reduce((s, d) => s + d.rec, 0);
+      const totalSold = sales
+        .filter(s => s.pump.toLowerCase().includes(t.prod.toLowerCase()))
+        .reduce((s, e) => s + e.L, 0);
+      expectedByProd[t.prod] = (expectedByProd[t.prod] ?? 0) + totalReceived - totalSold;
+    }
+    const actualByProd: Record<string, number> = {};
+    for (const t of visibleTanks) {
+      const L = rdMap[t.id] ?? 0;
+      actualByProd[t.prod] = (actualByProd[t.prod] ?? 0) + L;
+    }
+    return Object.keys(actualByProd).map(prod => {
+      const actual = actualByProd[prod] ?? 0;
+      const expected = expectedByProd[prod] ?? 0;
+      const diff = actual - expected;
+      return { prod, actual, expected, diff, complete: diff >= 0 };
+    });
+  }
+
   function handleDipSubmit() {
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
-    for (const t of visibleTanks) { rd[t.id] = parseFloat(readings[t.id] || '0') || 0; }
+    for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
+
+    const analysis = computeDipAnalysis(rd);
     addDip({ dt: new Date().toISOString(), by: userName, rd, lpg, obs });
     setReadings({}); setLpgReadings({}); setObs('');
-    Alert.alert('Dip Submitted', 'Tank readings recorded successfully.');
+
+    if (analysis.length > 0) {
+      const lines = analysis.map(a => {
+        const diffAbs = Math.abs(a.diff).toLocaleString(undefined, { maximumFractionDigits: 0 });
+        return a.complete
+          ? `${a.prod}: ${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded — ✅ Complete (surplus ${diffAbs}L)`
+          : `${a.prod}: ${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded vs ${a.expected.toLocaleString(undefined, { maximumFractionDigits: 0 })}L expected — ⚠ SHORT by ${diffAbs}L`;
+      }).join('\n');
+      const alertBody = `Dip submitted by ${userName}:\n\n${lines}`;
+      (['md', 'ceo'] as const).forEach(to => {
+        sendMessage(to, {
+          to,
+          type: 'alert',
+          body: alertBody,
+          alrt: {
+            title: `Tank Dip Report — ${analysis.some(a => !a.complete) ? 'SHORTAGE DETECTED' : 'All Complete'}`,
+            pri: analysis.some(a => !a.complete) ? 'High' : 'Low',
+            detail: lines,
+          },
+        });
+      });
+    }
+
+    Alert.alert('Dip Submitted', 'Tank readings recorded. MD and CEO have been notified.');
   }
 
   function handleDeliverySubmit() {
@@ -76,8 +125,8 @@ export default function TanksScreen() {
             </View>
           )}
           {visibleTanks.map(t => {
-            const mm = parseFloat(readings[t.id] || '');
-            const L = !isNaN(mm) ? mmToLiters(t, mm) : null;
+            const enteredL = parseFloat(readings[t.id] || '');
+            const pctFull = !isNaN(enteredL) && t.cap > 0 ? Math.round((enteredL / t.cap) * 100) : null;
             return (
               <View key={t.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.dipCardHeader}>
@@ -86,17 +135,21 @@ export default function TanksScreen() {
                     <Text style={[styles.prodText, { color: roleColor }]}>{t.prod}</Text>
                   </View>
                 </View>
-                <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Cap: {t.cap.toLocaleString()}L · Current stock: {(t.op - t.sl).toLocaleString()}L</Text>
+                <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Capacity: {t.cap.toLocaleString()}L</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                  placeholder={`Reading in mm (max ${t.dip}mm)`}
+                  placeholder={`Current level in litres (max ${t.cap.toLocaleString()}L)`}
                   placeholderTextColor={colors.textSubtle}
                   keyboardType="numeric"
                   value={readings[t.id] || ''}
                   onChangeText={v => setReadings(r => ({ ...r, [t.id]: v }))}
                   editable={canEdit}
                 />
-                {L !== null && <Text style={[styles.calcResult, { color: roleColor }]}>≈ {L.toLocaleString()} L ({Math.round((L / t.cap) * 100)}% full)</Text>}
+                {pctFull !== null && (
+                  <Text style={[styles.calcResult, { color: pctFull < 20 ? '#A32D2D' : pctFull < 50 ? '#BA7517' : roleColor }]}>
+                    {enteredL.toLocaleString()}L — {pctFull}% full
+                  </Text>
+                )}
               </View>
             );
           })}
@@ -134,6 +187,36 @@ export default function TanksScreen() {
             onChangeText={setObs}
             editable={canEdit}
           />
+
+          {canEdit && (() => {
+            const rdMap: Record<string, number> = {};
+            for (const t of visibleTanks) { rdMap[t.id] = parseFloat(readings[t.id] || '0') || 0; }
+            const hasAnyReading = Object.values(rdMap).some(v => v > 0);
+            const analysis = hasAnyReading ? computeDipAnalysis(rdMap) : [];
+            return analysis.length > 0 ? (
+              <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border, gap: 6 }]}>
+                <Text style={[styles.formSection, { color: colors.text, marginBottom: 0 }]}>Stock Analysis</Text>
+                {analysis.map(a => {
+                  const diffAbs = Math.abs(a.diff).toLocaleString(undefined, { maximumFractionDigits: 0 });
+                  const bc = a.complete ? '#27500A' : '#791F1F';
+                  const bg = a.complete ? '#EAF3DE' : '#FCEBEB';
+                  return (
+                    <View key={a.prod} style={[styles.analysisRow, { backgroundColor: bg, borderColor: bc + '40' }]}>
+                      <Ionicons name={a.complete ? 'checkmark-circle' : 'alert-circle'} size={16} color={bc} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.analysisProd, { color: bc }]}>{a.prod}</Text>
+                        <Text style={[styles.analysisDetail, { color: bc }]}>
+                          {a.complete
+                            ? `${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded — surplus ${diffAbs}L`
+                            : `SHORT by ${diffAbs}L (${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L found vs ${a.expected.toLocaleString(undefined, { maximumFractionDigits: 0 })}L expected)`}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null;
+          })()}
 
           {canEdit && hasPendingDip && (
             <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517' }]}>
@@ -224,12 +307,12 @@ export default function TanksScreen() {
                   </View>
                 </View>
                 <View style={styles.readingsGrid}>
-                  {Object.entries(dip.rd).map(([tid, mm]) => {
+                  {Object.entries(dip.rd).map(([tid, litres]) => {
                     const tank = tanks.find(t => t.id === tid);
                     return (
                       <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
                         <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{tank?.name.replace('Tank ', 'T')}</Text>
-                        <Text style={[styles.readingVal, { color: roleColor }]}>{mm}mm</Text>
+                        <Text style={[styles.readingVal, { color: roleColor }]}>{Number(litres).toLocaleString()}L</Text>
                       </View>
                     );
                   })}
@@ -435,6 +518,9 @@ const styles = StyleSheet.create({
   prodText: { fontSize: 11, fontWeight: '700' },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   calcResult: { fontSize: 13, fontWeight: '600' },
+  analysisRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 10, borderWidth: 1, padding: 10 },
+  analysisProd: { fontSize: 13, fontWeight: '700' },
+  analysisDetail: { fontSize: 12, marginTop: 1 },
   obsInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 13, marginBottom: 16, minHeight: 80, textAlignVertical: 'top' },
   lockBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
   lockText: { flex: 1, fontSize: 13, fontWeight: '600' },
