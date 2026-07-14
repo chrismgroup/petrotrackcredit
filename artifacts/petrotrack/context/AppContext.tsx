@@ -90,6 +90,38 @@ export interface KPI { id: number; title: string; target: string; unit: string; 
 export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video'; name: string; dt: string; by: string; }
 export interface ShiftReport { id: number; dt: string; by: string; byName: string; entries: number; totalSales: number; totalPOS: number; expectedCash: number; actualCash: number; variance: number; status: 'submitted' | 'reviewed' | 'flagged'; note: string; }
 
+export type PumpReportStatus = 'pending_manager' | 'pending_accountant' | 'returned' | 'approved';
+export interface PumpDailyReport {
+  id: number;
+  date: string;
+  pumpId: string;
+  pumpName: string;
+  product: string;
+  branchId: string;
+  openingMeter: number;
+  closingMeter: number;
+  liters: number;
+  unitPrice: number;
+  grossAmount: number;
+  posAmount: number;
+  cashAmount: number;
+  transferAmount: number;
+  totalCollected: number;
+  variance: number;
+  note: string;
+  submittedBy: string;
+  submittedByName: string;
+  submittedAt: string;
+  status: PumpReportStatus;
+  mgrNote?: string;
+  mgrBy?: string;
+  mgrAt?: string;
+  accNote?: string;
+  accBy?: string;
+  accAt?: string;
+  rejectionReason?: string;
+}
+
 export type HRDocType = 'biodata' | 'contract' | 'guarantor' | 'nin' | 'passport_photo' | 'certificate' | 'nysc' | 'medical' | 'reference' | 'bank_details' | 'tin' | 'pension';
 export type HRDocStatus = 'pending' | 'submitted' | 'approved' | 'n/a';
 export interface HRDoc { type: HRDocType; status: HRDocStatus; date?: string; note?: string; fileName?: string; }
@@ -194,6 +226,7 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'exp',      icon: 'receipt',          label: 'Expenses'   },
   { id: 'recv',     icon: 'cube',             label: 'Receiving'  },
   { id: 'shift',    icon: 'time',             label: 'Shift'      },
+  { id: 'pumprpt',  icon: 'speedometer',      label: 'Pump Reports' },
   { id: 'corp',     icon: 'briefcase',        label: 'Corporate'  },
   { id: 'comms',    icon: 'chatbubbles',      label: 'Comms'      },
 ];
@@ -230,6 +263,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
   budget: '/(app)/budget', exp: '/(app)/expenses',
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
+  pumprpt: '/(app)/pump-report',
   tasks: '/(app)/tasks',
   recv: '/(app)/receiving',
   hr: '/(app)/hr',
@@ -334,6 +368,14 @@ interface AppContextType {
   addCallRecord: (r: Omit<CallRecord, 'id' | 'ts'>) => void;
   audit: AuditEntry[]; departments: Department[];
   companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[]; shiftReports: ShiftReport[];
+  pumpDailyReports: PumpDailyReport[];
+  pumpInitialMeters: Record<string, number>;
+  setPumpInitialMeter: (pumpId: string, meter: number) => void;
+  submitPumpReport: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => void;
+  mgrForwardPumpReport: (id: number, mgrNote: string) => void;
+  accApprovePumpReport: (id: number, accNote: string) => void;
+  accRejectPumpReport: (id: number, rejectionReason: string) => void;
+  mgrResubmitPumpReport: (id: number, mgrNote: string) => void;
   updatePrice: (prod: string, price: number) => void;
   priceProposals: PriceProposal[];
   addPriceProposal: (prod: string, proposedPrice: number) => void;
@@ -497,6 +539,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [meetingMinutes, setMeetingMinutes] = useState<MeetingMinutes[]>(INIT_MEETING_MINUTES);
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
   const [callLog, setCallLog] = useState<CallRecord[]>([]);
+  const [pumpDailyReports, setPumpDailyReports] = useState<PumpDailyReport[]>([]);
+  const [pumpInitialMeters, setPumpInitialMeters] = useState<Record<string, number>>({});
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
   const [loaded, setLoaded] = useState(false);
@@ -508,7 +552,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'shiftReports', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
-      'broadcasts', 'callLog',
+      'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -619,7 +663,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.corpProjects)      setCorpProjects(s.corpProjects as CorpProject[]);
       if (Array.isArray(s.broadcasts)) setBroadcasts(s.broadcasts as Broadcast[]);
       if (Array.isArray(s.callLog))    setCallLog(s.callLog as CallRecord[]);
-      if (s.meetingMinutes)    setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
+      if (s.meetingMinutes)            setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
+      if (Array.isArray(s.pumpDailyReports)) setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
+      if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object') setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
@@ -664,6 +710,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('legalMatters',      legalMatters); },      [legalMatters, loaded]);
   useEffect(() => { if (loaded) syncSlice('corpProjects',      corpProjects); },      [corpProjects, loaded]);
   useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
+  useEffect(() => { if (loaded) syncSlice('pumpDailyReports', pumpDailyReports); },  [pumpDailyReports, loaded]);
+  useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
 
   const DRAFT_APPROVAL: CorpApproval = { status: 'draft' };
 
@@ -1300,6 +1348,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setShiftReports(s => s.map(r => r.id === id ? { ...r, status: 'reviewed' } : r));
   }, []);
 
+  const setPumpInitialMeter = useCallback((pumpId: string, meter: number) => {
+    setPumpInitialMeters(m => ({ ...m, [pumpId]: meter }));
+    setAudit(a => [{ id: genId(), action: 'Pump initial meter set', user: userName, detail: `Pump ${pumpId}: ${meter.toLocaleString()} L`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const submitPumpReport = useCallback((r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
+    setPumpDailyReports(rs => [...rs, { ...r, id: genId(), status: 'pending_manager', submittedAt: nowTs() }]);
+    setAudit(a => [{ id: genId(), action: 'Pump report submitted', user: userName, detail: `${r.pumpName} · ${r.liters.toLocaleString()}L · variance: ₦${r.variance.toLocaleString()}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const mgrForwardPumpReport = useCallback((id: number, mgrNote: string) => {
+    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs() } : r));
+    setAudit(a => [{ id: genId(), action: 'Pump report forwarded to accountant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const mgrResubmitPumpReport = useCallback((id: number, mgrNote: string) => {
+    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs(), rejectionReason: undefined } : r));
+    setAudit(a => [{ id: genId(), action: 'Pump report re-submitted to accountant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const accApprovePumpReport = useCallback((id: number, accNote: string) => {
+    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'approved', accNote, accBy: userName, accAt: nowTs() } : r));
+    setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} approved and locked`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const accRejectPumpReport = useCallback((id: number, rejectionReason: string) => {
+    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'returned', rejectionReason, accBy: userName, accAt: nowTs() } : r));
+    setAudit(a => [{ id: genId(), action: 'Pump report rejected', user: userName, detail: `Report #${id} — ${rejectionReason}`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const flagShift = useCallback((id: number) => {
     setShiftReports(s => s.map(r => r.id === id ? { ...r, status: 'flagged' } : r));
   }, []);
@@ -1491,6 +1569,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, approveDelivery, rejectDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
+      pumpDailyReports, pumpInitialMeters, setPumpInitialMeter,
+      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
