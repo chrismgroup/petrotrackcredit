@@ -12,6 +12,8 @@ import {
 import { useColors } from '@/hooks/useColors';
 
 /* ── helpers ─────────────────────────────────────────── */
+const fmtL = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+
 const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   pending_manager:    { label: 'Awaiting Manager',    color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline' },
   pending_accountant: { label: 'Awaiting Accountant', color: '#185FA5', bg: '#E6F1FB', icon: 'hourglass-outline' },
@@ -48,7 +50,7 @@ function ReportCard({ report, onPress, roleColor, colors }: ReportCardProps) {
         <View style={{ flex: 1 }}>
           <Text style={[c.cardTitle, { color: colors.text }]}>{report.pumpName}</Text>
           <Text style={[c.cardSub, { color: colors.textMuted }]}>
-            {report.product} · {fmtDate(report.date)} · {report.liters.toLocaleString()} L
+            {report.product} · {fmtDate(report.date)} · {fmtL(report.liters)} L
           </Text>
         </View>
         <StatusBadge status={report.status} />
@@ -124,7 +126,7 @@ export default function ShiftReportScreen() {
   const [noteAtt, setNoteAtt]       = useState('');
 
   const closeVal  = parseFloat(closeMeter.replace(/,/g, '')) || 0;
-  const liters    = closeVal > openingMeter ? Math.round(closeVal - openingMeter) : 0;
+  const liters    = closeVal > openingMeter ? parseFloat((closeVal - openingMeter).toFixed(4)) : 0;
   const unitPrice = pump ? ((prices as any)[pump.prod] ?? 0) : 0;
   const grossAmt  = liters * unitPrice;
   const posVal    = parseFloat(posAmt.replace(/,/g, ''))  || 0;
@@ -166,7 +168,7 @@ export default function ShiftReportScreen() {
     });
     setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setNoteAtt('');
     const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
-    Alert.alert('Shift Report Submitted', `${pump.name} · ${liters.toLocaleString()}L\nGross: ${fmt(grossAmt)}\n${vLabel}\nSent to branch manager for review.`);
+    Alert.alert('Shift Report Submitted', `${pump.name} · ${fmtL(liters)}L\nGross: ${fmt(grossAmt)}\n${vLabel}\nSent to branch manager for review.`);
     setTab('history');
   }
 
@@ -391,7 +393,7 @@ export default function ShiftReportScreen() {
                   <Text style={[c.cardSub, { color: colors.textMuted }]}>{p.prod}</Text>
                   {submitted && r && (
                     <Text style={[c.cardSub, { color: colors.textMuted, marginTop: 2 }]}>
-                      {r.liters.toLocaleString()} L · {fmt(r.grossAmount)}
+                      {fmtL(r.liters)} L · {fmt(r.grossAmount)}
                     </Text>
                   )}
                 </View>
@@ -438,7 +440,7 @@ export default function ShiftReportScreen() {
           <View style={[c.monthCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={c.monthRow}>
               <View style={c.monthCol}>
-                <Text style={[c.monthVal, { color: roleColor }]}>{dashTotals.liters.toLocaleString()}</Text>
+                <Text style={[c.monthVal, { color: roleColor }]}>{fmtL(dashTotals.liters)}</Text>
                 <Text style={[c.monthLbl, { color: colors.textMuted }]}>Litres Sold</Text>
               </View>
               <View style={[c.monthDivider, { backgroundColor: colors.border }]} />
@@ -568,7 +570,7 @@ export default function ShiftReportScreen() {
                         <Text style={[c.inputLabel, { color: colors.textMuted }]}>Opening Meter (L)</Text>
                         <View style={[c.readonlyInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
                           <Ionicons name="lock-closed-outline" size={13} color={colors.textSubtle} />
-                          <Text style={[c.readonlyVal, { color: colors.textMuted }]}>{openingMeter.toLocaleString()}</Text>
+                          <Text style={[c.readonlyVal, { color: colors.textMuted }]}>{fmtL(openingMeter)}</Text>
                         </View>
                       </View>
                       <View style={{ flex: 1 }}>
@@ -585,7 +587,7 @@ export default function ShiftReportScreen() {
                       <View style={[c.calcRow, { backgroundColor: roleColor + '12', borderColor: roleColor + '33' }]}>
                         <Ionicons name="water-outline" size={16} color={roleColor} />
                         <Text style={[c.calcTxt, { color: roleColor }]}>
-                          {liters.toLocaleString()} L × ₦{unitPrice.toLocaleString()}/L = <Text style={{ fontWeight: '800' }}>{fmt(grossAmt)}</Text>
+                          {fmtL(liters)} L × ₦{unitPrice.toLocaleString()}/L = <Text style={{ fontWeight: '800' }}>{fmt(grossAmt)}</Text>
                         </Text>
                       </View>
                     )}
@@ -761,13 +763,13 @@ export default function ShiftReportScreen() {
                   </View>
                   {current !== undefined && (
                     <View style={[c.badge, { backgroundColor: '#EAF3DE' }]}>
-                      <Text style={[c.badgeTxt, { color: '#27500A' }]}>Initial: {current.toLocaleString()}</Text>
+                      <Text style={[c.badgeTxt, { color: '#27500A' }]}>Initial: {fmtL(current)}</Text>
                     </View>
                   )}
                 </View>
                 {lastReport && (
                   <Text style={[c.cardSub, { color: colors.textMuted, marginBottom: 8 }]}>
-                    Last closing: {lastReport.closingMeter.toLocaleString()} L on {fmtDate(lastReport.date)}
+                    Last closing: {fmtL(lastReport.closingMeter)} L on {fmtDate(lastReport.date)}
                   </Text>
                 )}
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -839,9 +841,9 @@ export default function ShiftReportScreen() {
 
             {/* Meter & volume */}
             <Text style={[c.sectionLabel, { color: colors.text, marginTop: 16 }]}>Meter Readings</Text>
-            <Field label="Opening Meter" value={`${viewing.openingMeter.toLocaleString()} L`} colors={colors} />
-            <Field label="Closing Meter" value={`${viewing.closingMeter.toLocaleString()} L`} colors={colors} />
-            <Field label="Litres Sold" value={`${viewing.liters.toLocaleString()} L`} colors={colors} />
+            <Field label="Opening Meter" value={`${fmtL(viewing.openingMeter)} L`} colors={colors} />
+            <Field label="Closing Meter" value={`${fmtL(viewing.closingMeter)} L`} colors={colors} />
+            <Field label="Litres Sold" value={`${fmtL(viewing.liters)} L`} colors={colors} />
             <Field label="Unit Price" value={`₦${viewing.unitPrice.toLocaleString()}/L`} colors={colors} />
             <Field label="Gross Amount" value={fmt(viewing.grossAmount)} colors={colors} />
 
