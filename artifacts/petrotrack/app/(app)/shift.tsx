@@ -134,16 +134,28 @@ export default function ShiftReportScreen() {
   const variance  = totalColl - grossAmt;
   const varColor  = variance === 0 ? '#27500A' : variance > 0 ? '#185FA5' : '#791F1F';
 
-  const todayAlreadySubmitted = useMemo(() =>
-    pumpDailyReports.some(r => r.date === today && r.pumpId === selPump),
-    [pumpDailyReports, today, selPump]
+  const pendingPumpReport = useMemo(() =>
+    pumpDailyReports
+      .filter(r => r.pumpId === selPump && r.status !== 'approved')
+      .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null,
+    [pumpDailyReports, selPump]
   );
+
+  const PENDING_STATUS_LABELS: Record<string, string> = {
+    pending_manager: 'awaiting manager review',
+    pending_accountant: 'awaiting accountant approval',
+    returned: 'returned — manager must re-forward',
+  };
 
   function handleSubmit() {
     if (!pump) { Alert.alert('Error', 'No active pump selected.'); return; }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
     if (totalColl <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, or transfer).'); return; }
-    if (todayAlreadySubmitted) { Alert.alert('Already Submitted', 'You already submitted a shift report for this pump today.'); return; }
+    if (pendingPumpReport) {
+      const label = PENDING_STATUS_LABELS[pendingPumpReport.status] ?? pendingPumpReport.status;
+      Alert.alert('Previous Report Pending', `Your ${pendingPumpReport.date} report for ${pump.name} is still ${label}. You can only submit a new report once the accountant has approved the previous one.`);
+      return;
+    }
     submitPumpReport({
       date: today,
       pumpId: pump.id, pumpName: pump.name, product: pump.prod,
@@ -528,12 +540,25 @@ export default function ShiftReportScreen() {
                 </View>
               </ScrollView>
 
-              {todayAlreadySubmitted ? (
-                <View style={[c.alreadyCard, { backgroundColor: '#EAF3DE', borderColor: '#27500A44' }]}>
-                  <Ionicons name="checkmark-circle" size={22} color="#27500A" />
+              {pendingPumpReport ? (
+                <View style={[c.alreadyCard, {
+                  backgroundColor: pendingPumpReport.status === 'approved' ? '#EAF3DE' : pendingPumpReport.status === 'returned' ? '#FFF3E0' : '#FFF8E1',
+                  borderColor: pendingPumpReport.status === 'returned' ? '#E65100AA' : '#BA751744',
+                }]}>
+                  <Ionicons
+                    name={pendingPumpReport.status === 'returned' ? 'arrow-undo-circle' : 'time-outline'}
+                    size={22}
+                    color={pendingPumpReport.status === 'returned' ? '#E65100' : '#BA7517'}
+                  />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#27500A' }}>Shift report already submitted</Text>
-                    <Text style={{ fontSize: 12, color: '#3a6e1c', marginTop: 2 }}>You have already submitted a shift report for {pump?.name} today. Check "My History" for status.</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: pendingPumpReport.status === 'returned' ? '#E65100' : '#7A4F00' }}>
+                      {pendingPumpReport.status === 'pending_manager' ? 'Awaiting manager review' :
+                       pendingPumpReport.status === 'pending_accountant' ? 'Awaiting accountant approval' :
+                       'Report returned — pending re-forward'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: pendingPumpReport.status === 'returned' ? '#BF360C' : '#6D4C00', marginTop: 2 }}>
+                      Your {pendingPumpReport.date} report for {pump?.name} must be approved by the accountant before you can submit a new one.
+                    </Text>
                   </View>
                 </View>
               ) : (
