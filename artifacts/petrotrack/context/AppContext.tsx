@@ -88,8 +88,6 @@ export type TaskCadence = 'daily' | 'weekly' | 'monthly' | 'quarterly';
 export interface Task { id: number; title: string; desc: string; assignedBy: Role; assignedByName: string; assignedTo: Role; assignedToName: string; status: TaskStatus; priority: TaskPriority; cadence: TaskCadence; target?: string; targetUnit?: string; dueDate: string; createdAt: string; }
 export interface KPI { id: number; title: string; target: string; unit: string; period: string; assignedTo: Role; assignedToName: string; createdAt: string; }
 export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video'; name: string; dt: string; by: string; }
-export interface ShiftReport { id: number; dt: string; by: string; byName: string; entries: number; totalSales: number; totalPOS: number; expectedCash: number; actualCash: number; variance: number; status: 'submitted' | 'reviewed' | 'flagged'; note: string; }
-
 export type PumpReportStatus = 'pending_manager' | 'pending_accountant' | 'returned' | 'approved';
 export interface PumpDailyReport {
   id: number;
@@ -225,8 +223,7 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'sales',    icon: 'bar-chart',        label: 'Sales'      },
   { id: 'exp',      icon: 'receipt',          label: 'Expenses'   },
   { id: 'recv',     icon: 'cube',             label: 'Receiving'  },
-  { id: 'shift',    icon: 'time',             label: 'Shift'      },
-  { id: 'pumprpt',  icon: 'speedometer',      label: 'Pump Reports' },
+  { id: 'shift',    icon: 'speedometer',      label: 'Shift Report' },
   { id: 'corp',     icon: 'briefcase',        label: 'Corporate'  },
   { id: 'comms',    icon: 'chatbubbles',      label: 'Comms'      },
 ];
@@ -263,7 +260,6 @@ export const SCREEN_ROUTES: Record<string, string> = {
   branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
   budget: '/(app)/budget', exp: '/(app)/expenses',
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
-  pumprpt: '/(app)/pump-report',
   tasks: '/(app)/tasks',
   recv: '/(app)/receiving',
   hr: '/(app)/hr',
@@ -315,7 +311,6 @@ const INIT_SALES: SalesEntry[] = [];
 const INIT_STAFF: Staff[] = [];
 const INIT_BRANCHES: Branch[] = [];
 const INIT_DOCS: ComplianceDoc[] = [];
-const INIT_SHIFTS: ShiftReport[] = [];
 const INIT_COMPANY_FILES: CompanyFile[] = [];
 const INIT_DELIVERY_EVIDENCE: DeliveryEvidence[] = [];
 const INIT_EXPENSES: Expense[] = [];
@@ -367,7 +362,7 @@ interface AppContextType {
   addBroadcast: (b: Omit<Broadcast, 'id' | 'ts'>) => void;
   addCallRecord: (r: Omit<CallRecord, 'id' | 'ts'>) => void;
   audit: AuditEntry[]; departments: Department[];
-  companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[]; shiftReports: ShiftReport[];
+  companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[];
   pumpDailyReports: PumpDailyReport[];
   pumpInitialMeters: Record<string, number>;
   setPumpInitialMeter: (pumpId: string, meter: number) => void;
@@ -395,9 +390,6 @@ interface AppContextType {
   forwardExpenseToMD: (id: number, note?: string) => void;
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
   addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
-  addShiftReport: (r: Omit<ShiftReport, 'id' | 'dt' | 'status'>) => void;
-  reviewShift: (id: number) => void;
-  flagShift: (id: number) => void;
   addDip: (dip: Omit<DipRecord, 'id'>) => void;
   approveDip: (id: number) => void;
   rejectDip: (id: number) => void;
@@ -527,7 +519,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>(INIT_USER_ACCOUNTS);
   const [companyFiles, setCompanyFiles] = useState<CompanyFile[]>(INIT_COMPANY_FILES);
   const [deliveryEvidences, setDeliveryEvidences] = useState<DeliveryEvidence[]>(INIT_DELIVERY_EVIDENCE);
-  const [shiftReports, setShiftReports] = useState<ShiftReport[]>(INIT_SHIFTS);
   const [tasks, setTasks] = useState<Task[]>(INIT_TASKS);
   const [kpis, setKpis] = useState<KPI[]>(INIT_KPIS);
   const [hrEmployees, setHrEmployees] = useState<HREmployee[]>(INIT_HR_EMPLOYEES);
@@ -550,7 +541,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'departments', 'userAccounts', 'prices', 'priceHistory', 'mgrPerms',
       'roleAccess', 'userAccess', 'expenses', 'budgets', 'sales', 'dips',
       'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
-      'companyFiles', 'deliveryEvidences', 'shiftReports', 'hrEmployees', 'hrHandbooks',
+      'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters',
     ] as const;
@@ -600,7 +591,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.kpis)              setKpis(s.kpis);
       if (s.companyFiles)      setCompanyFiles(s.companyFiles);
       if (s.deliveryEvidences) setDeliveryEvidences(s.deliveryEvidences);
-      if (s.shiftReports)      setShiftReports(s.shiftReports);
       if (s.hrEmployees)       setHrEmployees(s.hrEmployees);
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks);
       if (s.hrRecommendations) setHrRecommendations(s.hrRecommendations);
@@ -654,7 +644,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.kpis)              setKpis(s.kpis as KPI[]);
       if (s.companyFiles)      setCompanyFiles(s.companyFiles as CompanyFile[]);
       if (s.deliveryEvidences) setDeliveryEvidences(s.deliveryEvidences as DeliveryEvidence[]);
-      if (s.shiftReports)      setShiftReports(s.shiftReports as ShiftReport[]);
       if (s.hrEmployees)       setHrEmployees(s.hrEmployees as HREmployee[]);
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks as HREmployeeDoc[]);
       if (s.hrRecommendations) setHrRecommendations(s.hrRecommendations as HRRecommendation[]);
@@ -702,7 +691,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
   useEffect(() => { if (loaded) syncSlice('companyFiles',      companyFiles); },      [companyFiles, loaded]);
   useEffect(() => { if (loaded) syncSlice('deliveryEvidences', deliveryEvidences); }, [deliveryEvidences, loaded]);
-  useEffect(() => { if (loaded) syncSlice('shiftReports',      shiftReports); },      [shiftReports, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrEmployees',       hrEmployees); },       [hrEmployees, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrHandbooks',       hrHandbooks); },       [hrHandbooks, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrRecommendations', hrRecommendations); }, [hrRecommendations, loaded]);
@@ -1338,16 +1326,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Delivery evidence added', user: userName, detail: `${ev.name} for delivery #${ev.delivId}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const addShiftReport = useCallback((r: Omit<ShiftReport, 'id' | 'dt' | 'status'>) => {
-    const status: ShiftReport['status'] = r.variance < 0 ? 'flagged' : 'submitted';
-    setShiftReports(s => [...s, { ...r, id: genId(), dt: nowTs(), status }]);
-    setAudit(a => [{ id: genId(), action: 'Shift report submitted', user: userName, detail: `${r.byName} — variance: ₦${r.variance.toLocaleString()}`, ts: nowTs() }, ...a]);
-  }, [userName]);
-
-  const reviewShift = useCallback((id: number) => {
-    setShiftReports(s => s.map(r => r.id === id ? { ...r, status: 'reviewed' } : r));
-  }, []);
-
   const setPumpInitialMeter = useCallback((pumpId: string, meter: number) => {
     setPumpInitialMeters(m => ({ ...m, [pumpId]: meter }));
     setAudit(a => [{ id: genId(), action: 'Pump initial meter set', user: userName, detail: `Pump ${pumpId}: ${meter.toLocaleString()} L`, ts: nowTs() }, ...a]);
@@ -1377,10 +1355,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'returned', rejectionReason, accBy: userName, accAt: nowTs() } : r));
     setAudit(a => [{ id: genId(), action: 'Pump report rejected', user: userName, detail: `Report #${id} — ${rejectionReason}`, ts: nowTs() }, ...a]);
   }, [userName]);
-
-  const flagShift = useCallback((id: number) => {
-    setShiftReports(s => s.map(r => r.id === id ? { ...r, status: 'flagged' } : r));
-  }, []);
 
   const addHREmployee = useCallback((e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => {
     setHrEmployees(prev => {
@@ -1562,13 +1536,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
       maintenance, sales, staff, branches, docs, expenses, budgets, messages, broadcasts, callLog,
       addBroadcast, addCallRecord,
-      audit, departments, companyFiles, deliveryEvidences, shiftReports,
+      audit, departments, companyFiles, deliveryEvidences,
       priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, approveDelivery, rejectDelivery, addMaintenance, addSales,
-      addCompanyFile, addDeliveryEvidence, addShiftReport, reviewShift, flagShift,
+      addCompanyFile, addDeliveryEvidence,
       pumpDailyReports, pumpInitialMeters, setPumpInitialMeter,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
