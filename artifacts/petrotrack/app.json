@@ -18,7 +18,8 @@
       "bundleIdentifier": "app.replit.petrotrack",
       "buildNumber": "17",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Gastsmarts uses Face ID to let you sign in quickly and securely."
       }
     },
     "android": {
