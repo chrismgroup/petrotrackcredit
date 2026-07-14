@@ -83,7 +83,7 @@ export default function ShiftReportScreen() {
     pumpDailyReports, pumpInitialMeters,
     submitPumpReport, mgrForwardPumpReport,
     accApprovePumpReport, accRejectPumpReport,
-    mgrResubmitPumpReport, setPumpInitialMeter,
+    mgrResubmitPumpReport, setPumpInitialMeter, deletePumpReport,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
@@ -168,6 +168,20 @@ export default function ShiftReportScreen() {
 
   function openReport(r: PumpDailyReport) { setViewing(r); setReviewNote(''); setRejectReason(''); }
   function closeModal() { setViewing(null); setReviewNote(''); setRejectReason(''); }
+
+  function handleDelete() {
+    if (!viewing) return;
+    if (viewing.status === 'approved') { Alert.alert('Locked', 'Approved reports cannot be deleted.'); return; }
+    if (viewing.status === 'pending_accountant') { Alert.alert('In Review', 'This report is with the accountant and cannot be deleted.'); return; }
+    Alert.alert(
+      'Delete Report',
+      `Delete the shift report for ${viewing.pumpName} on ${fmtDate(viewing.date)}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => { deletePumpReport(viewing.id); closeModal(); } },
+      ]
+    );
+  }
 
   function handleMgrForward() {
     if (!viewing) return;
@@ -773,6 +787,12 @@ export default function ShiftReportScreen() {
                 <Text style={[c.modalTitle, { color: colors.text }]}>{viewing.pumpName}</Text>
                 <Text style={[c.cardSub, { color: colors.textMuted }]}>{viewing.product} · {fmtDate(viewing.date)}</Text>
               </View>
+              {isAtt && viewing.submittedBy === userName &&
+                (viewing.status === 'pending_manager' || viewing.status === 'returned') && (
+                <TouchableOpacity onPress={handleDelete} style={{ marginRight: 4 }}>
+                  <Ionicons name="trash-outline" size={22} color="#E74C3C" />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity onPress={closeModal}>
                 <Ionicons name="close-circle" size={24} color={colors.textMuted} />
               </TouchableOpacity>

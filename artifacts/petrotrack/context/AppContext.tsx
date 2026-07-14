@@ -371,6 +371,7 @@ interface AppContextType {
   accApprovePumpReport: (id: number, accNote: string) => void;
   accRejectPumpReport: (id: number, rejectionReason: string) => void;
   mgrResubmitPumpReport: (id: number, mgrNote: string) => void;
+  deletePumpReport: (id: number) => void;
   updatePrice: (prod: string, price: number) => void;
   priceProposals: PriceProposal[];
   addPriceProposal: (prod: string, proposedPrice: number) => void;
@@ -1356,6 +1357,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Pump report rejected', user: userName, detail: `Report #${id} — ${rejectionReason}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const deletePumpReport = useCallback((id: number) => {
+    setPumpDailyReports(rs => rs.filter(r => r.id !== id || r.status === 'approved'));
+    setAudit(a => [{ id: genId(), action: 'Pump report deleted', user: userName, detail: `Report #${id} deleted by attendant`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const addHREmployee = useCallback((e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => {
     setHrEmployees(prev => {
       const serial = prev.length + 1;
@@ -1544,7 +1550,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, approveDelivery, rejectDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence,
       pumpDailyReports, pumpInitialMeters, setPumpInitialMeter,
-      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport,
+      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
