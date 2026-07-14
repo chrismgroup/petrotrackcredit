@@ -40,9 +40,9 @@ const ROLE_LABELS: Record<string, string> = {
   csm: 'CSM', acc: 'Accountant', mgr: 'Station Manager', att: 'Pump Attendant',
 };
 
-const BLANK_TANK  = { name: '', cap: '', dip: '', prod: 'PMS' as Tank['prod'] };
-const BLANK_LPG   = { name: '', cap: '' };
-const BLANK_PUMP  = { name: '', prod: 'PMS' as Pump['prod'], active: true };
+const BLANK_TANK  = { name: '', cap: '', dip: '', prod: 'PMS' as Tank['prod'], branchId: '' };
+const BLANK_LPG   = { name: '', cap: '', branchId: '' };
+const BLANK_PUMP  = { name: '', prod: 'PMS' as Pump['prod'], active: true, branchId: '' };
 const BLANK_STAFF = { name: '', email: '', role: 'att' as typeof ROLE_OPTS[number], sal: '', username: '', password: '', branchId: '' };
 
 function autoUsername(name: string): string {
@@ -204,9 +204,9 @@ export default function SystemSettingsScreen() {
   useEffect(() => { setCDraft(companyInfo); }, [companyInfo]);
 
   /* ── edit state (existing items) ── */
-  const [tankEdits, setTankEdits] = useState<Record<string, { name: string; cap: string; dip: string; prod: Tank['prod'] }>>({});
-  const [lpgEdits,  setLpgEdits]  = useState<Record<string, { name: string; cap: string }>>({});
-  const [pumpEdits, setPumpEdits] = useState<Record<string, { name: string; prod: Pump['prod']; active: boolean }>>({});
+  const [tankEdits, setTankEdits] = useState<Record<string, { name: string; cap: string; dip: string; prod: Tank['prod']; branchId: string }>>({});
+  const [lpgEdits,  setLpgEdits]  = useState<Record<string, { name: string; cap: string; branchId: string }>>({});
+  const [pumpEdits, setPumpEdits] = useState<Record<string, { name: string; prod: Pump['prod']; active: boolean; branchId: string }>>({});
   const [staffEdits,setStaffEdits]= useState<Record<number, { name: string; email: string }>>({});
 
   /* ── new-item forms ── */
@@ -224,17 +224,17 @@ export default function SystemSettingsScreen() {
   /* sync edits when context changes */
   useEffect(() => {
     const te: typeof tankEdits = {};
-    for (const t of tanks) te[t.id] = { name: t.name, cap: String(t.cap), dip: String(t.dip), prod: t.prod };
+    for (const t of tanks) te[t.id] = { name: t.name, cap: String(t.cap), dip: String(t.dip), prod: t.prod, branchId: t.branchId ?? '' };
     setTankEdits(te);
   }, [tanks]);
   useEffect(() => {
     const le: typeof lpgEdits = {};
-    for (const l of lpgTanks) le[l.id] = { name: l.name, cap: String(l.cap) };
+    for (const l of lpgTanks) le[l.id] = { name: l.name, cap: String(l.cap), branchId: l.branchId ?? '' };
     setLpgEdits(le);
   }, [lpgTanks]);
   useEffect(() => {
     const pe: typeof pumpEdits = {};
-    for (const p of pumps) pe[p.id] = { name: p.name, prod: p.prod, active: p.active };
+    for (const p of pumps) pe[p.id] = { name: p.name, prod: p.prod, active: p.active, branchId: p.branchId ?? '' };
     setPumpEdits(pe);
   }, [pumps]);
   useEffect(() => {
@@ -249,13 +249,13 @@ export default function SystemSettingsScreen() {
       const cap = parseInt(e.cap); const dip = parseInt(e.dip);
       if (!e.name.trim()) { Alert.alert('Error', `Tank ${id} name cannot be empty.`); return; }
       if (!cap || cap < 1000) { Alert.alert('Error', `Tank ${id} capacity must be at least 1,000 L.`); return; }
-      updateTank(id, { name: e.name.trim(), cap, dip: dip || Math.round(cap / 10), prod: e.prod });
+      updateTank(id, { name: e.name.trim(), cap, dip: dip || Math.round(cap / 10), prod: e.prod, branchId: e.branchId || undefined });
     }
     for (const [id, e] of Object.entries(lpgEdits)) {
       const cap = parseInt(e.cap);
       if (!e.name.trim()) { Alert.alert('Error', `LPG Tank ${id} name cannot be empty.`); return; }
       if (!cap || cap < 100) { Alert.alert('Error', `LPG Tank ${id} capacity must be at least 100 kg.`); return; }
-      updateLpgTank(id, { name: e.name.trim(), cap });
+      updateLpgTank(id, { name: e.name.trim(), cap, branchId: e.branchId || undefined });
     }
     Alert.alert('Saved', 'All tank configurations updated. Changes are reflected across all screens.');
   }
@@ -263,7 +263,7 @@ export default function SystemSettingsScreen() {
   function savePumps() {
     for (const [id, e] of Object.entries(pumpEdits)) {
       if (!e.name.trim()) { Alert.alert('Error', `Pump ${id} name cannot be empty.`); return; }
-      updatePump(id, { name: e.name.trim(), prod: e.prod, active: e.active });
+      updatePump(id, { name: e.name.trim(), prod: e.prod, active: e.active, branchId: e.branchId || undefined });
     }
     Alert.alert('Saved', `${pumps.length} pump configuration(s) updated.`);
   }
@@ -281,7 +281,7 @@ export default function SystemSettingsScreen() {
     const cap = parseInt(newTank.cap);
     if (!newTank.name.trim()) { Alert.alert('Error', 'Tank name is required.'); return; }
     if (!cap || cap < 1000)   { Alert.alert('Error', 'Capacity must be at least 1,000 L.'); return; }
-    addTank({ name: newTank.name.trim(), cap, prod: newTank.prod });
+    addTank({ name: newTank.name.trim(), cap, prod: newTank.prod, branchId: newTank.branchId || undefined });
     setNewTank(BLANK_TANK);
     setShowNewTank(false);
     Alert.alert('Tank Added', `"${newTank.name.trim()}" has been added and is now visible on the Tanks screen.`);
@@ -291,7 +291,7 @@ export default function SystemSettingsScreen() {
     const cap = parseInt(newLpg.cap);
     if (!newLpg.name.trim()) { Alert.alert('Error', 'LPG tank name is required.'); return; }
     if (!cap || cap < 100)   { Alert.alert('Error', 'Capacity must be at least 100 kg.'); return; }
-    addLpgTank({ name: newLpg.name.trim(), cap });
+    addLpgTank({ name: newLpg.name.trim(), cap, branchId: newLpg.branchId || undefined });
     setNewLpg(BLANK_LPG);
     setShowNewLpg(false);
     Alert.alert('LPG Tank Added', `"${newLpg.name.trim()}" has been added.`);
@@ -299,7 +299,7 @@ export default function SystemSettingsScreen() {
 
   function createPump() {
     if (!newPump.name.trim()) { Alert.alert('Error', 'Pump name is required.'); return; }
-    addPump({ name: newPump.name.trim(), prod: newPump.prod, active: newPump.active });
+    addPump({ name: newPump.name.trim(), prod: newPump.prod, active: newPump.active, branchId: newPump.branchId || undefined });
     setNewPump(BLANK_PUMP);
     setShowNewPump(false);
     Alert.alert('Pump Added', `"${newPump.name.trim()}" is now available in the Sales screen.`);
@@ -551,6 +551,23 @@ export default function SystemSettingsScreen() {
                     <FieldInput colors={colors} editable={isAdmin} label="Tank Name" value={e.name} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, name: v } }))} placeholder="e.g. Main PMS Storage Tank" />
                     <FieldInput colors={colors} editable={isAdmin} label="Capacity (L)" value={e.cap} onChangeText={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, cap: v } }))} keyboardType="numeric" placeholder="25000" />
                     <ProdPicker isAdmin={isAdmin} colors={colors} value={e.prod} onChange={v => setTankEdits(t => ({ ...t, [tank.id]: { ...e, prod: v } }))} opts={PROD_OPTS} />
+                    {branches.length > 0 && (
+                      <View style={{ marginBottom: 4 }}>
+                        <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
+                        <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                          <TouchableOpacity onPress={() => isAdmin && setTankEdits(t => ({ ...t, [tank.id]: { ...e, branchId: '' } }))}
+                            style={[styles.roleChip, { borderColor: !e.branchId ? roleColor : colors.border, backgroundColor: !e.branchId ? roleColor + '18' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
+                            <Text style={[styles.roleChipText, { color: !e.branchId ? roleColor : colors.textMuted }]}>All Branches</Text>
+                          </TouchableOpacity>
+                          {branches.map(b => (
+                            <TouchableOpacity key={b.id} onPress={() => isAdmin && setTankEdits(t => ({ ...t, [tank.id]: { ...e, branchId: b.id } }))}
+                              style={[styles.roleChip, { borderColor: e.branchId === b.id ? roleColor : colors.border, backgroundColor: e.branchId === b.id ? roleColor + '18' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
+                              <Text style={[styles.roleChipText, { color: e.branchId === b.id ? roleColor : colors.textMuted }]}>{b.name}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    )}
                   </View>
                 );
               })}
@@ -571,6 +588,24 @@ export default function SystemSettingsScreen() {
                   <FieldInput colors={colors} label="Tank Name *" value={newTank.name} onChangeText={v => setNewTank(n => ({ ...n, name: v }))} placeholder="e.g. PMS Tank 5" />
                   <FieldInput colors={colors} label="Capacity (L) *" value={newTank.cap} onChangeText={v => setNewTank(n => ({ ...n, cap: v }))} keyboardType="numeric" placeholder="25000" />
                   <ProdPicker isAdmin={isAdmin} colors={colors} value={newTank.prod} onChange={v => setNewTank(n => ({ ...n, prod: v }))} opts={PROD_OPTS} />
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
+                    {branches.length === 0
+                      ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
+                      : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                          <TouchableOpacity onPress={() => setNewTank(n => ({ ...n, branchId: '' }))}
+                            style={[styles.roleChip, { borderColor: !newTank.branchId ? roleColor : colors.border, backgroundColor: !newTank.branchId ? roleColor + '18' : colors.surface }]}>
+                            <Text style={[styles.roleChipText, { color: !newTank.branchId ? roleColor : colors.textMuted }]}>All Branches</Text>
+                          </TouchableOpacity>
+                          {branches.map(b => (
+                            <TouchableOpacity key={b.id} onPress={() => setNewTank(n => ({ ...n, branchId: b.id }))}
+                              style={[styles.roleChip, { borderColor: newTank.branchId === b.id ? roleColor : colors.border, backgroundColor: newTank.branchId === b.id ? roleColor + '18' : colors.surface }]}>
+                              <Text style={[styles.roleChipText, { color: newTank.branchId === b.id ? roleColor : colors.textMuted }]}>{b.name}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                    }
+                  </View>
                   <TouchableOpacity style={[styles.createBtn, { backgroundColor: roleColor }]} onPress={createTank} activeOpacity={0.85}>
                     <Ionicons name="checkmark-circle" size={16} color="#fff" />
                     <Text style={styles.createBtnText}>Create Tank</Text>
@@ -612,6 +647,23 @@ export default function SystemSettingsScreen() {
                     </View>
                     <FieldInput colors={colors} editable={isAdmin} label="Tank Name" value={e.name} onChangeText={v => setLpgEdits(l => ({ ...l, [tank.id]: { ...e, name: v } }))} />
                     <FieldInput colors={colors} editable={isAdmin} label="Capacity (kg)" value={e.cap} onChangeText={v => setLpgEdits(l => ({ ...l, [tank.id]: { ...e, cap: v } }))} keyboardType="numeric" />
+                    {branches.length > 0 && (
+                      <View style={{ marginBottom: 4 }}>
+                        <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
+                        <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                          <TouchableOpacity onPress={() => isAdmin && setLpgEdits(l => ({ ...l, [tank.id]: { ...e, branchId: '' } }))}
+                            style={[styles.roleChip, { borderColor: !e.branchId ? '#0F6E56' : colors.border, backgroundColor: !e.branchId ? '#0F6E5618' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
+                            <Text style={[styles.roleChipText, { color: !e.branchId ? '#0F6E56' : colors.textMuted }]}>All Branches</Text>
+                          </TouchableOpacity>
+                          {branches.map(b => (
+                            <TouchableOpacity key={b.id} onPress={() => isAdmin && setLpgEdits(l => ({ ...l, [tank.id]: { ...e, branchId: b.id } }))}
+                              style={[styles.roleChip, { borderColor: e.branchId === b.id ? '#0F6E56' : colors.border, backgroundColor: e.branchId === b.id ? '#0F6E5618' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
+                              <Text style={[styles.roleChipText, { color: e.branchId === b.id ? '#0F6E56' : colors.textMuted }]}>{b.name}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    )}
                   </View>
                 );
               })}
@@ -631,6 +683,24 @@ export default function SystemSettingsScreen() {
                   </View>
                   <FieldInput colors={colors} label="Tank Name *" value={newLpg.name} onChangeText={v => setNewLpg(n => ({ ...n, name: v }))} placeholder="e.g. LPG Storage A" />
                   <FieldInput colors={colors} label="Capacity (kg) *" value={newLpg.cap} onChangeText={v => setNewLpg(n => ({ ...n, cap: v }))} keyboardType="numeric" placeholder="5000" />
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
+                    {branches.length === 0
+                      ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
+                      : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                          <TouchableOpacity onPress={() => setNewLpg(n => ({ ...n, branchId: '' }))}
+                            style={[styles.roleChip, { borderColor: !newLpg.branchId ? '#0F6E56' : colors.border, backgroundColor: !newLpg.branchId ? '#0F6E5618' : colors.surface }]}>
+                            <Text style={[styles.roleChipText, { color: !newLpg.branchId ? '#0F6E56' : colors.textMuted }]}>All Branches</Text>
+                          </TouchableOpacity>
+                          {branches.map(b => (
+                            <TouchableOpacity key={b.id} onPress={() => setNewLpg(n => ({ ...n, branchId: b.id }))}
+                              style={[styles.roleChip, { borderColor: newLpg.branchId === b.id ? '#0F6E56' : colors.border, backgroundColor: newLpg.branchId === b.id ? '#0F6E5618' : colors.surface }]}>
+                              <Text style={[styles.roleChipText, { color: newLpg.branchId === b.id ? '#0F6E56' : colors.textMuted }]}>{b.name}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                    }
+                  </View>
                   <TouchableOpacity style={[styles.createBtn, { backgroundColor: '#0F6E56' }]} onPress={createLpgTank} activeOpacity={0.85}>
                     <Ionicons name="checkmark-circle" size={16} color="#fff" />
                     <Text style={styles.createBtnText}>Create LPG Tank</Text>
@@ -682,6 +752,23 @@ export default function SystemSettingsScreen() {
                     </View>
                     <FieldInput colors={colors} editable={isAdmin} label="Pump Name" value={e.name} onChangeText={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, name: v } }))} placeholder="e.g. Forecourt Pump A" />
                     <ProdPicker isAdmin={isAdmin} colors={colors} value={e.prod} onChange={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, prod: v } }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
+                    {branches.length > 0 && (
+                      <View style={{ marginBottom: 4 }}>
+                        <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
+                        <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                          <TouchableOpacity onPress={() => isAdmin && setPumpEdits(p => ({ ...p, [pump.id]: { ...e, branchId: '' } }))}
+                            style={[styles.roleChip, { borderColor: !e.branchId ? roleColor : colors.border, backgroundColor: !e.branchId ? roleColor + '18' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
+                            <Text style={[styles.roleChipText, { color: !e.branchId ? roleColor : colors.textMuted }]}>All Branches</Text>
+                          </TouchableOpacity>
+                          {branches.map(b => (
+                            <TouchableOpacity key={b.id} onPress={() => isAdmin && setPumpEdits(p => ({ ...p, [pump.id]: { ...e, branchId: b.id } }))}
+                              style={[styles.roleChip, { borderColor: e.branchId === b.id ? roleColor : colors.border, backgroundColor: e.branchId === b.id ? roleColor + '18' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
+                              <Text style={[styles.roleChipText, { color: e.branchId === b.id ? roleColor : colors.textMuted }]}>{b.name}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    )}
                   </View>
                 );
               })}
@@ -701,6 +788,24 @@ export default function SystemSettingsScreen() {
                   </View>
                   <FieldInput colors={colors} label="Pump Name *" value={newPump.name} onChangeText={v => setNewPump(n => ({ ...n, name: v }))} placeholder="e.g. Pump #6 PMS" />
                   <ProdPicker isAdmin={isAdmin} colors={colors} value={newPump.prod} onChange={v => setNewPump(n => ({ ...n, prod: v }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment *</Text>
+                    {branches.length === 0
+                      ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
+                      : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                          <TouchableOpacity onPress={() => setNewPump(n => ({ ...n, branchId: '' }))}
+                            style={[styles.roleChip, { borderColor: !newPump.branchId ? roleColor : colors.border, backgroundColor: !newPump.branchId ? roleColor + '18' : colors.surface }]}>
+                            <Text style={[styles.roleChipText, { color: !newPump.branchId ? roleColor : colors.textMuted }]}>All Branches</Text>
+                          </TouchableOpacity>
+                          {branches.map(b => (
+                            <TouchableOpacity key={b.id} onPress={() => setNewPump(n => ({ ...n, branchId: b.id }))}
+                              style={[styles.roleChip, { borderColor: newPump.branchId === b.id ? roleColor : colors.border, backgroundColor: newPump.branchId === b.id ? roleColor + '18' : colors.surface }]}>
+                              <Text style={[styles.roleChipText, { color: newPump.branchId === b.id ? roleColor : colors.textMuted }]}>{b.name}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                    }
+                  </View>
                   <View style={[styles.settingRow, { borderTopWidth: 0, paddingTop: 4 }]}>
                     <Text style={[styles.settingLabel, { color: colors.textMuted }]}>Active from the start</Text>
                     <Switch value={newPump.active} onValueChange={v => setNewPump(n => ({ ...n, active: v }))} trackColor={{ true: roleColor, false: colors.border }} thumbColor="#fff" />
