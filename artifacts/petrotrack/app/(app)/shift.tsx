@@ -107,8 +107,8 @@ export default function ShiftReportScreen() {
   }, [pumpDailyReports, pumpInitialMeters]);
 
   /* ── tab state ── */
-  type Tab = 'submit' | 'history' | 'review' | 'pending_acc' | 'approved' | 'initial';
-  const defaultTab: Tab = isAtt ? 'submit' : isMgr ? 'review' : isAcc ? 'pending_acc' : isAdmin ? 'initial' : 'history';
+  type Tab = 'dashboard' | 'submit' | 'history' | 'review' | 'pending_acc' | 'approved' | 'initial';
+  const defaultTab: Tab = isAtt ? 'dashboard' : isMgr ? 'review' : isAcc ? 'pending_acc' : isAdmin ? 'initial' : 'history';
   const [tab, setTab] = useState<Tab>(defaultTab);
 
   /* ── selected pump (att) ── */
@@ -241,8 +241,39 @@ export default function ShiftReportScreen() {
     [pumpDailyReports]
   );
 
+  /* ── attendant dashboard stats ── */
+  const attReports = useMemo(() =>
+    [...pumpDailyReports].filter(r => r.submittedBy === userName).sort((a, b) => b.date.localeCompare(a.date)),
+    [pumpDailyReports, userName]
+  );
+  const monthKey = today.slice(0, 7);
+  const monthReports = useMemo(() => attReports.filter(r => r.date.startsWith(monthKey)), [attReports, monthKey]);
+  const dashTotals = useMemo(() => ({
+    liters:    monthReports.reduce((s, r) => s + r.liters, 0),
+    gross:     monthReports.reduce((s, r) => s + r.grossAmount, 0),
+    collected: monthReports.reduce((s, r) => s + r.totalCollected, 0),
+    variance:  monthReports.reduce((s, r) => s + r.variance, 0),
+  }), [monthReports]);
+  const statusCounts = useMemo(() => ({
+    approved: attReports.filter(r => r.status === 'approved').length,
+    pending:  attReports.filter(r => r.status === 'pending_manager' || r.status === 'pending_accountant').length,
+    returned: attReports.filter(r => r.status === 'returned').length,
+  }), [attReports]);
+  const todayPumpStatus = useMemo(() =>
+    activePumps.map(p => ({
+      pump: p,
+      report: pumpDailyReports.find(r => r.date === today && r.pumpId === p.id) ?? null,
+    })),
+    [activePumps, pumpDailyReports, today]
+  );
+  const returnedReports = useMemo(() =>
+    attReports.filter(r => r.status === 'returned'),
+    [attReports]
+  );
+
   /* ── tab definitions ── */
   const tabs: { key: Tab; label: string; badge?: number; roles: string[] }[] = [
+    { key: 'dashboard',   label: 'Dashboard',   badge: returnedReports.length || undefined, roles: ['att'] },
     { key: 'submit',      label: 'New Report',  roles: ['att'] },
     { key: 'history',     label: 'My History',  roles: ['att', 'mgr', 'admin', 'ceo', 'md'] },
     { key: 'review',      label: 'Review',      badge: pendingMgr.length + returnedMgr.length, roles: ['mgr'] },
@@ -287,6 +318,163 @@ export default function ShiftReportScreen() {
           );
         })}
       </ScrollView>
+
+      {/* ══ ATTENDANT: DASHBOARD ══ */}
+      {tab === 'dashboard' && isAtt && (
+        <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
+
+          {/* Returned alert banner */}
+          {returnedReports.length > 0 && (
+            <View style={[c.alertBanner, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C55' }]}>
+              <Ionicons name="alert-circle" size={18} color="#791F1F" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#791F1F' }}>
+                  {returnedReports.length} report{returnedReports.length > 1 ? 's' : ''} returned for correction
+                </Text>
+                <Text style={{ fontSize: 11, color: '#791F1F', marginTop: 2 }}>Check "My History" to see rejection reasons.</Text>
+              </View>
+              <TouchableOpacity onPress={() => setTab('history')}
+                style={{ backgroundColor: '#791F1F', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>View</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Today's pump status */}
+          <Text style={[c.sectionLabel, { color: colors.text }]}>Today's Pumps</Text>
+          {todayPumpStatus.length === 0 && (
+            <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border, paddingVertical: 20 }]}>
+              <Ionicons name="speedometer-outline" size={28} color={colors.textSubtle} />
+              <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No active pumps assigned</Text>
+            </View>
+          )}
+          {todayPumpStatus.map(({ pump: p, report: r }) => {
+            const submitted = r !== null;
+            const sm = submitted ? (STATUS_META[r!.status] ?? STATUS_META.pending_manager) : null;
+            return (
+              <View key={p.id} style={[c.todayCard, { backgroundColor: colors.surface, borderColor: submitted ? (sm!.color + '55') : colors.border }]}>
+                <View style={[c.pumpAvatar, { backgroundColor: (submitted ? sm!.color : colors.textSubtle) + '18' }]}>
+                  <Ionicons name="speedometer-outline" size={18} color={submitted ? sm!.color : colors.textSubtle} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[c.cardTitle, { color: colors.text }]}>{p.name}</Text>
+                  <Text style={[c.cardSub, { color: colors.textMuted }]}>{p.prod}</Text>
+                  {submitted && r && (
+                    <Text style={[c.cardSub, { color: colors.textMuted, marginTop: 2 }]}>
+                      {r.liters.toLocaleString()} L · {fmt(r.grossAmount)}
+                    </Text>
+                  )}
+                </View>
+                {submitted && sm ? (
+                  <View style={[c.badge, { backgroundColor: sm.bg }]}>
+                    <Ionicons name={sm.icon as any} size={10} color={sm.color} />
+                    <Text style={[c.badgeTxt, { color: sm.color }]}>{sm.label}</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity onPress={() => { setSelPump(p.id); setTab('submit'); }}
+                    style={[c.badge, { backgroundColor: roleColor + '18' }]}>
+                    <Ionicons name="add" size={12} color={roleColor} />
+                    <Text style={[c.badgeTxt, { color: roleColor }]}>Submit</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })}
+
+          {/* Status counts */}
+          <Text style={[c.sectionLabel, { color: colors.text, marginTop: 14 }]}>All-Time Summary</Text>
+          <View style={c.statRow}>
+            <View style={[c.statTile, { backgroundColor: '#EAF3DE', borderColor: '#27500A22' }]}>
+              <Ionicons name="checkmark-circle" size={20} color="#27500A" />
+              <Text style={[c.statNum, { color: '#27500A' }]}>{statusCounts.approved}</Text>
+              <Text style={[c.statLbl, { color: '#27500A' }]}>Approved</Text>
+            </View>
+            <View style={[c.statTile, { backgroundColor: '#FAEEDA', borderColor: '#BA751722' }]}>
+              <Ionicons name="hourglass" size={20} color="#BA7517" />
+              <Text style={[c.statNum, { color: '#BA7517' }]}>{statusCounts.pending}</Text>
+              <Text style={[c.statLbl, { color: '#BA7517' }]}>In Review</Text>
+            </View>
+            <View style={[c.statTile, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C22' }]}>
+              <Ionicons name="return-down-back" size={20} color="#791F1F" />
+              <Text style={[c.statNum, { color: '#791F1F' }]}>{statusCounts.returned}</Text>
+              <Text style={[c.statLbl, { color: '#791F1F' }]}>Returned</Text>
+            </View>
+          </View>
+
+          {/* This month's totals */}
+          <Text style={[c.sectionLabel, { color: colors.text, marginTop: 14 }]}>
+            This Month · {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </Text>
+          <View style={[c.monthCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={c.monthRow}>
+              <View style={c.monthCol}>
+                <Text style={[c.monthVal, { color: roleColor }]}>{dashTotals.liters.toLocaleString()}</Text>
+                <Text style={[c.monthLbl, { color: colors.textMuted }]}>Litres Sold</Text>
+              </View>
+              <View style={[c.monthDivider, { backgroundColor: colors.border }]} />
+              <View style={c.monthCol}>
+                <Text style={[c.monthVal, { color: colors.text }]}>{fmt(dashTotals.gross)}</Text>
+                <Text style={[c.monthLbl, { color: colors.textMuted }]}>Gross Sales</Text>
+              </View>
+            </View>
+            <View style={[c.monthDividerH, { backgroundColor: colors.border }]} />
+            <View style={c.monthRow}>
+              <View style={c.monthCol}>
+                <Text style={[c.monthVal, { color: colors.text }]}>{fmt(dashTotals.collected)}</Text>
+                <Text style={[c.monthLbl, { color: colors.textMuted }]}>Total Collected</Text>
+              </View>
+              <View style={[c.monthDivider, { backgroundColor: colors.border }]} />
+              <View style={c.monthCol}>
+                {(() => {
+                  const vc = dashTotals.variance === 0 ? '#27500A' : dashTotals.variance > 0 ? '#185FA5' : '#791F1F';
+                  return (
+                    <>
+                      <Text style={[c.monthVal, { color: vc }]}>
+                        {dashTotals.variance === 0 ? '₦0' : (dashTotals.variance > 0 ? '+' : '') + fmt(dashTotals.variance)}
+                      </Text>
+                      <Text style={[c.monthLbl, { color: colors.textMuted }]}>Net Variance</Text>
+                    </>
+                  );
+                })()}
+              </View>
+            </View>
+            <Text style={[c.monthFooter, { color: colors.textSubtle, borderTopColor: colors.border }]}>
+              {monthReports.length} report{monthReports.length !== 1 ? 's' : ''} this month
+            </Text>
+          </View>
+
+          {/* Recent 5 reports */}
+          {attReports.length > 0 && (
+            <>
+              <Text style={[c.sectionLabel, { color: colors.text, marginTop: 14 }]}>Recent Reports</Text>
+              {attReports.slice(0, 5).map(r => (
+                <ReportCard key={r.id} report={r} roleColor={roleColor} colors={colors} onPress={() => openReport(r)} />
+              ))}
+              {attReports.length > 5 && (
+                <TouchableOpacity onPress={() => setTab('history')}
+                  style={[c.viewAllBtn, { borderColor: roleColor + '44', backgroundColor: roleColor + '08' }]}>
+                  <Text style={[c.viewAllTxt, { color: roleColor }]}>View all {attReports.length} reports</Text>
+                  <Ionicons name="chevron-forward" size={14} color={roleColor} />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+
+          {attReports.length === 0 && (
+            <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 10 }]}>
+              <Ionicons name="document-outline" size={36} color={colors.textSubtle} />
+              <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No reports yet. Submit your first shift report above.</Text>
+              <TouchableOpacity onPress={() => setTab('submit')}
+                style={[c.submitBtn, { backgroundColor: roleColor, paddingHorizontal: 24, marginTop: 4 }]}>
+                <Ionicons name="add-circle" size={16} color="#fff" />
+                <Text style={c.submitBtnTxt}>Submit First Report</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      )}
 
       {/* ══ ATTENDANT: NEW REPORT ══ */}
       {tab === 'submit' && isAtt && (
@@ -763,4 +951,20 @@ const c = StyleSheet.create({
   fieldValue:    { fontSize: 13, fontWeight: '600', maxWidth: '55%', textAlign: 'right' },
   varCard:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 8 },
   rejectionCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
+  alertBanner:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 14 },
+  todayCard:     { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1.5, marginBottom: 8 },
+  statRow:       { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  statTile:      { flex: 1, alignItems: 'center', gap: 4, padding: 14, borderRadius: 14, borderWidth: 1 },
+  statNum:       { fontSize: 22, fontWeight: '800' },
+  statLbl:       { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
+  monthCard:     { borderRadius: 16, borderWidth: 1, overflow: 'hidden', marginBottom: 4 },
+  monthRow:      { flexDirection: 'row' },
+  monthCol:      { flex: 1, alignItems: 'center', padding: 16, gap: 4 },
+  monthDivider:  { width: StyleSheet.hairlineWidth },
+  monthDividerH: { height: StyleSheet.hairlineWidth },
+  monthVal:      { fontSize: 17, fontWeight: '800' },
+  monthLbl:      { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
+  monthFooter:   { textAlign: 'center', fontSize: 11, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  viewAllBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1, marginTop: 4 },
+  viewAllTxt:    { fontSize: 13, fontWeight: '600' },
 });
