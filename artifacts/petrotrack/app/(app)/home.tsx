@@ -12,7 +12,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 
 export default function HomeScreen() {
-  const { role, branchId, tanks, lpgTanks, maintenance, expenses, audit, branches, staff, departments, dips, unreadCount } = useApp();
+  const { role, branchId, userName, tanks, lpgTanks, maintenance, expenses, audit, branches, staff, departments, dips, unreadCount } = useApp();
   const colors = useColors();
   const router = useRouter();
 
@@ -98,10 +98,14 @@ export default function HomeScreen() {
         <View style={[styles.greeting, { backgroundColor: roleColor + '18', borderColor: roleColor + '33' }]}>
           <View>
             <Text style={[styles.greetingTop, { color: colors.textMuted }]}>{today}</Text>
-            <Text style={[styles.greetingName, { color: colors.text }]}>Good day, {info?.name.split(' ')[0]} 👋</Text>
+            <Text style={[styles.greetingName, { color: colors.text }]}>Good day, {(userName || info?.name || '').split(' ')[0]} 👋</Text>
           </View>
           <View style={[styles.greetingBadge, { backgroundColor: roleColor }]}>
-            <Text style={styles.greetingBadgeText}>{info?.initials}</Text>
+            <Text style={styles.greetingBadgeText}>
+              {userName
+                ? userName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
+                : info?.initials}
+            </Text>
           </View>
         </View>
 
