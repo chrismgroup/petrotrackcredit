@@ -134,26 +134,23 @@ export default function ShiftReportScreen() {
   const variance  = totalColl - grossAmt;
   const varColor  = variance === 0 ? '#27500A' : variance > 0 ? '#185FA5' : '#791F1F';
 
-  const pendingPumpReport = useMemo(() =>
-    pumpDailyReports
-      .filter(r => r.pumpId === selPump && r.status !== 'approved')
-      .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null,
-    [pumpDailyReports, selPump]
+  const todayBlockingReport = useMemo(() =>
+    pumpDailyReports.find(
+      r => r.pumpId === selPump && r.date === today &&
+           (r.status === 'pending_manager' || r.status === 'returned')
+    ) ?? null,
+    [pumpDailyReports, selPump, today]
   );
-
-  const PENDING_STATUS_LABELS: Record<string, string> = {
-    pending_manager: 'awaiting manager review',
-    pending_accountant: 'awaiting accountant approval',
-    returned: 'returned — manager must re-forward',
-  };
 
   function handleSubmit() {
     if (!pump) { Alert.alert('Error', 'No active pump selected.'); return; }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
     if (totalColl <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, or transfer).'); return; }
-    if (pendingPumpReport) {
-      const label = PENDING_STATUS_LABELS[pendingPumpReport.status] ?? pendingPumpReport.status;
-      Alert.alert('Previous Report Pending', `Your ${pendingPumpReport.date} report for ${pump.name} is still ${label}. You can only submit a new report once the accountant has approved the previous one.`);
+    if (todayBlockingReport) {
+      const label = todayBlockingReport.status === 'returned'
+        ? 'was returned and must be re-forwarded by the manager'
+        : 'is awaiting manager review';
+      Alert.alert('Manager Approval Required', `Your earlier report for ${pump.name} today ${label}. You can submit another shift report once the manager approves it.`);
       return;
     }
     submitPumpReport({
@@ -540,24 +537,22 @@ export default function ShiftReportScreen() {
                 </View>
               </ScrollView>
 
-              {pendingPumpReport ? (
+              {todayBlockingReport ? (
                 <View style={[c.alreadyCard, {
-                  backgroundColor: pendingPumpReport.status === 'approved' ? '#EAF3DE' : pendingPumpReport.status === 'returned' ? '#FFF3E0' : '#FFF8E1',
-                  borderColor: pendingPumpReport.status === 'returned' ? '#E65100AA' : '#BA751744',
+                  backgroundColor: todayBlockingReport.status === 'returned' ? '#FFF3E0' : '#FFF8E1',
+                  borderColor: todayBlockingReport.status === 'returned' ? '#E65100AA' : '#BA751744',
                 }]}>
                   <Ionicons
-                    name={pendingPumpReport.status === 'returned' ? 'arrow-undo-circle' : 'time-outline'}
+                    name={todayBlockingReport.status === 'returned' ? 'arrow-undo-circle' : 'time-outline'}
                     size={22}
-                    color={pendingPumpReport.status === 'returned' ? '#E65100' : '#BA7517'}
+                    color={todayBlockingReport.status === 'returned' ? '#E65100' : '#BA7517'}
                   />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: pendingPumpReport.status === 'returned' ? '#E65100' : '#7A4F00' }}>
-                      {pendingPumpReport.status === 'pending_manager' ? 'Awaiting manager review' :
-                       pendingPumpReport.status === 'pending_accountant' ? 'Awaiting accountant approval' :
-                       'Report returned — pending re-forward'}
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: todayBlockingReport.status === 'returned' ? '#E65100' : '#7A4F00' }}>
+                      {todayBlockingReport.status === 'returned' ? 'Report returned — awaiting re-forward' : 'Awaiting manager review'}
                     </Text>
-                    <Text style={{ fontSize: 12, color: pendingPumpReport.status === 'returned' ? '#BF360C' : '#6D4C00', marginTop: 2 }}>
-                      Your {pendingPumpReport.date} report for {pump?.name} must be approved by the accountant before you can submit a new one.
+                    <Text style={{ fontSize: 12, color: todayBlockingReport.status === 'returned' ? '#BF360C' : '#6D4C00', marginTop: 2 }}>
+                      Your earlier report for {pump?.name} today must be approved by the manager before you can submit another shift report.
                     </Text>
                   </View>
                 </View>
