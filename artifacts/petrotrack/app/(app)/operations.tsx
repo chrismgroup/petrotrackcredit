@@ -73,8 +73,9 @@ export default function OperationsScreen() {
   const [delForm, setDelForm]         = useState({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
 
   const perms           = isMgr ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
-  const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : tanks;
-  const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : lpgTanks;
+  const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
+  const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : tanks.filter(inMyBranch);
+  const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : lpgTanks.filter(inMyBranch);
   const canDip          = isMgr;
   const hasPendingDip   = canDip && dips.some(d => d.by === userName && d.status === 'pending');
 

@@ -12,7 +12,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 
 export default function HomeScreen() {
-  const { role, tanks, lpgTanks, maintenance, expenses, audit, branches, staff, departments, dips, unreadCount } = useApp();
+  const { role, branchId, tanks, lpgTanks, maintenance, expenses, audit, branches, staff, departments, dips, unreadCount } = useApp();
   const colors = useColors();
   const router = useRouter();
 
@@ -26,7 +26,8 @@ export default function HomeScreen() {
   const pendingExp = expenses.filter(e => e.status === 'pending');
   const totalRev = branches.reduce((s, b) => s + b.rev, 0);
   const activeBranches = branches.filter(b => b.st === 'Active').length;
-  const totalStockL = tanks.reduce((s, t) => s + (t.op - t.sl), 0);
+  const myTanks = tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
+  const totalStockL = myTanks.reduce((s, t) => s + (t.op - t.sl), 0);
   const unread = unreadCount();
 
   function expDaysLeft(exp: string) {
@@ -82,7 +83,7 @@ export default function HomeScreen() {
 
   const metrics = [
     { label: 'Monthly Revenue', value: fmt(totalRev), icon: 'trending-up', col: colors.primary, sub: 'All branches' },
-    { label: 'Fuel Stock', value: totalStockL.toLocaleString() + ' L', icon: 'water', col: colors.blue, sub: `${tanks.length} tanks` },
+    { label: 'Fuel Stock', value: totalStockL.toLocaleString() + ' L', icon: 'water', col: colors.blue, sub: `${myTanks.length} tanks` },
     { label: 'Open Maintenance', value: String(openMaint.length), icon: 'build', col: openMaint.length > 0 ? colors.warning : colors.success, sub: openMaint.length > 0 ? `${openMaint.filter(m => m.pri === 'Urgent').length} urgent` : 'All clear' },
     { label: 'Unread Messages', value: String(unread), icon: 'chatbubbles', col: unread > 0 ? colors.coral : colors.primary, sub: unread > 0 ? 'Tap to view' : 'All read' },
   ];
@@ -123,7 +124,7 @@ export default function HomeScreen() {
             <Text style={[styles.dipMeta, { color: colors.textMuted }]}>{fmtDateTime(lastDip.dt)} by {lastDip.by}</Text>
             <View style={styles.dipGrid}>
               {Object.entries(lastDip.rd).map(([tid, litres]) => {
-                const tank = tanks.find(t => t.id === tid);
+                const tank = myTanks.find(t => t.id === tid);
                 if (!tank) return null;
                 const pct = tank.cap > 0 ? Math.round((Number(litres) / tank.cap) * 100) : 0;
                 return (

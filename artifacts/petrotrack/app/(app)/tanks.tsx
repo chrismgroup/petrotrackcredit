@@ -31,8 +31,9 @@ export default function TanksScreen() {
   const hasPendingDip = canEdit && dips.some(d => d.by === userName && d.status === 'pending');
 
   const perms = role === 'mgr' ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
-  const visibleTanks    = role === 'mgr' && !perms.canPetrolTanks ? [] : tanks;
-  const visibleLpgTanks = role === 'mgr' && !perms.canLpgTanks   ? [] : lpgTanks;
+  const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
+  const visibleTanks    = role === 'mgr' && !perms.canPetrolTanks ? [] : tanks.filter(inMyBranch);
+  const visibleLpgTanks = role === 'mgr' && !perms.canLpgTanks   ? [] : lpgTanks.filter(inMyBranch);
 
   function computeDipAnalysis(rdMap: Record<string, number>) {
     const expectedByProd: Record<string, number> = {};
