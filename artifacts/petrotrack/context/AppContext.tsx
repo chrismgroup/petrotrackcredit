@@ -12,7 +12,7 @@ export interface Tank {
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; branchId?: string; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG'; active: boolean; branchId?: string; }
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
-export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
+export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
@@ -399,7 +399,7 @@ interface AppContextType {
   deleteDelivery: (id: number) => void;
   submitDeliveryForApproval: (id: number) => void;
   accForwardToMd: (id: number, costPrice: number, accNote: string) => void;
-  approveDelivery: (id: number) => void;
+  approveDelivery: (id: number, sellingPrice: number, mdNote?: string) => void;
   rejectDelivery: (id: number, note?: string) => void;
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
@@ -991,22 +991,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, [userName, deliveries]);
 
-  const approveDelivery = useCallback((id: number) => {
+  const approveDelivery = useCallback((id: number, sellingPrice: number, mdNote?: string) => {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'md_approved' as const, approvedBy: userName, approvedAt: nowTs(), mdBy: userName, mdAt: nowTs() } : rec));
-    setAudit(a => [{ id: genId(), action: 'Delivery MD-approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L · permanently locked · forms inventory`, ts: nowTs() }, ...a]);
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'md_approved' as const, sellingPrice, mdNote: mdNote || '', approvedBy: userName, approvedAt: nowTs(), mdBy: userName, mdAt: nowTs() } : rec));
+    // Update global selling price for this product
+    updatePrice(d.prod, sellingPrice, userName);
+    setAudit(a => [{ id: genId(), action: 'Delivery MD-approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L · Cost ₦${d.costPrice}/L · Sell ₦${sellingPrice}/L · permanently locked`, ts: nowTs() }, ...a]);
     const msgKey = chatKey('md', 'acc');
     setMessages(m => ({
       ...m,
       [msgKey]: [...(m[msgKey] || []), {
         id: genId(), from: 'md' as Role, to: 'acc' as Role, type: 'alert' as const,
-        body: `Delivery approved by MD: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb}). Record is now locked and counts toward inventory.`,
-        alrt: { title: 'Delivery MD Approved — Inventory Updated', pri: 'Low', detail: `WB: ${d.wb} · ${d.prod} · ${d.rec.toLocaleString()}L · Record locked.` },
+        body: `Delivery approved by MD: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb}). Selling price set to ₦${sellingPrice.toLocaleString()}/L. Record locked.`,
+        alrt: { title: 'Delivery MD Approved — Price Updated', pri: 'Low', detail: `WB: ${d.wb} · ${d.prod} · ${d.rec.toLocaleString()}L · Sell ₦${sellingPrice.toLocaleString()}/L` },
         ts: nowTime(), read: false,
       }],
     }));
-  }, [userName, deliveries]);
+  }, [userName, deliveries, updatePrice]);
 
   const rejectDelivery = useCallback((id: number, note?: string) => {
     const d = deliveries.find(d => d.id === id);

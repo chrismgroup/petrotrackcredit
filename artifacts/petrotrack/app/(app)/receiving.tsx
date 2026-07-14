@@ -172,6 +172,7 @@ export default function ReceivingScreen() {
   const [mdTarget, setMdTarget] = useState<Delivery | null>(null);
   const [mdNote, setMdNote] = useState('');
   const [mdRejectMode, setMdRejectMode] = useState(false);
+  const [mdSellingPrice, setMdSellingPrice] = useState('');
 
   /* ── branch + role scoping ─────────────────────────────────────────────
      - admin / ceo / md / mktg : see all deliveries (approval chain)
@@ -329,20 +330,29 @@ export default function ReceivingScreen() {
     setMdTarget(d);
     setMdNote('');
     setMdRejectMode(reject);
+    if (!reject) {
+      // Pre-fill with current global price for this product
+      const curPrice = (prices as any)[d.prod];
+      setMdSellingPrice(curPrice && curPrice > 0 ? String(curPrice) : '');
+    }
   }
 
   function handleMdApprove() {
     if (!mdTarget) return;
+    const sell = parseFloat(mdSellingPrice);
+    if (!sell || sell <= 0) { Alert.alert('Required', 'Enter a valid selling price per litre before approving.'); return; }
     Alert.alert(
       'Approve & Lock Record?',
-      `${mdTarget.prod} ${mdTarget.rec.toLocaleString()}L from ${mdTarget.sup}\nWB: ${mdTarget.wb}\nCost: ₦${mdTarget.costPrice?.toLocaleString()}/L\n\nThis record will be permanently locked and will count toward inventory.`,
+      `${mdTarget.prod} ${mdTarget.rec.toLocaleString()}L from ${mdTarget.sup}\nWB: ${mdTarget.wb}\nCost: ₦${mdTarget.costPrice?.toLocaleString()}/L · Sell: ₦${sell.toLocaleString()}/L\n\nThis record will be permanently locked and the selling price will be updated system-wide.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Approve',
           onPress: () => {
-            approveDelivery(mdTarget.id);
+            approveDelivery(mdTarget.id, sell, mdNote.trim() || undefined);
             setMdTarget(null);
+            setMdSellingPrice('');
+            setMdNote('');
           },
         },
       ]
@@ -355,17 +365,6 @@ export default function ReceivingScreen() {
     rejectDelivery(mdTarget.id, mdNote.trim());
     setMdTarget(null);
     setMdNote('');
-  }
-
-  function handleMdApproveDirect(d: Delivery) {
-    Alert.alert(
-      'Approve & Lock Record?',
-      `${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}\nWB: ${d.wb}\nCost: ₦${d.costPrice?.toLocaleString()}/L\n\nThis record will be permanently locked and counts toward inventory.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Approve', onPress: () => approveDelivery(d.id) },
-      ]
-    );
   }
 
   const canMgrEdit = (d: Delivery) =>
@@ -480,7 +479,7 @@ export default function ReceivingScreen() {
           const apSt = d.approvalStatus || 'draft';
           const apCfg = APPR_MAP[apSt] || APPR_MAP.draft;
           const hasCost = !!(d.costPrice && d.costPrice > 0);
-          const sellPrice = (prices as any)[d.prod] ?? 0;
+          const sellPrice = d.sellingPrice ?? ((prices as any)[d.prod] ?? 0);
           const margin = hasCost && sellPrice ? Math.round(((sellPrice - d.costPrice!) / sellPrice) * 100) : null;
           const totalCostVal = hasCost ? d.rec * d.costPrice! : null;
           const locked = isLocked(d);
@@ -620,11 +619,11 @@ export default function ReceivingScreen() {
                     <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Return</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => handleMdApproveDirect(d)}
+                    onPress={() => openMdModal(d, false)}
                     style={[styles.approveBtn]}
                   >
                     <Ionicons name="checkmark-circle" size={14} color="#fff" />
-                    <Text style={styles.approveBtnText}>Approve & Lock</Text>
+                    <Text style={styles.approveBtnText}>Set Price & Approve</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
@@ -771,6 +770,101 @@ export default function ReceivingScreen() {
             <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#185FA5' }]} onPress={handleAccForward}>
               <Ionicons name="send" size={15} color="#fff" />
               <Text style={styles.saveBtnText}>Forward to MD</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </ModalSheet>
+
+      {/* MD: Set Selling Price & Approve Modal */}
+      <ModalSheet visible={mdTarget !== null && !mdRejectMode} onClose={() => { setMdTarget(null); setMdSellingPrice(''); setMdNote(''); }}>
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <View style={styles.editHeader}>
+            <View style={[styles.editIconBox, { backgroundColor: '#EAF3DE' }]}>
+              <Ionicons name="checkmark-circle" size={18} color="#27500A" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Set Selling Price & Approve</Text>
+              <Text style={[styles.editSub, { color: colors.textMuted }]}>
+                {mdTarget?.prod}{' · '}{mdTarget?.rec.toLocaleString()}{' L · WB: '}{mdTarget?.wb}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.delivSummaryBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
+              {'Supplier: '}
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{mdTarget?.sup}</Text>
+            </Text>
+            <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
+              {'Received: '}
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{mdTarget?.rec.toLocaleString()}{' L'}</Text>
+              {'  ·  Cost Price: '}
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{'₦'}{mdTarget?.costPrice?.toLocaleString()}{'/L'}</Text>
+            </Text>
+            {mdTarget?.accNote ? (
+              <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
+                {'Acc note: '}
+                <Text style={{ color: colors.text, fontWeight: '600' }}>{mdTarget.accNote}</Text>
+              </Text>
+            ) : null}
+          </View>
+
+          <View style={[styles.costPriceBox, { backgroundColor: '#EAF3DE', borderColor: '#27500A' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <Ionicons name="cash-outline" size={15} color="#27500A" />
+              <Text style={[styles.costPriceLabel, { color: '#27500A' }]}>Selling Price (₦ per litre) *</Text>
+            </View>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.background, borderColor: '#27500A50', color: colors.text, marginBottom: 0, fontSize: 18, fontWeight: '700' }]}
+              placeholder="e.g. 950"
+              placeholderTextColor={colors.textSubtle}
+              keyboardType="numeric"
+              value={mdSellingPrice}
+              onChangeText={setMdSellingPrice}
+            />
+            {mdSellingPrice && mdTarget?.costPrice ? (
+              <View style={{ marginTop: 8, gap: 3 }}>
+                <Text style={[styles.costHint, { color: colors.textMuted }]}>
+                  {'Total revenue: '}
+                  <Text style={{ fontWeight: '700', color: colors.text }}>
+                    {fmt(parseFloat(mdSellingPrice) * mdTarget.rec)}
+                  </Text>
+                </Text>
+                <Text style={[styles.costHint, { color: colors.textMuted }]}>
+                  {'Margin: '}
+                  <Text style={{ fontWeight: '700', color: (parseFloat(mdSellingPrice) - mdTarget.costPrice) >= 0 ? '#27500A' : '#791F1F' }}>
+                    {Math.round(((parseFloat(mdSellingPrice) - mdTarget.costPrice) / parseFloat(mdSellingPrice)) * 100)}{'%'}
+                    {'  ·  ₦'}{(parseFloat(mdSellingPrice) - mdTarget.costPrice).toLocaleString()}{'/L profit'}
+                  </Text>
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <Text style={[styles.inputLabel, { color: colors.textMuted }]}>MD Note (optional)</Text>
+          <TextInput
+            style={[styles.input, styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+            placeholder="Any notes on this approval..."
+            placeholderTextColor={colors.textSubtle}
+            multiline numberOfLines={3}
+            value={mdNote}
+            onChangeText={setMdNote}
+          />
+
+          <View style={[{ backgroundColor: '#FAEEDA', borderRadius: 10, padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }]}>
+            <Ionicons name="information-circle-outline" size={16} color="#BA7517" />
+            <Text style={{ fontSize: 12, color: '#BA7517', flex: 1, fontWeight: '500' }}>
+              {'Approving will permanently lock this record and update the system selling price for '}{mdTarget?.prod}{' across all branches.'}
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
+            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => { setMdTarget(null); setMdSellingPrice(''); setMdNote(''); }}>
+              <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#27500A' }]} onPress={handleMdApprove}>
+              <Ionicons name="checkmark-circle" size={15} color="#fff" />
+              <Text style={styles.saveBtnText}>Approve & Lock</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
