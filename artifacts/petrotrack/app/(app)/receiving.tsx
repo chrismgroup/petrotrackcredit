@@ -147,7 +147,7 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
 
 export default function ReceivingScreen() {
   const {
-    role, userName, deliveries, prices, sales,
+    role, userName, branchId, deliveries, prices, sales,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery,
   } = useApp();
@@ -172,7 +172,23 @@ export default function ReceivingScreen() {
   const [mdNote, setMdNote] = useState('');
   const [mdRejectMode, setMdRejectMode] = useState(false);
 
-  const sortedDeliveries = [...deliveries].sort((a, b) => b.id - a.id);
+  /* ── branch + role scoping ─────────────────────────────────────────────
+     - admin / ceo / md / mktg : see all deliveries (approval chain)
+     - acc / csm                : branch-scoped (all deliveries in their branch)
+     - mgr                      : only their own submissions, branch-scoped
+  ── */
+  const isGlobalViewer = role === 'admin' || role === 'ceo' || role === 'md' || role === 'mktg';
+  const sortedDeliveries = [...deliveries]
+    .filter(d => {
+      if (isGlobalViewer) return true;
+      // branch-scope first
+      const inBranch = !branchId || !d.branchId || d.branchId === branchId;
+      if (!inBranch) return false;
+      // mgr/csm see only their own submissions
+      if (role === 'mgr' || role === 'csm') return d.receivedBy === userName;
+      return true; // acc and others see all branch deliveries
+    })
+    .sort((a, b) => b.id - a.id);
 
   const pendingAccCount = sortedDeliveries.filter(d => d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending').length;
   const pendingMdCount  = sortedDeliveries.filter(d => d.approvalStatus === 'pending_md').length;
@@ -209,6 +225,7 @@ export default function ReceivingScreen() {
       sup: form.sup.trim(), prod: form.prod, wb: form.wb,
       ord: vals.ordN, rec: vals.recN, st: form.st, notes: form.notes,
       receivedBy: userName, approvalStatus: 'draft',
+      branchId: branchId ?? undefined,
     });
     setForm(blankMgrForm());
     setShowForm(false);
