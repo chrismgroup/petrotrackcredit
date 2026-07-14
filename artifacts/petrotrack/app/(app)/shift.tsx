@@ -212,8 +212,8 @@ export default function ShiftReportScreen() {
 
   function handleAccApprove() {
     if (!viewing) return;
-    accApprovePumpReport(viewing.id, reviewNote.trim());
-    Alert.alert('Approved', 'Report has been approved and locked.');
+    accApprovePumpReport(viewing, reviewNote.trim());
+    Alert.alert('Approved', 'Report approved — sales record has been created automatically.');
     closeModal();
   }
 

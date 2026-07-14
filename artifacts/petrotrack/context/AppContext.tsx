@@ -14,7 +14,7 @@ export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
 export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
-export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; }
+export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
@@ -368,7 +368,7 @@ interface AppContextType {
   setPumpInitialMeter: (pumpId: string, meter: number) => void;
   submitPumpReport: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => void;
   mgrForwardPumpReport: (id: number, mgrNote: string) => void;
-  accApprovePumpReport: (id: number, accNote: string) => void;
+  accApprovePumpReport: (report: PumpDailyReport, accNote: string) => void;
   accRejectPumpReport: (id: number, rejectionReason: string) => void;
   mgrResubmitPumpReport: (id: number, mgrNote: string) => void;
   deletePumpReport: (id: number) => void;
@@ -1347,9 +1347,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Pump report re-submitted to accountant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const accApprovePumpReport = useCallback((id: number, accNote: string) => {
+  const accApprovePumpReport = useCallback((report: PumpDailyReport, accNote: string) => {
+    const id = report.id;
     setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'approved', accNote, accBy: userName, accAt: nowTs() } : r));
-    setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} approved and locked`, ts: nowTs() }, ...a]);
+    setSales(s => {
+      if (s.some(e => e.shiftReportId === id)) return s;
+      return [...s, {
+        id: genId(),
+        shiftReportId: id,
+        pump: `${report.pumpName} (${report.product})`,
+        by: report.submittedBy,
+        L: report.liters,
+        price: report.unitPrice,
+        dt: report.date,
+        pos: report.posAmount,
+        branchId: report.branchId,
+      }];
+    });
+    setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} — ${report.pumpName} · ${report.liters}L · sales record auto-created`, ts: nowTs() }, ...a]);
   }, [userName]);
 
   const accRejectPumpReport = useCallback((id: number, rejectionReason: string) => {
