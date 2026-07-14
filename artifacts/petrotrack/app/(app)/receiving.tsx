@@ -14,51 +14,46 @@ const ST_MAP = {
   spill: { label: 'Spill',      color: '#791F1F', bg: '#FCEBEB' },
   seal:  { label: 'Seal Issue', color: '#4527a0', bg: '#EEEDFE' },
 };
-const APPR_MAP = {
-  draft:    { label: 'Draft',            color: '#555',    bg: '#F0F0F0',  icon: 'document-outline' },
-  pending:  { label: 'Awaiting CEO',     color: '#BA7517', bg: '#FAEEDA',  icon: 'time-outline' },
-  approved: { label: 'Approved',         color: '#27500A', bg: '#EAF3DE',  icon: 'checkmark-circle' },
-  rejected: { label: 'Rejected',         color: '#791F1F', bg: '#FCEBEB',  icon: 'close-circle' },
-} as const;
+const APPR_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  draft:       { label: 'Draft',                color: '#555',    bg: '#F0F0F0',  icon: 'document-outline' },
+  pending:     { label: 'Awaiting Accountant',  color: '#185FA5', bg: '#E6F1FB',  icon: 'time-outline' },
+  pending_acc: { label: 'Awaiting Accountant',  color: '#185FA5', bg: '#E6F1FB',  icon: 'time-outline' },
+  pending_md:  { label: 'Awaiting MD Approval', color: '#BA7517', bg: '#FAEEDA',  icon: 'hourglass-outline' },
+  md_approved: { label: 'MD Approved',          color: '#27500A', bg: '#EAF3DE',  icon: 'checkmark-circle' },
+  approved:    { label: 'Approved',             color: '#27500A', bg: '#EAF3DE',  icon: 'checkmark-circle' },
+  rejected:    { label: 'Rejected by MD',       color: '#791F1F', bg: '#FCEBEB',  icon: 'close-circle' },
+};
 const PROD_COLORS: Record<string, string> = {
-  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11', Others: '#4a4a4a',
+  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11',
 };
 
-type FormState = {
+type MgrFormState = {
   prod: string; sup: string; wb: string;
-  ord: string; rec: string; costPrice: string;
+  ord: string; rec: string;
   st: 'ok' | 'short' | 'spill' | 'seal';
   notes: string; dt: string;
 };
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
-function blankForm(): FormState {
-  return { prod: 'PMS', sup: '', wb: '', ord: '', rec: '', costPrice: '', st: 'ok', notes: '', dt: todayIso() };
+function blankMgrForm(): MgrFormState {
+  return { prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '', dt: todayIso() };
 }
-function deliveryToForm(d: Delivery): FormState {
+function deliveryToMgrForm(d: Delivery): MgrFormState {
   return {
     prod: d.prod, sup: d.sup, wb: d.wb,
     ord: String(d.ord), rec: String(d.rec),
-    costPrice: d.costPrice ? String(d.costPrice) : '',
     st: d.st, notes: d.notes,
     dt: d.dt ? d.dt.slice(0, 10) : todayIso(),
   };
 }
 
-type FormFieldsProps = {
-  f: FormState;
-  setF: React.Dispatch<React.SetStateAction<FormState>>;
+type MgrFormFieldsProps = {
+  f: MgrFormState;
+  setF: React.Dispatch<React.SetStateAction<MgrFormState>>;
   roleColor: string;
-  sellPrice: number;
 };
-function FormFields({ f, setF, roleColor, sellPrice }: FormFieldsProps) {
+function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
   const colors = useColors();
-  const hasCostAndProd = f.costPrice.length > 0 && f.prod.length > 0;
-  const parsedCost = parseFloat(f.costPrice);
-  const margin = hasCostAndProd && sellPrice > 0 && parsedCost > 0
-    ? Math.round(((sellPrice - parsedCost) / sellPrice) * 100)
-    : null;
-
   return (
     <>
       <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Product *</Text>
@@ -91,7 +86,8 @@ function FormFields({ f, setF, roleColor, sellPrice }: FormFieldsProps) {
         style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
         placeholder="Waybill / Delivery note number *"
         placeholderTextColor={colors.textSubtle}
-        value={f.wb} onChangeText={v => setF(prev => ({ ...prev, wb: v }))}
+        value={f.wb}
+        onChangeText={v => setF(prev => ({ ...prev, wb: v }))}
       />
 
       <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -109,37 +105,12 @@ function FormFields({ f, setF, roleColor, sellPrice }: FormFieldsProps) {
         />
       </View>
 
-      <View style={[styles.costPriceBox, { backgroundColor: roleColor + '0A', borderColor: roleColor + '30' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          <Ionicons name="pricetag-outline" size={15} color={roleColor} />
-          <Text style={[styles.costPriceLabel, { color: roleColor }]}>Cost Price (₦ per litre) *</Text>
-        </View>
-        <TextInput
-          style={[styles.input, { backgroundColor: colors.surface, borderColor: roleColor + '40', color: colors.text, marginBottom: 0 }]}
-          placeholder="e.g. 780" placeholderTextColor={colors.textSubtle}
-          keyboardType="numeric" value={f.costPrice}
-          onChangeText={v => setF(prev => ({ ...prev, costPrice: v }))}
-        />
-        {hasCostAndProd ? (
-          <View style={{ marginTop: 6, flexDirection: 'row', gap: 10 }}>
-            <Text style={[styles.costHint, { color: colors.textMuted }]}>
-              {'Sell: ₦'}{sellPrice.toLocaleString()}{'/L'}
-            </Text>
-            {margin !== null ? (
-              <Text style={[styles.costHint, { color: margin >= 0 ? '#27500A' : '#791F1F', fontWeight: '700' }]}>
-                {'Margin: '}{margin}{'%'}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-      </View>
-
-      <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Delivery Status</Text>
+      <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Delivery Condition</Text>
       <View style={styles.chipRow}>
         {(Object.entries(ST_MAP) as [string, typeof ST_MAP.ok][]).map(([k, v]) => (
           <TouchableOpacity
             key={k}
-            onPress={() => setF(prev => ({ ...prev, st: k as FormState['st'] }))}
+            onPress={() => setF(prev => ({ ...prev, st: k as MgrFormState['st'] }))}
             style={[styles.chip, { backgroundColor: f.st === k ? v.bg : colors.surface, borderColor: f.st === k ? v.color : colors.border }]}
           >
             <Text style={[styles.chipText, { color: f.st === k ? v.color : colors.textMuted }]}>{v.label}</Text>
@@ -176,79 +147,84 @@ function FormFields({ f, setF, roleColor, sellPrice }: FormFieldsProps) {
 
 export default function ReceivingScreen() {
   const {
-    role, userName, deliveries, prices,
+    role, userName, deliveries, prices, sales,
     addDelivery, updateDelivery, deleteDelivery,
-    submitDeliveryForApproval, approveDelivery, rejectDelivery,
+    submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery,
   } = useApp();
   const colors = useColors();
-  const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
+  const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
 
+  const isMgr = role === 'mgr' || role === 'csm' || role === 'admin';
   const isAcc = role === 'acc' || role === 'admin';
-  const isCeo = role === 'ceo' || role === 'admin';
+  const isMd  = role === 'md'  || role === 'ceo' || role === 'admin';
 
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<FormState>(blankForm());
+  const [form, setForm] = useState<MgrFormState>(blankMgrForm());
 
   const [editTarget, setEditTarget] = useState<Delivery | null>(null);
-  const [editForm, setEditForm] = useState<FormState>(blankForm());
+  const [editForm, setEditForm] = useState<MgrFormState>(blankMgrForm());
 
-  /* CEO reject modal */
-  const [rejectTarget, setRejectTarget] = useState<Delivery | null>(null);
-  const [rejectNote, setRejectNote] = useState('');
+  const [accTarget, setAccTarget] = useState<Delivery | null>(null);
+  const [accCostPrice, setAccCostPrice] = useState('');
+  const [accNote, setAccNote] = useState('');
 
-  /* Accountant date-only edit for pending/approved records */
-  const [dateTarget, setDateTarget] = useState<Delivery | null>(null);
-  const [dateEdit, setDateEdit]     = useState('');
+  const [mdTarget, setMdTarget] = useState<Delivery | null>(null);
+  const [mdNote, setMdNote] = useState('');
+  const [mdRejectMode, setMdRejectMode] = useState(false);
 
   const sortedDeliveries = [...deliveries].sort((a, b) => b.id - a.id);
-  const pendingCount = sortedDeliveries.filter(d => d.approvalStatus === 'pending').length;
 
-  const summary = PRODUCTS.map(prod => {
-    const recs = deliveries.filter(d => d.prod === prod && d.costPrice);
-    const totalRec = recs.reduce((s, d) => s + d.rec, 0);
-    const totalCost = recs.reduce((s, d) => s + d.rec * (d.costPrice ?? 0), 0);
-    const avgCost = totalRec > 0 ? Math.round(totalCost / totalRec) : 0;
-    const sellPrice = (prices as any)[prod] ?? 0;
-    const margin = sellPrice > 0 && avgCost > 0 ? Math.round(((sellPrice - avgCost) / sellPrice) * 100) : null;
-    return { prod, totalRec, avgCost, sellPrice, margin };
-  }).filter(s => s.totalRec > 0);
+  const pendingAccCount = sortedDeliveries.filter(d => d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending').length;
+  const pendingMdCount  = sortedDeliveries.filter(d => d.approvalStatus === 'pending_md').length;
 
-  function validateForm(f: FormState) {
+  const inventory = PRODUCTS.map(prod => {
+    const totalReceived = deliveries
+      .filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
+      .reduce((s, d) => s + d.rec, 0);
+    const totalSold = sales
+      .filter(s => s.pump.toLowerCase().includes(prod.toLowerCase()))
+      .reduce((s, e) => s + e.L, 0);
+    const available = totalReceived - totalSold;
+    const approved = deliveries.filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
+    const avgCost = approved.length > 0
+      ? approved.reduce((s, d) => s + (d.costPrice ?? 0) * d.rec, 0) / totalReceived
+      : 0;
+    return { prod, totalReceived, totalSold, available, avgCost };
+  }).filter(s => s.totalReceived > 0);
+
+  function validateMgrForm(f: MgrFormState) {
     const ordN = parseFloat(f.ord);
     const recN = parseFloat(f.rec);
-    const costN = parseFloat(f.costPrice);
     if (!f.sup.trim()) { Alert.alert('Required', 'Supplier name is required.'); return null; }
-    if (!f.wb) { Alert.alert('Required', 'Waybill number is required.'); return null; }
+    if (!f.wb.trim())  { Alert.alert('Required', 'Waybill number is required.'); return null; }
     if (!ordN || !recN) { Alert.alert('Required', 'Ordered and received quantities are required.'); return null; }
-    if (!costN) { Alert.alert('Required', 'Cost price per litre is required.'); return null; }
-    return { ordN, recN, costN };
+    return { ordN, recN };
   }
 
   function handleAdd() {
-    const vals = validateForm(form);
+    const vals = validateMgrForm(form);
     if (!vals) return;
     addDelivery({
       dt: form.dt ? new Date(form.dt).toISOString() : new Date().toISOString(),
       sup: form.sup.trim(), prod: form.prod, wb: form.wb,
       ord: vals.ordN, rec: vals.recN, st: form.st, notes: form.notes,
-      costPrice: vals.costN, receivedBy: userName,
-      approvalStatus: 'draft',
+      receivedBy: userName, approvalStatus: 'draft',
     });
-    setForm(blankForm());
+    setForm(blankMgrForm());
     setShowForm(false);
   }
 
-  function openEdit(d: Delivery) { setEditTarget(d); setEditForm(deliveryToForm(d)); }
+  function openEdit(d: Delivery) { setEditTarget(d); setEditForm(deliveryToMgrForm(d)); }
 
   function handleUpdate() {
     if (!editTarget) return;
-    const vals = validateForm(editForm);
+    const vals = validateMgrForm(editForm);
     if (!vals) return;
     updateDelivery(editTarget.id, {
       dt: editForm.dt ? new Date(editForm.dt).toISOString() : editTarget.dt,
       sup: editForm.sup.trim(), prod: editForm.prod, wb: editForm.wb,
       ord: vals.ordN, rec: vals.recN, st: editForm.st, notes: editForm.notes,
-      costPrice: vals.costN, receivedBy: editTarget.receivedBy,
+      receivedBy: editTarget.receivedBy,
       approvalStatus: 'draft',
     });
     setEditTarget(null);
@@ -265,64 +241,94 @@ export default function ReceivingScreen() {
     );
   }
 
-  function handleSubmitForApproval(d: Delivery) {
+  function handleSubmitToAcc(d: Delivery) {
     Alert.alert(
-      'Submit for CEO Approval?',
-      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}\n\nOnce submitted you cannot edit or delete this record until the CEO acts on it.`,
+      'Forward to Accountant?',
+      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}\n\nAccountant will set the cost price and forward to MD for approval.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Submit', onPress: () => submitDeliveryForApproval(d.id) },
+        { text: 'Forward', onPress: () => submitDeliveryForApproval(d.id) },
       ]
     );
   }
 
-  function handleApprove(d: Delivery) {
+  function openAccModal(d: Delivery) {
+    setAccTarget(d);
+    setAccCostPrice(d.costPrice ? String(d.costPrice) : '');
+    setAccNote(d.accNote ?? '');
+  }
+
+  function handleAccForward() {
+    if (!accTarget) return;
+    const cost = parseFloat(accCostPrice);
+    if (!cost || cost <= 0) { Alert.alert('Required', 'Enter a valid cost price per litre.'); return; }
     Alert.alert(
-      'Approve Delivery Record?',
-      `${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}\nWB: ${d.wb}\nDate: ${fmtDate(d.dt)}`,
+      'Forward to MD for Approval?',
+      `${accTarget.prod} ${accTarget.rec.toLocaleString()}L · Cost ₦${cost.toLocaleString()}/L\n\nMD will approve or return this record.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Approve', onPress: () => approveDelivery(d.id) },
+        {
+          text: 'Forward to MD',
+          onPress: () => {
+            accForwardToMd(accTarget.id, cost, accNote.trim());
+            setAccTarget(null);
+            setAccCostPrice('');
+            setAccNote('');
+          },
+        },
       ]
     );
   }
 
-  function handleRejectConfirm() {
-    if (!rejectTarget) return;
-    rejectDelivery(rejectTarget.id, rejectNote || undefined);
-    setRejectTarget(null);
-    setRejectNote('');
+  function openMdModal(d: Delivery, reject: boolean) {
+    setMdTarget(d);
+    setMdNote('');
+    setMdRejectMode(reject);
   }
 
-  function openDateEdit(d: Delivery) {
-    setDateTarget(d);
-    setDateEdit(d.dt ? d.dt.slice(0, 10) : todayIso());
+  function handleMdApprove() {
+    if (!mdTarget) return;
+    Alert.alert(
+      'Approve & Lock Record?',
+      `${mdTarget.prod} ${mdTarget.rec.toLocaleString()}L from ${mdTarget.sup}\nWB: ${mdTarget.wb}\nCost: ₦${mdTarget.costPrice?.toLocaleString()}/L\n\nThis record will be permanently locked and will count toward inventory.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Approve',
+          onPress: () => {
+            approveDelivery(mdTarget.id);
+            setMdTarget(null);
+          },
+        },
+      ]
+    );
   }
 
-  function handleDateSave() {
-    if (!dateTarget) return;
-    if (!dateEdit.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      Alert.alert('Invalid date', 'Please enter the date in YYYY-MM-DD format.');
-      return;
-    }
-    updateDelivery(dateTarget.id, { dt: new Date(dateEdit).toISOString() });
-    setDateTarget(null);
-    setDateEdit('');
+  function handleMdRejectConfirm() {
+    if (!mdTarget) return;
+    if (!mdNote.trim()) { Alert.alert('Required', 'Provide a reason for returning this record.'); return; }
+    rejectDelivery(mdTarget.id, mdNote.trim());
+    setMdTarget(null);
+    setMdNote('');
   }
 
-  const canEdit = (d: Delivery) =>
-    isAcc && (d.approvalStatus === 'draft' || d.approvalStatus === 'rejected' || !d.approvalStatus);
-  const canSubmit = (d: Delivery) =>
-    isAcc && (d.approvalStatus === 'draft' || d.approvalStatus === 'rejected' || !d.approvalStatus);
-  const canCeoAct = (d: Delivery) =>
-    isCeo && d.approvalStatus === 'pending';
+  const canMgrEdit = (d: Delivery) =>
+    isMgr && (d.approvalStatus === 'draft' || !d.approvalStatus);
+  const canMgrSubmit = (d: Delivery) =>
+    isMgr && (d.approvalStatus === 'draft' || !d.approvalStatus);
+  const canAccSet = (d: Delivery) =>
+    isAcc && (d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending');
+  const canMdAct = (d: Delivery) =>
+    isMd && d.approvalStatus === 'pending_md';
+  const isLocked = (d: Delivery) =>
+    d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved';
 
   return (
     <ScreenLayout
       title="Product Receiving"
       rightAction={
-        isAcc ? (
-          <TouchableOpacity onPress={() => { setForm(blankForm()); setShowForm(true); }} style={styles.headerBtn}>
+        isMgr ? (
+          <TouchableOpacity onPress={() => { setForm(blankMgrForm()); setShowForm(true); }} style={styles.headerBtn}>
             <Ionicons name="add" size={20} color="#fff" />
           </TouchableOpacity>
         ) : undefined
@@ -330,49 +336,65 @@ export default function ReceivingScreen() {
     >
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* CEO pending approvals banner */}
-        {isCeo && pendingCount > 0 ? (
-          <View style={[styles.banner, { backgroundColor: '#FAEEDA', borderColor: '#BA7517' }]}>
-            <Ionicons name="time" size={16} color="#BA7517" />
-            <Text style={[styles.bannerText, { color: '#BA7517' }]}>
-              {pendingCount}{' delivery record'}{pendingCount > 1 ? 's' : ''}{' awaiting your approval'}
+        {isAcc && pendingAccCount > 0 ? (
+          <View style={[styles.banner, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
+            <Ionicons name="pricetag" size={16} color="#185FA5" />
+            <Text style={[styles.bannerText, { color: '#185FA5' }]}>
+              {pendingAccCount}{' record'}{pendingAccCount > 1 ? 's' : ''}{' awaiting your cost price entry'}
             </Text>
           </View>
         ) : null}
 
-        {/* Cost vs Sell summary */}
-        {summary.length > 0 ? (
+        {isMd && pendingMdCount > 0 ? (
+          <View style={[styles.banner, { backgroundColor: '#FAEEDA', borderColor: '#BA7517' }]}>
+            <Ionicons name="checkmark-done" size={16} color="#BA7517" />
+            <Text style={[styles.bannerText, { color: '#BA7517' }]}>
+              {pendingMdCount}{' delivery record'}{pendingMdCount > 1 ? 's' : ''}{' awaiting your approval'}
+            </Text>
+          </View>
+        ) : null}
+
+        {inventory.length > 0 ? (
           <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Cost vs. Selling Price</Text>
-            <View style={styles.summaryGrid}>
-              {summary.map(s => {
-                const pc = PROD_COLORS[s.prod] || roleColor;
-                const profitable = s.margin !== null && s.margin > 0;
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Current Inventory</Text>
+            <View style={styles.inventoryGrid}>
+              {inventory.map(inv => {
+                const pc = PROD_COLORS[inv.prod] || roleColor;
+                const low = inv.available < inv.totalReceived * 0.2;
                 return (
-                  <View key={s.prod} style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={[styles.prodBadge, { backgroundColor: pc + '18' }]}>
-                      <Text style={[styles.prodBadgeText, { color: pc }]}>{s.prod}</Text>
+                  <View key={inv.prod} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: low ? '#BA7517' : colors.border }]}>
+                    <View style={[styles.invProdBadge, { backgroundColor: pc + '18' }]}>
+                      <Ionicons name="cube-outline" size={12} color={pc} />
+                      <Text style={[styles.invProdText, { color: pc }]}>{inv.prod}</Text>
                     </View>
-                    <View style={styles.priceRow}>
-                      <View style={styles.priceCol}>
-                        <Text style={[styles.priceLabel, { color: colors.textMuted }]}>Cost</Text>
-                        <Text style={[styles.priceVal, { color: colors.text }]}>{'₦'}{s.avgCost}{'/L'}</Text>
+                    <Text style={[styles.invAvail, { color: low ? '#BA7517' : '#27500A' }]}>
+                      {inv.available.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      <Text style={[styles.invUnit, { color: colors.textMuted }]}>{' L available'}</Text>
+                    </Text>
+                    <View style={styles.invDetail}>
+                      <View style={styles.invDetailItem}>
+                        <Text style={[styles.invDetailLabel, { color: colors.textMuted }]}>Received</Text>
+                        <Text style={[styles.invDetailVal, { color: colors.text }]}>{inv.totalReceived.toLocaleString()}{' L'}</Text>
                       </View>
-                      <Ionicons name="arrow-forward" size={14} color={colors.textSubtle} />
-                      <View style={styles.priceCol}>
-                        <Text style={[styles.priceLabel, { color: colors.textMuted }]}>Sell</Text>
-                        <Text style={[styles.priceVal, { color: pc }]}>{'₦'}{s.sellPrice}{'/L'}</Text>
+                      <View style={[styles.invDetailDivider, { backgroundColor: colors.border }]} />
+                      <View style={styles.invDetailItem}>
+                        <Text style={[styles.invDetailLabel, { color: colors.textMuted }]}>Sold</Text>
+                        <Text style={[styles.invDetailVal, { color: '#791F1F' }]}>{inv.totalSold.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' L'}</Text>
                       </View>
+                      {inv.avgCost > 0 ? (
+                        <>
+                          <View style={[styles.invDetailDivider, { backgroundColor: colors.border }]} />
+                          <View style={styles.invDetailItem}>
+                            <Text style={[styles.invDetailLabel, { color: colors.textMuted }]}>Avg Cost</Text>
+                            <Text style={[styles.invDetailVal, { color: colors.text }]}>{'₦'}{Math.round(inv.avgCost).toLocaleString()}</Text>
+                          </View>
+                        </>
+                      ) : null}
                     </View>
-                    {s.margin !== null ? (
-                      <View style={[styles.marginBadge, {
-                        backgroundColor: profitable ? '#EAF3DE' : '#FCEBEB',
-                        borderColor: profitable ? '#27500A' : '#791F1F',
-                      }]}>
-                        <Ionicons name={profitable ? 'trending-up' : 'trending-down'} size={11} color={profitable ? '#27500A' : '#791F1F'} />
-                        <Text style={[styles.marginText, { color: profitable ? '#27500A' : '#791F1F' }]}>
-                          {profitable ? '+' : ''}{s.margin}{'% margin · '}{s.totalRec.toLocaleString()}{' L received'}
-                        </Text>
+                    {low ? (
+                      <View style={[styles.lowBadge, { backgroundColor: '#FAEEDA' }]}>
+                        <Ionicons name="warning-outline" size={11} color="#BA7517" />
+                        <Text style={[styles.lowText, { color: '#BA7517' }]}>Low stock</Text>
                       </View>
                     ) : null}
                   </View>
@@ -387,6 +409,7 @@ export default function ReceivingScreen() {
           <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="cube-outline" size={36} color={colors.textSubtle} />
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>No deliveries recorded yet</Text>
+            {isMgr ? <Text style={[styles.emptyText, { color: colors.textSubtle, fontSize: 12 }]}>Tap + to record a product receipt</Text> : null}
           </View>
         ) : null}
 
@@ -394,20 +417,19 @@ export default function ReceivingScreen() {
           const st = ST_MAP[d.st] || ST_MAP.ok;
           const pc = PROD_COLORS[d.prod] || roleColor;
           const apSt = d.approvalStatus || 'draft';
-          const apCfg = APPR_MAP[apSt];
+          const apCfg = APPR_MAP[apSt] || APPR_MAP.draft;
           const hasCost = !!(d.costPrice && d.costPrice > 0);
           const sellPrice = (prices as any)[d.prod] ?? 0;
           const margin = hasCost && sellPrice ? Math.round(((sellPrice - d.costPrice!) / sellPrice) * 100) : null;
           const totalCostVal = hasCost ? d.rec * d.costPrice! : null;
-          const isLocked = apSt === 'approved';
+          const locked = isLocked(d);
 
           return (
             <View key={d.id} style={[styles.delivCard, {
               backgroundColor: colors.surface,
-              borderColor: apSt === 'pending' ? '#BA7517' : apSt === 'approved' ? '#27500A' : colors.border,
-              borderWidth: apSt === 'pending' || apSt === 'approved' ? 1.5 : 1,
+              borderColor: apSt === 'pending_md' ? '#BA7517' : locked ? '#27500A' : apSt === 'pending_acc' || apSt === 'pending' ? '#185FA5' : colors.border,
+              borderWidth: apSt !== 'draft' ? 1.5 : 1,
             }]}>
-              {/* Card header */}
               <View style={styles.delivHeader}>
                 <View style={[styles.prodTag, { backgroundColor: pc + '15' }]}>
                   <Ionicons name="cube-outline" size={13} color={pc} />
@@ -424,7 +446,6 @@ export default function ReceivingScreen() {
                 <Text style={[styles.delivDate, { color: colors.textMuted }]}>{fmtDate(d.dt)}</Text>
               </View>
 
-              {/* Details */}
               <View style={styles.delivBody}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.delivWb, { color: colors.text }]}>{'WB: '}{d.wb}</Text>
@@ -434,24 +455,27 @@ export default function ReceivingScreen() {
                     <Text style={{ fontWeight: '700', color: colors.text }}>{d.rec.toLocaleString()}{' L'}</Text>
                   </Text>
                   {d.notes ? <Text style={[styles.delivNotes, { color: colors.textSubtle }]}>{d.notes}</Text> : null}
-                  {apSt === 'rejected' && d.rejectedNote ? (
-                    <Text style={[styles.delivNotes, { color: '#791F1F' }]}>{'Rejected: '}{d.rejectedNote}</Text>
+                  {(apSt === 'pending_acc' || apSt === 'pending') && d.rejectedNote ? (
+                    <Text style={[styles.delivNotes, { color: '#791F1F' }]}>{'Returned by MD: '}{d.rejectedNote}</Text>
                   ) : null}
                 </View>
               </View>
 
-              {/* Cost / margin */}
               {hasCost ? (
-                <View style={[styles.costRow, { backgroundColor: roleColor + '08', borderColor: roleColor + '20' }]}>
+                <View style={[styles.costRow, { backgroundColor: '#0F6E5608', borderColor: '#0F6E5620' }]}>
                   <View style={styles.costItem}>
                     <Text style={[styles.costLabel, { color: colors.textMuted }]}>Cost/L</Text>
                     <Text style={[styles.costVal, { color: colors.text }]}>{'₦'}{d.costPrice!.toLocaleString()}</Text>
                   </View>
-                  <View style={styles.costDivider} />
-                  <View style={styles.costItem}>
-                    <Text style={[styles.costLabel, { color: colors.textMuted }]}>Sell/L</Text>
-                    <Text style={[styles.costVal, { color: pc }]}>{'₦'}{sellPrice.toLocaleString()}</Text>
-                  </View>
+                  {sellPrice > 0 ? (
+                    <>
+                      <View style={styles.costDivider} />
+                      <View style={styles.costItem}>
+                        <Text style={[styles.costLabel, { color: colors.textMuted }]}>Sell/L</Text>
+                        <Text style={[styles.costVal, { color: pc }]}>{'₦'}{sellPrice.toLocaleString()}</Text>
+                      </View>
+                    </>
+                  ) : null}
                   <View style={styles.costDivider} />
                   <View style={styles.costItem}>
                     <Text style={[styles.costLabel, { color: colors.textMuted }]}>Total Cost</Text>
@@ -471,13 +495,23 @@ export default function ReceivingScreen() {
                 </View>
               ) : null}
 
-              {/* Approved by line */}
-              {apSt === 'approved' && d.approvedBy ? (
-                <View style={[styles.approvedRow, { backgroundColor: '#EAF3DE', borderColor: '#27500A20' }]}>
-                  <Ionicons name="checkmark-circle" size={13} color="#27500A" />
-                  <Text style={[styles.approvedText, { color: '#27500A' }]}>
-                    {'Approved by '}{d.approvedBy}
+              {d.accBy ? (
+                <View style={[styles.trailRow, { backgroundColor: '#E6F1FB', borderColor: '#185FA520' }]}>
+                  <Ionicons name="pricetag" size={12} color="#185FA5" />
+                  <Text style={[styles.trailText, { color: '#185FA5' }]}>
+                    {'Cost set by '}{d.accBy}{d.accAt ? ' · ' + fmtDateTime(d.accAt) : ''}
+                    {d.accNote ? ' — ' + d.accNote : ''}
+                  </Text>
+                </View>
+              ) : null}
+
+              {locked && d.approvedBy ? (
+                <View style={[styles.trailRow, { backgroundColor: '#EAF3DE', borderColor: '#27500A20' }]}>
+                  <Ionicons name="checkmark-circle" size={12} color="#27500A" />
+                  <Text style={[styles.trailText, { color: '#27500A' }]}>
+                    {'MD Approved by '}{d.approvedBy}
                     {d.approvedAt ? ' · ' + fmtDateTime(d.approvedAt) : ''}
+                    {' · Counts toward inventory'}
                   </Text>
                 </View>
               ) : null}
@@ -489,8 +523,7 @@ export default function ReceivingScreen() {
                 </View>
               ) : null}
 
-              {/* Accountant actions */}
-              {canEdit(d) ? (
+              {canMgrEdit(d) ? (
                 <View style={styles.actionRow}>
                   <TouchableOpacity onPress={() => openEdit(d)} style={[styles.actionBtn, { borderColor: '#185FA5' }]}>
                     <Ionicons name="create-outline" size={14} color="#185FA5" />
@@ -500,203 +533,256 @@ export default function ReceivingScreen() {
                     <Ionicons name="trash-outline" size={14} color="#791F1F" />
                     <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Delete</Text>
                   </TouchableOpacity>
-                  {canSubmit(d) ? (
-                    <TouchableOpacity onPress={() => handleSubmitForApproval(d)} style={[styles.submitForApprBtn, { backgroundColor: roleColor }]}>
+                  {canMgrSubmit(d) ? (
+                    <TouchableOpacity onPress={() => handleSubmitToAcc(d)} style={[styles.forwardBtn, { backgroundColor: roleColor }]}>
                       <Ionicons name="send" size={14} color="#fff" />
-                      <Text style={styles.submitForApprText}>Submit</Text>
+                      <Text style={styles.forwardBtnText}>Forward to Acc</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
               ) : null}
 
-              {/* CEO actions on pending */}
-              {canCeoAct(d) ? (
+              {canAccSet(d) ? (
+                <TouchableOpacity onPress={() => openAccModal(d)} style={[styles.fullBtn, { backgroundColor: '#185FA5' }]}>
+                  <Ionicons name="pricetag-outline" size={14} color="#fff" />
+                  <Text style={styles.fullBtnText}>Set Cost Price & Forward to MD</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {canMdAct(d) ? (
                 <View style={styles.actionRow}>
                   <TouchableOpacity
-                    onPress={() => { setRejectTarget(d); setRejectNote(''); }}
+                    onPress={() => openMdModal(d, true)}
                     style={[styles.actionBtn, { borderColor: '#791F1F', flex: 1 }]}
                   >
-                    <Ionicons name="close" size={14} color="#791F1F" />
-                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Reject</Text>
+                    <Ionicons name="return-down-back-outline" size={14} color="#791F1F" />
+                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Return</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => handleApprove(d)}
+                    onPress={() => { setMdTarget(d); handleMdApprove_direct(d); }}
                     style={[styles.approveBtn]}
                   >
-                    <Ionicons name="checkmark" size={14} color="#fff" />
-                    <Text style={styles.approveBtnText}>Approve</Text>
+                    <Ionicons name="checkmark-circle" size={14} color="#fff" />
+                    <Text style={styles.approveBtnText}>Approve & Lock</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
 
-              {/* Pending lock notice for accountant + date edit */}
-              {isAcc && apSt === 'pending' ? (
-                <View style={{ gap: 6 }}>
-                  <View style={[styles.lockRow, { borderColor: '#BA7517' }]}>
-                    <Ionicons name="lock-closed-outline" size={12} color="#BA7517" />
-                    <Text style={[styles.lockText, { color: '#BA7517', flex: 1 }]}>Submitted — awaiting CEO approval</Text>
-                    <TouchableOpacity onPress={() => openDateEdit(d)}
-                      style={[styles.dateEditBtn, { borderColor: '#185FA5' }]}>
-                      <Ionicons name="calendar-outline" size={12} color="#185FA5" />
-                      <Text style={[styles.dateEditBtnText, { color: '#185FA5' }]}>Edit Date</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : null}
-
-              {/* Approved lock notice for accountant + date edit */}
-              {isAcc && apSt === 'approved' ? (
-                <View style={{ gap: 6 }}>
-                  <View style={[styles.lockRow, { borderColor: '#27500A' }]}>
-                    <Ionicons name="lock-closed" size={12} color="#27500A" />
-                    <Text style={[styles.lockText, { color: '#27500A', flex: 1 }]}>Record locked — CEO approved</Text>
-                    <TouchableOpacity onPress={() => openDateEdit(d)}
-                      style={[styles.dateEditBtn, { borderColor: '#185FA5' }]}>
-                      <Ionicons name="calendar-outline" size={12} color="#185FA5" />
-                      <Text style={[styles.dateEditBtnText, { color: '#185FA5' }]}>Edit Date</Text>
-                    </TouchableOpacity>
-                  </View>
+              {locked ? (
+                <View style={[styles.lockRow, { borderColor: '#27500A' }]}>
+                  <Ionicons name="lock-closed" size={12} color="#27500A" />
+                  <Text style={[styles.lockText, { color: '#27500A' }]}>Permanently locked — counts toward inventory</Text>
                 </View>
               ) : null}
             </View>
           );
         })}
+
         <View style={{ height: 20 }} />
       </ScrollView>
 
-      {/* Add Modal */}
+      {/* Manager: Add Modal */}
       <ModalSheet visible={showForm} onClose={() => setShowForm(false)}>
-          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-            <Text style={[styles.sheetTitle, { color: colors.text }]}>Record Product Receipt</Text>
-            <FormFields f={form} setF={setForm} roleColor={roleColor} sellPrice={(prices as any)[form.prod] ?? 0} />
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
-              <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
-                <Text style={styles.saveBtnText}>Save as Draft</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowForm(false)}>
-                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <Text style={[styles.sheetTitle, { color: colors.text }]}>Record Product Receipt</Text>
+          <View style={[styles.infoBox, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
+            <Ionicons name="information-circle-outline" size={15} color="#185FA5" />
+            <Text style={[styles.infoText, { color: '#185FA5' }]}>
+              {'Record the physical delivery details. Cost price will be set by the accountant after you forward this record.'}
+            </Text>
+          </View>
+          <MgrFormFields f={form} setF={setForm} roleColor={roleColor} />
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
+            <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
+              <Text style={styles.saveBtnText}>Save as Draft</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowForm(false)}>
+              <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </ModalSheet>
 
-      {/* Edit Modal */}
+      {/* Manager: Edit Modal */}
       <ModalSheet visible={editTarget !== null} onClose={() => setEditTarget(null)}>
-          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-            <View style={styles.editHeader}>
-              <View style={[styles.editIconBox, { backgroundColor: '#E8F0FC' }]}>
-                <Ionicons name="create" size={18} color="#185FA5" />
-              </View>
-              <View>
-                <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Edit Delivery</Text>
-                <Text style={[styles.editSub, { color: colors.textMuted }]}>{'WB: '}{editTarget?.wb}</Text>
-              </View>
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <View style={styles.editHeader}>
+            <View style={[styles.editIconBox, { backgroundColor: '#E8F0FC' }]}>
+              <Ionicons name="create" size={18} color="#185FA5" />
             </View>
-            <FormFields f={editForm} setF={setEditForm} roleColor={roleColor} sellPrice={(prices as any)[editForm.prod] ?? 0} />
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
-              <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: '#185FA5' }]} onPress={handleUpdate}>
-                <Ionicons name="checkmark" size={16} color="#fff" />
-                <Text style={styles.saveBtnText}>Save Changes</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setEditTarget(null)}>
-                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-      </ModalSheet>
-
-      {/* Accountant Date-Only Edit Modal */}
-      <ModalSheet visible={dateTarget !== null} onClose={() => setDateTarget(null)}>
-          <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
-            <View style={styles.editHeader}>
-              <View style={[styles.editIconBox, { backgroundColor: '#E6F1FB' }]}>
-                <Ionicons name="calendar" size={18} color="#185FA5" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Edit Delivery Date</Text>
-                <Text style={[styles.editSub, { color: colors.textMuted }]}>{'WB: '}{dateTarget?.wb}</Text>
-              </View>
-            </View>
-            <Text style={[styles.inputLabel, { color: colors.textMuted, marginTop: 8 }]}>Delivery Date</Text>
-            <View style={[styles.dateRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Ionicons name="calendar-outline" size={16} color={roleColor} />
-              <TextInput
-                style={[styles.dateInput, { color: colors.text }]}
-                value={dateEdit}
-                onChangeText={setDateEdit}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textSubtle}
-                keyboardType="numbers-and-punctuation"
-                maxLength={10}
-                autoFocus
-              />
-              <TouchableOpacity onPress={() => setDateEdit(todayIso())}>
-                <Text style={[styles.todayBtn, { color: roleColor }]}>Today</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setDateTarget(null)}>
-                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#185FA5' }]} onPress={handleDateSave}>
-                <Ionicons name="checkmark" size={15} color="#fff" />
-                <Text style={styles.saveBtnText}>Save Date</Text>
-              </TouchableOpacity>
+            <View>
+              <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Edit Delivery</Text>
+              <Text style={[styles.editSub, { color: colors.textMuted }]}>{'WB: '}{editTarget?.wb}</Text>
             </View>
           </View>
+          <MgrFormFields f={editForm} setF={setEditForm} roleColor={roleColor} />
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
+            <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: '#185FA5' }]} onPress={handleUpdate}>
+              <Ionicons name="checkmark" size={16} color="#fff" />
+              <Text style={styles.saveBtnText}>Save Changes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setEditTarget(null)}>
+              <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </ModalSheet>
 
-      {/* CEO Reject Modal */}
-      <ModalSheet visible={rejectTarget !== null} onClose={() => setRejectTarget(null)}>
-          <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
-            <View style={styles.editHeader}>
-              <View style={[styles.editIconBox, { backgroundColor: '#FCEBEB' }]}>
-                <Ionicons name="close-circle" size={18} color="#791F1F" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Reject Delivery</Text>
-                <Text style={[styles.editSub, { color: colors.textMuted }]}>{'WB: '}{rejectTarget?.wb}</Text>
-              </View>
+      {/* Accountant: Set Cost Price Modal */}
+      <ModalSheet visible={accTarget !== null} onClose={() => setAccTarget(null)}>
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <View style={styles.editHeader}>
+            <View style={[styles.editIconBox, { backgroundColor: '#E6F1FB' }]}>
+              <Ionicons name="pricetag" size={18} color="#185FA5" />
             </View>
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Reason (optional)</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Set Cost Price</Text>
+              <Text style={[styles.editSub, { color: colors.textMuted }]}>
+                {accTarget?.prod}{' · '}{accTarget?.rec.toLocaleString()}{' L · WB: '}{accTarget?.wb}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.delivSummaryBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
+              {'Supplier: '}
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget?.sup}</Text>
+            </Text>
+            <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
+              {'Received: '}
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget?.rec.toLocaleString()}{' L'}</Text>
+              {'  ·  Ordered: '}
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget?.ord.toLocaleString()}{' L'}</Text>
+            </Text>
+            <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
+              {'Date: '}
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget ? fmtDate(accTarget.dt) : ''}</Text>
+            </Text>
+          </View>
+
+          <View style={[styles.costPriceBox, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <Ionicons name="pricetag-outline" size={15} color="#185FA5" />
+              <Text style={[styles.costPriceLabel, { color: '#185FA5' }]}>Cost Price (₦ per litre) *</Text>
+            </View>
             <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              value={rejectNote}
-              onChangeText={setRejectNote}
-              placeholder="e.g. Waybill mismatch"
+              style={[styles.input, { backgroundColor: colors.background, borderColor: '#185FA550', color: colors.text, marginBottom: 0, fontSize: 18, fontWeight: '700' }]}
+              placeholder="e.g. 780"
               placeholderTextColor={colors.textSubtle}
-              autoFocus
+              keyboardType="numeric"
+              value={accCostPrice}
+              onChangeText={setAccCostPrice}
             />
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setRejectTarget(null)}>
-                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#791F1F' }]} onPress={handleRejectConfirm}>
-                <Ionicons name="close" size={15} color="#fff" />
-                <Text style={styles.saveBtnText}>Reject</Text>
-              </TouchableOpacity>
+            {accCostPrice && accTarget ? (
+              <View style={{ marginTop: 8, gap: 3 }}>
+                <Text style={[styles.costHint, { color: colors.textMuted }]}>
+                  {'Total cost: '}
+                  <Text style={{ fontWeight: '700', color: colors.text }}>
+                    {fmt(parseFloat(accCostPrice) * accTarget.rec)}
+                  </Text>
+                </Text>
+                {(prices as any)[accTarget.prod] > 0 ? (
+                  <Text style={[styles.costHint, { color: colors.textMuted }]}>
+                    {'Sell: ₦'}{((prices as any)[accTarget.prod]).toLocaleString()}{'/L  ·  Margin: '}
+                    <Text style={{ fontWeight: '700', color: ((prices as any)[accTarget.prod] - parseFloat(accCostPrice)) >= 0 ? '#27500A' : '#791F1F' }}>
+                      {Math.round((((prices as any)[accTarget.prod] - parseFloat(accCostPrice)) / (prices as any)[accTarget.prod]) * 100)}{'%'}
+                    </Text>
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+
+          <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Note to MD (optional)</Text>
+          <TextInput
+            style={[styles.input, styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+            placeholder="Any observations on this delivery..."
+            placeholderTextColor={colors.textSubtle}
+            multiline numberOfLines={3}
+            value={accNote}
+            onChangeText={setAccNote}
+          />
+
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
+            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setAccTarget(null)}>
+              <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#185FA5' }]} onPress={handleAccForward}>
+              <Ionicons name="send" size={15} color="#fff" />
+              <Text style={styles.saveBtnText}>Forward to MD</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </ModalSheet>
+
+      {/* MD: Reject / Return Modal */}
+      <ModalSheet visible={mdTarget !== null && mdRejectMode} onClose={() => { setMdTarget(null); setMdNote(''); }}>
+        <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
+          <View style={styles.editHeader}>
+            <View style={[styles.editIconBox, { backgroundColor: '#FCEBEB' }]}>
+              <Ionicons name="return-down-back" size={18} color="#791F1F" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Return to Accountant</Text>
+              <Text style={[styles.editSub, { color: colors.textMuted }]}>
+                {mdTarget?.prod}{' · WB: '}{mdTarget?.wb}
+              </Text>
             </View>
           </View>
+          <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Reason for Return *</Text>
+          <TextInput
+            style={[styles.input, styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+            value={mdNote}
+            onChangeText={setMdNote}
+            placeholder="e.g. Cost price appears incorrect, please review"
+            placeholderTextColor={colors.textSubtle}
+            multiline numberOfLines={3}
+            autoFocus
+          />
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => { setMdTarget(null); setMdNote(''); }}>
+              <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#791F1F' }]} onPress={handleMdRejectConfirm}>
+              <Ionicons name="return-down-back" size={15} color="#fff" />
+              <Text style={styles.saveBtnText}>Return to Accountant</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </ModalSheet>
     </ScreenLayout>
   );
+
+  function handleMdApprove_direct(d: Delivery) {
+    Alert.alert(
+      'Approve & Lock Record?',
+      `${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}\nWB: ${d.wb}\nCost: ₦${d.costPrice?.toLocaleString()}/L\n\nThis record will be permanently locked and counts toward inventory.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Approve', onPress: () => { approveDelivery(d.id); } },
+      ]
+    );
+  }
 }
 
 const styles = StyleSheet.create({
   scroll: { padding: 16 },
-  banner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 16 },
+  banner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 12 },
   bannerText: { fontSize: 13, fontWeight: '600', flex: 1 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, marginTop: 4 },
-  summaryGrid: { gap: 8, marginBottom: 16 },
-  summaryCard: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 10 },
-  prodBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  prodBadgeText: { fontSize: 12, fontWeight: '700' },
-  priceRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  priceCol: { gap: 2 },
-  priceLabel: { fontSize: 10 },
-  priceVal: { fontSize: 18, fontWeight: '800' },
-  marginBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, alignSelf: 'flex-start' },
-  marginText: { fontSize: 11, fontWeight: '700' },
+  inventoryGrid: { gap: 8, marginBottom: 16 },
+  invCard: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 8 },
+  invProdBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  invProdText: { fontSize: 12, fontWeight: '700' },
+  invAvail: { fontSize: 24, fontWeight: '800' },
+  invUnit: { fontSize: 14, fontWeight: '500' },
+  invDetail: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  invDetailItem: { flex: 1, alignItems: 'center', gap: 2 },
+  invDetailDivider: { width: 1, height: 28 },
+  invDetailLabel: { fontSize: 10 },
+  invDetailVal: { fontSize: 12, fontWeight: '700' },
+  lowBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  lowText: { fontSize: 11, fontWeight: '700' },
   delivCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10, gap: 8 },
   delivHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   prodTag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
@@ -716,30 +802,33 @@ const styles = StyleSheet.create({
   costDivider: { width: 1, height: 28, backgroundColor: '#e5e5e3' },
   costLabel: { fontSize: 10 },
   costVal: { fontSize: 13, fontWeight: '700' },
-  approvedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
-  approvedText: { fontSize: 11, fontWeight: '600' },
+  trailRow: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
+  trailText: { fontSize: 11, fontWeight: '600', flex: 1 },
   receivedBy: { fontSize: 10 },
   actionRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1.5 },
   actionBtnText: { fontSize: 13, fontWeight: '600' },
-  submitForApprBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8 },
-  submitForApprText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  forwardBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8 },
+  forwardBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
+  fullBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   approveBtn: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: '#27500A' },
   approveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   lockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   lockText: { fontSize: 11, fontWeight: '600' },
-  dateEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1 },
-  dateEditBtnText: { fontSize: 11, fontWeight: '700' },
   headerBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingTop: 24, maxHeight: '92%' },
   smallModal: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 14 },
   sheetTitle: { fontSize: 18, fontWeight: '700', marginBottom: 14 },
   editHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   editIconBox: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   editSub: { fontSize: 12, marginTop: 2 },
+  infoBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 14 },
+  infoText: { fontSize: 12, flex: 1, lineHeight: 18 },
+  delivSummaryBox: { borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 14, gap: 4 },
+  delivSummaryRow: { fontSize: 13 },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, marginBottom: 10 },
-  textArea: { height: 72, textAlignVertical: 'top' },
+  textArea: { height: 80, textAlignVertical: 'top' },
   inputLabel: { fontSize: 12, fontWeight: '600', marginBottom: 6 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },

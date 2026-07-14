@@ -12,7 +12,7 @@ export interface Tank {
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG'; active: boolean; }
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
-export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; }
+export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
@@ -398,6 +398,7 @@ interface AppContextType {
   updateDelivery: (id: number, updates: Partial<Omit<Delivery, 'id'>>) => void;
   deleteDelivery: (id: number) => void;
   submitDeliveryForApproval: (id: number) => void;
+  accForwardToMd: (id: number, costPrice: number, accNote: string) => void;
   approveDelivery: (id: number) => void;
   rejectDelivery: (id: number, note?: string) => void;
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
@@ -937,22 +938,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const deleteDelivery = useCallback((id: number) => {
-    setDeliveries(ds => ds.filter(d => d.id !== id));
+    setDeliveries(ds => {
+      const d = ds.find(r => r.id === id);
+      if (d?.approvalStatus === 'md_approved' || d?.approvalStatus === 'approved') return ds;
+      return ds.filter(r => r.id !== id);
+    });
     setAudit(a => [{ id: genId(), action: 'Delivery deleted', user: userName, detail: `Delivery #${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
 
   const submitDeliveryForApproval = useCallback((id: number) => {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending' as const } : rec));
-    setAudit(a => [{ id: genId(), action: 'Delivery submitted for approval', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L from ${d.sup}`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('acc', 'ceo');
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_acc' as const } : rec));
+    setAudit(a => [{ id: genId(), action: 'Delivery forwarded to accountant', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L from ${d.sup}`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('mgr', 'acc');
     setMessages(m => ({
       ...m,
       [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'acc' as Role, to: 'ceo' as Role, type: 'alert' as const,
-        body: `Delivery record submitted for approval: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb})`,
-        alrt: { title: 'Delivery Awaiting Approval', pri: 'Medium', detail: `${d.prod} · ${d.rec.toLocaleString()}L · Supplier: ${d.sup} · WB: ${d.wb}` },
+        id: genId(), from: 'mgr' as Role, to: 'acc' as Role, type: 'alert' as const,
+        body: `Product receipt forwarded for cost pricing: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb})`,
+        alrt: { title: 'Delivery Awaiting Cost Entry', pri: 'Medium', detail: `${d.prod} · ${d.rec.toLocaleString()}L · Supplier: ${d.sup} · WB: ${d.wb}` },
+        ts: nowTime(), read: false,
+      }],
+    }));
+  }, [userName, deliveries]);
+
+  const accForwardToMd = useCallback((id: number, costPrice: number, accNote: string) => {
+    const d = deliveries.find(d => d.id === id);
+    if (!d) return;
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_md' as const, costPrice, accNote, accBy: userName, accAt: nowTs() } : rec));
+    setAudit(a => [{ id: genId(), action: 'Delivery forwarded to MD', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L · Cost ₦${costPrice}/L`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('acc', 'md');
+    setMessages(m => ({
+      ...m,
+      [msgKey]: [...(m[msgKey] || []), {
+        id: genId(), from: 'acc' as Role, to: 'md' as Role, type: 'alert' as const,
+        body: `Delivery record awaiting MD approval: ${d.prod} ${d.rec.toLocaleString()}L · Cost ₦${costPrice.toLocaleString()}/L (WB: ${d.wb})`,
+        alrt: { title: 'Delivery Awaiting MD Approval', pri: 'High', detail: `${d.prod} · ${d.rec.toLocaleString()}L · ₦${costPrice.toLocaleString()}/L · WB: ${d.wb}` },
         ts: nowTime(), read: false,
       }],
     }));
@@ -961,15 +983,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const approveDelivery = useCallback((id: number) => {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'approved' as const, approvedBy: userName, approvedAt: nowTs() } : rec));
-    setAudit(a => [{ id: genId(), action: 'Delivery approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L approved`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('ceo', 'acc');
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'md_approved' as const, approvedBy: userName, approvedAt: nowTs(), mdBy: userName, mdAt: nowTs() } : rec));
+    setAudit(a => [{ id: genId(), action: 'Delivery MD-approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L · permanently locked · forms inventory`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('md', 'acc');
     setMessages(m => ({
       ...m,
       [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'ceo' as Role, to: 'acc' as Role, type: 'alert' as const,
-        body: `Delivery approved: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb})`,
-        alrt: { title: 'Delivery Record Approved', pri: 'Low', detail: `WB: ${d.wb} · ${d.prod} · ${d.rec.toLocaleString()}L · Record is now locked.` },
+        id: genId(), from: 'md' as Role, to: 'acc' as Role, type: 'alert' as const,
+        body: `Delivery approved by MD: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb}). Record is now locked and counts toward inventory.`,
+        alrt: { title: 'Delivery MD Approved — Inventory Updated', pri: 'Low', detail: `WB: ${d.wb} · ${d.prod} · ${d.rec.toLocaleString()}L · Record locked.` },
         ts: nowTime(), read: false,
       }],
     }));
@@ -978,15 +1000,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const rejectDelivery = useCallback((id: number, note?: string) => {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'rejected' as const, rejectedNote: note } : rec));
-    setAudit(a => [{ id: genId(), action: 'Delivery rejected', user: userName, detail: `WB: ${d.wb}${note ? ' — ' + note : ''}`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('ceo', 'acc');
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_acc' as const, rejectedNote: note } : rec));
+    setAudit(a => [{ id: genId(), action: 'Delivery rejected by MD', user: userName, detail: `WB: ${d.wb}${note ? ' — ' + note : ''} · returned to accountant`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('md', 'acc');
     setMessages(m => ({
       ...m,
       [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'ceo' as Role, to: 'acc' as Role, type: 'alert' as const,
-        body: `Delivery rejected: ${d.prod} WB: ${d.wb}${note ? ' — ' + note : ''}`,
-        alrt: { title: 'Delivery Record Rejected', pri: 'Medium', detail: note || 'No reason given' },
+        id: genId(), from: 'md' as Role, to: 'acc' as Role, type: 'alert' as const,
+        body: `Delivery rejected: ${d.prod} WB: ${d.wb}${note ? ' — ' + note : ''}. Please revise and resubmit.`,
+        alrt: { title: 'Delivery Returned by MD', pri: 'Medium', detail: note || 'No reason given' },
         ts: nowTime(), read: false,
       }],
     }));
@@ -1562,7 +1584,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
-      addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, approveDelivery, rejectDelivery, addMaintenance, addSales,
+      addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence,
       pumpDailyReports, pumpInitialMeters, setPumpInitialMeter,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport,
