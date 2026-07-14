@@ -376,7 +376,7 @@ export default function TanksScreen() {
           })}
 
           <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>Delivery Records</Text>
-          {deliveries.map(rec => {
+          {deliveries.filter(d => !branchId || !d.branchId || d.branchId === branchId).map(rec => {
             const evidence = deliveryEvidences.filter(e => e.delivId === rec.id);
             return (
               <View key={rec.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
