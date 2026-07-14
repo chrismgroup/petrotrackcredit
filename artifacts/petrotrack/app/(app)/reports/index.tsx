@@ -378,72 +378,90 @@ export default function ReportsScreen() {
   return (
     <ScreenLayout title="Reports">
 
-      {/* ── Branch bar (non-managers only) ── */}
-      {!isMgr && safeBranches.length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
-          contentContainerStyle={s.filterBar}>
-          {([{ id: null, name: 'All Branches' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
-            const active = selBranch === b.id;
+      {/* ── Compact top bar: Period + Branch ── */}
+      <View style={[s.topBar, { borderBottomColor: colors.border }]}>
+        {/* Period chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6, paddingRight: 8 }}>
+          {PERIODS.map(p => {
+            const active = period === p;
             return (
-              <TouchableOpacity key={String(b.id)} onPress={() => setSelBranch(b.id)}
-                style={[s.pill, { backgroundColor: active ? rc : colors.surface, borderColor: active ? rc : colors.border }]}>
-                <Text style={[s.pillTxt, { color: active ? '#fff' : colors.textMuted }]}>{b.name}</Text>
+              <TouchableOpacity key={p} onPress={() => setPeriod(p)}
+                style={[s.periodChip, { backgroundColor: active ? rc : colors.surface, borderColor: active ? rc : colors.border }]}>
+                <Text style={[s.periodChipTxt, { color: active ? '#fff' : colors.textMuted }]}>{p}</Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
-      ) : null}
-
-      {/* ── Report type tabs ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
-        contentContainerStyle={s.filterBar}>
-        {perms.visible.map(rt => {
-          const m = REPORT_META[rt];
-          const active = reportType === rt;
-          return (
-            <TouchableOpacity key={rt} onPress={() => setReportType(rt)}
-              style={[s.pill, { backgroundColor: active ? m.color : colors.surface, borderColor: active ? m.color : colors.border }]}>
-              <Ionicons name={m.icon as any} size={12} color={active ? '#fff' : colors.textMuted} />
-              <Text style={[s.pillTxt, { color: active ? '#fff' : colors.textMuted }]}>{m.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* ── Period pills ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
-        contentContainerStyle={s.filterBar}>
-        {PERIODS.map(p => {
-          const active = period === p;
-          return (
-            <TouchableOpacity key={p} onPress={() => setPeriod(p)}
-              style={[s.pill, { backgroundColor: active ? rc : colors.surface, borderColor: active ? rc : colors.border }]}>
-              <Text style={[s.pillTxt, { color: active ? '#fff' : colors.textMuted }]}>{p}</Text>
-            </TouchableOpacity>
-          );
-        })}
-        <Text style={[s.dateRange, { color: colors.textSubtle }]}>{periodStr}</Text>
-      </ScrollView>
+        {/* Branch chips (non-managers only) */}
+        {!isMgr && safeBranches.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 5, paddingRight: 4 }}>
+            {([{ id: null, name: 'All' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
+              const active = selBranch === b.id;
+              return (
+                <TouchableOpacity key={String(b.id)} onPress={() => setSelBranch(b.id)}
+                  style={[s.branchChip, { backgroundColor: active ? rc + '18' : 'transparent', borderColor: active ? rc : colors.border }]}>
+                  {active && <Ionicons name="business" size={10} color={rc} />}
+                  <Text style={[s.branchChipTxt, { color: active ? rc : colors.textMuted }]}>{b.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+      </View>
 
       {/* ── Data ── */}
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Report header strip */}
+        {/* ── Report type grid (2 columns) ── */}
+        <View style={s.typeGrid}>
+          {perms.visible.map(rt => {
+            const m = REPORT_META[rt];
+            const active = reportType === rt;
+            return (
+              <TouchableOpacity key={rt} onPress={() => setReportType(rt)}
+                activeOpacity={0.75}
+                style={[s.typeCard, {
+                  backgroundColor: active ? m.color : colors.surface,
+                  borderColor: active ? m.color : colors.border,
+                }]}>
+                <View style={[s.typeIconBox, { backgroundColor: active ? 'rgba(255,255,255,0.2)' : m.color + '18' }]}>
+                  <Ionicons name={m.icon as any} size={18} color={active ? '#fff' : m.color} />
+                </View>
+                <Text style={[s.typeCardLabel, { color: active ? '#fff' : colors.text }]}>{m.label}</Text>
+                <Text style={[s.typeCardDesc, { color: active ? 'rgba(255,255,255,0.75)' : colors.textMuted }]} numberOfLines={2}>
+                  {m.desc}
+                </Text>
+                {active && (
+                  <View style={s.typeActiveCheck}>
+                    <Ionicons name="checkmark-circle" size={14} color="rgba(255,255,255,0.9)" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* ── Report header strip (with inline export) ── */}
         <View style={[s.reportStrip, { backgroundColor: meta.color }]}>
-          <Ionicons name={meta.icon as any} size={18} color="rgba(255,255,255,0.9)" />
+          <View style={[s.stripIcon, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
+            <Ionicons name={meta.icon as any} size={18} color="#fff" />
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={s.stripTitle}>{meta.label}</Text>
-            <Text style={s.stripSub}>{period} · {branchName}</Text>
+            <Text style={s.stripSub}>{period} · {periodStr}</Text>
           </View>
-          {!canExport ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Ionicons name="eye-outline" size={13} color="rgba(255,255,255,0.7)" />
+          {canExport ? (
+            <TouchableOpacity onPress={handleExport} disabled={exporting}
+              style={[s.stripExportBtn, { opacity: exporting ? 0.6 : 1 }]}>
+              <Ionicons name={exporting ? 'hourglass-outline' : 'share-outline'} size={13} color={meta.color} />
+              <Text style={[s.stripExportTxt, { color: meta.color }]}>{exporting ? 'Exporting…' : 'Export PDF'}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={s.viewOnlyPill}>
+              <Ionicons name="lock-closed-outline" size={10} color="rgba(255,255,255,0.7)" />
               <Text style={s.viewOnlyBadge}>View only</Text>
             </View>
-          ) : null}
+          )}
         </View>
 
         {/* ── SUMMARY ── */}
@@ -742,22 +760,7 @@ export default function ReportsScreen() {
           </>
         ) : null}
 
-        {/* ── Export / View-only footer ── */}
-        {canExport ? (
-          <TouchableOpacity onPress={handleExport} disabled={exporting}
-            style={[s.exportBtn, { backgroundColor: exporting ? colors.textSubtle : meta.color }]}>
-            <Ionicons name={exporting ? 'hourglass-outline' : 'share-outline'} size={16} color="#fff" />
-            <Text style={s.exportBtnTxt}>{exporting ? 'Preparing PDF…' : `Share ${meta.label} as PDF`}</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={[s.viewOnlyFooter, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="lock-closed-outline" size={15} color={colors.textMuted} />
-            <Text style={[s.viewOnlyFooterTxt, { color: colors.textMuted }]}>
-              PDF export for this report is available to authorised roles only.
-            </Text>
-          </View>
-        )}
-        <View style={{ height: 28 }} />
+        <View style={{ height: 32 }} />
       </ScrollView>
     </ScreenLayout>
   );
@@ -871,20 +874,40 @@ function ProdSaleRow({ p, colors }: { p: any; colors: any }) {
 
 /* ─── Styles ─────────────────────────────────────────────── */
 const s = StyleSheet.create({
-  filterBar:      { flexDirection: 'row', gap: 6, padding: 10, paddingHorizontal: 12, alignItems: 'center' },
-  pill:           { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
-  pillTxt:        { fontSize: 12, fontWeight: '600' },
-  dateRange:      { fontSize: 11, marginLeft: 4 },
-  scroll:         { padding: 16 },
+  /* ── Top bar ── */
+  topBar:         { paddingHorizontal: 14, paddingVertical: 8, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  periodChip:     { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  periodChipTxt:  { fontSize: 12, fontWeight: '600' },
+  branchChip:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1 },
+  branchChipTxt:  { fontSize: 11, fontWeight: '500' },
+
+  /* ── Type card grid ── */
+  typeGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  typeCard:       { width: '48%', padding: 13, borderRadius: 14, borderWidth: 1.5, position: 'relative', minHeight: 100 },
+  typeIconBox:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  typeCardLabel:  { fontSize: 13, fontWeight: '700', marginBottom: 3 },
+  typeCardDesc:   { fontSize: 11, lineHeight: 15 },
+  typeActiveCheck:{ position: 'absolute', top: 10, right: 10 },
+
+  /* ── Report header strip ── */
+  scroll:         { padding: 14 },
   reportStrip:    { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, marginBottom: 14 },
-  stripTitle:     { color: '#fff', fontSize: 16, fontWeight: '800' },
-  stripSub:       { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 },
-  viewOnlyBadge:  { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontStyle: 'italic' },
-  kpiRow:         { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  kpiCard:        { flex: 1, borderRadius: 12, borderWidth: 1, padding: 10, alignItems: 'center', gap: 3 },
-  kpiLabel:       { fontSize: 9, fontWeight: '600', textTransform: 'uppercase' },
+  stripIcon:      { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  stripTitle:     { color: '#fff', fontSize: 15, fontWeight: '800' },
+  stripSub:       { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 2 },
+  stripExportBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9, backgroundColor: '#fff' },
+  stripExportTxt: { fontSize: 11, fontWeight: '700' },
+  viewOnlyPill:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)' },
+  viewOnlyBadge:  { color: 'rgba(255,255,255,0.8)', fontSize: 10, fontStyle: 'italic' },
+
+  /* ── KPI cards ── */
+  kpiRow:         { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  kpiCard:        { flex: 1, borderRadius: 12, borderWidth: 1, padding: 11, alignItems: 'center', gap: 4 },
+  kpiLabel:       { fontSize: 9, fontWeight: '600', textTransform: 'uppercase', textAlign: 'center' },
   kpiValue:       { fontSize: 13, fontWeight: '800' },
-  secTitle:       { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+
+  /* ── Sections ── */
+  secTitle:       { fontSize: 14, fontWeight: '700', marginBottom: 10, marginTop: 4 },
   marginRow:      { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
   marginLabel:    { fontSize: 12, fontWeight: '600', width: 90 },
   marginPct:      { fontSize: 14, fontWeight: '800', width: 42, textAlign: 'right' },
@@ -902,6 +925,8 @@ const s = StyleSheet.create({
   totalPillValue: { fontSize: 28, fontWeight: '800' },
   priBadge:       { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   stBadge:        { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+
+  /* ── P&L ── */
   plHeader:       { borderRadius: 16, padding: 20, marginBottom: 14, gap: 4 },
   plHeaderLabel:  { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
   plHeaderNet:    { color: '#fff', fontSize: 34, fontWeight: '800' },
@@ -910,9 +935,7 @@ const s = StyleSheet.create({
   plRow:          { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   plOpex:         { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
   plFinal:        { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
+
+  /* ── Empty ── */
   empty:          { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  exportBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, borderRadius: 14, marginTop: 16, marginBottom: 8 },
-  exportBtnTxt:   { color: '#fff', fontSize: 15, fontWeight: '800' },
-  viewOnlyFooter: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, marginTop: 16 },
-  viewOnlyFooterTxt: { flex: 1, fontSize: 12, lineHeight: 17 },
 });
