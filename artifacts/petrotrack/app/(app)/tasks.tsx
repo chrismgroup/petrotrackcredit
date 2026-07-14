@@ -4,7 +4,7 @@ import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { KPI, ROLE_COLORS, ROLE_LABELS, TASK_CAN_ASSIGN, Task, TaskCadence, TaskPriority, TaskStatus, UINFO, fmtDate, useApp } from '@/context/AppContext';
+import { KPI, ROLE_COLORS, ROLE_LABELS, TASK_CAN_ASSIGN, Task, TaskCadence, TaskPriority, TaskStatus, UINFO, resolveUserInfo, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 type TabId = 'mine' | 'assigned' | 'kpis';
@@ -40,7 +40,7 @@ const CADENCE_FILTERS: { id: CadenceFilter; label: string }[] = [
 const KPI_PERIODS = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Annual', 'Per request'];
 
 export default function TasksScreen() {
-  const { role, userName, tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi } = useApp();
+  const { role, userName, userAccounts, tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'md'] || colors.primary;
   const isCeo = role === 'ceo';
@@ -82,12 +82,12 @@ export default function TasksScreen() {
     if (!role || !taskForm.title || !taskForm.assignedTo) {
       Alert.alert('Required', 'Title and assignee are required.'); return;
     }
-    const info = UINFO[taskForm.assignedTo];
+    const assignedToResolved = resolveUserInfo(taskForm.assignedTo, userAccounts);
     addTask({
       title: taskForm.title, desc: taskForm.desc,
       assignedBy: role, assignedByName: userName,
       assignedTo: taskForm.assignedTo as any,
-      assignedToName: info?.name ?? taskForm.assignedTo,
+      assignedToName: assignedToResolved.name,
       status: 'commenced', priority: taskForm.priority,
       cadence: taskForm.cadence,
       target: taskForm.target || undefined,
@@ -105,7 +105,7 @@ export default function TasksScreen() {
     addKpi({
       title: kpiForm.title, target: kpiForm.target, unit: kpiForm.unit,
       period: kpiForm.period, assignedTo: kpiForm.assignedTo as any,
-      assignedToName: UINFO[kpiForm.assignedTo]?.name ?? kpiForm.assignedTo,
+      assignedToName: resolveUserInfo(kpiForm.assignedTo, userAccounts).name,
     });
     setKpiForm({ title: '', target: '', unit: '', period: 'Monthly', assignedTo: '', assignedToName: '' });
     setShowKpiForm(false);
@@ -488,7 +488,7 @@ export default function TasksScreen() {
             {/* Assign to */}
             <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Assign to *</Text>
             {assignableRoles.map(r => {
-              const info = UINFO[r];
+              const resolved = resolveUserInfo(r, userAccounts);
               const rc = ROLE_COLORS[r] || colors.primary;
               const active = taskForm.assignedTo === r;
               return (
@@ -498,10 +498,10 @@ export default function TasksScreen() {
                   style={[styles.assigneeRow, { backgroundColor: active ? rc + '10' : colors.surface, borderColor: active ? rc : colors.border }]}
                 >
                   <View style={[styles.assigneeAvatar, { backgroundColor: active ? rc : colors.textSubtle }]}>
-                    <Text style={styles.assigneeAvatarText}>{info?.initials ?? r.slice(0, 2).toUpperCase()}</Text>
+                    <Text style={styles.assigneeAvatarText}>{resolved.initials}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.assigneeName, { color: active ? rc : colors.text }]}>{info?.name ?? r}</Text>
+                    <Text style={[styles.assigneeName, { color: active ? rc : colors.text }]}>{resolved.name}</Text>
                     <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
                   </View>
                   {active && <Ionicons name="checkmark-circle" size={18} color={rc} />}
@@ -554,20 +554,20 @@ export default function TasksScreen() {
 
             <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Assign to *</Text>
             {(['md', 'mktg', 'csm', 'acc', 'mgr', 'att'] as const).filter(r => r !== role).map(r => {
-              const info = UINFO[r];
+              const resolved = resolveUserInfo(r, userAccounts);
               const rc = ROLE_COLORS[r] || colors.primary;
               const active = kpiForm.assignedTo === r;
               return (
                 <TouchableOpacity
                   key={r}
-                  onPress={() => setKpiForm(f => ({ ...f, assignedTo: r, assignedToName: info?.name ?? r }))}
+                  onPress={() => setKpiForm(f => ({ ...f, assignedTo: r, assignedToName: resolved.name }))}
                   style={[styles.assigneeRow, { backgroundColor: active ? rc + '10' : colors.surface, borderColor: active ? rc : colors.border }]}
                 >
                   <View style={[styles.assigneeAvatar, { backgroundColor: active ? rc : colors.textSubtle }]}>
-                    <Text style={styles.assigneeAvatarText}>{info?.initials ?? r.slice(0, 2).toUpperCase()}</Text>
+                    <Text style={styles.assigneeAvatarText}>{resolved.initials}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.assigneeName, { color: active ? rc : colors.text }]}>{info?.name ?? r}</Text>
+                    <Text style={[styles.assigneeName, { color: active ? rc : colors.text }]}>{resolved.name}</Text>
                     <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
                   </View>
                   {active && <Ionicons name="checkmark-circle" size={18} color={rc} />}
