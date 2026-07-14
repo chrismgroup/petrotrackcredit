@@ -226,27 +226,30 @@ export default function ShiftReportScreen() {
     Alert.alert('Saved', 'Initial meter reading updated.');
   }
 
+  /* ── branch-scoped filter: both att and mgr see ONLY their branch ── */
+  const inMyBranch = (r: PumpDailyReport) => {
+    if (!branchId) return true;           // no branch set on this session — show all (legacy)
+    if (!r.branchId) return true;         // report has no branch tag (legacy data) — show to all
+    return r.branchId === branchId;
+  };
+
   /* ── filtered lists ── */
   const myReports = useMemo(() =>
     [...pumpDailyReports]
-      .filter(r => r.submittedBy === userName || r.branchId === branchId)
+      .filter(r => inMyBranch(r) && (r.submittedBy === userName || r.branchId === branchId))
       .sort((a, b) => b.date.localeCompare(a.date)),
     [pumpDailyReports, userName, branchId]
   );
 
-  // A manager sees reports from their branch OR reports with no branch set (unassigned attendants)
-  const mgrCanSee = (r: PumpDailyReport) =>
-    !isMgr || !branchId || !r.branchId || r.branchId === branchId;
-
   const pendingMgr = useMemo(() =>
-    pumpDailyReports.filter(r => r.status === 'pending_manager' && mgrCanSee(r))
+    pumpDailyReports.filter(r => r.status === 'pending_manager' && inMyBranch(r))
       .sort((a, b) => b.date.localeCompare(a.date)),
-    [pumpDailyReports, branchId, isMgr]
+    [pumpDailyReports, branchId]
   );
   const returnedMgr = useMemo(() =>
-    pumpDailyReports.filter(r => r.status === 'returned' && mgrCanSee(r))
+    pumpDailyReports.filter(r => r.status === 'returned' && inMyBranch(r))
       .sort((a, b) => b.date.localeCompare(a.date)),
-    [pumpDailyReports, branchId, isMgr]
+    [pumpDailyReports, branchId]
   );
   const pendingAcc = useMemo(() =>
     pumpDailyReports.filter(r => r.status === 'pending_accountant')
