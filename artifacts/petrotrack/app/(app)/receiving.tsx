@@ -312,6 +312,17 @@ export default function ReceivingScreen() {
     setMdNote('');
   }
 
+  function handleMdApproveDirect(d: Delivery) {
+    Alert.alert(
+      'Approve & Lock Record?',
+      `${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}\nWB: ${d.wb}\nCost: ₦${d.costPrice?.toLocaleString()}/L\n\nThis record will be permanently locked and counts toward inventory.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Approve', onPress: () => approveDelivery(d.id) },
+      ]
+    );
+  }
+
   const canMgrEdit = (d: Delivery) =>
     isMgr && (d.approvalStatus === 'draft' || !d.approvalStatus);
   const canMgrSubmit = (d: Delivery) =>
@@ -559,7 +570,7 @@ export default function ReceivingScreen() {
                     <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Return</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => { setMdTarget(d); handleMdApprove_direct(d); }}
+                    onPress={() => handleMdApproveDirect(d)}
                     style={[styles.approveBtn]}
                   >
                     <Ionicons name="checkmark-circle" size={14} color="#fff" />
@@ -753,16 +764,6 @@ export default function ReceivingScreen() {
     </ScreenLayout>
   );
 
-  function handleMdApprove_direct(d: Delivery) {
-    Alert.alert(
-      'Approve & Lock Record?',
-      `${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}\nWB: ${d.wb}\nCost: ₦${d.costPrice?.toLocaleString()}/L\n\nThis record will be permanently locked and counts toward inventory.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Approve', onPress: () => { approveDelivery(d.id); } },
-      ]
-    );
-  }
 }
 
 const styles = StyleSheet.create({
