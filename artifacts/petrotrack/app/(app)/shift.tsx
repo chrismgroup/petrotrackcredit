@@ -234,13 +234,17 @@ export default function ShiftReportScreen() {
     [pumpDailyReports, userName, branchId]
   );
 
+  // A manager sees reports from their branch OR reports with no branch set (unassigned attendants)
+  const mgrCanSee = (r: PumpDailyReport) =>
+    !isMgr || !branchId || !r.branchId || r.branchId === branchId;
+
   const pendingMgr = useMemo(() =>
-    pumpDailyReports.filter(r => r.status === 'pending_manager' && (isMgr ? r.branchId === branchId : true))
+    pumpDailyReports.filter(r => r.status === 'pending_manager' && mgrCanSee(r))
       .sort((a, b) => b.date.localeCompare(a.date)),
     [pumpDailyReports, branchId, isMgr]
   );
   const returnedMgr = useMemo(() =>
-    pumpDailyReports.filter(r => r.status === 'returned' && (isMgr ? r.branchId === branchId : true))
+    pumpDailyReports.filter(r => r.status === 'returned' && mgrCanSee(r))
       .sort((a, b) => b.date.localeCompare(a.date)),
     [pumpDailyReports, branchId, isMgr]
   );
