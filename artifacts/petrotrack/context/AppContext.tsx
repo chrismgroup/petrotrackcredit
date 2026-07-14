@@ -62,7 +62,7 @@ export const MGR_BRANCH_NAMES: Record<string, string> = {
 };
 export interface Department { id: string; name: string; icon: string; col: { bg: string; fg: string }; roles: string[]; sys: boolean; }
 export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; 'Lube Oil': number; }
-export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; }
+export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; reason?: string; }
 export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; }
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
 export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; duration?: string; }
@@ -372,7 +372,7 @@ interface AppContextType {
   accRejectPumpReport: (id: number, rejectionReason: string) => void;
   mgrResubmitPumpReport: (id: number, mgrNote: string) => void;
   deletePumpReport: (id: number) => void;
-  updatePrice: (prod: string, price: number) => void;
+  updatePrice: (prod: string, price: number, by?: string, reason?: string) => void;
   priceProposals: PriceProposal[];
   addPriceProposal: (prod: string, proposedPrice: number) => void;
   approvePriceProposal: (id: number) => void;
@@ -795,12 +795,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Manager permissions updated', user: userName, detail: `Branch ${bid}: ${JSON.stringify(perms)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updatePrice = useCallback((prod: string, price: number, by?: string) => {
+  const updatePrice = useCallback((prod: string, price: number, by?: string, reason?: string) => {
     const oldPrice = (prices as any)[prod] ?? 0;
     const actor = by ?? userName;
     setPrices(p => ({ ...p, [prod]: price }));
-    setPriceHistory(h => [{ id: genId(), prod, oldPrice, newPrice: price, by: actor, dt: nowTs() }, ...h]);
-    setAudit(a => [{ id: genId(), action: 'Price update', user: actor, detail: `${prod}: ₦${oldPrice} → ₦${price}/L`, ts: nowTs() }, ...a]);
+    setPriceHistory(h => [{ id: genId(), prod, oldPrice, newPrice: price, by: actor, dt: nowTs(), reason }, ...h]);
+    setAudit(a => [{ id: genId(), action: 'Price update', user: actor, detail: `${prod}: ₦${oldPrice} → ₦${price}/L${reason ? ' — ' + reason : ''}`, ts: nowTs() }, ...a]);
   }, [userName, prices]);
 
   const addPriceProposal = useCallback((prod: string, proposedPrice: number) => {

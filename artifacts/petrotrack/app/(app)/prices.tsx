@@ -37,10 +37,18 @@ function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () =
 export default function PricesScreen() {
   const {
     role, userName,
-    prices, priceHistory, priceProposals,
+    prices, priceHistory, priceProposals, deliveries,
     updatePrice, addPriceProposal,
     approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
   } = useApp();
+
+  // Last approved delivery cost price per product — gives MD market context
+  function lastCostPrice(prod: string): number | null {
+    const approved = deliveries
+      .filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') && d.costPrice)
+      .sort((a, b) => b.id - a.id);
+    return approved[0]?.costPrice ?? null;
+  }
   const colors = useColors();
   const rc = ROLE_COLORS[role || 'md'] || colors.primary;
 
@@ -50,12 +58,16 @@ export default function PricesScreen() {
   const canPropose   = !canSetDirect;
 
   /* ── Set-price sheet (CEO / MD / admin) ── */
-  const [setProd,  setSetProd]  = useState<keyof Prices | null>(null);
-  const [setDraft, setSetDraft] = useState('');
+  const [setProd,   setSetProd]   = useState<keyof Prices | null>(null);
+  const [setDraft,  setSetDraft]  = useState('');
+  const [setReason, setSetReason] = useState('');
+
+  const REASON_PRESETS = ['Market price increase', 'Market price decrease', 'NNPC directive', 'Depot price change', 'Seasonal adjustment', 'Other'];
 
   function openSet(prod: keyof Prices) {
     setSetProd(prod);
     setSetDraft(((prices as any)[prod] ?? 0) > 0 ? String((prices as any)[prod]) : '');
+    setSetReason('');
   }
   function handleSet() {
     if (!setProd) return;
@@ -69,8 +81,9 @@ export default function PricesScreen() {
       Alert.alert('No change', 'The new price is the same as the current price.');
       return;
     }
-    updatePrice(setProd, val);
+    updatePrice(setProd, val, undefined, setReason.trim() || undefined);
     setSetProd(null);
+    setSetReason('');
     Alert.alert('Price updated', `${setProd} price set to ₦${val.toLocaleString()}/L`);
   }
 
@@ -321,6 +334,7 @@ export default function PricesScreen() {
                       <Text style={[s.propNew, { color: colors.text }]}>₦{h.newPrice.toLocaleString()}</Text>
                     </View>
                     <Text style={[s.prodUnit, { color: colors.textSubtle }]}>{h.prod} · by {h.by} · {fmtDateTime(h.dt)}</Text>
+                    {h.reason ? <Text style={[s.prodUnit, { color: colors.textMuted, fontStyle: 'italic' }]}>{h.reason}</Text> : null}
                   </View>
                   <View style={[s.diffBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB', borderWidth: 1, borderColor: up ? '#27500A30' : '#791F1F30' }]}>
                     <Text style={[s.diffTxt, { color: up ? '#27500A' : '#791F1F' }]}>
@@ -344,8 +358,8 @@ export default function PricesScreen() {
       </ScrollView>
 
       {/* ══ Set Price Sheet (CEO / MD / admin) ══ */}
-      <Sheet visible={setProd !== null} onClose={() => setSetProd(null)}>
-        <View style={[s.sheet, { backgroundColor: colors.surface }]}>
+      <Sheet visible={setProd !== null} onClose={() => { setSetProd(null); setSetReason(''); }}>
+        <ScrollView style={[s.sheet, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={s.sheetHandle} />
           <View style={s.sheetHeader}>
             <View style={[s.sheetIcon, { backgroundColor: (PROD_META[setProd || 'PMS']?.color ?? rc) + '18' }]}>
@@ -358,6 +372,41 @@ export default function PricesScreen() {
               </Text>
             </View>
           </View>
+
+          {/* Cost context */}
+          {setProd && lastCostPrice(setProd) ? (
+            <View style={[s.contextBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={[s.contextLabel, { color: colors.textMuted }]}>Last Cost Price</Text>
+                  <Text style={[s.contextVal, { color: colors.text }]}>{'₦'}{lastCostPrice(setProd)!.toLocaleString()}{'/L'}</Text>
+                </View>
+                {(prices as any)[setProd] > 0 ? (
+                  <>
+                    <View style={[s.contextDivider, { backgroundColor: colors.border }]} />
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={[s.contextLabel, { color: colors.textMuted }]}>Current Margin</Text>
+                      <Text style={[s.contextVal, { color: (prices as any)[setProd] > lastCostPrice(setProd)! ? '#27500A' : '#791F1F' }]}>
+                        {Math.round((((prices as any)[setProd] - lastCostPrice(setProd)!) / (prices as any)[setProd]) * 100)}{'%'}
+                      </Text>
+                    </View>
+                  </>
+                ) : null}
+                {setDraft && parseFloat(setDraft) > 0 && lastCostPrice(setProd) ? (
+                  <>
+                    <View style={[s.contextDivider, { backgroundColor: colors.border }]} />
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={[s.contextLabel, { color: colors.textMuted }]}>New Margin</Text>
+                      <Text style={[s.contextVal, { color: parseFloat(setDraft) > lastCostPrice(setProd)! ? '#27500A' : '#791F1F' }]}>
+                        {Math.round(((parseFloat(setDraft) - lastCostPrice(setProd)!) / parseFloat(setDraft)) * 100)}{'%'}
+                      </Text>
+                    </View>
+                  </>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+
           <Text style={[s.inputLabel, { color: colors.textMuted }]}>New Selling Price (₦ per litre)</Text>
           <TextInput
             style={[s.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
@@ -371,14 +420,31 @@ export default function PricesScreen() {
             autoFocus
             selectTextOnFocus
           />
-          {role === 'md' ? (
-            <View style={[s.noteBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
-              <Text style={[s.noteTxt, { color: colors.textMuted }]}>As MD, you can set prices directly. This takes effect immediately.</Text>
-            </View>
+
+          <Text style={[s.inputLabel, { color: colors.textMuted }]}>Reason for Change</Text>
+          <View style={s.presetRow}>
+            {REASON_PRESETS.map(r => (
+              <TouchableOpacity
+                key={r}
+                onPress={() => setSetReason(setReason === r ? '' : r)}
+                style={[s.presetChip, { backgroundColor: setReason === r ? (PROD_META[setProd || 'PMS']?.color ?? rc) + '20' : colors.background, borderColor: setReason === r ? (PROD_META[setProd || 'PMS']?.color ?? rc) : colors.border }]}
+              >
+                <Text style={[s.presetChipTxt, { color: setReason === r ? (PROD_META[setProd || 'PMS']?.color ?? rc) : colors.textMuted }]}>{r}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {setReason === 'Other' ? (
+            <TextInput
+              style={[s.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text, marginTop: 6 }]}
+              placeholder="Describe the reason..."
+              placeholderTextColor={colors.textSubtle}
+              value={setReason === 'Other' ? '' : setReason}
+              onChangeText={setSetReason}
+            />
           ) : null}
+
           <View style={s.sheetBtns}>
-            <TouchableOpacity style={[s.btnOutline, { borderColor: colors.border }]} onPress={() => setSetProd(null)}>
+            <TouchableOpacity style={[s.btnOutline, { borderColor: colors.border }]} onPress={() => { setSetProd(null); setSetReason(''); }}>
               <Text style={[s.btnOutlineTxt, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -389,7 +455,8 @@ export default function PricesScreen() {
               <Text style={s.btnFillTxt}>Update Price</Text>
             </TouchableOpacity>
           </View>
-        </View>
+          <View style={{ height: 32 }} />
+        </ScrollView>
       </Sheet>
 
       {/* ══ Propose Sheet (other roles) ══ */}
@@ -551,6 +618,14 @@ const s = StyleSheet.create({
   histRow:       { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 8 },
   statusBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   statusTxt:     { fontSize: 11, fontWeight: '700' },
+
+  contextBox:     { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 4 },
+  contextLabel:   { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
+  contextVal:     { fontSize: 15, fontWeight: '800' },
+  contextDivider: { width: 1, height: 36 },
+  presetRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  presetChip:     { borderRadius: 20, borderWidth: 1.5, paddingHorizontal: 12, paddingVertical: 6 },
+  presetChipTxt:  { fontSize: 12, fontWeight: '600' },
 
   emptyBox:      { borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', padding: 40, alignItems: 'center', gap: 12, marginTop: 8 },
   emptyTxt:      { fontSize: 14, textAlign: 'center' },
