@@ -451,13 +451,28 @@ export default function TanksScreen() {
             </View>
           )}
           {visibleTanks.map(t => {
-            const stock = t.op + t.rv - t.sl;
-            const pct = stockPct(t);
+            const approvedDips = dips
+              .filter(d => d.status === 'approved' && d.rd[t.id] !== undefined)
+              .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
+            const lastDipRecord = approvedDips[0];
+            const dipReading = lastDipRecord ? (lastDipRecord.rd[t.id] ?? 0) : 0;
+            const dipDt = lastDipRecord?.dt;
+            const deliveriesSinceDip = deliveries
+              .filter(d => d.prod === t.prod &&
+                (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+                (!dipDt || new Date(d.dt) > new Date(dipDt)))
+              .reduce((s, d) => s + d.rec, 0);
+            const salesSinceDip = sales
+              .filter(s => s.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
+                (!dipDt || new Date(s.dt) > new Date(dipDt)))
+              .reduce((s, e) => s + e.L, 0);
+            const currentStock = Math.max(0, dipReading + deliveriesSinceDip - salesSinceDip);
+            const pct = t.cap > 0 ? Math.min(100, Math.round((currentStock / t.cap) * 100)) : 0;
             const barColor = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary;
             return (
               <View key={t.id} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.invHeader}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={[styles.invName, { color: colors.text }]}>{t.name}</Text>
                     <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {t.cap.toLocaleString()}L</Text>
                   </View>
@@ -470,16 +485,32 @@ export default function TanksScreen() {
                 </View>
                 <View style={styles.invStats}>
                   <View style={styles.invStat}>
-                    <Text style={[styles.invStatVal, { color: colors.text }]}>{stock.toLocaleString()}L</Text>
+                    <Text style={[styles.invStatVal, { color: colors.text }]}>{currentStock.toLocaleString()}L</Text>
                     <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Current Stock</Text>
                   </View>
                   <View style={styles.invStat}>
                     <Text style={[styles.invStatVal, { color: barColor }]}>{pct}%</Text>
                     <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Fill Level</Text>
                   </View>
-                  <View style={styles.invStat}>
-                    <Text style={[styles.invStatVal, { color: colors.text }]}>{t.sl.toLocaleString()}L</Text>
-                    <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Today Sales</Text>
+                </View>
+                <View style={[styles.invBreakdown, { borderTopColor: colors.border }]}>
+                  <View style={styles.invBreakdownRow}>
+                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>
+                      Last dip{lastDipRecord ? ` (${fmtDateTime(lastDipRecord.dt)})` : ''}
+                    </Text>
+                    <Text style={[styles.invBreakdownVal, { color: colors.text }]}>{dipReading.toLocaleString()}L</Text>
+                  </View>
+                  <View style={styles.invBreakdownRow}>
+                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>+ Deliveries received</Text>
+                    <Text style={[styles.invBreakdownVal, { color: '#27500A' }]}>+{deliveriesSinceDip.toLocaleString()}L</Text>
+                  </View>
+                  <View style={styles.invBreakdownRow}>
+                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>− Sales volume</Text>
+                    <Text style={[styles.invBreakdownVal, { color: colors.error }]}>−{salesSinceDip.toLocaleString()}L</Text>
+                  </View>
+                  <View style={[styles.invBreakdownRow, styles.invBreakdownTotal, { borderTopColor: colors.border }]}>
+                    <Text style={[styles.invBreakdownLabel, { color: colors.text, fontWeight: '700' }]}>= Current Inventory</Text>
+                    <Text style={[styles.invBreakdownVal, { color: barColor, fontWeight: '700' }]}>{currentStock.toLocaleString()}L</Text>
                   </View>
                 </View>
               </View>
@@ -494,23 +525,60 @@ export default function TanksScreen() {
             </View>
           )}
           {visibleLpgTanks.map(l => {
-            const stock = l.op + l.rv - l.sl;
-            const pct = Math.round((stock / l.cap) * 100);
+            const approvedDips = dips
+              .filter(d => d.status === 'approved' && d.lpg[l.id] !== undefined)
+              .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
+            const lastDipRecord = approvedDips[0];
+            const dipReading = lastDipRecord ? (lastDipRecord.lpg[l.id] ?? 0) : 0;
+            const dipDt = lastDipRecord?.dt;
+            const deliveriesSinceDip = deliveries
+              .filter(d => d.prod === 'LPG' &&
+                (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+                (!dipDt || new Date(d.dt) > new Date(dipDt)))
+              .reduce((s, d) => s + d.rec, 0);
+            const currentStock = Math.max(0, dipReading + deliveriesSinceDip);
+            const pct = l.cap > 0 ? Math.min(100, Math.round((currentStock / l.cap) * 100)) : 0;
+            const barColor = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.teal;
             return (
               <View key={l.id} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.invHeader}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={[styles.invName, { color: colors.text }]}>{l.name}</Text>
-                    <Text style={[styles.invProd, { color: colors.textMuted }]}>Cap: {l.cap.toLocaleString()} kg</Text>
+                    <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {l.cap.toLocaleString()} kg</Text>
                   </View>
                   <View style={[styles.prodBadge, { backgroundColor: colors.teal + '18' }]}>
                     <Text style={[styles.prodText, { color: colors.teal }]}>LPG</Text>
                   </View>
                 </View>
                 <View style={[styles.progressBg, { backgroundColor: colors.border, marginVertical: 10 }]}>
-                  <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: colors.teal }]} />
+                  <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: barColor }]} />
                 </View>
-                <Text style={[styles.invStatVal, { color: colors.teal }]}>{stock.toLocaleString()} kg ({pct}%)</Text>
+                <View style={styles.invStats}>
+                  <View style={styles.invStat}>
+                    <Text style={[styles.invStatVal, { color: colors.text }]}>{currentStock.toLocaleString()} kg</Text>
+                    <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Current Stock</Text>
+                  </View>
+                  <View style={styles.invStat}>
+                    <Text style={[styles.invStatVal, { color: barColor }]}>{pct}%</Text>
+                    <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Fill Level</Text>
+                  </View>
+                </View>
+                <View style={[styles.invBreakdown, { borderTopColor: colors.border }]}>
+                  <View style={styles.invBreakdownRow}>
+                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>
+                      Last dip{lastDipRecord ? ` (${fmtDateTime(lastDipRecord.dt)})` : ''}
+                    </Text>
+                    <Text style={[styles.invBreakdownVal, { color: colors.text }]}>{dipReading.toLocaleString()} kg</Text>
+                  </View>
+                  <View style={styles.invBreakdownRow}>
+                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>+ Deliveries received</Text>
+                    <Text style={[styles.invBreakdownVal, { color: '#27500A' }]}>+{deliveriesSinceDip.toLocaleString()} kg</Text>
+                  </View>
+                  <View style={[styles.invBreakdownRow, styles.invBreakdownTotal, { borderTopColor: colors.border }]}>
+                    <Text style={[styles.invBreakdownLabel, { color: colors.text, fontWeight: '700' }]}>= Current Inventory</Text>
+                    <Text style={[styles.invBreakdownVal, { color: barColor, fontWeight: '700' }]}>{currentStock.toLocaleString()} kg</Text>
+                  </View>
+                </View>
               </View>
             );
           })}
@@ -537,6 +605,11 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   calcResult: { fontSize: 13, fontWeight: '600' },
   stickyFooter: { borderTopWidth: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20 },
+  invBreakdown: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 10, paddingTop: 8, gap: 4 },
+  invBreakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  invBreakdownLabel: { fontSize: 12 },
+  invBreakdownVal: { fontSize: 12, fontWeight: '600' },
+  invBreakdownTotal: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 4, paddingTop: 6 },
   analysisRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 10, borderWidth: 1, padding: 10 },
   analysisProd: { fontSize: 13, fontWeight: '700' },
   analysisDetail: { fontSize: 12, marginTop: 1 },
