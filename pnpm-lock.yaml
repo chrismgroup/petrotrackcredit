@@ -414,14 +414,14 @@ importers:
         specifier: ^14.0.8
         version: 14.0.8(expo@54.0.35)
       expo-local-authentication:
-        specifier: ^57.0.0
-        version: 57.0.0(expo@54.0.35)
+        specifier: ^17.0.8
+        version: 17.0.8(expo@54.0.35)
       expo-print:
         specifier: ~15.0.8
         version: 15.0.8(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))
       expo-secure-store:
-        specifier: ^57.0.0
-        version: 57.0.0(expo@54.0.35)
+        specifier: ^15.0.8
+        version: 15.0.8(expo@54.0.35)
       expo-sharing:
         specifier: ~14.0.8
         version: 14.0.8(expo@54.0.35)
@@ -3415,8 +3415,8 @@ packages:
       react: '*'
       react-native: '*'
 
-  expo-local-authentication@57.0.0:
-    resolution: {integrity: sha512-/ZzS7OD5OaAEhSF/+zPWZqzT8xWy1rMICfDqP5ojJ6Flh4wgAOedG37p8UZlTQYJRR5u1NQ9AoAePV8H/ky14g==}
+  expo-local-authentication@17.0.8:
+    resolution: {integrity: sha512-Q5fXHhu6w3pVPlFCibU72SYIAN+9wX7QpFn9h49IUqs0Equ44QgswtGrxeh7fdnDqJrrYGPet5iBzjnE70uolA==}
     peerDependencies:
       expo: '*'
 
@@ -3474,8 +3474,8 @@ packages:
       react-server-dom-webpack:
         optional: true
 
-  expo-secure-store@57.0.0:
-    resolution: {integrity: sha512-vkP16rhW7b4bljW5BC4kKXBpNxQ0O1E9SpI5NIfh2biZnszLTpI/gUF4oBsvOY2nvkh7oXS2ERuUoA8cuS8FWQ==}
+  expo-secure-store@15.0.8:
+    resolution: {integrity: sha512-lHnzvRajBu4u+P99+0GEMijQMFCOYpWRO4dWsXSuMt77+THPIGjzNvVKrGSl6mMrLsfVaKL8BpwYZLGlgA+zAw==}
     peerDependencies:
       expo: '*'
 
@@ -9471,7 +9471,7 @@ snapshots:
       - supports-color
     optional: true
 
-  expo-local-authentication@57.0.0(expo@54.0.35):
+  expo-local-authentication@17.0.8(expo@54.0.35):
     dependencies:
       expo: 54.0.35(@babel/core@7.29.7)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
       invariant: 2.2.4
@@ -9592,7 +9592,7 @@ snapshots:
       - supports-color
     optional: true
 
-  expo-secure-store@57.0.0(expo@54.0.35):
+  expo-secure-store@15.0.8(expo@54.0.35):
     dependencies:
       expo: 54.0.35(@babel/core@7.29.7)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
 
