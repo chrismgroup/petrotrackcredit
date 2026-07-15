@@ -118,20 +118,23 @@ export interface LoginResult {
   branchId: string | null;
 }
 
-export async function apiLogin(username: string, password: string): Promise<LoginResult | null> {
-  if (!BASE) return null;
+export type LoginError = 'network' | 'credentials' | 'server';
+
+export async function apiLogin(username: string, password: string): Promise<LoginResult | LoginError> {
+  if (!BASE) return 'network';
   try {
     const r = await fetch(`${BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    if (!r.ok) return null;
+    if (r.status === 401) return 'credentials';
+    if (!r.ok) return 'server';
     const result = await r.json() as LoginResult;
     await saveToken(result.token);
     return result;
   } catch {
-    return null;
+    return 'network';
   }
 }
 
