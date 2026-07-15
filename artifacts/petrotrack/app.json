@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.replit.petrotrack",
+      "bundleIdentifier": "com.gastsmarts.app",
       "buildNumber": "17",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
