@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { apiLogin } from '@/lib/api';
+import { type LoginError, apiLogin } from '@/lib/api';
 
 const BIOMETRIC_KEY = 'gastsmarts_biometric_creds';
 
@@ -105,14 +105,18 @@ export default function LoginScreen() {
 
       const serverResult = await apiLogin(bioCreds.username, bioCreds.password);
       setBioLoading(false);
-      if (serverResult) {
-        login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, undefined, serverResult.branchId ?? undefined);
+      if (typeof serverResult === 'string') {
+        if (serverResult === 'network') {
+          Alert.alert('No Connection', 'Cannot reach the server. Check your internet connection and try again.');
+        } else {
+          /* Stored credentials no longer valid — clear them */
+          await clearCredentials();
+          setBioAvailable(false);
+          setBioCreds(null);
+          Alert.alert('Sign-in Failed', 'Your saved credentials are no longer valid. Please sign in with your password.');
+        }
       } else {
-        /* Stored credentials no longer valid — clear them */
-        await clearCredentials();
-        setBioAvailable(false);
-        setBioCreds(null);
-        Alert.alert('Sign-in failed', 'Your saved credentials are no longer valid. Please sign in with your password.');
+        login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, undefined, serverResult.branchId ?? undefined);
       }
     } catch {
       setBioLoading(false);
@@ -126,15 +130,20 @@ export default function LoginScreen() {
 
     setLoading(true);
     const serverResult = await apiLogin(u, p);
-    if (serverResult) {
-      /* Save credentials for future biometric use */
-      await saveCredentials(u, p);
-      setLoading(false);
-      login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, undefined, serverResult.branchId ?? undefined);
+    setLoading(false);
+    if (typeof serverResult === 'string') {
+      if (serverResult === 'network') {
+        Alert.alert('No Connection', 'Cannot reach the server. Check your internet connection and try again.');
+      } else if (serverResult === 'credentials') {
+        Alert.alert('Login Failed', 'Incorrect username or password. Please try again.');
+      } else {
+        Alert.alert('Server Error', 'Something went wrong on the server. Please try again shortly.');
+      }
       return;
     }
-    setLoading(false);
-    Alert.alert('Login Failed', 'Unable to sign in. Check your username and password, or try again when the server is reachable.');
+    /* Save credentials for future biometric use */
+    await saveCredentials(u, p);
+    login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, undefined, serverResult.branchId ?? undefined);
   }
 
   const bioIcon  = bioType === 'face' ? 'scan-outline' : 'finger-print-outline';
