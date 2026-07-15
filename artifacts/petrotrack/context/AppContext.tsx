@@ -56,6 +56,7 @@ export interface UserAccount {
   approvedAt?: string;
   jobTitle?: string;
   dept?: string;
+  phoneNumber?: string;
 }
 export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
@@ -296,20 +297,21 @@ function nowTs() { return new Date().toISOString(); }
 
 function apiRowToUserAccount(r: StaffUserRecord): UserAccount {
   return {
-    id:         r.id,
-    empName:    r.empName,
-    empId:      r.empId    ?? undefined,
-    username:   r.username ?? '',
-    password:   '',            // password is never returned by the API
-    role:       (r.role as Role) ?? null,
-    branchId:   r.branchId  ?? undefined,
-    status:     (r.status  as AccountStatus),
-    createdBy:  r.createdBy,
-    createdAt:  r.createdAt,
-    approvedBy: r.approvedBy ?? undefined,
-    approvedAt: r.approvedAt ?? undefined,
-    jobTitle:   r.jobTitle  ?? undefined,
-    dept:       r.dept      ?? undefined,
+    id:          r.id,
+    empName:     r.empName,
+    empId:       r.empId       ?? undefined,
+    username:    r.username    ?? '',
+    password:    '',            // password is never returned by the API
+    role:        (r.role as Role) ?? null,
+    branchId:    r.branchId    ?? undefined,
+    status:      (r.status     as AccountStatus),
+    createdBy:   r.createdBy,
+    createdAt:   r.createdAt,
+    approvedBy:  r.approvedBy  ?? undefined,
+    approvedAt:  r.approvedAt  ?? undefined,
+    jobTitle:    r.jobTitle    ?? undefined,
+    dept:        r.dept        ?? undefined,
+    phoneNumber: r.phoneNumber ?? undefined,
   };
 }
 function nowTime() { return new Date().toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }); }
@@ -439,8 +441,8 @@ interface AppContextType {
   userAccounts: UserAccount[];
   refreshUsers: () => Promise<void>;
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
-  addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => Promise<void>;
-  updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => Promise<void>;
+  addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => Promise<void>;
+  updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => Promise<void>;
   changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => Promise<void>;
   suspendUserAccount: (id: number) => Promise<void>;
@@ -716,6 +718,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpDailyReports', pumpDailyReports); },  [pumpDailyReports, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
+
+  /* ── Poll messages + broadcasts every 5 s so all devices see new messages ── */
+  useEffect(() => {
+    if (!role || !loaded) return;
+    const id = setInterval(async () => {
+      const [serverMsgs, serverBroadcasts] = await Promise.all([
+        stateApi.get<Record<string, Message[]>>('messages'),
+        stateApi.get<Broadcast[]>('broadcasts'),
+      ]);
+      if (serverMsgs && typeof serverMsgs === 'object' && !Array.isArray(serverMsgs)) {
+        setMessages(prev => {
+          const allKeys = new Set([...Object.keys(prev), ...Object.keys(serverMsgs)]);
+          let changed = false;
+          const merged: Record<string, Message[]> = {};
+          for (const k of allKeys) {
+            const serverList: Message[] = Array.isArray(serverMsgs[k]) ? serverMsgs[k] as Message[] : [];
+            const localList: Message[] = prev[k] ?? [];
+            if (serverList.length !== localList.length) {
+              // Merge: take all server messages, preserve local read flags
+              const localById = new Map(localList.map(m => [m.id, m]));
+              merged[k] = serverList.map(m => {
+                const local = localById.get(m.id);
+                return local ? { ...m, read: m.read || local.read } : m;
+              });
+              changed = true;
+            } else {
+              merged[k] = localList;
+            }
+          }
+          return changed ? merged : prev;
+        });
+      }
+      if (Array.isArray(serverBroadcasts)) {
+        setBroadcasts(prev =>
+          prev.length === serverBroadcasts.length &&
+          prev.every((b, i) => b.id === (serverBroadcasts as Broadcast[])[i]?.id)
+            ? prev
+            : (serverBroadcasts as Broadcast[])
+        );
+      }
+    }, 5000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, loaded]);
 
   const DRAFT_APPROVAL: CorpApproval = { status: 'draft' };
 
@@ -1216,13 +1262,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(row => { if (row) setUserAccounts(prev => prev.map(a => a.id === localId ? apiRowToUserAccount(row) : a)); });
   }, []);
 
-  const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; createdBy: string }) => {
+  const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => {
     const hashedPw = await hashPassword(acc.password);
     // Write to DB first — immediately available for login on all devices
     const row = await usersApi.create({
       empName: acc.empName, username: acc.username, password: hashedPw,
       role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle,
-      dept: acc.dept, status: 'active',
+      dept: acc.dept, phoneNumber: acc.phoneNumber ?? null, status: 'active',
     });
     if (row) {
       setUserAccounts(prev => [...prev, apiRowToUserAccount(row)]);
@@ -1232,13 +1278,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: genId(), createdAt: nowTs(), status: 'active',
         approvedBy: acc.createdBy, approvedAt: nowTs(),
         empName: acc.empName, username: acc.username, password: hashedPw,
-        role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept, createdBy: acc.createdBy,
+        role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept,
+        phoneNumber: acc.phoneNumber, createdBy: acc.createdBy,
       }]);
     }
     setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
   }, []);
 
-  const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string }, by: string) => {
+  const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => {
     const resolved: Record<string, unknown> = { ...updates };
     if (resolved.password) resolved.password = await hashPassword(resolved.password as string);
     // Write to DB so login works on all devices immediately

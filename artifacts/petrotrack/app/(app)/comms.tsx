@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
-  Animated,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -42,12 +42,6 @@ const AUDIENCE_OPTS = [
   { value: 'role:att',  label: 'Pump Attendant'   },
 ];
 
-function fmtDuration(secs: number) {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
 // ─── Module-scope sub-components ─────────────────────────────────────────────
 
 function Avatar({ role, size = 40, colors }: { role: string; size?: number; colors: Colors }) {
@@ -72,61 +66,6 @@ function OnlineDot({ online, colors }: { online: boolean; colors: Colors }) {
       backgroundColor: online ? '#27ae60' : colors.border,
       borderWidth: 1.5, borderColor: colors.surface,
     }} />
-  );
-}
-
-function CallOverlay({
-  peer, callState, duration, pulse, onEnd, onDecline, colors,
-}: {
-  peer: Role;
-  callState: 'ringing' | 'connected';
-  duration: number;
-  pulse: Animated.Value;
-  onEnd: () => void;
-  onDecline: () => void;
-  colors: Colors;
-}) {
-  const { userAccounts } = useApp();
-  const resolved = resolveUserInfo(peer, userAccounts);
-  const peerColor = resolved.color;
-
-  return (
-    <View style={[styles.callOverlay, { backgroundColor: '#0d1f17' }]}>
-      <View style={styles.callContent}>
-        <Animated.View style={[styles.callAvatarWrap, { transform: [{ scale: pulse }], backgroundColor: peerColor + '22', borderColor: peerColor + '66' }]}>
-          <Text style={[styles.callAvatarText, { color: peerColor }]}>{resolved.initials}</Text>
-        </Animated.View>
-        <Text style={styles.callingName}>{resolved.name}</Text>
-        <Text style={styles.callingRole}>{ROLE_LABELS[peer] ?? peer}</Text>
-        <Text style={styles.callStatusText}>
-          {callState === 'ringing' ? 'Calling…' : fmtDuration(duration)}
-        </Text>
-      </View>
-
-      <View style={styles.callControls}>
-        {callState === 'ringing' ? (
-          <TouchableOpacity style={[styles.callControlBtn, { backgroundColor: '#e74c3c' }]} onPress={onDecline}>
-            <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
-            <Text style={styles.callControlLabel}>Cancel</Text>
-          </TouchableOpacity>
-        ) : (
-          <>
-            <TouchableOpacity style={[styles.callControlBtn, { backgroundColor: '#2c3e50' }]}>
-              <Ionicons name="mic-off" size={24} color="#fff" />
-              <Text style={styles.callControlLabel}>Mute</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.callControlBtn, { backgroundColor: '#e74c3c' }]} onPress={onEnd}>
-              <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
-              <Text style={styles.callControlLabel}>End</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.callControlBtn, { backgroundColor: '#2c3e50' }]}>
-              <Ionicons name="volume-high" size={24} color="#fff" />
-              <Text style={styles.callControlLabel}>Speaker</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-    </View>
   );
 }
 
@@ -162,20 +101,6 @@ export default function CommsScreen() {
   const [bTitle, setBTitle] = useState('');
   const [bBody, setBBody] = useState('');
   const [bAudience, setBAudience] = useState('all');
-
-  // ── Call overlay state ─────────────────────────────────────────────────────
-  const [callingPeer, setCallingPeer] = useState<Role | null>(null);
-  const [callState, setCallState] = useState<'ringing' | 'connected' | null>(null);
-  const [callDuration, setCallDuration] = useState(0);
-  const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const callPulse = useRef(new Animated.Value(1)).current;
-
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (callTimerRef.current) clearInterval(callTimerRef.current);
-    };
-  }, []);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function peerUnread(peer: Role) {
@@ -220,46 +145,30 @@ export default function CommsScreen() {
     Alert.alert('Sent', `Broadcast delivered to ${audienceLabel}.`);
   }
 
-  const startPulse = useCallback(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(callPulse, { toValue: 1.2, duration: 700, useNativeDriver: true }),
-        Animated.timing(callPulse, { toValue: 1.0, duration: 700, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [callPulse]);
-
-  const stopPulse = useCallback(() => {
-    callPulse.stopAnimation();
-    callPulse.setValue(1);
-  }, [callPulse]);
-
   function initiateCall(peer: Role) {
-    if (callState) return;
-    setCallingPeer(peer);
-    setCallState('ringing');
-    setCallDuration(0);
-    startPulse();
-    // Simulate auto-answer after 3 s
-    setTimeout(() => {
-      setCallState('connected');
-      stopPulse();
-      callTimerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000);
-    }, 3000);
-  }
+    const peerAccount = userAccounts.find(a => a.role === peer && a.status === 'active');
+    const phone = peerAccount?.phoneNumber?.trim();
+    const peerName = resolveUserInfo(peer, userAccounts).name;
 
-  function endCall(status: 'ended' | 'declined' = 'ended') {
-    if (callTimerRef.current) { clearInterval(callTimerRef.current); callTimerRef.current = null; }
-    stopPulse();
-    if (callingPeer) {
-      addCallRecord({
-        from: role!, fromName: userName,
-        to: callingPeer, toName: resolveUserInfo(callingPeer, userAccounts).name,
-        status: callDuration === 0 ? 'missed' : status,
-        duration: callDuration > 0 ? fmtDuration(callDuration) : undefined,
-      });
+    if (!phone) {
+      Alert.alert(
+        'No Phone Number',
+        `${peerName} doesn't have a phone number on file. Ask an admin to add it under Users → edit account.`,
+        [{ text: 'OK' }],
+      );
+      return;
     }
-    setCallingPeer(null); setCallState(null); setCallDuration(0);
+
+    // Log the outgoing call attempt immediately
+    addCallRecord({
+      from: role!, fromName: userName,
+      to: peer, toName: peerName,
+      status: 'ended',
+    });
+
+    Linking.openURL(`tel:${phone}`).catch(() => {
+      Alert.alert('Cannot Open Dialer', 'Your device could not open the phone dialer.');
+    });
   }
 
   // ── Chat thread view ───────────────────────────────────────────────────────
@@ -351,17 +260,6 @@ export default function CommsScreen() {
           </View>
         </KeyboardAvoidingView>
 
-        {callState && callingPeer && (
-          <CallOverlay
-            peer={callingPeer}
-            callState={callState}
-            duration={callDuration}
-            pulse={callPulse}
-            onEnd={() => endCall('ended')}
-            onDecline={() => endCall('declined')}
-            colors={colors}
-          />
-        )}
       </ScreenLayout>
     );
   }
@@ -613,18 +511,6 @@ export default function CommsScreen() {
         </ScrollView>
       )}
 
-      {/* Call overlay (accessible from all tabs) */}
-      {callState && callingPeer && (
-        <CallOverlay
-          peer={callingPeer}
-          callState={callState}
-          duration={callDuration}
-          pulse={callPulse}
-          onEnd={() => endCall('ended')}
-          onDecline={() => endCall('declined')}
-          colors={colors}
-        />
-      )}
     </ScreenLayout>
   );
 }

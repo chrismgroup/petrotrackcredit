@@ -48,6 +48,7 @@ export default function UsersScreen() {
   const [ePassword, setEPassword] = useState('');
   const [eRole, setERole]         = useState<Role>('att');
   const [eBranch, setEBranch]     = useState('');
+  const [ePhone, setEPhone]       = useState('');
   const [showEditPw, setShowEditPw] = useState(false);
 
   /* ── view modal state (non-admin) ── */
@@ -60,6 +61,7 @@ export default function UsersScreen() {
   const [cPassword, setCPassword]   = useState('');
   const [cRole, setCRole]           = useState<Role>('att');
   const [cBranch, setCBranch]       = useState('');
+  const [cPhone, setCPhone]         = useState('');
   const [showCreatePw, setShowCreatePw] = useState(false);
 
   const pending  = userAccounts.filter(a => a.status === 'pending');
@@ -106,6 +108,7 @@ export default function UsersScreen() {
     setEPassword('');
     setERole((acc.role as Role) || 'att');
     setEBranch(acc.branchId || '');
+    setEPhone(acc.phoneNumber || '');
     setShowEditPw(false);
     setEditing(acc);
   }
@@ -122,10 +125,11 @@ export default function UsersScreen() {
     const duplicate = userAccounts.find(a => a.username === eUsername.trim() && a.id !== editing.id);
     if (duplicate) { Alert.alert('Username Taken', 'That username is already in use. Choose another.'); return; }
 
-    const updates: { username?: string; password?: string; role?: Role; branchId?: string } = {
+    const updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string } = {
       username: eUsername.trim(),
       role: eRole,
       branchId: eBranch,
+      phoneNumber: ePhone.trim() || undefined,
     };
     if (ePassword.trim()) updates.password = ePassword.trim();
 
@@ -162,7 +166,7 @@ export default function UsersScreen() {
   /* ─── create helpers (admin only) ─── */
   function openCreate() {
     setCEmpName(''); setCUsername(''); setCPassword('');
-    setCRole('att'); setCBranch(''); setShowCreatePw(false);
+    setCRole('att'); setCBranch(''); setCPhone(''); setShowCreatePw(false);
     setShowCreate(true);
   }
 
@@ -183,6 +187,7 @@ export default function UsersScreen() {
       password: cPassword.trim(),
       role: cRole,
       branchId: cBranch,
+      phoneNumber: cPhone.trim() || undefined,
       createdBy: userName || 'Admin',
     });
     Alert.alert('Account Created', `${cEmpName.trim()} can now log in as @${cUsername.trim()}.`);
@@ -572,6 +577,20 @@ export default function UsersScreen() {
                   </TouchableOpacity>
                 </View>
 
+                {/* Phone number */}
+                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Phone Number <Text style={{ fontWeight: '400' }}>(for Comms calling)</Text></Text>
+                <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Ionicons name="call-outline" size={16} color={colors.textMuted} />
+                  <TextInput
+                    style={[styles.input, { color: colors.text }]}
+                    value={ePhone}
+                    onChangeText={setEPhone}
+                    placeholder="e.g. 08012345678"
+                    placeholderTextColor={colors.textSubtle}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+
                 {/* Status badge */}
                 <View style={[styles.statusRow, { backgroundColor: STATUS_COLORS[editing.status] + '15', borderColor: STATUS_COLORS[editing.status] + '40' }]}>
                   <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[editing.status] }]} />
@@ -640,6 +659,20 @@ export default function UsersScreen() {
                   onChangeText={setCEmpName}
                   placeholder="e.g. Kelechi Nwosu"
                   placeholderTextColor={colors.textSubtle}
+                />
+              </View>
+
+              {/* Phone number */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Phone Number <Text style={{ fontWeight: '400' }}>(for Comms calling)</Text></Text>
+              <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="call-outline" size={16} color={colors.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  value={cPhone}
+                  onChangeText={setCPhone}
+                  placeholder="e.g. 08012345678"
+                  placeholderTextColor={colors.textSubtle}
+                  keyboardType="phone-pad"
                 />
               </View>
 
