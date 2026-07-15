@@ -32,7 +32,6 @@ export default function UsersScreen() {
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
   const isAdmin = role === 'admin';
   const isHR    = role === 'csm';
-  const isMD    = role === 'md';
 
   const [tab, setTab]           = useState<Tab>('pending');
   const [search, setSearch]     = useState('');
@@ -76,16 +75,10 @@ export default function UsersScreen() {
   const [nPhone, setNPhone]         = useState('');
 
   /* ── pending data per role ── */
-  const pendingMdRecs    = userAccounts.filter(a => a.status === 'pending_md');
   const pendingAdminRecs = userAccounts.filter(a => a.status === 'pending_admin');
   const pendingLegacy    = userAccounts.filter(a => a.status === 'pending');
-  const pendingForRole   = isMD
-    ? pendingMdRecs
-    : isAdmin
-    ? [...pendingAdminRecs, ...pendingLegacy]
-    : isHR
-    ? pendingMdRecs
-    : [];
+  const allPending       = [...pendingAdminRecs, ...pendingLegacy];
+  const pendingForRole   = isAdmin ? allPending : isHR ? pendingAdminRecs : [];
   const active   = userAccounts.filter(a => ['active', 'suspended'].includes(a.status));
   const filtered = (tab === 'pending' ? pendingForRole : active).filter(a =>
     !search || a.empName.toLowerCase().includes(search.toLowerCase()) ||
@@ -321,112 +314,69 @@ export default function UsersScreen() {
                 <Ionicons name="checkmark-circle" size={36} color={colors.success} />
                 <Text style={[styles.emptyTitle, { color: colors.text }]}>All clear</Text>
                 <Text style={[styles.emptySub, { color: colors.textMuted }]}>
-                  {isMD ? 'No enrollments awaiting your review' : isHR ? 'No pending enrollments — tap Enroll to add staff' : 'No pending account requests'}
+                  {isHR ? 'No pending enrollments — tap Enroll to submit a new staff member' : 'No pending account requests'}
                 </Text>
               </View>
             ) : (
               <>
                 {/* Info banners per role */}
-                {isMD && (
-                  <View style={[styles.infoBanner, { backgroundColor: '#0F6E5622', borderColor: '#0F6E5644' }]}>
-                    <Ionicons name="information-circle" size={16} color="#0F6E56" />
-                    <Text style={[styles.infoBannerText, { color: '#0F6E56' }]}>
-                      {pendingMdRecs.length} enrollment{pendingMdRecs.length > 1 ? 's' : ''} awaiting your review. Approve to forward to Admin.
-                    </Text>
-                  </View>
-                )}
-                {isAdmin && (pendingAdminRecs.length + pendingLegacy.length) > 0 && (
+                {isAdmin && allPending.length > 0 && (
                   <View style={[styles.infoBanner, { backgroundColor: '#BA751722', borderColor: '#BA751744' }]}>
                     <Ionicons name="information-circle" size={16} color="#BA7517" />
                     <Text style={[styles.infoBannerText, { color: '#BA7517' }]}>
-                      {pendingAdminRecs.length + pendingLegacy.length} record{(pendingAdminRecs.length + pendingLegacy.length) > 1 ? 's' : ''} ready for account creation. Assign credentials and role.
+                      {allPending.length} enrollment{allPending.length > 1 ? 's' : ''} ready for account creation. Assign credentials and a role to each.
                     </Text>
                   </View>
                 )}
-                {isHR && pendingMdRecs.length > 0 && (
+                {isHR && pendingAdminRecs.length > 0 && (
                   <View style={[styles.infoBanner, { backgroundColor: '#185FA522', borderColor: '#185FA544' }]}>
                     <Ionicons name="information-circle" size={16} color="#185FA5" />
                     <Text style={[styles.infoBannerText, { color: '#185FA5' }]}>
-                      {pendingMdRecs.length} enrollment{pendingMdRecs.length > 1 ? 's' : ''} sent to MD for approval.
+                      {pendingAdminRecs.length} enrollment{pendingAdminRecs.length > 1 ? 's' : ''} submitted — Admin will create the user accounts.
                     </Text>
                   </View>
                 )}
 
-                {filtered.map(acc => {
-                  const isMdPending    = acc.status === 'pending_md';
-                  const isAdminPending = acc.status === 'pending_admin' || acc.status === 'pending';
-                  const borderCol = isMdPending ? '#185FA555' : '#BA751755';
-                  const avatarBg  = isMdPending ? '#185FA522' : '#BA751722';
-                  const avatarFg  = isMdPending ? '#185FA5'   : '#BA7517';
-                  return (
-                    <View key={acc.id} style={[styles.accCard, { backgroundColor: colors.surface, borderColor: borderCol }]}>
-                      <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
-                        <Text style={[styles.avatarText, { color: avatarFg }]}>{initials(acc.empName)}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.accName, { color: colors.text }]}>{acc.empName}</Text>
-                        {acc.jobTitle
-                          ? <Text style={[styles.accSub, { color: colors.textMuted }]}>{acc.jobTitle}{acc.dept ? ` · ${acc.dept}` : ''}</Text>
-                          : <Text style={[styles.accSub, { color: colors.textMuted }]}>No title assigned</Text>
-                        }
-                        {acc.empId && <Text style={[styles.accId, { color: colors.textSubtle }]}>{acc.empId}</Text>}
-                        <Text style={[styles.accDate, { color: colors.textSubtle }]}>
-                          Enrolled by {acc.createdBy} · {acc.createdAt.slice(0, 10)}
-                        </Text>
-                        {/* Stage badge for HR */}
-                        {isHR && isMdPending && (
-                          <View style={[styles.stBadge, { backgroundColor: '#185FA518', marginTop: 4, alignSelf: 'flex-start' }]}>
-                            <Text style={[styles.stText, { color: '#185FA5' }]}>Awaiting MD</Text>
-                          </View>
-                        )}
-                        {/* Stage badge for others viewing admin-pending */}
-                        {!isAdmin && isAdminPending && (
-                          <View style={[styles.stBadge, { backgroundColor: '#BA751722', marginTop: 4, alignSelf: 'flex-start' }]}>
-                            <Text style={[styles.stText, { color: '#BA7517' }]}>MD Approved</Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* MD actions */}
-                      {isMD && isMdPending && (
-                        <View style={{ gap: 6, alignItems: 'flex-end' }}>
-                          <TouchableOpacity
-                            onPress={() => handleMdApprove(acc)}
-                            style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
-                          >
-                            <Ionicons name="checkmark" size={13} color="#fff" />
-                            <Text style={styles.approveBtnText}>Approve</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => handleMdReject(acc)}
-                            style={[styles.rejectBtn, { borderColor: colors.errorBorder }]}
-                          >
-                            <Text style={[styles.rejectBtnText, { color: colors.error }]}>Reject</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-
-                      {/* Admin actions */}
-                      {isAdmin && isAdminPending && (
-                        <View style={{ gap: 6, alignItems: 'flex-end' }}>
-                          <TouchableOpacity
-                            onPress={() => openApprove(acc)}
-                            style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
-                          >
-                            <Ionicons name="person-add" size={13} color="#fff" />
-                            <Text style={styles.approveBtnText}>Activate</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => handleReject(acc)}
-                            style={[styles.rejectBtn, { borderColor: colors.errorBorder }]}
-                          >
-                            <Text style={[styles.rejectBtnText, { color: colors.error }]}>Reject</Text>
-                          </TouchableOpacity>
+                {filtered.map(acc => (
+                  <View key={acc.id} style={[styles.accCard, { backgroundColor: colors.surface, borderColor: '#BA751755' }]}>
+                    <View style={[styles.avatar, { backgroundColor: '#BA751722' }]}>
+                      <Text style={[styles.avatarText, { color: '#BA7517' }]}>{initials(acc.empName)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.accName, { color: colors.text }]}>{acc.empName}</Text>
+                      {acc.jobTitle
+                        ? <Text style={[styles.accSub, { color: colors.textMuted }]}>{acc.jobTitle}{acc.dept ? ` · ${acc.dept}` : ''}</Text>
+                        : <Text style={[styles.accSub, { color: colors.textMuted }]}>No title assigned</Text>
+                      }
+                      {acc.empId && <Text style={[styles.accId, { color: colors.textSubtle }]}>{acc.empId}</Text>}
+                      <Text style={[styles.accDate, { color: colors.textSubtle }]}>
+                        Enrolled by {acc.createdBy} · {acc.createdAt.slice(0, 10)}
+                      </Text>
+                      {isHR && (
+                        <View style={[styles.stBadge, { backgroundColor: '#BA751722', marginTop: 4, alignSelf: 'flex-start' }]}>
+                          <Text style={[styles.stText, { color: '#BA7517' }]}>Awaiting Admin</Text>
                         </View>
                       )}
                     </View>
-                  );
-                })}
+                    {isAdmin && (
+                      <View style={{ gap: 6, alignItems: 'flex-end' }}>
+                        <TouchableOpacity
+                          onPress={() => openApprove(acc)}
+                          style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
+                        >
+                          <Ionicons name="person-add" size={13} color="#fff" />
+                          <Text style={styles.approveBtnText}>Activate</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleReject(acc)}
+                          style={[styles.rejectBtn, { borderColor: colors.errorBorder }]}
+                        >
+                          <Text style={[styles.rejectBtnText, { color: colors.error }]}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                ))}
               </>
             )}
           </>

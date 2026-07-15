@@ -1326,19 +1326,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       empName: acc.empName, empId,
       branchId: acc.branchId ?? null, jobTitle: acc.jobTitle ?? null,
       dept: acc.dept ?? null, phoneNumber: acc.phoneNumber ?? null,
-      status: 'pending_md',
+      status: 'pending_admin',
     });
     if (row) {
       setUserAccounts(prev => [...prev, apiRowToUserAccount(row)]);
     } else {
       setUserAccounts(prev => [...prev, {
-        id: genId(), createdAt: nowTs(), status: 'pending_md',
+        id: genId(), createdAt: nowTs(), status: 'pending_admin',
         empName: acc.empName, empId, username: '', password: '', role: null,
         branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept,
         phoneNumber: acc.phoneNumber, createdBy: by,
       }]);
     }
-    setAudit(a => [{ id: genId(), action: 'Staff enrolled', user: by, detail: `${acc.empName} (${empId}) enrolled — awaiting MD approval`, ts: nowTs() }, ...a]);
+    setAudit(a => [{ id: genId(), action: 'Staff enrolled', user: by, detail: `${acc.empName} (${empId}) enrolled — awaiting Admin account creation`, ts: nowTs() }, ...a]);
   }, [userAccounts]);
 
   const mdApproveEnrollment = useCallback(async (id: number, by: string) => {
@@ -1361,10 +1361,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const hashedPw = await hashPassword(password);
     // Write to DB — new user can log in immediately from any device
     const row = await usersApi.setStatus(id, 'active', { username, password: hashedPw, role, branchId });
+    const activated = row ? apiRowToUserAccount(row) : null;
     if (row) {
       setUserAccounts(prev => prev.map(a => a.id === id ? apiRowToUserAccount(row) : a));
     } else {
-      setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, role, username, password: hashedPw, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId } : a));
+      setUserAccounts(prev => prev.map(a => {
+        if (a.id !== id) return a;
+        return { ...a, role, username, password: hashedPw, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId };
+      }));
+    }
+    // Auto-add to staff directory and HR records on activation
+    if (role !== 'admin') {
+      const empName  = activated?.empName ?? '';
+      const dept     = activated?.dept;
+      const phone    = activated?.phoneNumber ?? '';
+      const empIdVal = activated?.empId;
+      setStaff(prev => {
+        if (prev.some(s => s.name === empName)) return prev;
+        return [...prev, { id: genId(), name: empName, role, sal: 0, st: 'Active', email: `${username}@gastsmarts.com`, dept }];
+      });
+      setHrEmployees(prev => {
+        if (prev.some(e => e.name === empName)) return prev;
+        const serial  = prev.length + 1;
+        const hEmpId  = empIdVal ?? ('PTNG-' + String(serial).padStart(4, '0'));
+        return [...prev, {
+          id: genId(), empId: hEmpId, serial, name: empName, role,
+          dept: dept ?? '', phone, email: `${username}@gastsmarts.com`,
+          address: '', dob: '', joinDate: nowTs(), nextOfKin: '',
+          status: 'active' as const, docs: [], uploads: [],
+          onboarding: { status: 'draft' as OnboardingStatus }, letters: [],
+        }];
+      });
     }
     setAudit(a => [{ id: genId(), action: 'Account approved', user: by, detail: `Account for ${username} approved as ${role}`, ts: nowTs() }, ...a]);
   }, []);
