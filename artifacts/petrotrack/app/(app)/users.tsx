@@ -22,7 +22,8 @@ export default function UsersScreen() {
   const {
     role, userName,
     userAccounts, branches,
-    addActiveUserAccount,
+    addActiveUserAccount, enrollStaff,
+    mdApproveEnrollment, mdRejectEnrollment,
     approveUserAccount, updateUserAccount,
     suspendUserAccount, reactivateUserAccount,
     rejectUserAccount, deleteUserAccount,
@@ -30,6 +31,8 @@ export default function UsersScreen() {
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
   const isAdmin = role === 'admin';
+  const isHR    = role === 'csm';
+  const isMD    = role === 'md';
 
   const [tab, setTab]           = useState<Tab>('pending');
   const [search, setSearch]     = useState('');
@@ -64,9 +67,27 @@ export default function UsersScreen() {
   const [cPhone, setCPhone]         = useState('');
   const [showCreatePw, setShowCreatePw] = useState(false);
 
-  const pending  = userAccounts.filter(a => a.status === 'pending');
+  /* ── enroll staff modal state (HR/CSM only) ── */
+  const [showEnroll, setShowEnroll] = useState(false);
+  const [nEmpName, setNEmpName]     = useState('');
+  const [nJobTitle, setNJobTitle]   = useState('');
+  const [nDept, setNDept]           = useState('');
+  const [nBranch, setNBranch]       = useState('');
+  const [nPhone, setNPhone]         = useState('');
+
+  /* ── pending data per role ── */
+  const pendingMdRecs    = userAccounts.filter(a => a.status === 'pending_md');
+  const pendingAdminRecs = userAccounts.filter(a => a.status === 'pending_admin');
+  const pendingLegacy    = userAccounts.filter(a => a.status === 'pending');
+  const pendingForRole   = isMD
+    ? pendingMdRecs
+    : isAdmin
+    ? [...pendingAdminRecs, ...pendingLegacy]
+    : isHR
+    ? pendingMdRecs
+    : [];
   const active   = userAccounts.filter(a => ['active', 'suspended'].includes(a.status));
-  const filtered = (tab === 'pending' ? pending : active).filter(a =>
+  const filtered = (tab === 'pending' ? pendingForRole : active).filter(a =>
     !search || a.empName.toLowerCase().includes(search.toLowerCase()) ||
     a.username.toLowerCase().includes(search.toLowerCase())
   );
@@ -163,6 +184,48 @@ export default function UsersScreen() {
     ]);
   }
 
+  /* ─── enroll staff helpers (HR/CSM) ─── */
+  function openEnroll() {
+    setNEmpName(''); setNJobTitle(''); setNDept(''); setNBranch(''); setNPhone('');
+    setShowEnroll(true);
+  }
+
+  async function handleEnroll() {
+    if (!nEmpName.trim()) { Alert.alert('Required', 'Full name is required.'); return; }
+    await enrollStaff({
+      empName: nEmpName.trim(),
+      jobTitle: nJobTitle.trim() || undefined,
+      dept: nDept.trim() || undefined,
+      branchId: nBranch || undefined,
+      phoneNumber: nPhone.trim() || undefined,
+    }, userName || 'HR');
+    Alert.alert('Enrollment Submitted', `${nEmpName.trim()} has been enrolled and forwarded to MD for approval.`);
+    setShowEnroll(false);
+  }
+
+  /* ─── MD approve/reject helpers ─── */
+  function handleMdApprove(acc: UserAccount) {
+    Alert.alert(
+      'Approve Enrollment',
+      `Approve ${acc.empName}${acc.empId ? ` (${acc.empId})` : ''} and forward to Admin for account creation?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Approve', onPress: () => mdApproveEnrollment(acc.id, userName || 'MD') },
+      ]
+    );
+  }
+
+  function handleMdReject(acc: UserAccount) {
+    Alert.alert(
+      'Reject Enrollment',
+      `Reject ${acc.empName}'s enrollment? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reject', style: 'destructive', onPress: () => mdRejectEnrollment(acc.id, userName || 'MD') },
+      ]
+    );
+  }
+
   /* ─── create helpers (admin only) ─── */
   function openCreate() {
     setCEmpName(''); setCUsername(''); setCPassword('');
@@ -201,7 +264,7 @@ export default function UsersScreen() {
     <ScreenLayout title="User Accounts">
       {/* Tab bar */}
       <View style={[styles.tabRow, { borderBottomColor: colors.border }]}>
-        {([['pending', 'Pending Approval', pending.length], ['active', 'Active Users', active.length]] as const).map(([id, label, cnt]) => (
+        {([['pending', 'Pending Approval', pendingForRole.length], ['active', 'Active Users', active.length]] as const).map(([id, label, cnt]) => (
           <TouchableOpacity
             key={id}
             onPress={() => setTab(id)}
@@ -237,6 +300,15 @@ export default function UsersScreen() {
             <Ionicons name="person-add" size={18} color="#fff" />
           </TouchableOpacity>
         )}
+        {isHR && tab === 'pending' && (
+          <TouchableOpacity
+            onPress={openEnroll}
+            style={{ height: 42, paddingHorizontal: 14, borderRadius: 12, backgroundColor: roleColor, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+          >
+            <Ionicons name="person-add" size={16} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Enroll</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -244,61 +316,117 @@ export default function UsersScreen() {
         {/* ── PENDING TAB ── */}
         {tab === 'pending' && (
           <>
-            {pending.length === 0 ? (
+            {pendingForRole.length === 0 ? (
               <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Ionicons name="checkmark-circle" size={36} color={colors.success} />
                 <Text style={[styles.emptyTitle, { color: colors.text }]}>All clear</Text>
-                <Text style={[styles.emptySub, { color: colors.textMuted }]}>No pending account requests</Text>
+                <Text style={[styles.emptySub, { color: colors.textMuted }]}>
+                  {isMD ? 'No enrollments awaiting your review' : isHR ? 'No pending enrollments — tap Enroll to add staff' : 'No pending account requests'}
+                </Text>
               </View>
             ) : (
               <>
-                {isAdmin && (
-                  <View style={[styles.infoBanner, { backgroundColor: '#BA751722', borderColor: '#BA751744' }]}>
-                    <Ionicons name="information-circle" size={16} color="#BA7517" />
-                    <Text style={[styles.infoBannerText, { color: '#BA7517' }]}>
-                      {pending.length} account{pending.length > 1 ? 's' : ''} awaiting your approval. Set a role and credentials for each.
+                {/* Info banners per role */}
+                {isMD && (
+                  <View style={[styles.infoBanner, { backgroundColor: '#0F6E5622', borderColor: '#0F6E5644' }]}>
+                    <Ionicons name="information-circle" size={16} color="#0F6E56" />
+                    <Text style={[styles.infoBannerText, { color: '#0F6E56' }]}>
+                      {pendingMdRecs.length} enrollment{pendingMdRecs.length > 1 ? 's' : ''} awaiting your review. Approve to forward to Admin.
                     </Text>
                   </View>
                 )}
-                {filtered.map(acc => (
-                  <View key={acc.id} style={[styles.accCard, { backgroundColor: colors.surface, borderColor: '#BA751755' }]}>
-                    <View style={[styles.avatar, { backgroundColor: '#BA751722' }]}>
-                      <Text style={[styles.avatarText, { color: '#BA7517' }]}>{initials(acc.empName)}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.accName, { color: colors.text }]}>{acc.empName}</Text>
-                      {acc.jobTitle
-                        ? <Text style={[styles.accSub, { color: colors.textMuted }]}>{acc.jobTitle}{acc.dept ? ` · ${acc.dept}` : ''}</Text>
-                        : <Text style={[styles.accSub, { color: colors.textMuted }]}>No role assigned yet</Text>
-                      }
-                      {acc.empId && <Text style={[styles.accId, { color: colors.textSubtle }]}>{acc.empId}</Text>}
-                      <Text style={[styles.accDate, { color: colors.textSubtle }]}>
-                        Requested by {acc.createdBy} · {acc.createdAt.slice(0, 10)}
-                      </Text>
-                    </View>
-                    {isAdmin ? (
-                      <View style={{ gap: 6, alignItems: 'flex-end' }}>
-                        <TouchableOpacity
-                          onPress={() => openApprove(acc)}
-                          style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
-                        >
-                          <Ionicons name="checkmark" size={13} color="#fff" />
-                          <Text style={styles.approveBtnText}>Approve</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => handleReject(acc)}
-                          style={[styles.rejectBtn, { borderColor: colors.errorBorder }]}
-                        >
-                          <Text style={[styles.rejectBtnText, { color: colors.error }]}>Reject</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <View style={[styles.stBadge, { backgroundColor: '#BA751722' }]}>
-                        <Text style={[styles.stText, { color: '#BA7517' }]}>Pending</Text>
-                      </View>
-                    )}
+                {isAdmin && (pendingAdminRecs.length + pendingLegacy.length) > 0 && (
+                  <View style={[styles.infoBanner, { backgroundColor: '#BA751722', borderColor: '#BA751744' }]}>
+                    <Ionicons name="information-circle" size={16} color="#BA7517" />
+                    <Text style={[styles.infoBannerText, { color: '#BA7517' }]}>
+                      {pendingAdminRecs.length + pendingLegacy.length} record{(pendingAdminRecs.length + pendingLegacy.length) > 1 ? 's' : ''} ready for account creation. Assign credentials and role.
+                    </Text>
                   </View>
-                ))}
+                )}
+                {isHR && pendingMdRecs.length > 0 && (
+                  <View style={[styles.infoBanner, { backgroundColor: '#185FA522', borderColor: '#185FA544' }]}>
+                    <Ionicons name="information-circle" size={16} color="#185FA5" />
+                    <Text style={[styles.infoBannerText, { color: '#185FA5' }]}>
+                      {pendingMdRecs.length} enrollment{pendingMdRecs.length > 1 ? 's' : ''} sent to MD for approval.
+                    </Text>
+                  </View>
+                )}
+
+                {filtered.map(acc => {
+                  const isMdPending    = acc.status === 'pending_md';
+                  const isAdminPending = acc.status === 'pending_admin' || acc.status === 'pending';
+                  const borderCol = isMdPending ? '#185FA555' : '#BA751755';
+                  const avatarBg  = isMdPending ? '#185FA522' : '#BA751722';
+                  const avatarFg  = isMdPending ? '#185FA5'   : '#BA7517';
+                  return (
+                    <View key={acc.id} style={[styles.accCard, { backgroundColor: colors.surface, borderColor: borderCol }]}>
+                      <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
+                        <Text style={[styles.avatarText, { color: avatarFg }]}>{initials(acc.empName)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.accName, { color: colors.text }]}>{acc.empName}</Text>
+                        {acc.jobTitle
+                          ? <Text style={[styles.accSub, { color: colors.textMuted }]}>{acc.jobTitle}{acc.dept ? ` · ${acc.dept}` : ''}</Text>
+                          : <Text style={[styles.accSub, { color: colors.textMuted }]}>No title assigned</Text>
+                        }
+                        {acc.empId && <Text style={[styles.accId, { color: colors.textSubtle }]}>{acc.empId}</Text>}
+                        <Text style={[styles.accDate, { color: colors.textSubtle }]}>
+                          Enrolled by {acc.createdBy} · {acc.createdAt.slice(0, 10)}
+                        </Text>
+                        {/* Stage badge for HR */}
+                        {isHR && isMdPending && (
+                          <View style={[styles.stBadge, { backgroundColor: '#185FA518', marginTop: 4, alignSelf: 'flex-start' }]}>
+                            <Text style={[styles.stText, { color: '#185FA5' }]}>Awaiting MD</Text>
+                          </View>
+                        )}
+                        {/* Stage badge for others viewing admin-pending */}
+                        {!isAdmin && isAdminPending && (
+                          <View style={[styles.stBadge, { backgroundColor: '#BA751722', marginTop: 4, alignSelf: 'flex-start' }]}>
+                            <Text style={[styles.stText, { color: '#BA7517' }]}>MD Approved</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* MD actions */}
+                      {isMD && isMdPending && (
+                        <View style={{ gap: 6, alignItems: 'flex-end' }}>
+                          <TouchableOpacity
+                            onPress={() => handleMdApprove(acc)}
+                            style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
+                          >
+                            <Ionicons name="checkmark" size={13} color="#fff" />
+                            <Text style={styles.approveBtnText}>Approve</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleMdReject(acc)}
+                            style={[styles.rejectBtn, { borderColor: colors.errorBorder }]}
+                          >
+                            <Text style={[styles.rejectBtnText, { color: colors.error }]}>Reject</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
+                      {/* Admin actions */}
+                      {isAdmin && isAdminPending && (
+                        <View style={{ gap: 6, alignItems: 'flex-end' }}>
+                          <TouchableOpacity
+                            onPress={() => openApprove(acc)}
+                            style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
+                          >
+                            <Ionicons name="person-add" size={13} color="#fff" />
+                            <Text style={styles.approveBtnText}>Activate</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleReject(acc)}
+                            style={[styles.rejectBtn, { borderColor: colors.errorBorder }]}
+                          >
+                            <Text style={[styles.rejectBtnText, { color: colors.error }]}>Reject</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
               </>
             )}
           </>
@@ -792,6 +920,102 @@ export default function UsersScreen() {
               ))}
             </View>
           )}
+      </ModalSheet>
+
+      {/* ── ENROLL STAFF MODAL (HR/CSM only) ── */}
+      <ModalSheet visible={showEnroll} onClose={() => setShowEnroll(false)}>
+        <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
+          <View style={styles.modalHeader}>
+            <View style={[styles.modalIconBox, { backgroundColor: roleColor + '18' }]}>
+              <Ionicons name="person-add-outline" size={20} color={roleColor} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Enroll New Staff</Text>
+              <Text style={[styles.modalSub, { color: colors.textMuted }]}>A staff ID is auto-generated · MD reviews next</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowEnroll(false)}>
+              <Ionicons name="close-circle" size={22} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Full Name *</Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="person-outline" size={16} color={colors.textMuted} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                value={nEmpName}
+                onChangeText={setNEmpName}
+                placeholder="e.g. Kelechi Nwosu"
+                placeholderTextColor={colors.textSubtle}
+              />
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Job Title</Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="briefcase-outline" size={16} color={colors.textMuted} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                value={nJobTitle}
+                onChangeText={setNJobTitle}
+                placeholder="e.g. Pump Attendant"
+                placeholderTextColor={colors.textSubtle}
+              />
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Department</Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="business-outline" size={16} color={colors.textMuted} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                value={nDept}
+                onChangeText={setNDept}
+                placeholder="e.g. Operations"
+                placeholderTextColor={colors.textSubtle}
+              />
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              {branches.map(b => (
+                <TouchableOpacity
+                  key={b.id}
+                  onPress={() => setNBranch(b.id)}
+                  style={[styles.roleChip, {
+                    backgroundColor: nBranch === b.id ? roleColor : colors.surface,
+                    borderColor:     nBranch === b.id ? roleColor : colors.border,
+                  }]}
+                >
+                  <Text style={[styles.roleChipText, { color: nBranch === b.id ? '#fff' : colors.text }]}>{b.name || b.id}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Phone Number <Text style={{ fontWeight: '400' }}>(optional)</Text></Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="call-outline" size={16} color={colors.textMuted} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                value={nPhone}
+                onChangeText={setNPhone}
+                placeholder="e.g. 08012345678"
+                placeholderTextColor={colors.textSubtle}
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <TouchableOpacity onPress={handleEnroll} style={[styles.confirmBtn, { backgroundColor: roleColor, flex: 1 }]} activeOpacity={0.85}>
+                <Ionicons name="paper-plane-outline" size={16} color="#fff" />
+                <Text style={styles.confirmBtnText}>Submit to MD</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowEnroll(false)} style={[styles.cancelBtn, { borderColor: colors.border, flex: 0.55 }]} activeOpacity={0.8}>
+                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ height: 16 }} />
+          </ScrollView>
+        </View>
       </ModalSheet>
     </ScreenLayout>
   );

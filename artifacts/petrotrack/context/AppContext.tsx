@@ -40,7 +40,7 @@ export const DEFAULT_MGR_PERMS: MgrPermissions = {
   canPetrolTanks: true, canLpgTanks: true,
 };
 
-export type AccountStatus = 'pending' | 'active' | 'suspended' | 'rejected';
+export type AccountStatus = 'pending' | 'pending_md' | 'pending_admin' | 'active' | 'suspended' | 'rejected';
 export interface UserAccount {
   id: number;
   empId?: string;
@@ -294,6 +294,12 @@ export function fmtDateTime(dt: string) {
 }
 function genId() { return Date.now() + Math.floor(Math.random() * 10000); }
 function nowTs() { return new Date().toISOString(); }
+function generateEmpId(existing: UserAccount[]): string {
+  const now = new Date();
+  const prefix = `GS-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const sameMonth = existing.filter(a => a.empId?.startsWith(prefix));
+  return `${prefix}-${String(sameMonth.length + 1).padStart(3, '0')}`;
+}
 
 function apiRowToUserAccount(r: StaffUserRecord): UserAccount {
   return {
@@ -444,6 +450,9 @@ interface AppContextType {
   addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => Promise<void>;
   updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => Promise<void>;
   changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
+  enrollStaff: (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string }, by: string) => Promise<void>;
+  mdApproveEnrollment: (id: number, by: string) => Promise<void>;
+  mdRejectEnrollment: (id: number, by: string) => Promise<void>;
   approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => Promise<void>;
   suspendUserAccount: (id: number) => Promise<void>;
   reactivateUserAccount: (id: number) => Promise<void>;
@@ -1311,6 +1320,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [userAccounts, userName]);
 
+  const enrollStaff = useCallback(async (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string }, by: string) => {
+    const empId = generateEmpId(userAccounts);
+    const row = await usersApi.create({
+      empName: acc.empName, empId,
+      branchId: acc.branchId ?? null, jobTitle: acc.jobTitle ?? null,
+      dept: acc.dept ?? null, phoneNumber: acc.phoneNumber ?? null,
+      status: 'pending_md',
+    });
+    if (row) {
+      setUserAccounts(prev => [...prev, apiRowToUserAccount(row)]);
+    } else {
+      setUserAccounts(prev => [...prev, {
+        id: genId(), createdAt: nowTs(), status: 'pending_md',
+        empName: acc.empName, empId, username: '', password: '', role: null,
+        branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept,
+        phoneNumber: acc.phoneNumber, createdBy: by,
+      }]);
+    }
+    setAudit(a => [{ id: genId(), action: 'Staff enrolled', user: by, detail: `${acc.empName} (${empId}) enrolled — awaiting MD approval`, ts: nowTs() }, ...a]);
+  }, [userAccounts]);
+
+  const mdApproveEnrollment = useCallback(async (id: number, by: string) => {
+    const row = await usersApi.setStatus(id, 'pending_admin');
+    if (row) {
+      setUserAccounts(prev => prev.map(a => a.id === id ? apiRowToUserAccount(row) : a));
+    } else {
+      setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'pending_admin' as AccountStatus } : a));
+    }
+    setAudit(a => [{ id: genId(), action: 'Enrollment approved by MD', user: by, detail: `Enrollment #${id} forwarded to Admin for account creation`, ts: nowTs() }, ...a]);
+  }, []);
+
+  const mdRejectEnrollment = useCallback(async (id: number, by: string) => {
+    await usersApi.setStatus(id, 'rejected');
+    setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'rejected' as AccountStatus } : a));
+    setAudit(a => [{ id: genId(), action: 'Enrollment rejected by MD', user: by, detail: `Enrollment #${id} rejected`, ts: nowTs() }, ...a]);
+  }, []);
+
   const approveUserAccount = useCallback(async (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
     const hashedPw = await hashPassword(password);
     // Write to DB — new user can log in immediately from any device
@@ -1666,7 +1712,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
-      userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, changeOwnPassword, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
+      userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, changeOwnPassword, enrollStaff, mdApproveEnrollment, mdRejectEnrollment, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,
       addHREmployee, updateHRDocStatus, removeHREmployee,
