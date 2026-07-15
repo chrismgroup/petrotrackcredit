@@ -163,6 +163,7 @@ export interface StaffUserRecord {
   status: string;
   jobTitle: string | null;
   dept: string | null;
+  phoneNumber: string | null;
   createdBy: string;
   createdAt: string;
   approvedBy: string | null;
@@ -184,6 +185,7 @@ export const usersApi = {
     status?: string;
     jobTitle?: string | null;
     dept?: string | null;
+    phoneNumber?: string | null;
   }) => post<StaffUserRecord>('/users', data),
 
   /** Update credentials, role, or other fields (admin only) */
@@ -197,6 +199,7 @@ export const usersApi = {
     status: string;
     jobTitle: string | null;
     dept: string | null;
+    phoneNumber: string | null;
   }>) => putR<StaffUserRecord>(`/users/${id}`, data),
 
   /** Approve / suspend / reject with optional credential assignment (admin only) */

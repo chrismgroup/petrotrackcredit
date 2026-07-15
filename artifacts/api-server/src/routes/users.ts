@@ -39,7 +39,7 @@ router.post("/users", async (req, res): Promise<void> => {
     return;
   }
 
-  const { empName, empId, username, password, role, branchId, status, jobTitle, dept } =
+  const { empName, empId, username, password, role, branchId, status, jobTitle, dept, phoneNumber } =
     req.body ?? {};
 
   if (!empName || typeof empName !== "string") {
@@ -55,14 +55,15 @@ router.post("/users", async (req, res): Promise<void> => {
       .insert(staffUsersTable)
       .values({
         empName,
-        empId:       empId   ?? null,
-        username:    username ?? null,
+        empId:       empId       ?? null,
+        username:    username    ?? null,
         password:    ensureHashed(password ?? ""),
-        role:        role     ?? null,
-        branchId:    branchId ?? null,
+        role:        role        ?? null,
+        branchId:    branchId    ?? null,
         status:      resolvedStatus,
-        jobTitle:    jobTitle ?? null,
-        dept:        dept     ?? null,
+        jobTitle:    jobTitle    ?? null,
+        dept:        dept        ?? null,
+        phoneNumber: phoneNumber ?? null,
         createdBy:   req.auth.username,
         approvedBy:  hasCredentials ? req.auth.username : null,
         approvedAt:  hasCredentials ? new Date()        : null,
@@ -89,19 +90,20 @@ router.put("/users/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { empName, empId, username, password, role, branchId, status, jobTitle, dept } =
+  const { empName, empId, username, password, role, branchId, status, jobTitle, dept, phoneNumber } =
     req.body ?? {};
 
   const updates: Record<string, unknown> = {};
-  if (empName   !== undefined) updates.empName   = empName;
-  if (empId     !== undefined) updates.empId     = empId;
-  if (username  !== undefined) updates.username  = username;
-  if (password  !== undefined) updates.password  = ensureHashed(password);
-  if (role      !== undefined) updates.role      = role;
-  if (branchId  !== undefined) updates.branchId  = branchId;
-  if (status    !== undefined) updates.status    = status;
-  if (jobTitle  !== undefined) updates.jobTitle  = jobTitle;
-  if (dept      !== undefined) updates.dept      = dept;
+  if (empName      !== undefined) updates.empName      = empName;
+  if (empId        !== undefined) updates.empId        = empId;
+  if (username     !== undefined) updates.username     = username;
+  if (password     !== undefined) updates.password     = ensureHashed(password);
+  if (role         !== undefined) updates.role         = role;
+  if (branchId     !== undefined) updates.branchId     = branchId;
+  if (status       !== undefined) updates.status       = status;
+  if (jobTitle     !== undefined) updates.jobTitle     = jobTitle;
+  if (dept         !== undefined) updates.dept         = dept;
+  if (phoneNumber  !== undefined) updates.phoneNumber  = phoneNumber;
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No updates provided" });

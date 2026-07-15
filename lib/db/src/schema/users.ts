@@ -11,6 +11,7 @@ export const staffUsersTable = pgTable("staff_users", {
   status:      text("status").notNull().default("pending"),
   jobTitle:    text("job_title"),
   dept:        text("dept"),
+  phoneNumber: text("phone_number"),
   createdBy:   text("created_by").notNull(),
   createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   approvedBy:  text("approved_by"),
