@@ -87,6 +87,14 @@ export default function UsersScreen() {
 
   /* ─── approve helpers ─── */
   function openApprove(acc: UserAccount) {
+    if (!acc.phoneNumber) {
+      Alert.alert(
+        'Phone Number Missing',
+        `${acc.empName} has no phone number on file. Edit the enrollment to add one before activating — the Comms calling feature requires it.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     const suggested = acc.empName.split(' ').map(w => w[0]?.toLowerCase()).join('') +
       (acc.empName.split(' ')[1] || '').toLowerCase().slice(0, 5);
     setARole('att');
@@ -185,14 +193,21 @@ export default function UsersScreen() {
 
   async function handleEnroll() {
     if (!nEmpName.trim()) { Alert.alert('Required', 'Full name is required.'); return; }
+    const phone = nPhone.trim();
+    if (!phone) {
+      Alert.alert('Phone Required', 'A phone number is required — staff need it for the Comms calling feature.'); return;
+    }
+    if (!/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(phone.replace(/\s/g, ''))) {
+      Alert.alert('Invalid Phone', 'Enter a valid Nigerian number, e.g. 08012345678 or +2348012345678.'); return;
+    }
     await enrollStaff({
       empName: nEmpName.trim(),
       jobTitle: nJobTitle.trim() || undefined,
       dept: nDept.trim() || undefined,
       branchId: nBranch || undefined,
-      phoneNumber: nPhone.trim() || undefined,
+      phoneNumber: phone,
     }, userName || 'HR');
-    Alert.alert('Enrollment Submitted', `${nEmpName.trim()} has been enrolled and forwarded to MD for approval.`);
+    Alert.alert('Enrollment Submitted', `${nEmpName.trim()} has been enrolled and forwarded to Admin for account creation.`);
     setShowEnroll(false);
   }
 
@@ -941,8 +956,8 @@ export default function UsersScreen() {
               ))}
             </View>
 
-            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Phone Number <Text style={{ fontWeight: '400' }}>(optional)</Text></Text>
-            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Phone Number <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text> <Text style={{ fontWeight: '400' }}>(required for Comms)</Text></Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: nPhone.trim() && !/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(nPhone.trim().replace(/\s/g, '')) ? colors.error : colors.border }]}>
               <Ionicons name="call-outline" size={16} color={colors.textMuted} />
               <TextInput
                 style={[styles.input, { color: colors.text }]}
@@ -952,6 +967,13 @@ export default function UsersScreen() {
                 placeholderTextColor={colors.textSubtle}
                 keyboardType="phone-pad"
               />
+              {nPhone.trim().length > 0 && (
+                <Ionicons
+                  name={/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(nPhone.trim().replace(/\s/g, '')) ? 'checkmark-circle' : 'close-circle'}
+                  size={16}
+                  color={/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(nPhone.trim().replace(/\s/g, '')) ? colors.success : colors.error}
+                />
+              )}
             </View>
 
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
