@@ -202,6 +202,8 @@ export default function SystemSettingsScreen() {
   /* ── company draft (local edits before save) ── */
   const [cDraft, setCDraft] = useState(companyInfo);
   useEffect(() => { setCDraft(companyInfo); }, [companyInfo]);
+  const [cSaved, setCSaved] = useState(false);
+  const hasUnsaved = JSON.stringify(cDraft) !== JSON.stringify(companyInfo);
 
   /* ── edit state (existing items) ── */
   const [tankEdits, setTankEdits] = useState<Record<string, { name: string; cap: string; dip: string; prod: Tank['prod']; branchId: string }>>({});
@@ -365,10 +367,12 @@ export default function SystemSettingsScreen() {
                 <Ionicons name="business" size={22} color="#4CAF50" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.bannerTitle}>
-                    {companyInfo.name ? companyInfo.name : 'Company Profile'}
+                    {companyInfo.name || 'Company Profile'}
                   </Text>
                   <Text style={styles.bannerSub}>
-                    {companyInfo.rcNumber ? `RC: ${companyInfo.rcNumber}` : 'Configure your company details below'}
+                    {companyInfo.rcNumber
+                      ? `RC: ${companyInfo.rcNumber}${companyInfo.tin ? '  ·  TIN: ' + companyInfo.tin : ''}`
+                      : companyInfo.name ? 'Tap the fields below to update details' : 'Fill in your company details and tap Save'}
                   </Text>
                 </View>
               </View>
@@ -504,15 +508,28 @@ export default function SystemSettingsScreen() {
                 </View>
               </View>
 
+              {isAdmin && hasUnsaved && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, backgroundColor: '#BA751714', borderWidth: 1, borderColor: '#BA751740', marginBottom: 2 }}>
+                  <Ionicons name="alert-circle-outline" size={15} color="#BA7517" />
+                  <Text style={{ color: '#BA7517', fontSize: 12, flex: 1 }}>You have unsaved changes — tap Save to apply them.</Text>
+                </View>
+              )}
+              {isAdmin && cSaved && !hasUnsaved && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, backgroundColor: '#1a6e3c14', borderWidth: 1, borderColor: '#1a6e3c40', marginBottom: 2 }}>
+                  <Ionicons name="checkmark-circle" size={15} color="#1a6e3c" />
+                  <Text style={{ color: '#1a6e3c', fontSize: 12, flex: 1 }}>Company information saved — changes are active across the app.</Text>
+                </View>
+              )}
               {isAdmin && (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <SaveBtn
-                    label="Save Company Settings"
-                    roleColor={roleColor}
+                    label={hasUnsaved ? 'Save Company Settings' : 'Settings Saved ✓'}
+                    roleColor={hasUnsaved ? roleColor : '#1a6e3c'}
                     onPress={() => {
                       if (!cDraft.name.trim()) { Alert.alert('Required', 'Company name cannot be empty.'); return; }
                       updateCompanyInfo(cDraft);
-                      Alert.alert('Saved', 'Company details updated successfully.');
+                      setCSaved(true);
+                      setTimeout(() => setCSaved(false), 4000);
                     }}
                   />
                 </View>

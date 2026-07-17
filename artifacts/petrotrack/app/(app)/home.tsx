@@ -12,7 +12,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 
 export default function HomeScreen() {
-  const { role, branchId, userName, tanks, lpgTanks, maintenance, expenses, audit, branches, staff, departments, dips, unreadCount } = useApp();
+  const { role, branchId, userName, tanks, lpgTanks, maintenance, expenses, audit, branches, staff, departments, dips, unreadCount, companyInfo } = useApp();
   const colors = useColors();
   const router = useRouter();
 
@@ -48,10 +48,28 @@ export default function HomeScreen() {
           <View style={[styles.adminBanner, { backgroundColor: '#0a2318' }]}>
             <Ionicons name="shield-checkmark" size={32} color="#4CAF50" />
             <View style={{ flex: 1 }}>
-              <Text style={styles.adminBannerTitle}>Administrator Portal</Text>
-              <Text style={styles.adminBannerSub}>Gastsmarts — Full system access</Text>
+              <Text style={styles.adminBannerTitle}>{companyInfo.name || 'Administrator Portal'}</Text>
+              <Text style={styles.adminBannerSub}>
+                {companyInfo.name
+                  ? (companyInfo.rcNumber ? `RC: ${companyInfo.rcNumber}` : 'Full system access')
+                  : 'Gastsmarts — Full system access'}
+              </Text>
             </View>
           </View>
+          {!companyInfo.name && (
+            <TouchableOpacity
+              onPress={() => router.push('/(app)/system-settings')}
+              activeOpacity={0.85}
+              style={[styles.setupPrompt, { backgroundColor: '#BA751718', borderColor: '#BA751744' }]}
+            >
+              <Ionicons name="alert-circle-outline" size={18} color="#BA7517" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#BA7517', fontSize: 13, fontWeight: '700' }}>Company info not set up</Text>
+                <Text style={{ color: '#BA7517', fontSize: 11, marginTop: 1 }}>Tap to fill in your company name, address, tax IDs and more.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color="#BA7517" />
+            </TouchableOpacity>
+          )}
           <View style={styles.statsGrid}>
             {sysStats.map(stat => (
               <View key={stat.label} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -97,7 +115,9 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={[styles.greeting, { backgroundColor: roleColor + '18', borderColor: roleColor + '33' }]}>
           <View>
-            <Text style={[styles.greetingTop, { color: colors.textMuted }]}>{today}</Text>
+            <Text style={[styles.greetingTop, { color: colors.textMuted }]}>
+              {companyInfo.name ? `${companyInfo.name} · ` : ''}{today}
+            </Text>
             <Text style={[styles.greetingName, { color: colors.text }]}>Good day, {(userName || info?.name || '').split(' ')[0]} 👋</Text>
           </View>
           <View style={[styles.greetingBadge, { backgroundColor: roleColor }]}>
@@ -200,7 +220,8 @@ const styles = StyleSheet.create({
   dipPct: { fontSize: 10 },
   alertCard: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
   alertText: { flex: 1, fontSize: 13, fontWeight: '500' },
-  adminBanner: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 14, marginBottom: 16 },
+  adminBanner: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 14, marginBottom: 10 },
+  setupPrompt: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 12 },
   adminBannerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
   adminBannerSub: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 2 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
