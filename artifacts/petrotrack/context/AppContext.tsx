@@ -73,7 +73,7 @@ export const MGR_BRANCH_NAMES: Record<string, string> = {
 export interface Department { id: string; name: string; icon: string; col: { bg: string; fg: string }; roles: string[]; sys: boolean; }
 export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; 'Lube Oil': number; }
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; reason?: string; }
-export interface Message { id: number; from: Role; to: Role; type: 'txt' | 'req' | 'alert' | 'media'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; }
+export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; }
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
 export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; duration?: string; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
@@ -442,9 +442,9 @@ interface AppContextType {
   rejectDelivery: (id: number, note?: string) => void;
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
-  sendMessage: (to: Role, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => void;
+  sendMessage: (toName: string, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => void;
   addSystemNotification: (from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => void;
-  markRead: (peer: Role) => void;
+  markRead: (peerName: string) => void;
   approveExpense: (id: number) => void;
   rejectExpense: (id: number) => void;
   addStaff: (s: Omit<Staff, 'id'>) => void;
@@ -477,7 +477,7 @@ interface AppContextType {
   rejectUserAccount: (id: number) => Promise<void>;
   deleteUserAccount: (id: number) => Promise<void>;
   validateCredentials: (username: string, password: string) => Promise<UserAccount | null>;
-  getConversation: (peer: Role) => Message[];
+  getConversation: (peerName: string) => Message[];
   unreadCount: () => number;
   tasks: Task[];
   kpis: KPI[];
@@ -1152,21 +1152,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Sales entry', user: userName, detail: `${entry.pump} — ${entry.L}L`, ts: nowTs() }, ...a]);
   }, [userName, branchId]);
 
-  const sendMessage = useCallback((to: Role, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => {
-    if (!role) return;
-    const key = chatKey(role, to);
-    const newMsg: Message = { ...msg, id: genId(), from: role, ts: nowTime(), read: false };
+  const sendMessage = useCallback((toName: string, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => {
+    if (!userName) return;
+    const key = chatKey(userName, toName);
+    const newMsg: Message = { ...msg, id: genId(), from: userName, ts: nowTime(), read: false };
     setMessages(m => ({ ...m, [key]: [...(m[key] || []), newMsg] }));
-  }, [role]);
+  }, [userName]);
 
-  const markRead = useCallback((peer: Role) => {
-    if (!role) return;
-    const key = chatKey(role, peer);
+  const markRead = useCallback((peerName: string) => {
+    if (!userName) return;
+    const key = chatKey(userName, peerName);
     setMessages(m => ({
       ...m,
-      [key]: (m[key] || []).map(msg => msg.to === role ? { ...msg, read: true } : msg),
+      [key]: (m[key] || []).map(msg => msg.to === userName ? { ...msg, read: true } : msg),
     }));
-  }, [role]);
+  }, [userName]);
 
   const approveExpense = useCallback((id: number) => {
     setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : x));
@@ -1726,18 +1726,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setMessages(m => ({ ...m, [key]: [...(m[key] || []), newMsg] }));
   }, [role]);
 
-  const getConversation = useCallback((peer: Role): Message[] => {
-    if (!role) return [];
-    return messages[chatKey(role, peer)] || [];
-  }, [role, messages]);
+  const getConversation = useCallback((peerName: string): Message[] => {
+    if (!userName) return [];
+    return messages[chatKey(userName, peerName)] || [];
+  }, [userName, messages]);
 
   const unreadCount = useCallback((): number => {
-    if (!role) return 0;
+    if (!userName) return 0;
     return Object.values(messages).reduce((sum, msgs) => {
       if (!Array.isArray(msgs)) return sum;
-      return sum + msgs.filter(m => m.to === role && !m.read).length;
+      return sum + msgs.filter(m => m.to === userName && !m.read).length;
     }, 0);
-  }, [role, messages]);
+  }, [userName, messages]);
 
   const updateRoleAccess = useCallback((targetRole: string, moduleId: string, enabled: boolean) => {
     setRoleAccess(prev => ({
