@@ -34,11 +34,15 @@ _Describe the high-level user-facing capabilities of this app once they exist._
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Production data must never be erased by code changes or redeployments. All schema changes must be additive (new columns with defaults, new tables only — never drop or rename).
+- Device AsyncStorage data belongs to the user's device and is unaffected by any server-side or code change.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- **NEVER run `db push` against production.** The drizzle config throws if `NODE_ENV=production` as a hard guard. Push is dev-only — it syncs the Replit workspace database only.
+- **`push-force` script has been removed** — it was too dangerous. Do not re-add it.
+- **Code changes do NOT touch any database.** Only `db push` (dev) or a deliberate SQL migration (production) changes the schema.
+- **Production schema changes:** add columns with a `DEFAULT` so existing rows remain valid. Never drop or rename a column — add a new one and migrate data gradually.
 
 ## Pointers
 
