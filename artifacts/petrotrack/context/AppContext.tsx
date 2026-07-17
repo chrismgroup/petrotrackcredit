@@ -97,7 +97,7 @@ export type TaskPriority = 'High' | 'Medium' | 'Low';
 export type TaskCadence = 'daily' | 'weekly' | 'monthly' | 'quarterly';
 export interface Task { id: number; title: string; desc: string; assignedBy: Role; assignedByName: string; assignedTo: Role; assignedToName: string; status: TaskStatus; priority: TaskPriority; cadence: TaskCadence; target?: string; targetUnit?: string; dueDate: string; createdAt: string; }
 export interface KPI { id: number; title: string; target: string; unit: string; period: string; assignedTo: Role; assignedToName: string; createdAt: string; }
-export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video'; name: string; dt: string; by: string; }
+export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video' | 'document'; name: string; dt: string; by: string; uri?: string; mimeType?: string; size?: number; }
 export type PumpReportStatus = 'pending_manager' | 'pending_accountant' | 'returned' | 'approved';
 export interface PumpDailyReport {
   id: number;

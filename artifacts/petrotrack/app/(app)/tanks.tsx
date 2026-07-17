@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -17,6 +19,41 @@ const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'ch
 
 export default function TanksScreen() {
   const { role, tanks, lpgTanks, dips, deliveries, sales, addDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms, sendMessage } = useApp();
+
+  async function pickCameraEvidence(delivId: number) {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera access is needed to capture delivery evidence.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: false });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      addDeliveryEvidence({ delivId, type: 'photo', name: asset.fileName ?? `photo_${Date.now()}.jpg`, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', size: asset.fileSize });
+    }
+  }
+
+  async function pickGalleryEvidence(delivId: number) {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Media library access is needed to attach evidence.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.8, allowsEditing: false });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      const isVid = asset.type === 'video';
+      addDeliveryEvidence({ delivId, type: isVid ? 'video' : 'photo', name: asset.fileName ?? `${isVid ? 'video' : 'photo'}_${Date.now()}`, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? (isVid ? 'video/mp4' : 'image/jpeg'), size: asset.fileSize });
+    }
+  }
+
+  async function pickDocEvidence(delivId: number) {
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+    if (!result.canceled && result.assets?.[0]) {
+      const asset = result.assets[0];
+      addDeliveryEvidence({ delivId, type: 'document', name: asset.name, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? 'application/octet-stream', size: asset.size });
+    }
+  }
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const [activeTab, setActiveTab] = useState(0);
@@ -407,42 +444,49 @@ export default function TanksScreen() {
 
                 <View style={[styles.evidenceSection, { borderTopColor: colors.border }]}>
                   <View style={styles.evidenceHeader}>
-                    <Ionicons name="camera" size={13} color={colors.textMuted} />
-                    <Text style={[styles.evidenceTitle, { color: colors.textMuted }]}>Delivery Evidence ({evidence.length})</Text>
+                    <Ionicons name="attach-outline" size={13} color={colors.textMuted} />
+                    <Text style={[styles.evidenceTitle, { color: colors.textMuted }]}>Evidence ({evidence.length})</Text>
                     {canEdit && (
                       <View style={styles.evidenceBtns}>
-                        <TouchableOpacity
-                          onPress={() => { const n = `WB-${rec.wb}_photo_${Date.now()}.jpg`; addDeliveryEvidence({ delivId: rec.id, type: 'photo', name: n, by: userName || 'Manager' }); Alert.alert('Photo Added', n); }}
-                          style={[styles.evidenceAddBtn, { backgroundColor: roleColor + '18', borderColor: roleColor + '44' }]}
-                        >
-                          <Ionicons name="camera" size={11} color={roleColor} />
-                          <Text style={[styles.evidenceAddText, { color: roleColor }]}>Photo</Text>
+                        <TouchableOpacity onPress={() => pickCameraEvidence(rec.id)} style={[styles.evidenceAddBtn, { backgroundColor: roleColor + '18', borderColor: roleColor + '44' }]}>
+                          <Ionicons name="camera-outline" size={11} color={roleColor} />
+                          <Text style={[styles.evidenceAddText, { color: roleColor }]}>Camera</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => { const n = `WB-${rec.wb}_video_${Date.now()}.mp4`; addDeliveryEvidence({ delivId: rec.id, type: 'video', name: n, by: userName || 'Manager' }); Alert.alert('Video Added', n); }}
-                          style={[styles.evidenceAddBtn, { backgroundColor: '#8E44AD' + '18', borderColor: '#8E44AD' + '44' }]}
-                        >
-                          <Ionicons name="videocam" size={11} color="#8E44AD" />
-                          <Text style={[styles.evidenceAddText, { color: '#8E44AD' }]}>Video</Text>
+                        <TouchableOpacity onPress={() => pickGalleryEvidence(rec.id)} style={[styles.evidenceAddBtn, { backgroundColor: '#2980B918', borderColor: '#2980B944' }]}>
+                          <Ionicons name="images-outline" size={11} color="#2980B9" />
+                          <Text style={[styles.evidenceAddText, { color: '#2980B9' }]}>Gallery</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => pickDocEvidence(rec.id)} style={[styles.evidenceAddBtn, { backgroundColor: '#8E44AD18', borderColor: '#8E44AD44' }]}>
+                          <Ionicons name="document-outline" size={11} color="#8E44AD" />
+                          <Text style={[styles.evidenceAddText, { color: '#8E44AD' }]}>File</Text>
                         </TouchableOpacity>
                       </View>
                     )}
                   </View>
                   {evidence.length === 0 && (
-                    <Text style={[styles.evidenceEmpty, { color: colors.textSubtle }]}>No evidence attached — tap Photo or Video to upload</Text>
+                    <Text style={[styles.evidenceEmpty, { color: colors.textSubtle }]}>
+                      {canEdit ? 'No files attached — tap Camera, Gallery, or File to upload evidence' : 'No evidence attached'}
+                    </Text>
                   )}
-                  {evidence.map(ev => (
-                    <View key={ev.id} style={[styles.evidenceItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                      <Ionicons name={ev.type === 'photo' ? 'image' : 'videocam'} size={14} color={ev.type === 'photo' ? roleColor : '#8E44AD'} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.evidenceName, { color: colors.text }]} numberOfLines={1}>{ev.name}</Text>
-                        <Text style={[styles.evidenceMeta, { color: colors.textSubtle }]}>by {ev.by} · {fmtDateTime(ev.dt)}</Text>
+                  {evidence.map(ev => {
+                    const isImg = ev.mimeType?.startsWith('image/') || ev.type === 'photo';
+                    const isVid = ev.mimeType?.startsWith('video/') || ev.type === 'video';
+                    const ic = isImg ? 'image-outline' : isVid ? 'videocam-outline' : 'document-text-outline';
+                    const icColor = isImg ? roleColor : isVid ? '#2980B9' : '#8E44AD';
+                    const label = isImg ? 'IMG' : isVid ? 'VID' : 'FILE';
+                    return (
+                      <View key={ev.id} style={[styles.evidenceItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                        <Ionicons name={ic as any} size={14} color={icColor} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.evidenceName, { color: colors.text }]} numberOfLines={1}>{ev.name}</Text>
+                          <Text style={[styles.evidenceMeta, { color: colors.textSubtle }]}>by {ev.by} · {fmtDateTime(ev.dt)}</Text>
+                        </View>
+                        <View style={[styles.evidenceTypeBadge, { backgroundColor: icColor + '18' }]}>
+                          <Text style={[styles.evidenceTypeText, { color: icColor }]}>{label}</Text>
+                        </View>
                       </View>
-                      <View style={[styles.evidenceTypeBadge, { backgroundColor: ev.type === 'photo' ? roleColor + '18' : '#8E44AD' + '18' }]}>
-                        <Text style={[styles.evidenceTypeText, { color: ev.type === 'photo' ? roleColor : '#8E44AD' }]}>{ev.type.toUpperCase()}</Text>
-                      </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               </View>
             );
