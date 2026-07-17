@@ -67,18 +67,33 @@ export default function UsersScreen() {
   const [showCreatePw, setShowCreatePw] = useState(false);
 
   /* ── enroll staff modal state (HR/CSM only) ── */
-  const [showEnroll, setShowEnroll] = useState(false);
-  const [nEmpName, setNEmpName]     = useState('');
-  const [nJobTitle, setNJobTitle]   = useState('');
-  const [nDept, setNDept]           = useState('');
-  const [nBranch, setNBranch]       = useState('');
-  const [nPhone, setNPhone]         = useState('');
+  const [showEnroll, setShowEnroll]             = useState(false);
+  const [nEmpName, setNEmpName]                 = useState('');
+  const [nJobTitle, setNJobTitle]               = useState('');
+  const [nDept, setNDept]                       = useState('');
+  const [nBranch, setNBranch]                   = useState('');
+  const [nPhone, setNPhone]                     = useState('');
+  const [nNin, setNNin]                         = useState('');
+  const [nStaffAddress, setNStaffAddress]       = useState('');
+  const [nGuarantorName, setNGuarantorName]     = useState('');
+  const [nGuarantorPhone, setNGuarantorPhone]   = useState('');
+  const [nGuarantorAddress, setNGuarantorAddress] = useState('');
+  const [nDocs, setNDocs]                       = useState<Set<string>>(new Set());
+
+  const isMD = role === 'md';
 
   /* ── pending data per role ── */
+  const pendingMdRecs    = userAccounts.filter(a => a.status === 'pending_md');
   const pendingAdminRecs = userAccounts.filter(a => a.status === 'pending_admin');
   const pendingLegacy    = userAccounts.filter(a => a.status === 'pending');
-  const allPending       = [...pendingAdminRecs, ...pendingLegacy];
-  const pendingForRole   = isAdmin ? allPending : isHR ? pendingAdminRecs : [];
+  const allPending       = [...pendingMdRecs, ...pendingAdminRecs, ...pendingLegacy];
+  const pendingForRole   = isMD
+    ? pendingMdRecs
+    : isAdmin
+      ? [...pendingAdminRecs, ...pendingLegacy]
+      : isHR
+        ? pendingMdRecs
+        : [];
   const active   = userAccounts.filter(a => ['active', 'suspended'].includes(a.status));
   const filtered = (tab === 'pending' ? pendingForRole : active).filter(a =>
     !search || a.empName.toLowerCase().includes(search.toLowerCase()) ||
@@ -185,29 +200,63 @@ export default function UsersScreen() {
     ]);
   }
 
+  const REQUIRED_DOCS = ['CV / Resume', 'Academic Certificates', 'Government-issued ID', "Guarantor's ID", 'Passport Photo'];
+  const OPTIONAL_DOCS = ['Previous Employment Letter', 'Reference Letter', 'Medical Certificate'];
+
   /* ─── enroll staff helpers (HR/CSM) ─── */
   function openEnroll() {
     setNEmpName(''); setNJobTitle(''); setNDept(''); setNBranch(''); setNPhone('');
+    setNNin(''); setNStaffAddress('');
+    setNGuarantorName(''); setNGuarantorPhone(''); setNGuarantorAddress('');
+    setNDocs(new Set());
     setShowEnroll(true);
+  }
+
+  function toggleDoc(doc: string) {
+    setNDocs(prev => {
+      const next = new Set(prev);
+      next.has(doc) ? next.delete(doc) : next.add(doc);
+      return next;
+    });
   }
 
   async function handleEnroll() {
     if (!nEmpName.trim()) { Alert.alert('Required', 'Full name is required.'); return; }
     const phone = nPhone.trim();
-    if (!phone) {
-      Alert.alert('Phone Required', 'A phone number is required — staff need it for the Comms calling feature.'); return;
-    }
+    if (!phone) { Alert.alert('Required', 'Phone number is required for Comms.'); return; }
     if (!/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(phone.replace(/\s/g, ''))) {
-      Alert.alert('Invalid Phone', 'Enter a valid Nigerian number, e.g. 08012345678 or +2348012345678.'); return;
+      Alert.alert('Invalid Phone', 'Enter a valid Nigerian number, e.g. 08012345678.'); return;
+    }
+    const nin = nNin.trim();
+    if (!nin) { Alert.alert('Required', 'NIN (National Identification Number) is required.'); return; }
+    if (!/^\d{11}$/.test(nin)) { Alert.alert('Invalid NIN', 'NIN must be exactly 11 digits.'); return; }
+    if (!nStaffAddress.trim()) { Alert.alert('Required', 'Staff residential address is required.'); return; }
+    if (!nGuarantorName.trim()) { Alert.alert('Required', 'Guarantor full name is required.'); return; }
+    const gPhone = nGuarantorPhone.trim();
+    if (!gPhone) { Alert.alert('Required', 'Guarantor phone number is required.'); return; }
+    if (!/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(gPhone.replace(/\s/g, ''))) {
+      Alert.alert('Invalid Guarantor Phone', 'Enter a valid Nigerian number for the guarantor.'); return;
+    }
+    if (!nGuarantorAddress.trim()) { Alert.alert('Required', 'Guarantor address is required.'); return; }
+    const missingDocs = REQUIRED_DOCS.filter(d => !nDocs.has(d));
+    if (missingDocs.length > 0) {
+      Alert.alert('Documents Missing', `Confirm receipt of all required documents before submitting:\n\n• ${missingDocs.join('\n• ')}`);
+      return;
     }
     await enrollStaff({
-      empName: nEmpName.trim(),
-      jobTitle: nJobTitle.trim() || undefined,
-      dept: nDept.trim() || undefined,
-      branchId: nBranch || undefined,
-      phoneNumber: phone,
+      empName:          nEmpName.trim(),
+      jobTitle:         nJobTitle.trim() || undefined,
+      dept:             nDept.trim() || undefined,
+      branchId:         nBranch || undefined,
+      phoneNumber:      phone,
+      nin,
+      staffAddress:     nStaffAddress.trim(),
+      guarantorName:    nGuarantorName.trim(),
+      guarantorPhone:   gPhone,
+      guarantorAddress: nGuarantorAddress.trim(),
+      employmentDocs:   [...nDocs],
     }, userName || 'HR');
-    Alert.alert('Enrollment Submitted', `${nEmpName.trim()} has been enrolled and forwarded to Admin for account creation.`);
+    Alert.alert('Submitted to MD', `${nEmpName.trim()}'s enrollment has been sent to MD for approval.`);
     setShowEnroll(false);
   }
 
@@ -335,19 +384,27 @@ export default function UsersScreen() {
             ) : (
               <>
                 {/* Info banners per role */}
-                {isAdmin && allPending.length > 0 && (
+                {isAdmin && pendingForRole.length > 0 && (
                   <View style={[styles.infoBanner, { backgroundColor: '#BA751722', borderColor: '#BA751744' }]}>
                     <Ionicons name="information-circle" size={16} color="#BA7517" />
                     <Text style={[styles.infoBannerText, { color: '#BA7517' }]}>
-                      {allPending.length} enrollment{allPending.length > 1 ? 's' : ''} ready for account creation. Assign credentials and a role to each.
+                      {pendingForRole.length} enrollment{pendingForRole.length > 1 ? 's' : ''} approved by MD — assign credentials and a role to activate each account.
                     </Text>
                   </View>
                 )}
-                {isHR && pendingAdminRecs.length > 0 && (
+                {isMD && pendingMdRecs.length > 0 && (
+                  <View style={[styles.infoBanner, { backgroundColor: '#7B3FA522', borderColor: '#7B3FA544' }]}>
+                    <Ionicons name="information-circle" size={16} color="#7B3FA5" />
+                    <Text style={[styles.infoBannerText, { color: '#7B3FA5' }]}>
+                      {pendingMdRecs.length} enrollment{pendingMdRecs.length > 1 ? 's' : ''} awaiting your review. Approve to forward to Admin or reject to decline.
+                    </Text>
+                  </View>
+                )}
+                {isHR && pendingMdRecs.length > 0 && (
                   <View style={[styles.infoBanner, { backgroundColor: '#185FA522', borderColor: '#185FA544' }]}>
                     <Ionicons name="information-circle" size={16} color="#185FA5" />
                     <Text style={[styles.infoBannerText, { color: '#185FA5' }]}>
-                      {pendingAdminRecs.length} enrollment{pendingAdminRecs.length > 1 ? 's' : ''} submitted — Admin will create the user accounts.
+                      {pendingMdRecs.length} enrollment{pendingMdRecs.length > 1 ? 's' : ''} submitted — awaiting MD review.
                     </Text>
                   </View>
                 )}
@@ -368,11 +425,33 @@ export default function UsersScreen() {
                         Enrolled by {acc.createdBy} · {acc.createdAt.slice(0, 10)}
                       </Text>
                       {isHR && (
-                        <View style={[styles.stBadge, { backgroundColor: '#BA751722', marginTop: 4, alignSelf: 'flex-start' }]}>
-                          <Text style={[styles.stText, { color: '#BA7517' }]}>Awaiting Admin</Text>
+                        <View style={[styles.stBadge, {
+                          backgroundColor: acc.status === 'pending_md' ? '#7B3FA522' : '#BA751722',
+                          marginTop: 4, alignSelf: 'flex-start',
+                        }]}>
+                          <Text style={[styles.stText, { color: acc.status === 'pending_md' ? '#7B3FA5' : '#BA7517' }]}>
+                            {acc.status === 'pending_md' ? 'Awaiting MD' : 'MD Approved · Awaiting Admin'}
+                          </Text>
                         </View>
                       )}
                     </View>
+                    {isMD && acc.status === 'pending_md' && (
+                      <View style={{ gap: 6, alignItems: 'flex-end' }}>
+                        <TouchableOpacity
+                          onPress={() => handleMdApprove(acc)}
+                          style={[styles.approveBtn, { backgroundColor: '#7B3FA5' }]}
+                        >
+                          <Ionicons name="checkmark-circle" size={13} color="#fff" />
+                          <Text style={styles.approveBtnText}>Approve</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleMdReject(acc)}
+                          style={[styles.rejectBtn, { borderColor: colors.errorBorder }]}
+                        >
+                          <Text style={[styles.rejectBtnText, { color: colors.error }]}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                     {isAdmin && (
                       <View style={{ gap: 6, alignItems: 'flex-end' }}>
                         <TouchableOpacity
@@ -976,6 +1055,156 @@ export default function UsersScreen() {
               )}
             </View>
 
+            {/* ── IDENTITY ── */}
+            <View style={[styles.sectionHeader, { borderTopColor: colors.border }]}>
+              <Ionicons name="card-outline" size={14} color={roleColor} />
+              <Text style={[styles.sectionTitle, { color: roleColor }]}>Identity & Address</Text>
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>NIN <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text> <Text style={{ fontWeight: '400' }}>(11-digit National ID)</Text></Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: nNin.trim() && !/^\d{11}$/.test(nNin.trim()) ? colors.error : colors.border }]}>
+              <Ionicons name="finger-print-outline" size={16} color={colors.textMuted} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                value={nNin}
+                onChangeText={setNNin}
+                placeholder="e.g. 12345678901"
+                placeholderTextColor={colors.textSubtle}
+                keyboardType="number-pad"
+                maxLength={11}
+              />
+              {nNin.trim().length > 0 && (
+                <Ionicons
+                  name={/^\d{11}$/.test(nNin.trim()) ? 'checkmark-circle' : 'close-circle'}
+                  size={16}
+                  color={/^\d{11}$/.test(nNin.trim()) ? colors.success : colors.error}
+                />
+              )}
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Residential Address <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text></Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border, minHeight: 72, alignItems: 'flex-start', paddingTop: 10 }]}>
+              <Ionicons name="home-outline" size={16} color={colors.textMuted} style={{ marginTop: 2 }} />
+              <TextInput
+                style={[styles.input, { color: colors.text, height: 60, textAlignVertical: 'top' }]}
+                value={nStaffAddress}
+                onChangeText={setNStaffAddress}
+                placeholder="Full residential address"
+                placeholderTextColor={colors.textSubtle}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            {/* ── GUARANTOR ── */}
+            <View style={[styles.sectionHeader, { borderTopColor: colors.border }]}>
+              <Ionicons name="people-outline" size={14} color={roleColor} />
+              <Text style={[styles.sectionTitle, { color: roleColor }]}>Guarantor Details</Text>
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Guarantor Full Name <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text></Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="person-outline" size={16} color={colors.textMuted} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                value={nGuarantorName}
+                onChangeText={setNGuarantorName}
+                placeholder="e.g. Amaka Okafor"
+                placeholderTextColor={colors.textSubtle}
+              />
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Guarantor Phone <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text></Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: nGuarantorPhone.trim() && !/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(nGuarantorPhone.trim().replace(/\s/g, '')) ? colors.error : colors.border }]}>
+              <Ionicons name="call-outline" size={16} color={colors.textMuted} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                value={nGuarantorPhone}
+                onChangeText={setNGuarantorPhone}
+                placeholder="e.g. 08012345678"
+                placeholderTextColor={colors.textSubtle}
+                keyboardType="phone-pad"
+              />
+              {nGuarantorPhone.trim().length > 0 && (
+                <Ionicons
+                  name={/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(nGuarantorPhone.trim().replace(/\s/g, '')) ? 'checkmark-circle' : 'close-circle'}
+                  size={16}
+                  color={/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(nGuarantorPhone.trim().replace(/\s/g, '')) ? colors.success : colors.error}
+                />
+              )}
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Guarantor Address <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text></Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border, minHeight: 72, alignItems: 'flex-start', paddingTop: 10 }]}>
+              <Ionicons name="home-outline" size={16} color={colors.textMuted} style={{ marginTop: 2 }} />
+              <TextInput
+                style={[styles.input, { color: colors.text, height: 60, textAlignVertical: 'top' }]}
+                value={nGuarantorAddress}
+                onChangeText={setNGuarantorAddress}
+                placeholder="Guarantor's full address"
+                placeholderTextColor={colors.textSubtle}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            {/* ── EMPLOYMENT DOCUMENTS ── */}
+            <View style={[styles.sectionHeader, { borderTopColor: colors.border }]}>
+              <Ionicons name="document-text-outline" size={14} color={roleColor} />
+              <Text style={[styles.sectionTitle, { color: roleColor }]}>Employment Documents</Text>
+            </View>
+            <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 8 }]}>
+              Tick each document physically received from the applicant. All required documents must be confirmed.
+            </Text>
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted, fontWeight: '700', marginBottom: 4 }]}>Required</Text>
+            {REQUIRED_DOCS.map(doc => {
+              const checked = nDocs.has(doc);
+              return (
+                <TouchableOpacity
+                  key={doc}
+                  onPress={() => toggleDoc(doc)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 4 }}
+                  activeOpacity={0.7}
+                >
+                  <View style={{
+                    width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+                    borderColor: checked ? colors.success : colors.border,
+                    backgroundColor: checked ? colors.success : 'transparent',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {checked && <Ionicons name="checkmark" size={13} color="#fff" />}
+                  </View>
+                  <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>{doc}</Text>
+                  {!checked && <Text style={{ color: colors.error, fontSize: 11 }}>required</Text>}
+                </TouchableOpacity>
+              );
+            })}
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted, fontWeight: '700', marginTop: 8, marginBottom: 4 }]}>Optional</Text>
+            {OPTIONAL_DOCS.map(doc => {
+              const checked = nDocs.has(doc);
+              return (
+                <TouchableOpacity
+                  key={doc}
+                  onPress={() => toggleDoc(doc)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 4 }}
+                  activeOpacity={0.7}
+                >
+                  <View style={{
+                    width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+                    borderColor: checked ? roleColor : colors.border,
+                    backgroundColor: checked ? roleColor : 'transparent',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {checked && <Ionicons name="checkmark" size={13} color="#fff" />}
+                  </View>
+                  <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>{doc}</Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            <View style={{ height: 12 }} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
               <TouchableOpacity onPress={handleEnroll} style={[styles.confirmBtn, { backgroundColor: roleColor, flex: 1 }]} activeOpacity={0.85}>
                 <Ionicons name="paper-plane-outline" size={16} color="#fff" />
@@ -1034,6 +1263,8 @@ const styles = StyleSheet.create({
   fieldLabel:     { fontSize: 11, fontWeight: '600', marginBottom: 6 },
   inputWrap:      { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 12, borderWidth: 1.5, marginBottom: 12 },
   input:          { flex: 1, fontSize: 14 },
+  sectionHeader:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 16, marginTop: 4, marginBottom: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  sectionTitle:   { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   roleChip:       { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
   roleChipText:   { fontSize: 12, fontWeight: '600' },
   confirmBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12 },

@@ -58,6 +58,14 @@ export interface UserAccount {
   jobTitle?: string;
   dept?: string;
   phoneNumber?: string;
+  nin?: string;
+  staffAddress?: string;
+  guarantorName?: string;
+  guarantorPhone?: string;
+  guarantorAddress?: string;
+  employmentDocs?: string[];
+  mdApprovedBy?: string;
+  mdApprovedAt?: string;
 }
 export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
@@ -304,21 +312,29 @@ function generateEmpId(existing: UserAccount[]): string {
 
 function apiRowToUserAccount(r: StaffUserRecord): UserAccount {
   return {
-    id:          r.id,
-    empName:     r.empName,
-    empId:       r.empId       ?? undefined,
-    username:    r.username    ?? '',
-    password:    '',            // password is never returned by the API
-    role:        (r.role as Role) ?? null,
-    branchId:    r.branchId    ?? undefined,
-    status:      (r.status     as AccountStatus),
-    createdBy:   r.createdBy,
-    createdAt:   r.createdAt,
-    approvedBy:  r.approvedBy  ?? undefined,
-    approvedAt:  r.approvedAt  ?? undefined,
-    jobTitle:    r.jobTitle    ?? undefined,
-    dept:        r.dept        ?? undefined,
-    phoneNumber: r.phoneNumber ?? undefined,
+    id:               r.id,
+    empName:          r.empName,
+    empId:            r.empId            ?? undefined,
+    username:         r.username         ?? '',
+    password:         '',
+    role:             (r.role as Role)   ?? null,
+    branchId:         r.branchId         ?? undefined,
+    status:           (r.status          as AccountStatus),
+    createdBy:        r.createdBy,
+    createdAt:        r.createdAt,
+    approvedBy:       r.approvedBy       ?? undefined,
+    approvedAt:       r.approvedAt       ?? undefined,
+    jobTitle:         r.jobTitle         ?? undefined,
+    dept:             r.dept             ?? undefined,
+    phoneNumber:      r.phoneNumber      ?? undefined,
+    nin:              r.nin              ?? undefined,
+    staffAddress:     r.staffAddress     ?? undefined,
+    guarantorName:    r.guarantorName    ?? undefined,
+    guarantorPhone:   r.guarantorPhone   ?? undefined,
+    guarantorAddress: r.guarantorAddress ?? undefined,
+    employmentDocs:   r.employmentDocs   ?? undefined,
+    mdApprovedBy:     r.mdApprovedBy     ?? undefined,
+    mdApprovedAt:     r.mdApprovedAt     ?? undefined,
   };
 }
 function nowTime() { return new Date().toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }); }
@@ -451,7 +467,7 @@ interface AppContextType {
   addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => Promise<void>;
   updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => Promise<void>;
   changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
-  enrollStaff: (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string }, by: string) => Promise<void>;
+  enrollStaff: (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string) => Promise<void>;
   mdApproveEnrollment: (id: number, by: string) => Promise<void>;
   mdRejectEnrollment: (id: number, by: string) => Promise<void>;
   approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => Promise<void>;
@@ -1343,25 +1359,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [userAccounts, userName]);
 
-  const enrollStaff = useCallback(async (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string }, by: string) => {
+  const enrollStaff = useCallback(async (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string) => {
     const empId = generateEmpId(userAccounts);
     const row = await usersApi.create({
-      empName: acc.empName, empId,
-      branchId: acc.branchId ?? null, jobTitle: acc.jobTitle ?? null,
-      dept: acc.dept ?? null, phoneNumber: acc.phoneNumber ?? null,
-      status: 'pending_admin',
+      empName:          acc.empName,
+      empId,
+      branchId:         acc.branchId         ?? null,
+      jobTitle:         acc.jobTitle         ?? null,
+      dept:             acc.dept             ?? null,
+      phoneNumber:      acc.phoneNumber      ?? null,
+      nin:              acc.nin              ?? null,
+      staffAddress:     acc.staffAddress     ?? null,
+      guarantorName:    acc.guarantorName    ?? null,
+      guarantorPhone:   acc.guarantorPhone   ?? null,
+      guarantorAddress: acc.guarantorAddress ?? null,
+      employmentDocs:   acc.employmentDocs   ?? [],
+      status:           'pending_md',
     });
     if (row) {
       setUserAccounts(prev => [...prev, apiRowToUserAccount(row)]);
     } else {
       setUserAccounts(prev => [...prev, {
-        id: genId(), createdAt: nowTs(), status: 'pending_admin',
+        id: genId(), createdAt: nowTs(), status: 'pending_md' as AccountStatus,
         empName: acc.empName, empId, username: '', password: '', role: null,
         branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept,
-        phoneNumber: acc.phoneNumber, createdBy: by,
+        phoneNumber: acc.phoneNumber, nin: acc.nin,
+        staffAddress: acc.staffAddress, guarantorName: acc.guarantorName,
+        guarantorPhone: acc.guarantorPhone, guarantorAddress: acc.guarantorAddress,
+        employmentDocs: acc.employmentDocs, createdBy: by,
       }]);
     }
-    setAudit(a => [{ id: genId(), action: 'Staff enrolled', user: by, detail: `${acc.empName} (${empId}) enrolled — awaiting Admin account creation`, ts: nowTs() }, ...a]);
+    setAudit(a => [{ id: genId(), action: 'Staff enrolled', user: by, detail: `${acc.empName} (${empId}) enrolled — forwarded to MD for approval`, ts: nowTs() }, ...a]);
   }, [userAccounts]);
 
   const mdApproveEnrollment = useCallback(async (id: number, by: string) => {

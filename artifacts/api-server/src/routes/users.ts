@@ -14,7 +14,7 @@ function serverHash(plaintext: string): string {
 
 function ensureHashed(pw: string): string {
   if (!pw) return "";
-  if (pw.startsWith("sha256:")) return pw; // already hashed by client
+  if (pw.startsWith("sha256:")) return pw;
   return serverHash(pw);
 }
 
@@ -32,41 +32,53 @@ router.get("/users", async (_req, res): Promise<void> => {
   res.json(rows.map(safeRow));
 });
 
-// POST /users — create (admin only)
+// POST /users — create enrollment or account (admin can create active; any auth user can enroll)
 router.post("/users", async (req, res): Promise<void> => {
-  if (req.auth?.role !== "admin") {
-    res.status(403).json({ error: "Admin only" });
-    return;
-  }
-
-  const { empName, empId, username, password, role, branchId, status, jobTitle, dept, phoneNumber } =
-    req.body ?? {};
+  const {
+    empName, empId, username, password, role, branchId, status,
+    jobTitle, dept, phoneNumber,
+    nin, staffAddress, guarantorName, guarantorPhone, guarantorAddress,
+    employmentDocs,
+  } = req.body ?? {};
 
   if (!empName || typeof empName !== "string") {
     res.status(400).json({ error: "empName is required" });
     return;
   }
 
+  // Only admin can create active accounts directly
+  const wantsActive = status === "active" || (username && password && role && !status);
+  if (wantsActive && req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Only admin can create active accounts" });
+    return;
+  }
+
   const hasCredentials = username && password && role;
-  const resolvedStatus: string = status ?? (hasCredentials ? "active" : "pending");
+  const resolvedStatus: string = status ?? (hasCredentials ? "active" : "pending_md");
 
   try {
     const [row] = await db
       .insert(staffUsersTable)
       .values({
         empName,
-        empId:       empId       ?? null,
-        username:    username    ?? null,
-        password:    ensureHashed(password ?? ""),
-        role:        role        ?? null,
-        branchId:    branchId    ?? null,
-        status:      resolvedStatus,
-        jobTitle:    jobTitle    ?? null,
-        dept:        dept        ?? null,
-        phoneNumber: phoneNumber ?? null,
-        createdBy:   req.auth.username,
-        approvedBy:  hasCredentials ? req.auth.username : null,
-        approvedAt:  hasCredentials ? new Date()        : null,
+        empId:            empId            ?? null,
+        username:         username         ?? null,
+        password:         ensureHashed(password ?? ""),
+        role:             role             ?? null,
+        branchId:         branchId         ?? null,
+        status:           resolvedStatus,
+        jobTitle:         jobTitle         ?? null,
+        dept:             dept             ?? null,
+        phoneNumber:      phoneNumber      ?? null,
+        nin:              nin              ?? null,
+        staffAddress:     staffAddress     ?? null,
+        guarantorName:    guarantorName    ?? null,
+        guarantorPhone:   guarantorPhone   ?? null,
+        guarantorAddress: guarantorAddress ?? null,
+        employmentDocs:   Array.isArray(employmentDocs) ? employmentDocs : [],
+        createdBy:        req.auth?.username ?? "system",
+        approvedBy:       hasCredentials ? req.auth?.username : null,
+        approvedAt:       hasCredentials ? new Date() : null,
       })
       .returning();
 
@@ -90,20 +102,28 @@ router.put("/users/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { empName, empId, username, password, role, branchId, status, jobTitle, dept, phoneNumber } =
-    req.body ?? {};
+  const {
+    empName, empId, username, password, role, branchId, status, jobTitle, dept,
+    phoneNumber, nin, staffAddress, guarantorName, guarantorPhone, guarantorAddress, employmentDocs,
+  } = req.body ?? {};
 
   const updates: Record<string, unknown> = {};
-  if (empName      !== undefined) updates.empName      = empName;
-  if (empId        !== undefined) updates.empId        = empId;
-  if (username     !== undefined) updates.username     = username;
-  if (password     !== undefined) updates.password     = ensureHashed(password);
-  if (role         !== undefined) updates.role         = role;
-  if (branchId     !== undefined) updates.branchId     = branchId;
-  if (status       !== undefined) updates.status       = status;
-  if (jobTitle     !== undefined) updates.jobTitle     = jobTitle;
-  if (dept         !== undefined) updates.dept         = dept;
-  if (phoneNumber  !== undefined) updates.phoneNumber  = phoneNumber;
+  if (empName           !== undefined) updates.empName           = empName;
+  if (empId             !== undefined) updates.empId             = empId;
+  if (username          !== undefined) updates.username          = username;
+  if (password          !== undefined) updates.password          = ensureHashed(password);
+  if (role              !== undefined) updates.role              = role;
+  if (branchId          !== undefined) updates.branchId          = branchId;
+  if (status            !== undefined) updates.status            = status;
+  if (jobTitle          !== undefined) updates.jobTitle          = jobTitle;
+  if (dept              !== undefined) updates.dept              = dept;
+  if (phoneNumber       !== undefined) updates.phoneNumber       = phoneNumber;
+  if (nin               !== undefined) updates.nin               = nin;
+  if (staffAddress      !== undefined) updates.staffAddress      = staffAddress;
+  if (guarantorName     !== undefined) updates.guarantorName     = guarantorName;
+  if (guarantorPhone    !== undefined) updates.guarantorPhone    = guarantorPhone;
+  if (guarantorAddress  !== undefined) updates.guarantorAddress  = guarantorAddress;
+  if (employmentDocs    !== undefined) updates.employmentDocs    = employmentDocs;
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No updates provided" });
@@ -128,10 +148,13 @@ router.put("/users/:id", async (req, res): Promise<void> => {
   }
 });
 
-// PATCH /users/:id/status — approve / suspend / reject (admin only)
+// PATCH /users/:id/status — status transitions
+// Admin: any status, plus sets credentials on activation
+// MD:    pending_md → pending_admin | rejected
 router.patch("/users/:id/status", async (req, res): Promise<void> => {
-  if (req.auth?.role !== "admin") {
-    res.status(403).json({ error: "Admin only" });
+  const callerRole = req.auth?.role;
+  if (callerRole !== "admin" && callerRole !== "md") {
+    res.status(403).json({ error: "Admin or MD only" });
     return;
   }
 
@@ -139,16 +162,39 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const { status, username, password, role, branchId } = req.body ?? {};
-  const allowed = ["active", "suspended", "rejected", "pending"];
-  if (!allowed.includes(status)) {
-    res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
+
+  // Validate MD's allowed transitions
+  if (callerRole === "md") {
+    if (!["pending_admin", "rejected"].includes(status)) {
+      res.status(403).json({ error: "MD may only approve (→ pending_admin) or reject enrollments" });
+      return;
+    }
+    // Confirm the record is currently pending_md
+    const [existing] = await db
+      .select({ status: staffUsersTable.status })
+      .from(staffUsersTable)
+      .where(eq(staffUsersTable.id, id));
+    if (!existing || existing.status !== "pending_md") {
+      res.status(400).json({ error: "Record is not in pending_md state" });
+      return;
+    }
+  }
+
+  const adminAllowed = ["active", "suspended", "rejected", "pending", "pending_md", "pending_admin"];
+  if (callerRole === "admin" && !adminAllowed.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${adminAllowed.join(", ")}` });
     return;
   }
 
   const updates: Record<string, unknown> = { status };
 
-  if (status === "active") {
-    updates.approvedBy = req.auth.username;
+  if (status === "pending_admin" && callerRole === "md") {
+    updates.mdApprovedBy = req.auth?.username;
+    updates.mdApprovedAt = new Date();
+  }
+
+  if (status === "active" && callerRole === "admin") {
+    updates.approvedBy = req.auth?.username;
     updates.approvedAt = new Date();
     if (username !== undefined) updates.username = username;
     if (password !== undefined) updates.password = ensureHashed(password);
