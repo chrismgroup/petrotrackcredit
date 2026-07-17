@@ -148,7 +148,7 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
 export default function ReceivingScreen() {
   const {
     role, userName, branchId,
-    tanks, lpgTanks, deliveries, prices, sales, pumpDailyReports,
+    tanks, lpgTanks, dips, deliveries, prices, sales, pumpDailyReports,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery,
   } = useApp();
@@ -199,13 +199,32 @@ export default function ReceivingScreen() {
   const myTanks    = tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
   const myLpgTanks = lpgTanks.filter(l => !branchId || !l.branchId || l.branchId === branchId);
 
-  // Inventory driven by actual tank dip levels (op + rv - sl), with deliveries &
-  // pump shift reports as supporting received/sold metrics.
+  // Inventory: last approved dip reading + approved deliveries since that dip
+  // − approved sales since that dip. This keeps the book stock in sync with the
+  // physical dip reconciliation performed by the manager.
+  function tankCurrentStock(t: { id: string; prod: string; cap: number; op: number; rv: number; sl: number; branchId?: string }) {
+    const lastDipRec = dips
+      .filter(d => d.status === 'approved' && d.rd[t.id] !== undefined)
+      .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime())[0];
+    const baseline = lastDipRec ? (lastDipRec.rd[t.id] ?? 0) : 0;
+    const dipDt    = lastDipRec?.dt;
+    const recvd = deliveries
+      .filter(d => d.prod === t.prod &&
+        (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+        (!dipDt || d.dt > dipDt))
+      .reduce((s, d) => s + d.rec, 0);
+    const sold = sales
+      .filter(e => e.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
+        (!dipDt || e.dt > dipDt))
+      .reduce((s, e) => s + e.L, 0);
+    return Math.max(0, baseline + recvd - sold);
+  }
+
   const petrolProds = ['PMS', 'AGO', 'DPK'] as const;
   const petrolInv = petrolProds
     .map(prod => {
       const prodTanks = myTanks.filter(t => t.prod === prod);
-      const currentStock = prodTanks.reduce((s, t) => s + Math.max(0, t.op + t.rv - t.sl), 0);
+      const currentStock = prodTanks.reduce((s, t) => s + tankCurrentStock(t), 0);
       const totalCap     = prodTanks.reduce((s, t) => s + t.cap, 0);
       // Received: all deliveries not in draft/rejected
       const received = deliveries
@@ -224,7 +243,19 @@ export default function ReceivingScreen() {
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
-  const lpgStock    = myLpgTanks.reduce((s, l) => s + Math.max(0, l.op + l.rv - l.sl), 0);
+  const lpgStock = myLpgTanks.reduce((s, l) => {
+    const lastDipRec = dips
+      .filter(d => d.status === 'approved' && d.lpg[l.id] !== undefined)
+      .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime())[0];
+    const baseline = lastDipRec ? (lastDipRec.lpg[l.id] ?? 0) : 0;
+    const dipDt    = lastDipRec?.dt;
+    const recvd = deliveries
+      .filter(d => d.prod === 'LPG' &&
+        (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+        (!dipDt || d.dt > dipDt))
+      .reduce((sum, d) => sum + d.rec, 0);
+    return s + Math.max(0, baseline + recvd);
+  }, 0);
   const lpgCap      = myLpgTanks.reduce((s, l) => s + l.cap, 0);
   const lpgReceived = deliveries.filter(d => d.prod === 'LPG' && d.approvalStatus !== 'draft' && d.approvalStatus !== 'rejected').reduce((s, d) => s + d.rec, 0);
   const lpgSold     = pumpDailyReports.filter(r => r.product === 'LPG' && r.status === 'approved').reduce((s, r) => s + r.liters, 0);

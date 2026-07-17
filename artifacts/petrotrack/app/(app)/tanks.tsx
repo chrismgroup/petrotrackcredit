@@ -37,14 +37,23 @@ export default function TanksScreen() {
 
   function computeDipAnalysis(rdMap: Record<string, number>) {
     const expectedByProd: Record<string, number> = {};
-    for (const t of tanks) {
-      const totalReceived = deliveries
-        .filter(d => d.prod === t.prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
+    for (const t of visibleTanks) {
+      const approvedDipsForTank = dips
+        .filter(d => d.status === 'approved' && d.rd[t.id] !== undefined)
+        .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
+      const lastDip = approvedDipsForTank[0];
+      const dipReading = lastDip ? (lastDip.rd[t.id] ?? 0) : 0;
+      const dipDt = lastDip?.dt;
+      const recvdSinceDip = deliveries
+        .filter(d => d.prod === t.prod &&
+          (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+          (!dipDt || d.dt > dipDt))
         .reduce((s, d) => s + d.rec, 0);
-      const totalSold = sales
-        .filter(s => s.pump.toLowerCase().includes(t.prod.toLowerCase()))
+      const soldSinceDip = sales
+        .filter(e => e.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
+          (!dipDt || e.dt > dipDt))
         .reduce((s, e) => s + e.L, 0);
-      expectedByProd[t.prod] = (expectedByProd[t.prod] ?? 0) + totalReceived - totalSold;
+      expectedByProd[t.prod] = (expectedByProd[t.prod] ?? 0) + dipReading + recvdSinceDip - soldSinceDip;
     }
     const actualByProd: Record<string, number> = {};
     for (const t of visibleTanks) {

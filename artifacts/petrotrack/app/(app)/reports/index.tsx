@@ -160,7 +160,7 @@ export default function ReportsScreen() {
     const rev = pe.reduce((sum: number, e: any) => sum + e.L * e.price, 0);
     const sr  = Math.round(rev * scale);
     const avg = vol > 0 ? Math.round(rev / vol) : ((prices as any)[prod] ?? 0);
-    const dv  = fDelvs.filter((d: any) => d.prod === prod && d.costPrice);
+    const dv  = fDelvs.filter((d: any) => d.prod === prod && d.costPrice && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
     const vr  = dv.reduce((sum: number, d: any) => sum + d.rec, 0);
     const ct  = dv.reduce((sum: number, d: any) => sum + d.rec * (d.costPrice ?? 0), 0);
     const ac  = vr > 0 ? ct / vr : 0;
