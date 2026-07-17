@@ -160,8 +160,7 @@ export default function BudgetScreen() {
       updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear });
       setTimeout(() => submitBudgetToAcc(editTarget.id), 50);
     } else {
-      addBudget({ month: formMonth + 1, year: formYear, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'draft' });
-      Alert.alert('Saved as draft', `Open the budget card to submit it to the Accountant.`);
+      addBudget({ month: formMonth + 1, year: formYear, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted' });
     }
     setShowForm(false);
   }
@@ -522,7 +521,7 @@ export default function BudgetScreen() {
                   <Ionicons name="save-outline" size={16} color={roleColor} />
                   <Text style={[styles.submitBtnText, { color: roleColor }]}>Save Draft</Text>
                 </TouchableOpacity>
-                {editTarget && (editTarget.status === 'draft' || editTarget.status === 'rejected') ? (
+                {(!editTarget || editTarget.status === 'draft' || editTarget.status === 'rejected') ? (
                   <TouchableOpacity onPress={handleSaveAndSubmit}
                     style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]}>
                     <Ionicons name="send" size={16} color="#fff" />
