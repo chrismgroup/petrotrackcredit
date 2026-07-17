@@ -444,10 +444,10 @@ export default function SystemSettingsScreen() {
                   placeholder="7.5"
                   keyboardType="decimal-pad"
                 />
-                <FieldInput colors={colors} editable={isAdmin} label="WHT Rate (%)"
-                  value={cDraft.whtRate}
-                  onChangeText={v => setCDraft(d => ({ ...d, whtRate: v }))}
-                  placeholder="5"
+                <FieldInput colors={colors} editable={isAdmin} label="CITA Rate (%)"
+                  value={cDraft.citaRate}
+                  onChangeText={v => setCDraft(d => ({ ...d, citaRate: v }))}
+                  placeholder="30"
                   keyboardType="decimal-pad"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="Currency"
