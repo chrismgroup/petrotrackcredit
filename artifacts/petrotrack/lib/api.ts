@@ -168,10 +168,18 @@ export interface StaffUserRecord {
   jobTitle: string | null;
   dept: string | null;
   phoneNumber: string | null;
+  nin: string | null;
+  staffAddress: string | null;
+  guarantorName: string | null;
+  guarantorPhone: string | null;
+  guarantorAddress: string | null;
+  employmentDocs: string[] | null;
   createdBy: string;
   createdAt: string;
   approvedBy: string | null;
   approvedAt: string | null;
+  mdApprovedBy: string | null;
+  mdApprovedAt: string | null;
 }
 
 export const usersApi = {
@@ -190,6 +198,12 @@ export const usersApi = {
     jobTitle?: string | null;
     dept?: string | null;
     phoneNumber?: string | null;
+    nin?: string | null;
+    staffAddress?: string | null;
+    guarantorName?: string | null;
+    guarantorPhone?: string | null;
+    guarantorAddress?: string | null;
+    employmentDocs?: string[];
   }) => post<StaffUserRecord>('/users', data),
 
   /** Update credentials, role, or other fields (admin only) */
