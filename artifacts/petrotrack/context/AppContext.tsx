@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { stateApi, usersApi, StaffUserRecord, apiLogin, saveToken, clearToken } from '@/lib/api';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 
@@ -631,10 +632,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  /* ── sync from API after AsyncStorage load (server is authoritative) ── */
-  useEffect(() => {
-    if (!loaded) return;
-    stateApi.getAll().then(s => {
+  /* ── syncFromServer: fetch ALL state from the server and apply it locally ── */
+  // Called once on startup and then every 10 s so every device stays in sync.
+  const syncFromServer = useCallback(async () => {
+    try {
+      const [s, userRows] = await Promise.all([
+        stateApi.getAll(),
+        usersApi.list(),
+      ]);
       if (!s) return;
       if (s.companyInfo)       setCompanyInfo(s.companyInfo as CompanyInfo);
       if (s.tanks)             setTanks(s.tanks as Tank[]);
@@ -643,11 +648,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.staff)             setStaff(s.staff as Staff[]);
       if (s.branches)          setBranches(s.branches as Branch[]);
       if (s.departments)       setDepartments(s.departments as Department[]);
-      // Load users from the dedicated DB table (authoritative) — overrides blob
-      usersApi.list().then(rows => {
-        if (rows && rows.length > 0) setUserAccounts(rows.map(apiRowToUserAccount));
-        else if (s && s.userAccounts) setUserAccounts(s.userAccounts as UserAccount[]);
-      });
+      // Users come from the dedicated DB table (authoritative) — overrides blob
+      if (userRows && userRows.length > 0) {
+        setUserAccounts(userRows.map(apiRowToUserAccount));
+      } else if (s.userAccounts) {
+        setUserAccounts(s.userAccounts as UserAccount[]);
+      }
       if (s.prices)            setPrices(s.prices as Prices);
       if (s.priceHistory)      setPriceHistory(s.priceHistory as PriceChange[]);
       if (s.mgrPerms)          setMgrPerms(s.mgrPerms as Record<string, MgrPermissions>);
@@ -660,12 +666,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.deliveries)        setDeliveries(s.deliveries as Delivery[]);
       if (s.maintenance)       setMaintenance(s.maintenance as MaintenanceItem[]);
       if (Array.isArray(s.audit)) setAudit(s.audit as AuditEntry[]);
+      // Messages: merge with local so read-flags are preserved
       if (s.messages && typeof s.messages === 'object' && !Array.isArray(s.messages)) {
-        const sanitized: Record<string, Message[]> = {};
-        for (const [k, v] of Object.entries(s.messages)) {
-          if (Array.isArray(v)) sanitized[k] = v as Message[];
-        }
-        setMessages(sanitized);
+        const serverMsgs = s.messages as Record<string, Message[]>;
+        setMessages(prev => {
+          const allKeys = new Set([...Object.keys(prev), ...Object.keys(serverMsgs)]);
+          let changed = false;
+          const merged: Record<string, Message[]> = {};
+          for (const k of allKeys) {
+            const serverList: Message[] = Array.isArray(serverMsgs[k]) ? serverMsgs[k] : [];
+            const localList: Message[] = prev[k] ?? [];
+            if (serverList.length !== localList.length) {
+              const localById = new Map(localList.map(m => [m.id, m]));
+              merged[k] = serverList.map(m => {
+                const local = localById.get(m.id);
+                return local ? { ...m, read: m.read || local.read } : m;
+              });
+              changed = true;
+            } else {
+              merged[k] = localList;
+            }
+          }
+          return changed ? merged : prev;
+        });
       }
       if (s.tasks)             setTasks(s.tasks as Task[]);
       if (s.kpis)              setKpis(s.kpis as KPI[]);
@@ -677,12 +700,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.priceProposals)    setPriceProposals(s.priceProposals as PriceProposal[]);
       if (s.legalMatters)      setLegalMatters(s.legalMatters as LegalMatter[]);
       if (s.corpProjects)      setCorpProjects(s.corpProjects as CorpProject[]);
-      if (Array.isArray(s.broadcasts)) setBroadcasts(s.broadcasts as Broadcast[]);
+      if (Array.isArray(s.broadcasts)) {
+        setBroadcasts(prev =>
+          prev.length === (s.broadcasts as Broadcast[]).length &&
+          prev.every((b, i) => b.id === (s.broadcasts as Broadcast[])[i]?.id)
+            ? prev : (s.broadcasts as Broadcast[])
+        );
+      }
       if (Array.isArray(s.callLog))    setCallLog(s.callLog as CallRecord[]);
       if (s.meetingMinutes)            setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
       if (Array.isArray(s.pumpDailyReports)) setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object') setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
-    });
+    } catch {
+      // silently ignore — network errors must not break the UI
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ── Initial server sync once AsyncStorage has loaded ── */
+  useEffect(() => {
+    if (loaded) syncFromServer();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
 
@@ -728,49 +765,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('pumpDailyReports', pumpDailyReports); },  [pumpDailyReports, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
 
-  /* ── Poll messages + broadcasts every 5 s so all devices see new messages ── */
+  /* ── Poll ALL state every 10 s + re-sync immediately when app comes to foreground ── */
+  // This ensures every device reflects what Admin (or any user) did on another device.
+  const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!role || !loaded) return;
-    const id = setInterval(async () => {
-      const [serverMsgs, serverBroadcasts] = await Promise.all([
-        stateApi.get<Record<string, Message[]>>('messages'),
-        stateApi.get<Broadcast[]>('broadcasts'),
-      ]);
-      if (serverMsgs && typeof serverMsgs === 'object' && !Array.isArray(serverMsgs)) {
-        setMessages(prev => {
-          const allKeys = new Set([...Object.keys(prev), ...Object.keys(serverMsgs)]);
-          let changed = false;
-          const merged: Record<string, Message[]> = {};
-          for (const k of allKeys) {
-            const serverList: Message[] = Array.isArray(serverMsgs[k]) ? serverMsgs[k] as Message[] : [];
-            const localList: Message[] = prev[k] ?? [];
-            if (serverList.length !== localList.length) {
-              // Merge: take all server messages, preserve local read flags
-              const localById = new Map(localList.map(m => [m.id, m]));
-              merged[k] = serverList.map(m => {
-                const local = localById.get(m.id);
-                return local ? { ...m, read: m.read || local.read } : m;
-              });
-              changed = true;
-            } else {
-              merged[k] = localList;
-            }
-          }
-          return changed ? merged : prev;
-        });
-      }
-      if (Array.isArray(serverBroadcasts)) {
-        setBroadcasts(prev =>
-          prev.length === serverBroadcasts.length &&
-          prev.every((b, i) => b.id === (serverBroadcasts as Broadcast[])[i]?.id)
-            ? prev
-            : (serverBroadcasts as Broadcast[])
-        );
-      }
-    }, 5000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, loaded]);
+
+    // Start the 10-second polling loop
+    syncIntervalRef.current = setInterval(syncFromServer, 10_000);
+
+    // Also re-sync immediately when the user brings the app back to the foreground
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') syncFromServer();
+    });
+
+    return () => {
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      sub.remove();
+    };
+  }, [role, loaded, syncFromServer]);
 
   const DRAFT_APPROVAL: CorpApproval = { status: 'draft' };
 
