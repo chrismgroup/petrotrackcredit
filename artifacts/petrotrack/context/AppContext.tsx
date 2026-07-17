@@ -80,14 +80,14 @@ export interface AuditEntry { id: number; action: string; user: string; detail: 
 export interface CompanyInfo {
   name: string; rcNumber: string; tin: string; address: string;
   phone: string; email: string; website: string;
-  vatRate: string; whtRate: string; currency: string; fiscalYearStart: string;
+  vatRate: string; citaRate: string; currency: string; fiscalYearStart: string;
   lowStockAlert: string; reorderLevel: string;
   dailyDipRequired: boolean; autoAuditLogging: boolean;
 }
 export const BLANK_COMPANY_INFO: CompanyInfo = {
   name: '', rcNumber: '', tin: '', address: '',
   phone: '', email: '', website: '',
-  vatRate: '7.5', whtRate: '5', currency: 'NGN', fiscalYearStart: 'January',
+  vatRate: '7.5', citaRate: '30', currency: 'NGN', fiscalYearStart: 'January',
   lowStockAlert: '20', reorderLevel: '30',
   dailyDipRequired: true, autoAuditLogging: true,
 };
