@@ -1,10 +1,16 @@
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useRef, useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +23,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   Broadcast,
   CallRecord,
+  Message,
   ROLE_COLORS,
   ROLE_LABELS,
   Role,
@@ -26,21 +33,40 @@ import {
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab = 'chats' | 'broadcast' | 'calls';
+type Tab    = 'chats' | 'broadcast' | 'calls';
 type Colors = ReturnType<typeof useColors>;
 
 const CAN_BROADCAST = ['admin', 'ceo', 'md', 'csm'];
 
 const AUDIENCE_OPTS = [
-  { value: 'all',       label: 'All Staff'        },
-  { value: 'role:ceo',  label: 'CEO'              },
-  { value: 'role:md',   label: 'MD'               },
-  { value: 'role:acc',  label: 'Accountant'       },
-  { value: 'role:csm',  label: 'CSM'              },
-  { value: 'role:mktg', label: 'Marketing'        },
-  { value: 'role:mgr',  label: 'Station Mgr'      },
-  { value: 'role:att',  label: 'Pump Attendant'   },
+  { value: 'all',       label: 'All Staff'      },
+  { value: 'role:ceo',  label: 'CEO'            },
+  { value: 'role:md',   label: 'MD'             },
+  { value: 'role:acc',  label: 'Accountant'     },
+  { value: 'role:csm',  label: 'CSM'            },
+  { value: 'role:mktg', label: 'Marketing'      },
+  { value: 'role:mgr',  label: 'Station Mgr'    },
+  { value: 'role:att',  label: 'Pump Attendant' },
 ];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatBytes(bytes?: number): string {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function mediaIcon(mimeType: string): { name: string; color: string } {
+  if (mimeType.startsWith('image/'))       return { name: 'image-outline',        color: '#185FA5' };
+  if (mimeType.startsWith('video/'))       return { name: 'videocam-outline',      color: '#8e44ad' };
+  if (mimeType === 'application/pdf')      return { name: 'document-text-outline', color: '#e53935' };
+  if (mimeType.includes('word'))           return { name: 'document-outline',      color: '#185FA5' };
+  if (mimeType.includes('sheet') || mimeType.includes('excel'))
+                                           return { name: 'grid-outline',          color: '#1a6e3c' };
+  return { name: 'attach-outline', color: '#888' };
+}
 
 // ─── Module-scope sub-components ─────────────────────────────────────────────
 
@@ -53,19 +79,121 @@ function Avatar({ role, size = 40, colors }: { role: string; size?: number; colo
       backgroundColor: resolved.color + '22', alignItems: 'center', justifyContent: 'center',
       borderWidth: 1.5, borderColor: resolved.color + '44',
     }}>
-      <Text style={{ fontSize: size * 0.32, fontWeight: '800', color: resolved.color }}>{resolved.initials}</Text>
+      <Text style={{ fontSize: size * 0.32, fontWeight: '800', color: resolved.color }}>
+        {resolved.initials}
+      </Text>
     </View>
   );
 }
 
-function OnlineDot({ online, colors }: { online: boolean; colors: Colors }) {
+function MediaBubble({
+  msg, isMine, peerColor, colors, onViewImage,
+}: {
+  msg: Message; isMine: boolean; peerColor: string; colors: Colors;
+  onViewImage: (uri: string) => void;
+}) {
+  const { media } = msg;
+  if (!media) return null;
+
+  const isImage = media.mimeType.startsWith('image/');
+  const isVideo = media.mimeType.startsWith('video/');
+  const icon    = mediaIcon(media.mimeType);
+
+  async function openMedia() {
+    const m = msg.media;
+    if (!m) return;
+    try {
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(m.uri, { mimeType: m.mimeType });
+      } else {
+        await Linking.openURL(m.uri);
+      }
+    } catch {
+      Alert.alert('Cannot Open', 'Unable to open this file on your device.');
+    }
+  }
+
+  if (isImage) {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => onViewImage(media.uri)}
+        style={[
+          styles.mediaBubble,
+          isMine
+            ? { backgroundColor: peerColor, borderBottomRightRadius: 4 }
+            : { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderBottomLeftRadius: 4 },
+        ]}
+      >
+        <Image
+          source={{ uri: media.uri }}
+          style={styles.mediaImage}
+          resizeMode="cover"
+        />
+        {!!msg.body && (
+          <Text style={[styles.bubbleText, { color: isMine ? '#fff' : colors.text, marginTop: 6 }]}>
+            {msg.body}
+          </Text>
+        )}
+        <Text style={[styles.bubbleTime, { color: isMine ? 'rgba(255,255,255,0.6)' : colors.textSubtle }]}>
+          {msg.ts} · tap to expand
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
-    <View style={{
-      position: 'absolute', bottom: 0, right: 0,
-      width: 10, height: 10, borderRadius: 5,
-      backgroundColor: online ? '#27ae60' : colors.border,
-      borderWidth: 1.5, borderColor: colors.surface,
-    }} />
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={openMedia}
+      style={[
+        styles.mediaBubble, styles.fileBubble,
+        isMine
+          ? { backgroundColor: peerColor, borderBottomRightRadius: 4 }
+          : { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderBottomLeftRadius: 4 },
+      ]}
+    >
+      <View style={[styles.fileIconBox, { backgroundColor: isMine ? 'rgba(255,255,255,0.2)' : icon.color + '18' }]}>
+        <Ionicons name={icon.name as any} size={22} color={isMine ? '#fff' : icon.color} />
+        {isVideo && (
+          <View style={styles.playBadge}>
+            <Ionicons name="play" size={8} color="#fff" />
+          </View>
+        )}
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text
+          style={[styles.fileName, { color: isMine ? '#fff' : colors.text }]}
+          numberOfLines={2}
+        >
+          {media.name}
+        </Text>
+        <Text style={[styles.fileMeta, { color: isMine ? 'rgba(255,255,255,0.65)' : colors.textSubtle }]}>
+          {isVideo ? 'Video' : media.mimeType === 'application/pdf' ? 'PDF' : 'File'}
+          {media.size ? ` · ${formatBytes(media.size)}` : ''} · tap to open
+        </Text>
+      </View>
+      <Text style={[styles.bubbleTime, { color: isMine ? 'rgba(255,255,255,0.5)' : colors.textSubtle, alignSelf: 'flex-end' }]}>
+        {msg.ts}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function ImageViewerModal({ uri, onClose }: { uri: string; onClose: () => void }) {
+  return (
+    <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
+      <Pressable style={styles.imgViewerBg} onPress={onClose}>
+        <TouchableOpacity style={styles.imgViewerClose} onPress={onClose} activeOpacity={0.8}>
+          <Ionicons name="close" size={22} color="#fff" />
+        </TouchableOpacity>
+        <Pressable onPress={() => {/* prevent close on image tap */}}>
+          <Image source={{ uri }} style={styles.imgViewerImg} resizeMode="contain" />
+        </Pressable>
+        <Text style={styles.imgViewerHint}>Tap outside to close</Text>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -78,10 +206,9 @@ export default function CommsScreen() {
     broadcasts, addBroadcast,
     callLog, addCallRecord,
   } = useApp();
-  const colors = useColors();
+  const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
 
-  // Contactable peers — real accounts, excluding self; fall back to UINFO role list if no accounts yet
   const peers = (
     userAccounts.filter(a => a.role && a.role !== role && a.status === 'active').length > 0
       ? userAccounts.filter(a => a.role && a.role !== role && a.status === 'active').map(a => a.role as Role)
@@ -92,15 +219,19 @@ export default function CommsScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('chats');
 
   // ── Direct message state ───────────────────────────────────────────────────
-  const [chatPeer, setChatPeer] = useState<Role | null>(null);
-  const [draft, setDraft] = useState('');
+  const [chatPeer,      setChatPeer]      = useState<Role | null>(null);
+  const [draft,         setDraft]         = useState('');
+  const [viewingImage,  setViewingImage]  = useState<string | null>(null);
   const chatScrollRef = useRef<ScrollView>(null);
+
+  // ── Contact search ─────────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
 
   // ── Broadcast compose state ────────────────────────────────────────────────
   const [showCompose, setShowCompose] = useState(false);
-  const [bTitle, setBTitle] = useState('');
-  const [bBody, setBBody] = useState('');
-  const [bAudience, setBAudience] = useState('all');
+  const [bTitle,      setBTitle]      = useState('');
+  const [bBody,       setBBody]       = useState('');
+  const [bAudience,   setBAudience]   = useState('all');
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function peerUnread(peer: Role) {
@@ -111,21 +242,146 @@ export default function CommsScreen() {
     const conv = getConversation(peer);
     if (!conv.length) return 'Tap to chat';
     const m = conv[conv.length - 1];
-    return (m.from === role ? 'You: ' : '') + m.body;
+    const prefix = m.from === role ? 'You: ' : '';
+    if (m.type === 'media') {
+      const label = m.media?.mimeType?.startsWith('image/') ? '📷 Photo'
+        : m.media?.mimeType?.startsWith('video/') ? '🎬 Video'
+        : `📎 ${m.media?.name || 'File'}`;
+      return prefix + label;
+    }
+    return prefix + m.body;
   }
 
   function openChat(peer: Role) {
     setChatPeer(peer);
     markRead(peer);
+    setSearchQuery('');
   }
 
   function sendDM() {
     if (!chatPeer || !draft.trim()) return;
     sendMessage(chatPeer, { type: 'txt', body: draft.trim(), to: chatPeer });
     setDraft('');
-    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
+    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
   }
 
+  // ── Media picker ───────────────────────────────────────────────────────────
+  function handleAttach() {
+    Alert.alert('Send Attachment', 'Choose a file type', [
+      {
+        text: 'Camera',
+        onPress: () => handlePickImage('camera'),
+      },
+      {
+        text: 'Photo Library',
+        onPress: () => handlePickImage('library'),
+      },
+      {
+        text: 'Video',
+        onPress: handlePickVideo,
+      },
+      {
+        text: 'File / Document',
+        onPress: handlePickDocument,
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  async function handlePickImage(source: 'camera' | 'library') {
+    if (!chatPeer) return;
+
+    const permResult = source === 'camera'
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permResult.granted) {
+      Alert.alert('Permission Required', 'Please allow access in Settings to use this feature.');
+      return;
+    }
+
+    const result = source === 'camera'
+      ? await ImagePicker.launchCameraAsync({ quality: 0.25, base64: true })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.25, base64: true });
+
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    const b64   = asset.base64 || '';
+
+    if (b64.length > 500_000) {
+      Alert.alert(
+        'Image Too Large',
+        'This image is too large to send in-app. Please select a smaller or lower-resolution photo.',
+      );
+      return;
+    }
+
+    const uri = b64
+      ? `data:image/jpeg;base64,${b64}`
+      : asset.uri;
+
+    sendMessage(chatPeer, {
+      type:  'media',
+      body:  '',
+      to:    chatPeer,
+      media: { uri, name: asset.fileName || 'photo.jpg', mimeType: 'image/jpeg', size: asset.fileSize },
+    });
+    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
+  }
+
+  async function handlePickVideo() {
+    if (!chatPeer) return;
+
+    const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permResult.granted) {
+      Alert.alert('Permission Required', 'Please allow media access in Settings.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'] });
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    sendMessage(chatPeer, {
+      type:  'media',
+      body:  '',
+      to:    chatPeer,
+      media: {
+        uri:      asset.uri,
+        name:     asset.fileName || 'video.mp4',
+        mimeType: 'video/mp4',
+        size:     asset.fileSize,
+      },
+    });
+    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
+  }
+
+  async function handlePickDocument() {
+    if (!chatPeer) return;
+
+    const result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+
+    const doc = result.assets[0];
+    sendMessage(chatPeer, {
+      type:  'media',
+      body:  '',
+      to:    chatPeer,
+      media: {
+        uri:      doc.uri,
+        name:     doc.name,
+        mimeType: doc.mimeType || 'application/octet-stream',
+        size:     doc.size ?? undefined,
+      },
+    });
+    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
+  }
+
+  // ── Broadcast ──────────────────────────────────────────────────────────────
   function sendBroadcast() {
     if (!bTitle.trim() || !bBody.trim()) {
       Alert.alert('Required', 'Subject and message cannot be empty.');
@@ -133,63 +389,68 @@ export default function CommsScreen() {
     }
     const audienceLabel = AUDIENCE_OPTS.find(o => o.value === bAudience)?.label || 'All Staff';
     addBroadcast({
-      from: role!,
-      fromName: userName,
-      title: bTitle.trim(),
-      body: bBody.trim(),
-      audience: bAudience,
-      audienceName: audienceLabel,
+      from: role!, fromName: userName,
+      title: bTitle.trim(), body: bBody.trim(),
+      audience: bAudience, audienceName: audienceLabel,
     });
     setBTitle(''); setBBody(''); setBAudience('all');
     setShowCompose(false);
     Alert.alert('Sent', `Broadcast delivered to ${audienceLabel}.`);
   }
 
+  // ── Calls ──────────────────────────────────────────────────────────────────
   function initiateCall(peer: Role) {
     const peerAccount = userAccounts.find(a => a.role === peer && a.status === 'active');
-    const phone = peerAccount?.phoneNumber?.trim();
+    const phone    = peerAccount?.phoneNumber?.trim();
     const peerName = resolveUserInfo(peer, userAccounts).name;
 
     if (!phone) {
-      Alert.alert(
-        'No Phone Number',
-        `${peerName} doesn't have a phone number on file. Ask an admin to add it under Users → edit account.`,
-        [{ text: 'OK' }],
-      );
+      Alert.alert('No Phone Number', `${peerName} doesn't have a phone number on file.`);
       return;
     }
-
-    // Log the outgoing call attempt immediately
-    addCallRecord({
-      from: role!, fromName: userName,
-      to: peer, toName: peerName,
-      status: 'ended',
-    });
-
-    Linking.openURL(`tel:${phone}`).catch(() => {
-      Alert.alert('Cannot Open Dialer', 'Your device could not open the phone dialer.');
-    });
+    addCallRecord({ from: role!, fromName: userName, to: peer, toName: peerName, status: 'ended' });
+    Linking.openURL(`tel:${phone}`).catch(() =>
+      Alert.alert('Cannot Open Dialer', 'Your device could not open the phone dialer.'),
+    );
   }
+
+  // ── Filtered peers for search ──────────────────────────────────────────────
+  const filteredPeers = searchQuery.trim()
+    ? peers.filter(p => {
+        const info = resolveUserInfo(p, userAccounts);
+        const q    = searchQuery.toLowerCase();
+        return (
+          info.name.toLowerCase().includes(q) ||
+          (ROLE_LABELS[p] ?? p).toLowerCase().includes(q)
+        );
+      })
+    : peers;
 
   // ── Chat thread view ───────────────────────────────────────────────────────
   if (chatPeer) {
     const peerResolved = resolveUserInfo(chatPeer, userAccounts);
-    const peerColor = peerResolved.color;
-    const conv = getConversation(chatPeer);
+    const peerColor    = peerResolved.color;
+    const conv         = getConversation(chatPeer);
 
     return (
       <ScreenLayout title={peerResolved.name}>
+        {/* Viewing full-screen image */}
+        {viewingImage && (
+          <ImageViewerModal uri={viewingImage} onClose={() => setViewingImage(null)} />
+        )}
+
         {/* Thread header */}
         <View style={[styles.chatHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => { markRead(chatPeer); setChatPeer(null); }} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => { markRead(chatPeer); setChatPeer(null); }}
+            style={styles.backBtn}
+          >
             <Ionicons name="chevron-back" size={22} color={roleColor} />
           </TouchableOpacity>
-          <View style={{ position: 'relative' }}>
-            <Avatar role={chatPeer} size={36} colors={colors} />
-          </View>
+          <Avatar role={chatPeer} size={36} colors={colors} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.chatHeaderName, { color: colors.text }]}>{peerResolved.name}</Text>
-            <Text style={[styles.chatHeaderSub, { color: colors.textMuted }]}>
+            <Text style={[styles.chatHeaderSub,  { color: colors.textMuted }]}>
               {ROLE_LABELS[chatPeer] ?? chatPeer}
             </Text>
           </View>
@@ -201,7 +462,12 @@ export default function CommsScreen() {
           </TouchableOpacity>
         </View>
 
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={90}
+        >
+          {/* Messages */}
           <ScrollView
             ref={chatScrollRef}
             style={{ flex: 1 }}
@@ -212,32 +478,80 @@ export default function CommsScreen() {
             {conv.length === 0 ? (
               <View style={styles.emptyChat}>
                 <Ionicons name="chatbubble-ellipses-outline" size={44} color={colors.border} />
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>No messages yet. Say hello!</Text>
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                  No messages yet. Say hello!
+                </Text>
+                <Text style={[styles.emptyTextSub, { color: colors.textSubtle }]}>
+                  Use 📎 to send photos, videos, PDFs or files.
+                </Text>
               </View>
-            ) : conv.map(msg => {
-              const isMine = msg.from === role;
-              return (
-                <View key={msg.id} style={[styles.bubbleRow, isMine ? styles.bubbleRight : styles.bubbleLeft]}>
-                  {!isMine && (
-                    <View style={{ marginRight: 6, marginTop: 2 }}>
-                      <Avatar role={chatPeer} size={26} colors={colors} />
+            ) : (
+              conv.map(msg => {
+                const isMine = msg.from === role;
+
+                if (msg.type === 'media') {
+                  return (
+                    <View
+                      key={msg.id}
+                      style={[styles.bubbleRow, isMine ? styles.bubbleRight : styles.bubbleLeft]}
+                    >
+                      {!isMine && (
+                        <View style={{ marginRight: 6, marginTop: 2 }}>
+                          <Avatar role={chatPeer} size={26} colors={colors} />
+                        </View>
+                      )}
+                      <MediaBubble
+                        msg={msg}
+                        isMine={isMine}
+                        peerColor={peerColor}
+                        colors={colors}
+                        onViewImage={setViewingImage}
+                      />
                     </View>
-                  )}
-                  <View style={[
-                    styles.bubble,
-                    isMine
-                      ? { backgroundColor: peerColor, borderBottomRightRadius: 4 }
-                      : { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderBottomLeftRadius: 4 },
-                  ]}>
-                    <Text style={[styles.bubbleText, { color: isMine ? '#fff' : colors.text }]}>{msg.body}</Text>
-                    <Text style={[styles.bubbleTime, { color: isMine ? 'rgba(255,255,255,0.6)' : colors.textSubtle }]}>{msg.ts}</Text>
+                  );
+                }
+
+                return (
+                  <View
+                    key={msg.id}
+                    style={[styles.bubbleRow, isMine ? styles.bubbleRight : styles.bubbleLeft]}
+                  >
+                    {!isMine && (
+                      <View style={{ marginRight: 6, marginTop: 2 }}>
+                        <Avatar role={chatPeer} size={26} colors={colors} />
+                      </View>
+                    )}
+                    <View style={[
+                      styles.bubble,
+                      isMine
+                        ? { backgroundColor: peerColor, borderBottomRightRadius: 4 }
+                        : { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderBottomLeftRadius: 4 },
+                    ]}>
+                      <Text style={[styles.bubbleText, { color: isMine ? '#fff' : colors.text }]}>
+                        {msg.body}
+                      </Text>
+                      <Text style={[styles.bubbleTime, { color: isMine ? 'rgba(255,255,255,0.6)' : colors.textSubtle }]}>
+                        {msg.ts}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })
+            )}
           </ScrollView>
 
+          {/* Input bar */}
           <View style={[styles.inputBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+            {/* Attach button */}
+            <TouchableOpacity
+              onPress={handleAttach}
+              style={[styles.attachBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="attach" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+
+            {/* Text input */}
             <TextInput
               style={[styles.msgInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
               value={draft}
@@ -245,21 +559,23 @@ export default function CommsScreen() {
               placeholder="Type a message…"
               placeholderTextColor={colors.textSubtle}
               multiline
-              maxLength={500}
+              maxLength={1000}
               returnKeyType="send"
               blurOnSubmit={false}
               onSubmitEditing={sendDM}
             />
+
+            {/* Send button */}
             <TouchableOpacity
               onPress={sendDM}
               style={[styles.sendBtn, { backgroundColor: draft.trim() ? roleColor : colors.border }]}
               disabled={!draft.trim()}
+              activeOpacity={0.85}
             >
               <Ionicons name="send" size={16} color="#fff" />
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
-
       </ScreenLayout>
     );
   }
@@ -272,9 +588,9 @@ export default function CommsScreen() {
       {/* Tab bar */}
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
         {([
-          { id: 'chats' as Tab,     label: 'Direct',    icon: 'chatbubbles',   badge: totalUnread },
-          { id: 'broadcast' as Tab, label: 'Broadcast', icon: 'megaphone',     badge: 0 },
-          { id: 'calls' as Tab,     label: 'Calls',     icon: 'call',          badge: 0 },
+          { id: 'chats'     as Tab, label: 'Direct',    icon: 'chatbubbles', badge: totalUnread },
+          { id: 'broadcast' as Tab, label: 'Broadcast', icon: 'megaphone',   badge: 0 },
+          { id: 'calls'     as Tab, label: 'Calls',     icon: 'call',        badge: 0 },
         ]).map(t => (
           <TouchableOpacity
             key={t.id}
@@ -289,7 +605,10 @@ export default function CommsScreen() {
                 </View>
               )}
             </View>
-            <Text style={[styles.tabLabel, { color: activeTab === t.id ? roleColor : colors.textMuted, fontWeight: activeTab === t.id ? '700' : '500' }]}>
+            <Text style={[styles.tabLabel, {
+              color:      activeTab === t.id ? roleColor : colors.textMuted,
+              fontWeight: activeTab === t.id ? '700' : '500',
+            }]}>
               {t.label}
             </Text>
           </TouchableOpacity>
@@ -298,9 +617,36 @@ export default function CommsScreen() {
 
       {/* ── Direct Messages tab ── */}
       {activeTab === 'chats' && (
-        <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false}>
-          {peers.map(peer => {
-            const peerR = resolveUserInfo(peer, userAccounts);
+        <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {/* Search bar */}
+          <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="search" size={16} color={colors.textMuted} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.text }]}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search staff by name or role…"
+              placeholderTextColor={colors.textSubtle}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {filteredPeers.length === 0 && (
+            <View style={[styles.emptyState, { marginTop: 32 }]}>
+              <Ionicons name="search-outline" size={40} color={colors.border} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Staff Found</Text>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>Try a different name or role.</Text>
+            </View>
+          )}
+
+          {filteredPeers.map(peer => {
+            const peerR  = resolveUserInfo(peer, userAccounts);
             const unread = peerUnread(peer);
             return (
               <TouchableOpacity
@@ -312,9 +658,14 @@ export default function CommsScreen() {
                 <View style={{ position: 'relative', marginRight: 12 }}>
                   <Avatar role={peer} size={46} colors={colors} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, gap: 2 }}>
                   <Text style={[styles.contactName, { color: colors.text }]}>{peerR.name}</Text>
-                  <Text style={[styles.contactSub, { color: colors.textMuted }]} numberOfLines={1}>{lastMsg(peer)}</Text>
+                  <Text style={[styles.contactRole, { color: roleColor + 'cc', backgroundColor: roleColor + '18' }]}>
+                    {ROLE_LABELS[peer] ?? peer}
+                  </Text>
+                  <Text style={[styles.contactSub, { color: colors.textMuted }]} numberOfLines={1}>
+                    {lastMsg(peer)}
+                  </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   {unread > 0 && (
@@ -368,10 +719,15 @@ export default function CommsScreen() {
                       onPress={() => setBAudience(opt.value)}
                       style={[
                         styles.audienceChip,
-                        { backgroundColor: bAudience === opt.value ? roleColor : colors.background, borderColor: bAudience === opt.value ? roleColor : colors.border },
+                        {
+                          backgroundColor: bAudience === opt.value ? roleColor : colors.background,
+                          borderColor:     bAudience === opt.value ? roleColor : colors.border,
+                        },
                       ]}
                     >
-                      <Text style={[styles.audienceChipText, { color: bAudience === opt.value ? '#fff' : colors.textMuted }]}>{opt.label}</Text>
+                      <Text style={[styles.audienceChipText, { color: bAudience === opt.value ? '#fff' : colors.textMuted }]}>
+                        {opt.label}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -397,7 +753,11 @@ export default function CommsScreen() {
                 textAlignVertical="top"
               />
 
-              <TouchableOpacity style={[styles.sendBroadcastBtn, { backgroundColor: roleColor }]} onPress={sendBroadcast} activeOpacity={0.85}>
+              <TouchableOpacity
+                style={[styles.sendBroadcastBtn, { backgroundColor: roleColor }]}
+                onPress={sendBroadcast}
+                activeOpacity={0.85}
+              >
                 <Ionicons name="send" size={14} color="#fff" />
                 <Text style={styles.sendBroadcastText}>Send Broadcast</Text>
               </TouchableOpacity>
@@ -408,7 +768,9 @@ export default function CommsScreen() {
             <View style={styles.emptyState}>
               <Ionicons name="megaphone-outline" size={48} color={colors.border} />
               <Text style={[styles.emptyTitle, { color: colors.text }]}>No Broadcasts Yet</Text>
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>Company-wide announcements will appear here.</Text>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                Company-wide announcements will appear here.
+              </Text>
             </View>
           )}
 
@@ -429,7 +791,7 @@ export default function CommsScreen() {
                   </View>
                 </View>
                 <Text style={[styles.broadcastTitle, { color: colors.text }]}>{b.title}</Text>
-                <Text style={[styles.broadcastBody, { color: colors.textMuted }]}>{b.body}</Text>
+                <Text style={[styles.broadcastBody,  { color: colors.textMuted }]}>{b.body}</Text>
               </View>
             );
           })}
@@ -444,12 +806,12 @@ export default function CommsScreen() {
             const peerR = resolveUserInfo(peer, userAccounts);
             return (
               <View key={peer} style={[styles.callContactRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={{ position: 'relative', marginRight: 12 }}>
+                <View style={{ marginRight: 12 }}>
                   <Avatar role={peer} size={42} colors={colors} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.contactName, { color: colors.text }]}>{peerR.name}</Text>
-                  <Text style={[styles.contactSub, { color: colors.textMuted }]}>{ROLE_LABELS[peer] ?? peer}</Text>
+                  <Text style={[styles.contactSub,  { color: colors.textMuted }]}>{ROLE_LABELS[peer] ?? peer}</Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => initiateCall(peer)}
@@ -466,13 +828,12 @@ export default function CommsScreen() {
             <>
               <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 24 }]}>Recent Calls</Text>
               {callLog.slice(0, 25).map(c => {
-                const isMine = c.from === role;
-                const peerRole = isMine ? c.to : c.from;
-                const peerName = isMine ? c.toName : c.fromName;
+                const isMine    = c.from === role;
+                const peerRole  = isMine ? c.to   : c.from;
+                const peerName  = isMine ? c.toName : c.fromName;
                 const statusColor =
-                  c.status === 'ended'    ? colors.success :
-                  c.status === 'missed'   ? colors.error   :
-                  colors.warning;
+                  c.status === 'ended'  ? colors.success :
+                  c.status === 'missed' ? colors.error   : colors.warning;
                 return (
                   <View key={c.id} style={[styles.callLogRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <Avatar role={peerRole} size={38} colors={colors} />
@@ -485,7 +846,9 @@ export default function CommsScreen() {
                           color={colors.textMuted}
                         />
                         <Text style={[styles.contactSub, { color: statusColor }]}>{c.status}</Text>
-                        {c.duration && <Text style={[styles.contactSub, { color: colors.textMuted }]}>· {c.duration}</Text>}
+                        {c.duration && (
+                          <Text style={[styles.contactSub, { color: colors.textMuted }]}>· {c.duration}</Text>
+                        )}
                       </View>
                     </View>
                     <Text style={[styles.callTime, { color: colors.textSubtle }]}>{c.ts.split('T')[0]}</Text>
@@ -510,7 +873,6 @@ export default function CommsScreen() {
           )}
         </ScrollView>
       )}
-
     </ScreenLayout>
   );
 }
@@ -519,19 +881,24 @@ export default function CommsScreen() {
 
 const styles = StyleSheet.create({
   // Tab bar
-  tabBar:     { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
-  tab:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 13 },
-  tabLabel:   { fontSize: 12 },
-  tabBadge:   { position: 'absolute', top: -4, right: -6, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
+  tabBar:       { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
+  tab:          { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 13 },
+  tabLabel:     { fontSize: 12 },
+  tabBadge:     { position: 'absolute', top: -4, right: -6, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
   tabBadgeText: { color: '#fff', fontSize: 8, fontWeight: '800' },
 
   // List
   listScroll: { padding: 16, paddingBottom: 32 },
 
-  // Contact row (chats tab)
+  // Search bar
+  searchBar:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, marginBottom: 12 },
+  searchInput: { flex: 1, fontSize: 14 },
+
+  // Contact row
   contactRow:  { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
   contactName: { fontSize: 14, fontWeight: '700' },
-  contactSub:  { fontSize: 11, marginTop: 2 },
+  contactRole: { fontSize: 10, fontWeight: '700', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  contactSub:  { fontSize: 11, marginTop: 1 },
   unreadBadge: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   unreadText:  { color: '#fff', fontSize: 10, fontWeight: '800' },
   callIconBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
@@ -543,7 +910,8 @@ const styles = StyleSheet.create({
   chatHeaderSub:  { fontSize: 11 },
   callBtn:        { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   chatScroll:     { padding: 14, paddingBottom: 8 },
-  emptyChat:      { alignItems: 'center', marginTop: 70, gap: 12 },
+  emptyChat:      { alignItems: 'center', marginTop: 60, gap: 8 },
+  emptyTextSub:   { fontSize: 12, textAlign: 'center' },
 
   bubbleRow:   { flexDirection: 'row', marginBottom: 8, maxWidth: '82%' },
   bubbleLeft:  { alignSelf: 'flex-start' },
@@ -552,25 +920,41 @@ const styles = StyleSheet.create({
   bubbleText:  { fontSize: 14, lineHeight: 20 },
   bubbleTime:  { fontSize: 10, marginTop: 4, textAlign: 'right' },
 
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10, borderTopWidth: StyleSheet.hairlineWidth },
-  msgInput: { flex: 1, borderWidth: 1, borderRadius: 22, paddingHorizontal: 14, paddingTop: 9, paddingBottom: 9, fontSize: 14, maxHeight: 110 },
-  sendBtn:  { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  // Media bubbles
+  mediaBubble: { borderRadius: 16, overflow: 'hidden', paddingBottom: 8 },
+  mediaImage:  { width: 220, height: 170, borderRadius: 14 },
+  fileBubble:  { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, maxWidth: 260 },
+  fileIconBox: { width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  playBadge:   { position: 'absolute', bottom: 2, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
+  fileName:    { fontSize: 13, fontWeight: '600' },
+  fileMeta:    { fontSize: 10 },
+
+  // Image viewer
+  imgViewerBg:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  imgViewerClose: { position: 'absolute', top: 52, right: 18, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  imgViewerImg:   { width: '100%', aspectRatio: 1 },
+  imgViewerHint:  { position: 'absolute', bottom: 42, color: 'rgba(255,255,255,0.4)', fontSize: 12 },
+
+  // Input bar
+  inputBar:  { flexDirection: 'row', alignItems: 'flex-end', gap: 6, padding: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  attachBtn: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  msgInput:  { flex: 1, borderWidth: 1, borderRadius: 22, paddingHorizontal: 14, paddingTop: 9, paddingBottom: 9, fontSize: 14, maxHeight: 110 },
+  sendBtn:   { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
   // Broadcast
-  composeBtn:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, marginBottom: 14 },
-  composeBtnText:   { color: '#fff', fontSize: 14, fontWeight: '700' },
-  composeCard:      { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 14 },
-  composeCardHeader:{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  composeTitle:     { flex: 1, fontSize: 14, fontWeight: '700' },
-  fieldLabel:       { fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
-  composeInput:     { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 10 },
-  composeBodyInput: { height: 110, textAlignVertical: 'top' },
-  sendBroadcastBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 10, marginTop: 4 },
-  sendBroadcastText:{ color: '#fff', fontSize: 14, fontWeight: '700' },
-  audienceChip:     { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
-  audienceChipText: { fontSize: 11, fontWeight: '600' },
-  audienceTag:      { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
-
+  composeBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, marginBottom: 14 },
+  composeBtnText:    { color: '#fff', fontSize: 14, fontWeight: '700' },
+  composeCard:       { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 14 },
+  composeCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  composeTitle:      { flex: 1, fontSize: 14, fontWeight: '700' },
+  fieldLabel:        { fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
+  composeInput:      { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 10 },
+  composeBodyInput:  { height: 110, textAlignVertical: 'top' },
+  sendBroadcastBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 10, marginTop: 4 },
+  sendBroadcastText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  audienceChip:      { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
+  audienceChipText:  { fontSize: 11, fontWeight: '600' },
+  audienceTag:       { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
   broadcastCard:       { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
   broadcastCardHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
   broadcastFrom:       { fontSize: 13, fontWeight: '700' },
@@ -590,16 +974,4 @@ const styles = StyleSheet.create({
   callNowText:    { color: '#fff', fontSize: 13, fontWeight: '700' },
   callLogRow:     { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
   callTime:       { fontSize: 11, marginRight: 8 },
-
-  // Call overlay
-  callOverlay:    { ...StyleSheet.absoluteFillObject, zIndex: 999, justifyContent: 'space-between', padding: 40, paddingBottom: 70 },
-  callContent:    { alignItems: 'center', marginTop: 60, gap: 12 },
-  callAvatarWrap: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
-  callAvatarText: { fontSize: 40, fontWeight: '800' },
-  callingName:    { color: '#fff', fontSize: 26, fontWeight: '800' },
-  callingRole:    { color: 'rgba(255,255,255,0.55)', fontSize: 14 },
-  callStatusText: { color: 'rgba(255,255,255,0.75)', fontSize: 20, fontWeight: '600', marginTop: 8 },
-  callControls:   { flexDirection: 'row', justifyContent: 'center', gap: 28 },
-  callControlBtn: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', gap: 5 },
-  callControlLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' },
 });
