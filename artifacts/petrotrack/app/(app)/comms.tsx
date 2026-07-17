@@ -27,8 +27,7 @@ import {
   ROLE_COLORS,
   ROLE_LABELS,
   Role,
-  UINFO,
-  resolveUserInfo,
+  UserAccount,
   useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -49,7 +48,7 @@ const AUDIENCE_OPTS = [
   { value: 'role:att',  label: 'Pump Attendant' },
 ];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatBytes(bytes?: number): string {
   if (!bytes) return '';
@@ -68,19 +67,44 @@ function mediaIcon(mimeType: string): { name: string; color: string } {
   return { name: 'attach-outline', color: '#888' };
 }
 
-// ─── Module-scope sub-components ─────────────────────────────────────────────
+function userColor(account: UserAccount): string {
+  return ROLE_COLORS[account.role || ''] || '#888';
+}
 
-function Avatar({ role, size = 40, colors }: { role: string; size?: number; colors: Colors }) {
-  const { userAccounts } = useApp();
-  const resolved = resolveUserInfo(role, userAccounts);
+function userInitials(empName: string): string {
+  return empName.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
+}
+
+// ─── Module-scope sub-components ──────────────────────────────────────────────
+
+function UserAvatar({ account, size = 40, colors }: { account: UserAccount; size?: number; colors: Colors }) {
+  const color    = userColor(account);
+  const initials = userInitials(account.empName);
   return (
     <View style={{
       width: size, height: size, borderRadius: size / 2,
-      backgroundColor: resolved.color + '22', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1.5, borderColor: resolved.color + '44',
+      backgroundColor: color + '22', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1.5, borderColor: color + '44',
     }}>
-      <Text style={{ fontSize: size * 0.32, fontWeight: '800', color: resolved.color }}>
-        {resolved.initials}
+      <Text style={{ fontSize: size * 0.32, fontWeight: '800', color }}>
+        {initials}
+      </Text>
+    </View>
+  );
+}
+
+function RoleAvatar({ role, size = 40, colors }: { role: string; size?: number; colors: Colors }) {
+  const color    = ROLE_COLORS[role] || colors.primary;
+  const label    = ROLE_LABELS[role as Role] ?? role;
+  const initials = label.split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
+  return (
+    <View style={{
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: color + '22', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1.5, borderColor: color + '44',
+    }}>
+      <Text style={{ fontSize: size * 0.32, fontWeight: '800', color }}>
+        {initials}
       </Text>
     </View>
   );
@@ -197,7 +221,7 @@ function ImageViewerModal({ uri, onClose }: { uri: string; onClose: () => void }
   );
 }
 
-// ─── Main screen ─────────────────────────────────────────────────────────────
+// ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function CommsScreen() {
   const {
@@ -209,19 +233,18 @@ export default function CommsScreen() {
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
 
-  const peers = (
-    userAccounts.filter(a => a.role && a.role !== role && a.status === 'active').length > 0
-      ? userAccounts.filter(a => a.role && a.role !== role && a.status === 'active').map(a => a.role as Role)
-      : (Object.keys(UINFO) as Role[]).filter(r => r !== role)
+  // All active users that are not the current user
+  const peerUsers: UserAccount[] = userAccounts.filter(
+    a => a.status === 'active' && a.empName !== userName,
   );
 
   // ── Tab state ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>('chats');
 
   // ── Direct message state ───────────────────────────────────────────────────
-  const [chatPeer,      setChatPeer]      = useState<Role | null>(null);
-  const [draft,         setDraft]         = useState('');
-  const [viewingImage,  setViewingImage]  = useState<string | null>(null);
+  const [chatPeer,     setChatPeer]     = useState<UserAccount | null>(null);
+  const [draft,        setDraft]        = useState('');
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const chatScrollRef = useRef<ScrollView>(null);
 
   // ── Contact search ─────────────────────────────────────────────────────────
@@ -234,15 +257,15 @@ export default function CommsScreen() {
   const [bAudience,   setBAudience]   = useState('all');
 
   // ── Helpers ────────────────────────────────────────────────────────────────
-  function peerUnread(peer: Role) {
-    return getConversation(peer).filter(m => m.to === role && !m.read).length;
+  function peerUnread(user: UserAccount): number {
+    return getConversation(user.empName).filter(m => m.to === userName && !m.read).length;
   }
 
-  function lastMsg(peer: Role) {
-    const conv = getConversation(peer);
-    if (!conv.length) return 'Tap to chat';
+  function lastMsg(user: UserAccount): string {
+    const conv = getConversation(user.empName);
+    if (!conv.length) return 'Tap to start chatting';
     const m = conv[conv.length - 1];
-    const prefix = m.from === role ? 'You: ' : '';
+    const prefix = m.from === userName ? 'You: ' : '';
     if (m.type === 'media') {
       const label = m.media?.mimeType?.startsWith('image/') ? '📷 Photo'
         : m.media?.mimeType?.startsWith('video/') ? '🎬 Video'
@@ -252,15 +275,15 @@ export default function CommsScreen() {
     return prefix + m.body;
   }
 
-  function openChat(peer: Role) {
-    setChatPeer(peer);
-    markRead(peer);
+  function openChat(user: UserAccount) {
+    setChatPeer(user);
+    markRead(user.empName);
     setSearchQuery('');
   }
 
   function sendDM() {
     if (!chatPeer || !draft.trim()) return;
-    sendMessage(chatPeer, { type: 'txt', body: draft.trim(), to: chatPeer });
+    sendMessage(chatPeer.empName, { type: 'txt', body: draft.trim(), to: chatPeer.empName });
     setDraft('');
     setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
   }
@@ -268,63 +291,36 @@ export default function CommsScreen() {
   // ── Media picker ───────────────────────────────────────────────────────────
   function handleAttach() {
     Alert.alert('Send Attachment', 'Choose a file type', [
-      {
-        text: 'Camera',
-        onPress: () => handlePickImage('camera'),
-      },
-      {
-        text: 'Photo Library',
-        onPress: () => handlePickImage('library'),
-      },
-      {
-        text: 'Video',
-        onPress: handlePickVideo,
-      },
-      {
-        text: 'File / Document',
-        onPress: handlePickDocument,
-      },
+      { text: 'Camera',         onPress: () => handlePickImage('camera') },
+      { text: 'Photo Library',  onPress: () => handlePickImage('library') },
+      { text: 'Video',          onPress: handlePickVideo },
+      { text: 'File / Document',onPress: handlePickDocument },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }
 
   async function handlePickImage(source: 'camera' | 'library') {
     if (!chatPeer) return;
-
     const permResult = source === 'camera'
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
     if (!permResult.granted) {
       Alert.alert('Permission Required', 'Please allow access in Settings to use this feature.');
       return;
     }
-
     const result = source === 'camera'
       ? await ImagePicker.launchCameraAsync({ quality: 0.25, base64: true })
       : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.25, base64: true });
-
     if (result.canceled) return;
-
     const asset = result.assets[0];
     const b64   = asset.base64 || '';
-
     if (b64.length > 500_000) {
-      Alert.alert(
-        'Image Too Large',
-        'This image is too large to send in-app. Please select a smaller or lower-resolution photo.',
-      );
+      Alert.alert('Image Too Large', 'This image is too large to send in-app. Please select a smaller or lower-resolution photo.');
       return;
     }
-
-    const uri = b64
-      ? `data:image/jpeg;base64,${b64}`
-      : asset.uri;
-
-    sendMessage(chatPeer, {
-      type:  'media',
-      body:  '',
-      to:    chatPeer,
+    const uri = b64 ? `data:image/jpeg;base64,${b64}` : asset.uri;
+    sendMessage(chatPeer.empName, {
+      type: 'media', body: '', to: chatPeer.empName,
       media: { uri, name: asset.fileName || 'photo.jpg', mimeType: 'image/jpeg', size: asset.fileSize },
     });
     setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
@@ -332,51 +328,29 @@ export default function CommsScreen() {
 
   async function handlePickVideo() {
     if (!chatPeer) return;
-
     const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permResult.granted) {
       Alert.alert('Permission Required', 'Please allow media access in Settings.');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'] });
     if (result.canceled) return;
-
     const asset = result.assets[0];
-    sendMessage(chatPeer, {
-      type:  'media',
-      body:  '',
-      to:    chatPeer,
-      media: {
-        uri:      asset.uri,
-        name:     asset.fileName || 'video.mp4',
-        mimeType: 'video/mp4',
-        size:     asset.fileSize,
-      },
+    sendMessage(chatPeer.empName, {
+      type: 'media', body: '', to: chatPeer.empName,
+      media: { uri: asset.uri, name: asset.fileName || 'video.mp4', mimeType: 'video/mp4', size: asset.fileSize },
     });
     setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
   }
 
   async function handlePickDocument() {
     if (!chatPeer) return;
-
-    const result = await DocumentPicker.getDocumentAsync({
-      type: '*/*',
-      copyToCacheDirectory: true,
-    });
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (result.canceled) return;
-
     const doc = result.assets[0];
-    sendMessage(chatPeer, {
-      type:  'media',
-      body:  '',
-      to:    chatPeer,
-      media: {
-        uri:      doc.uri,
-        name:     doc.name,
-        mimeType: doc.mimeType || 'application/octet-stream',
-        size:     doc.size ?? undefined,
-      },
+    sendMessage(chatPeer.empName, {
+      type: 'media', body: '', to: chatPeer.empName,
+      media: { uri: doc.uri, name: doc.name, mimeType: doc.mimeType || 'application/octet-stream', size: doc.size ?? undefined },
     });
     setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
   }
@@ -399,42 +373,37 @@ export default function CommsScreen() {
   }
 
   // ── Calls ──────────────────────────────────────────────────────────────────
-  function initiateCall(peer: Role) {
-    const peerAccount = userAccounts.find(a => a.role === peer && a.status === 'active');
-    const phone    = peerAccount?.phoneNumber?.trim();
-    const peerName = resolveUserInfo(peer, userAccounts).name;
-
+  function initiateCall(user: UserAccount) {
+    const phone = user.phoneNumber?.trim();
     if (!phone) {
-      Alert.alert('No Phone Number', `${peerName} doesn't have a phone number on file.`);
+      Alert.alert('No Phone Number', `${user.empName} doesn't have a phone number on file.`);
       return;
     }
-    addCallRecord({ from: role!, fromName: userName, to: peer, toName: peerName, status: 'ended' });
+    addCallRecord({ from: role!, fromName: userName, to: user.role!, toName: user.empName, status: 'ended' });
     Linking.openURL(`tel:${phone}`).catch(() =>
       Alert.alert('Cannot Open Dialer', 'Your device could not open the phone dialer.'),
     );
   }
 
-  // ── Filtered peers for search ──────────────────────────────────────────────
+  // ── Filtered peer list for search ──────────────────────────────────────────
   const filteredPeers = searchQuery.trim()
-    ? peers.filter(p => {
-        const info = resolveUserInfo(p, userAccounts);
-        const q    = searchQuery.toLowerCase();
+    ? peerUsers.filter(u => {
+        const q = searchQuery.toLowerCase();
         return (
-          info.name.toLowerCase().includes(q) ||
-          (ROLE_LABELS[p] ?? p).toLowerCase().includes(q)
+          u.empName.toLowerCase().includes(q) ||
+          (ROLE_LABELS[u.role as Role] ?? u.role ?? '').toLowerCase().includes(q) ||
+          (u.jobTitle ?? '').toLowerCase().includes(q)
         );
       })
-    : peers;
+    : peerUsers;
 
   // ── Chat thread view ───────────────────────────────────────────────────────
   if (chatPeer) {
-    const peerResolved = resolveUserInfo(chatPeer, userAccounts);
-    const peerColor    = peerResolved.color;
-    const conv         = getConversation(chatPeer);
+    const peerCol = userColor(chatPeer);
+    const conv    = getConversation(chatPeer.empName);
 
     return (
-      <ScreenLayout title={peerResolved.name}>
-        {/* Viewing full-screen image */}
+      <ScreenLayout title={chatPeer.empName}>
         {viewingImage && (
           <ImageViewerModal uri={viewingImage} onClose={() => setViewingImage(null)} />
         )}
@@ -442,16 +411,16 @@ export default function CommsScreen() {
         {/* Thread header */}
         <View style={[styles.chatHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
           <TouchableOpacity
-            onPress={() => { markRead(chatPeer); setChatPeer(null); }}
+            onPress={() => { markRead(chatPeer.empName); setChatPeer(null); }}
             style={styles.backBtn}
           >
             <Ionicons name="chevron-back" size={22} color={roleColor} />
           </TouchableOpacity>
-          <Avatar role={chatPeer} size={36} colors={colors} />
+          <UserAvatar account={chatPeer} size={36} colors={colors} />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.chatHeaderName, { color: colors.text }]}>{peerResolved.name}</Text>
+            <Text style={[styles.chatHeaderName, { color: colors.text }]}>{chatPeer.empName}</Text>
             <Text style={[styles.chatHeaderSub,  { color: colors.textMuted }]}>
-              {ROLE_LABELS[chatPeer] ?? chatPeer}
+              {chatPeer.jobTitle || ROLE_LABELS[chatPeer.role as Role] || chatPeer.role || 'Staff'}
             </Text>
           </View>
           <TouchableOpacity
@@ -467,7 +436,6 @@ export default function CommsScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={90}
         >
-          {/* Messages */}
           <ScrollView
             ref={chatScrollRef}
             style={{ flex: 1 }}
@@ -487,8 +455,7 @@ export default function CommsScreen() {
               </View>
             ) : (
               conv.map(msg => {
-                const isMine = msg.from === role;
-
+                const isMine = msg.from === userName;
                 if (msg.type === 'media') {
                   return (
                     <View
@@ -497,20 +464,16 @@ export default function CommsScreen() {
                     >
                       {!isMine && (
                         <View style={{ marginRight: 6, marginTop: 2 }}>
-                          <Avatar role={chatPeer} size={26} colors={colors} />
+                          <UserAvatar account={chatPeer} size={26} colors={colors} />
                         </View>
                       )}
                       <MediaBubble
-                        msg={msg}
-                        isMine={isMine}
-                        peerColor={peerColor}
-                        colors={colors}
-                        onViewImage={setViewingImage}
+                        msg={msg} isMine={isMine} peerColor={peerCol}
+                        colors={colors} onViewImage={setViewingImage}
                       />
                     </View>
                   );
                 }
-
                 return (
                   <View
                     key={msg.id}
@@ -518,13 +481,13 @@ export default function CommsScreen() {
                   >
                     {!isMine && (
                       <View style={{ marginRight: 6, marginTop: 2 }}>
-                        <Avatar role={chatPeer} size={26} colors={colors} />
+                        <UserAvatar account={chatPeer} size={26} colors={colors} />
                       </View>
                     )}
                     <View style={[
                       styles.bubble,
                       isMine
-                        ? { backgroundColor: peerColor, borderBottomRightRadius: 4 }
+                        ? { backgroundColor: peerCol, borderBottomRightRadius: 4 }
                         : { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderBottomLeftRadius: 4 },
                     ]}>
                       <Text style={[styles.bubbleText, { color: isMine ? '#fff' : colors.text }]}>
@@ -542,7 +505,6 @@ export default function CommsScreen() {
 
           {/* Input bar */}
           <View style={[styles.inputBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-            {/* Attach button */}
             <TouchableOpacity
               onPress={handleAttach}
               style={[styles.attachBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
@@ -550,8 +512,6 @@ export default function CommsScreen() {
             >
               <Ionicons name="attach" size={20} color={colors.textMuted} />
             </TouchableOpacity>
-
-            {/* Text input */}
             <TextInput
               style={[styles.msgInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
               value={draft}
@@ -564,8 +524,6 @@ export default function CommsScreen() {
               blurOnSubmit={false}
               onSubmitEditing={sendDM}
             />
-
-            {/* Send button */}
             <TouchableOpacity
               onPress={sendDM}
               style={[styles.sendBtn, { backgroundColor: draft.trim() ? roleColor : colors.border }]}
@@ -617,7 +575,11 @@ export default function CommsScreen() {
 
       {/* ── Direct Messages tab ── */}
       {activeTab === 'chats' && (
-        <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.listScroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Search bar */}
           <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="search" size={16} color={colors.textMuted} />
@@ -637,7 +599,34 @@ export default function CommsScreen() {
             )}
           </View>
 
-          {filteredPeers.length === 0 && (
+          {/* Broadcast shortcut for authorised users */}
+          {CAN_BROADCAST.includes(role || '') && (
+            <TouchableOpacity
+              style={[styles.broadcastShortcut, { backgroundColor: roleColor + '18', borderColor: roleColor + '44' }]}
+              onPress={() => { setActiveTab('broadcast'); setShowCompose(true); }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="megaphone-outline" size={16} color={roleColor} />
+              <Text style={[styles.broadcastShortcutText, { color: roleColor }]}>
+                Send a Broadcast to All Staff
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={roleColor} />
+            </TouchableOpacity>
+          )}
+
+          {/* No staff registered */}
+          {peerUsers.length === 0 && (
+            <View style={[styles.emptyState, { marginTop: 32 }]}>
+              <Ionicons name="people-outline" size={44} color={colors.border} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Active Staff</Text>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                Register and activate staff accounts to enable direct messaging.
+              </Text>
+            </View>
+          )}
+
+          {/* No search results */}
+          {peerUsers.length > 0 && filteredPeers.length === 0 && (
             <View style={[styles.emptyState, { marginTop: 32 }]}>
               <Ionicons name="search-outline" size={40} color={colors.border} />
               <Text style={[styles.emptyTitle, { color: colors.text }]}>No Staff Found</Text>
@@ -645,40 +634,44 @@ export default function CommsScreen() {
             </View>
           )}
 
-          {filteredPeers.map(peer => {
-            const peerR  = resolveUserInfo(peer, userAccounts);
-            const unread = peerUnread(peer);
+          {/* Contact list — one card per individual user */}
+          {filteredPeers.map(user => {
+            const unread   = peerUnread(user);
+            const lastText = lastMsg(user);
+            const uColor   = userColor(user);
+            const roleLabel = ROLE_LABELS[user.role as Role] ?? user.role ?? 'Staff';
             return (
               <TouchableOpacity
-                key={peer}
+                key={user.id}
                 style={[styles.contactRow, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={() => openChat(peer)}
+                onPress={() => openChat(user)}
                 activeOpacity={0.8}
               >
                 <View style={{ position: 'relative', marginRight: 12 }}>
-                  <Avatar role={peer} size={46} colors={colors} />
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={[styles.contactName, { color: colors.text }]}>{peerR.name}</Text>
-                  <Text style={[styles.contactRole, { color: roleColor + 'cc', backgroundColor: roleColor + '18' }]}>
-                    {ROLE_LABELS[peer] ?? peer}
-                  </Text>
-                  <Text style={[styles.contactSub, { color: colors.textMuted }]} numberOfLines={1}>
-                    {lastMsg(peer)}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                  <UserAvatar account={user} size={46} colors={colors} />
                   {unread > 0 && (
-                    <View style={[styles.unreadBadge, { backgroundColor: roleColor }]}>
-                      <Text style={styles.unreadText}>{unread}</Text>
+                    <View style={[styles.avatarBadge, { backgroundColor: roleColor }]}>
+                      <Text style={styles.avatarBadgeText}>{unread > 9 ? '9+' : unread}</Text>
                     </View>
                   )}
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.contactName, { color: colors.text }]}>{user.empName}</Text>
+                  <Text style={[styles.contactRole, { color: uColor, backgroundColor: uColor + '18' }]}>
+                    {roleLabel}
+                  </Text>
+                  <Text style={[styles.contactSub, { color: colors.textMuted }]} numberOfLines={1}>
+                    {lastText}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 8 }}>
                   <TouchableOpacity
-                    onPress={() => initiateCall(peer)}
+                    onPress={() => initiateCall(user)}
                     style={[styles.callIconBtn, { backgroundColor: '#27ae60' + '18' }]}
                   >
                     <Ionicons name="call-outline" size={15} color="#27ae60" />
                   </TouchableOpacity>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
                 </View>
               </TouchableOpacity>
             );
@@ -775,11 +768,11 @@ export default function CommsScreen() {
           )}
 
           {broadcasts.map(b => {
-            const senderColor = UINFO[b.from]?.color || ROLE_COLORS[b.from] || colors.primary;
+            const senderColor = ROLE_COLORS[b.from] || colors.primary;
             return (
               <View key={b.id} style={[styles.broadcastCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.broadcastCardHeader}>
-                  <Avatar role={b.from} size={36} colors={colors} />
+                  <RoleAvatar role={b.from} size={36} colors={colors} />
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={[styles.broadcastFrom, { color: colors.text }]}>{b.fromName}</Text>
                     <Text style={[styles.broadcastMeta, { color: colors.textMuted }]}>
@@ -801,21 +794,36 @@ export default function CommsScreen() {
       {/* ── Calls tab ── */}
       {activeTab === 'calls' && (
         <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Contacts</Text>
-          {peers.map(peer => {
-            const peerR = resolveUserInfo(peer, userAccounts);
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Staff Directory</Text>
+
+          {peerUsers.length === 0 && (
+            <View style={[styles.emptyState, { marginTop: 16 }]}>
+              <Ionicons name="people-outline" size={44} color={colors.border} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Active Staff</Text>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No active staff members to call.</Text>
+            </View>
+          )}
+
+          {peerUsers.map(user => {
+            const roleLabel = ROLE_LABELS[user.role as Role] ?? user.role ?? 'Staff';
             return (
-              <View key={peer} style={[styles.callContactRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View key={user.id} style={[styles.callContactRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={{ marginRight: 12 }}>
-                  <Avatar role={peer} size={42} colors={colors} />
+                  <UserAvatar account={user} size={42} colors={colors} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.contactName, { color: colors.text }]}>{peerR.name}</Text>
-                  <Text style={[styles.contactSub,  { color: colors.textMuted }]}>{ROLE_LABELS[peer] ?? peer}</Text>
+                  <Text style={[styles.contactName, { color: colors.text }]}>{user.empName}</Text>
+                  <Text style={[styles.contactSub,  { color: colors.textMuted }]}>{roleLabel}</Text>
+                  {user.phoneNumber ? (
+                    <Text style={[styles.contactSub, { color: colors.textSubtle }]}>{user.phoneNumber}</Text>
+                  ) : (
+                    <Text style={[styles.contactSub, { color: colors.textSubtle }]}>No phone on file</Text>
+                  )}
                 </View>
                 <TouchableOpacity
-                  onPress={() => initiateCall(peer)}
-                  style={[styles.callNowBtn, { backgroundColor: '#27ae60' }]}
+                  onPress={() => initiateCall(user)}
+                  style={[styles.callNowBtn, { backgroundColor: user.phoneNumber ? '#27ae60' : colors.border }]}
+                  disabled={!user.phoneNumber}
                 >
                   <Ionicons name="call" size={14} color="#fff" />
                   <Text style={styles.callNowText}>Call</Text>
@@ -827,16 +835,16 @@ export default function CommsScreen() {
           {callLog.length > 0 && (
             <>
               <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 24 }]}>Recent Calls</Text>
-              {callLog.slice(0, 25).map(c => {
-                const isMine    = c.from === role;
-                const peerRole  = isMine ? c.to   : c.from;
-                const peerName  = isMine ? c.toName : c.fromName;
+              {callLog.slice(0, 25).map((c: CallRecord) => {
+                const isMine     = c.from === role;
+                const peerName   = isMine ? c.toName : c.fromName;
+                const peerRoleStr = isMine ? (c.to || '') : (c.from || '');
                 const statusColor =
                   c.status === 'ended'  ? colors.success :
                   c.status === 'missed' ? colors.error   : colors.warning;
                 return (
                   <View key={c.id} style={[styles.callLogRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Avatar role={peerRole} size={38} colors={colors} />
+                    <RoleAvatar role={peerRoleStr} size={38} colors={colors} />
                     <View style={{ flex: 1, marginLeft: 10 }}>
                       <Text style={[styles.contactName, { color: colors.text }]}>{peerName}</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
@@ -852,19 +860,13 @@ export default function CommsScreen() {
                       </View>
                     </View>
                     <Text style={[styles.callTime, { color: colors.textSubtle }]}>{c.ts.split('T')[0]}</Text>
-                    <TouchableOpacity
-                      onPress={() => initiateCall(peerRole)}
-                      style={[styles.callIconBtn, { backgroundColor: '#27ae60' + '18' }]}
-                    >
-                      <Ionicons name="call-outline" size={15} color="#27ae60" />
-                    </TouchableOpacity>
                   </View>
                 );
               })}
             </>
           )}
 
-          {callLog.length === 0 && (
+          {callLog.length === 0 && peerUsers.length > 0 && (
             <View style={[styles.emptyState, { marginTop: 16 }]}>
               <Ionicons name="call-outline" size={44} color={colors.border} />
               <Text style={[styles.emptyTitle, { color: colors.text }]}>No Calls Yet</Text>
@@ -894,14 +896,20 @@ const styles = StyleSheet.create({
   searchBar:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, marginBottom: 12 },
   searchInput: { flex: 1, fontSize: 14 },
 
+  // Broadcast shortcut
+  broadcastShortcut:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, borderWidth: 1, marginBottom: 12 },
+  broadcastShortcutText: { flex: 1, fontSize: 13, fontWeight: '600' },
+
   // Contact row
-  contactRow:  { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
-  contactName: { fontSize: 14, fontWeight: '700' },
-  contactRole: { fontSize: 10, fontWeight: '700', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  contactSub:  { fontSize: 11, marginTop: 1 },
-  unreadBadge: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  unreadText:  { color: '#fff', fontSize: 10, fontWeight: '800' },
-  callIconBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  contactRow:     { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
+  contactName:    { fontSize: 14, fontWeight: '700' },
+  contactRole:    { fontSize: 10, fontWeight: '700', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  contactSub:     { fontSize: 11, marginTop: 1 },
+  avatarBadge:    { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, borderWidth: 1.5, borderColor: '#fff' },
+  avatarBadgeText:{ color: '#fff', fontSize: 8, fontWeight: '800' },
+  unreadBadge:    { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  unreadText:     { color: '#fff', fontSize: 10, fontWeight: '800' },
+  callIconBtn:    { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 
   // Chat thread
   chatHeader:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
