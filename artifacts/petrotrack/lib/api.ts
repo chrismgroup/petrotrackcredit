@@ -151,6 +151,10 @@ export const stateApi = {
   put: (key: string, data: unknown) => put(`/state/${key}`, data),
 };
 
+export const versionApi = {
+  get: () => get<{ version: string }>('/version'),
+};
+
 // ─── Staff Users API — dedicated DB table, real-time ─────────────────────────
 
 export interface StaffUserRecord {

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { stateApi, usersApi, StaffUserRecord, apiLogin, saveToken, clearToken } from '@/lib/api';
+import { stateApi, versionApi, usersApi, StaffUserRecord, apiLogin, saveToken, clearToken } from '@/lib/api';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
@@ -765,24 +765,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('pumpDailyReports', pumpDailyReports); },  [pumpDailyReports, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
 
-  /* ── Poll ALL state every 10 s + re-sync immediately when app comes to foreground ── */
-  // This ensures every device reflects what Admin (or any user) did on another device.
-  const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /* ── Version-check poll: 3 s lightweight ping → full sync only when data changed ── */
+  // /api/version returns a ~50-byte timestamp. syncFromServer() only fires when it changes,
+  // so a pump attendant's shift report appears on every permitted screen within ~3 seconds.
+  const lastVersionRef = useRef<string>('');
   useEffect(() => {
     if (!role || !loaded) return;
 
-    // Start the 10-second polling loop
-    syncIntervalRef.current = setInterval(syncFromServer, 10_000);
+    const check = async () => {
+      try {
+        const result = await versionApi.get();
+        if (result?.version && result.version !== lastVersionRef.current) {
+          lastVersionRef.current = result.version;
+          await syncFromServer();
+        }
+      } catch {
+        // silently ignore transient network errors
+      }
+    };
 
-    // Also re-sync immediately when the user brings the app back to the foreground
+    // Poll every 3 seconds
+    const id = setInterval(check, 3_000);
+
+    // Also re-sync the moment the user brings the app to the foreground
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') syncFromServer();
+      if (state === 'active') check();
     });
 
-    return () => {
-      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-      sub.remove();
-    };
+    return () => { clearInterval(id); sub.remove(); };
   }, [role, loaded, syncFromServer]);
 
   const DRAFT_APPROVAL: CorpApproval = { status: 'draft' };

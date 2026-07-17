@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, appStateTable } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
+import { db, appStateTable, staffUsersTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -12,7 +12,7 @@ const ALLOWED_KEYS = new Set([
   "companyFiles", "deliveryEvidences", "shiftReports", "hrEmployees",
   "hrHandbooks", "hrRecommendations", "complianceDocs", "priceProposals",
   "legalMatters", "corpProjects", "meetingMinutes",
-  "broadcasts", "callLog",
+  "broadcasts", "callLog", "pumpDailyReports", "pumpInitialMeters",
 ]);
 
 // Keys that modify access control, credentials, or HR/legal/financial records.
