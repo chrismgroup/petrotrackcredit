@@ -1180,10 +1180,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const isDraft = b.status === 'draft';
     const newBudget: Budget = {
       ...b, id: genId(),
-      workflow: isDraft ? [] : [{ stage: 'Submitted to MD', by: userName, role: b.by, dt: nowTs(), action: 'submit', note: `${b.items.length} items submitted for ${b.label}.` }],
+      workflow: isDraft ? [] : [{ stage: 'Submitted to Accountant', by: userName, role: b.by, dt: nowTs(), action: 'submit', note: `${b.items.length} line items — ₦${b.total.toLocaleString()}` }],
     };
     setBudgets(prev => [...prev, newBudget]);
-    setAudit(a => [{ id: genId(), action: isDraft ? 'Budget saved as draft' : 'Budget submitted to MD', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
+    setAudit(a => [{ id: genId(), action: isDraft ? 'Budget saved as draft' : 'Budget submitted to Accountant', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
+    if (!isDraft) {
+      const msgKey = chatKey(b.by, 'acc');
+      setMessages(m => ({
+        ...m,
+        [msgKey]: [...(m[msgKey] || []), {
+          id: genId(), from: b.by as Role, to: 'acc' as Role, type: 'alert' as const,
+          body: `Budget submitted for review: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
+          alrt: { title: 'Budget Awaiting Accountant Review', pri: 'Medium', detail: `${b.label} · ₦${b.total.toLocaleString()} · Submitted by ${b.byName}` },
+          ts: nowTime(), read: false,
+        }],
+      }));
+    }
   }, [userName]);
 
   const updateBudget = useCallback((id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string }) => {
