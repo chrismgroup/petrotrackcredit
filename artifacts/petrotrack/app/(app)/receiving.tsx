@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
@@ -149,6 +151,7 @@ export default function ReceivingScreen() {
   const {
     role, userName, branchId,
     tanks, lpgTanks, dips, deliveries, prices, sales, pumpDailyReports,
+    deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery,
   } = useApp();
@@ -267,6 +270,48 @@ export default function ReceivingScreen() {
     : [];
 
   const inventory = [...petrolInv, ...lpgInv];
+
+  function fmtSize(bytes?: number): string {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  async function pickFromCamera(delivId: number) {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera access is needed to take delivery evidence photos.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85, allowsEditing: false });
+    if (!result.canceled && result.assets[0]) {
+      const a = result.assets[0];
+      addDeliveryEvidence({ delivId, type: 'photo', name: a.fileName ?? `photo_${Date.now()}.jpg`, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg', size: a.fileSize });
+    }
+  }
+
+  async function pickFromGallery(delivId: number) {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Media library access is needed to attach photos or videos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.85, allowsEditing: false });
+    if (!result.canceled && result.assets[0]) {
+      const a = result.assets[0];
+      const isVid = a.type === 'video';
+      addDeliveryEvidence({ delivId, type: isVid ? 'video' : 'photo', name: a.fileName ?? `${isVid ? 'video' : 'photo'}_${Date.now()}`, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? (isVid ? 'video/mp4' : 'image/jpeg'), size: a.fileSize });
+    }
+  }
+
+  async function pickDocument(delivId: number) {
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+    if (!result.canceled && result.assets?.[0]) {
+      const a = result.assets[0];
+      addDeliveryEvidence({ delivId, type: 'document', name: a.name, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? 'application/octet-stream', size: a.size });
+    }
+  }
 
   function validateMgrForm(f: MgrFormState) {
     const ordN = parseFloat(f.ord);
@@ -613,6 +658,73 @@ export default function ReceivingScreen() {
                   <Text style={[styles.receivedBy, { color: colors.textSubtle }]}>{'Received by '}{d.receivedBy}</Text>
                 </View>
               ) : null}
+
+              {/* ── Evidence section ── */}
+              {(() => {
+                const evList = deliveryEvidences.filter(e => e.delivId === d.id);
+                const canAdd = isMgr && !locked;
+                if (evList.length === 0 && !canAdd) return null;
+                return (
+                  <View style={[styles.evSection, { borderTopColor: colors.border }]}>
+                    <View style={styles.evHeader}>
+                      <Ionicons name="attach-outline" size={12} color={colors.textMuted} />
+                      <Text style={[styles.evTitle, { color: colors.textMuted }]}>
+                        {'Evidence'}{evList.length > 0 ? ` (${evList.length})` : ''}
+                      </Text>
+                      {canAdd && (
+                        <View style={styles.evBtns}>
+                          <TouchableOpacity onPress={() => pickFromCamera(d.id)} style={[styles.evBtn, { backgroundColor: roleColor + '12', borderColor: roleColor + '44' }]}>
+                            <Ionicons name="camera-outline" size={12} color={roleColor} />
+                            <Text style={[styles.evBtnText, { color: roleColor }]}>Camera</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => pickFromGallery(d.id)} style={[styles.evBtn, { backgroundColor: '#2980B912', borderColor: '#2980B944' }]}>
+                            <Ionicons name="images-outline" size={12} color="#2980B9" />
+                            <Text style={[styles.evBtnText, { color: '#2980B9' }]}>Gallery</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => pickDocument(d.id)} style={[styles.evBtn, { backgroundColor: '#8E44AD12', borderColor: '#8E44AD44' }]}>
+                            <Ionicons name="document-outline" size={12} color="#8E44AD" />
+                            <Text style={[styles.evBtnText, { color: '#8E44AD' }]}>File</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                    {evList.length === 0 ? (
+                      <Text style={[styles.evEmpty, { color: colors.textSubtle }]}>
+                        {'No files attached — use Camera, Gallery, or File to upload evidence'}
+                      </Text>
+                    ) : (
+                      evList.map(ev => {
+                        const isImg = ev.mimeType?.startsWith('image/') || ev.type === 'photo';
+                        const isVid = ev.mimeType?.startsWith('video/') || ev.type === 'video';
+                        const ic    = isImg ? 'image-outline' : isVid ? 'videocam-outline' : 'document-text-outline';
+                        const ic2   = isImg ? roleColor : isVid ? '#2980B9' : '#8E44AD';
+                        const lbl   = isImg ? 'IMG' : isVid ? 'VID' : 'FILE';
+                        return (
+                          <View key={ev.id} style={[styles.evItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                            {isImg && ev.uri ? (
+                              <Image source={{ uri: ev.uri }} style={styles.evThumb} />
+                            ) : (
+                              <View style={[styles.evIconBox, { backgroundColor: ic2 + '15' }]}>
+                                <Ionicons name={ic as any} size={16} color={ic2} />
+                              </View>
+                            )}
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.evName, { color: colors.text }]} numberOfLines={1}>{ev.name}</Text>
+                              <Text style={[styles.evMeta, { color: colors.textSubtle }]}>
+                                {ev.by}{' · '}{fmtDateTime(ev.dt)}
+                                {ev.size ? '  ' + fmtSize(ev.size) : ''}
+                              </Text>
+                            </View>
+                            <View style={[styles.evTypeBadge, { backgroundColor: ic2 + '15' }]}>
+                              <Text style={[styles.evTypeText, { color: ic2 }]}>{lbl}</Text>
+                            </View>
+                          </View>
+                        );
+                      })
+                    )}
+                  </View>
+                );
+              })()}
 
               {canMgrEdit(d) ? (
                 <View style={styles.actionRow}>
@@ -1023,4 +1135,18 @@ const styles = StyleSheet.create({
   cancelBtnText: { fontSize: 14, fontWeight: '600' },
   emptyBox: { alignItems: 'center', gap: 10, padding: 32, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed' },
   emptyText: { fontSize: 14 },
+  evSection: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 6 },
+  evHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  evTitle: { fontSize: 12, fontWeight: '600', flex: 1 },
+  evBtns: { flexDirection: 'row', gap: 5 },
+  evBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, borderWidth: 1 },
+  evBtnText: { fontSize: 10, fontWeight: '700' },
+  evEmpty: { fontSize: 11, fontStyle: 'italic', paddingVertical: 2 },
+  evItem: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderRadius: 8, borderWidth: 1 },
+  evThumb: { width: 36, height: 36, borderRadius: 6 },
+  evIconBox: { width: 36, height: 36, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  evName: { fontSize: 11, fontWeight: '600' },
+  evMeta: { fontSize: 10, marginTop: 1 },
+  evTypeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  evTypeText: { fontSize: 9, fontWeight: '700' },
 });
