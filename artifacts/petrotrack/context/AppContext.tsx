@@ -466,6 +466,7 @@ interface AppContextType {
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
   addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => Promise<void>;
   updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => Promise<void>;
+  updateEnrollmentData: (id: number, data: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => Promise<void>;
   changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   enrollStaff: (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string) => Promise<void>;
   mdApproveEnrollment: (id: number, by: string) => Promise<void>;
@@ -1408,6 +1409,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Enrollment rejected by MD', user: by, detail: `Enrollment #${id} rejected`, ts: nowTs() }, ...a]);
   }, []);
 
+  const updateEnrollmentData = useCallback(async (id: number, data: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => {
+    const row = await usersApi.update(id, data);
+    if (row) {
+      setUserAccounts(prev => prev.map(a => a.id === id ? apiRowToUserAccount(row) : a));
+    } else {
+      setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
+    }
+    setAudit(a => [{ id: genId(), action: 'Enrollment data updated', user: by, detail: `Enrollment #${id} details updated by admin`, ts: nowTs() }, ...a]);
+  }, []);
+
   const approveUserAccount = useCallback(async (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
     const hashedPw = await hashPassword(password);
     // Write to DB — new user can log in immediately from any device
@@ -1790,7 +1801,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
-      userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, changeOwnPassword, enrollStaff, mdApproveEnrollment, mdRejectEnrollment, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
+      userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, updateEnrollmentData, changeOwnPassword, enrollStaff, mdApproveEnrollment, mdRejectEnrollment, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,
       addHREmployee, updateHRDocStatus, removeHREmployee,
