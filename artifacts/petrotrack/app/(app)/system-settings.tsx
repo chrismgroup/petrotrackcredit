@@ -201,9 +201,19 @@ export default function SystemSettingsScreen() {
 
   /* ── company draft (local edits before save) ── */
   const [cDraft, setCDraft] = useState(companyInfo);
-  useEffect(() => { setCDraft(companyInfo); }, [companyInfo]);
   const [cSaved, setCSaved] = useState(false);
+  const cDirtyRef = useRef(false);
+  // Only sync draft from context when the user has NOT started typing locally.
+  // Without this guard, the 3-second server poll resets companyInfo which
+  // triggers this effect and wipes whatever the admin is currently typing.
+  useEffect(() => {
+    if (!cDirtyRef.current) setCDraft(companyInfo);
+  }, [companyInfo]);
   const hasUnsaved = JSON.stringify(cDraft) !== JSON.stringify(companyInfo);
+  function patchDraft(updates: Partial<CompanyInfo>) {
+    cDirtyRef.current = true;
+    setCDraft(d => ({ ...d, ...updates }));
+  }
 
   /* ── edit state (existing items) ── */
   const [tankEdits, setTankEdits] = useState<Record<string, { name: string; cap: string; dip: string; prod: Tank['prod']; branchId: string }>>({});
@@ -393,41 +403,41 @@ export default function SystemSettingsScreen() {
                 )}
                 <FieldInput colors={colors} editable={isAdmin} label="Company Name *"
                   value={cDraft.name}
-                  onChangeText={v => setCDraft(d => ({ ...d, name: v }))}
+                  onChangeText={v => patchDraft({ name: v })}
                   placeholder="e.g. PetroTrack Stations Ltd"
                   autoCapitalize="words"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="RC Number"
                   value={cDraft.rcNumber}
-                  onChangeText={v => setCDraft(d => ({ ...d, rcNumber: v }))}
+                  onChangeText={v => patchDraft({ rcNumber: v })}
                   placeholder="e.g. RC-123456"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="Tax ID (TIN)"
                   value={cDraft.tin}
-                  onChangeText={v => setCDraft(d => ({ ...d, tin: v }))}
+                  onChangeText={v => patchDraft({ tin: v })}
                   placeholder="e.g. 1234567-0001"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="Head Office Address"
                   value={cDraft.address}
-                  onChangeText={v => setCDraft(d => ({ ...d, address: v }))}
+                  onChangeText={v => patchDraft({ address: v })}
                   placeholder="Full address"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="Phone Number"
                   value={cDraft.phone}
-                  onChangeText={v => setCDraft(d => ({ ...d, phone: v }))}
+                  onChangeText={v => patchDraft({ phone: v })}
                   placeholder="e.g. +234 801 000 0000"
                   keyboardType="phone-pad"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="Email Address"
                   value={cDraft.email}
-                  onChangeText={v => setCDraft(d => ({ ...d, email: v }))}
+                  onChangeText={v => patchDraft({ email: v })}
                   placeholder="info@company.com"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="Website"
                   value={cDraft.website}
-                  onChangeText={v => setCDraft(d => ({ ...d, website: v }))}
+                  onChangeText={v => patchDraft({ website: v })}
                   placeholder="https://company.com"
                   keyboardType="url"
                   autoCapitalize="none"
@@ -444,24 +454,24 @@ export default function SystemSettingsScreen() {
                 </View>
                 <FieldInput colors={colors} editable={isAdmin} label="VAT Rate (%)"
                   value={cDraft.vatRate}
-                  onChangeText={v => setCDraft(d => ({ ...d, vatRate: v }))}
+                  onChangeText={v => patchDraft({ vatRate: v })}
                   placeholder="7.5"
                   keyboardType="decimal-pad"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="CITA Rate (%)"
                   value={cDraft.citaRate}
-                  onChangeText={v => setCDraft(d => ({ ...d, citaRate: v }))}
+                  onChangeText={v => patchDraft({ citaRate: v })}
                   placeholder="30"
                   keyboardType="decimal-pad"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="Currency"
                   value={cDraft.currency}
-                  onChangeText={v => setCDraft(d => ({ ...d, currency: v }))}
+                  onChangeText={v => patchDraft({ currency: v })}
                   placeholder="NGN"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="Fiscal Year Start"
                   value={cDraft.fiscalYearStart}
-                  onChangeText={v => setCDraft(d => ({ ...d, fiscalYearStart: v }))}
+                  onChangeText={v => patchDraft({ fiscalYearStart: v })}
                   placeholder="e.g. January"
                 />
               </View>
@@ -476,13 +486,13 @@ export default function SystemSettingsScreen() {
                 </View>
                 <FieldInput colors={colors} editable={isAdmin} label="Low Stock Alert (%)"
                   value={cDraft.lowStockAlert}
-                  onChangeText={v => setCDraft(d => ({ ...d, lowStockAlert: v }))}
+                  onChangeText={v => patchDraft({ lowStockAlert: v })}
                   placeholder="20"
                   keyboardType="numeric"
                 />
                 <FieldInput colors={colors} editable={isAdmin} label="Reorder Level (%)"
                   value={cDraft.reorderLevel}
-                  onChangeText={v => setCDraft(d => ({ ...d, reorderLevel: v }))}
+                  onChangeText={v => patchDraft({ reorderLevel: v })}
                   placeholder="30"
                   keyboardType="numeric"
                 />
@@ -490,7 +500,7 @@ export default function SystemSettingsScreen() {
                   <Text style={[styles.settingLabel, { color: colors.textMuted }]}>Daily Dip Required</Text>
                   <Switch
                     value={cDraft.dailyDipRequired}
-                    onValueChange={v => setCDraft(d => ({ ...d, dailyDipRequired: v }))}
+                    onValueChange={v => patchDraft({ dailyDipRequired: v })}
                     trackColor={{ true: roleColor, false: colors.border }}
                     thumbColor="#fff"
                     disabled={!isAdmin}
@@ -500,7 +510,7 @@ export default function SystemSettingsScreen() {
                   <Text style={[styles.settingLabel, { color: colors.textMuted }]}>Auto-Audit Logging</Text>
                   <Switch
                     value={cDraft.autoAuditLogging}
-                    onValueChange={v => setCDraft(d => ({ ...d, autoAuditLogging: v }))}
+                    onValueChange={v => patchDraft({ autoAuditLogging: v })}
                     trackColor={{ true: roleColor, false: colors.border }}
                     thumbColor="#fff"
                     disabled={!isAdmin}
@@ -528,6 +538,7 @@ export default function SystemSettingsScreen() {
                     onPress={() => {
                       if (!cDraft.name.trim()) { Alert.alert('Required', 'Company name cannot be empty.'); return; }
                       updateCompanyInfo(cDraft);
+                      cDirtyRef.current = false;
                       setCSaved(true);
                       setTimeout(() => setCSaved(false), 4000);
                     }}
@@ -538,7 +549,7 @@ export default function SystemSettingsScreen() {
                 <TouchableOpacity
                   onPress={() => Alert.alert('Reset', 'Clear all company details and start over?', [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Reset', style: 'destructive', onPress: () => { setCDraft(BLANK_COMPANY_INFO); updateCompanyInfo(BLANK_COMPANY_INFO); } },
+                    { text: 'Reset', style: 'destructive', onPress: () => { cDirtyRef.current = false; setCDraft(BLANK_COMPANY_INFO); updateCompanyInfo(BLANK_COMPANY_INFO); } },
                   ])}
                   style={[styles.dangerBtn, { borderColor: colors.errorBorder, marginBottom: 8 }]}
                   activeOpacity={0.85}
