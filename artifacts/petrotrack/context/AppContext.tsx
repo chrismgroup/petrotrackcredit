@@ -649,40 +649,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  /* ── Pending-writes tracker: keys with in-flight PUTs are skipped by syncFromServer ── */
+  // Prevents the 3-second poll from overwriting data whose PUT hasn't landed yet.
+  const pendingWritesRef = useRef<Set<string>>(new Set());
+
   /* ── syncFromServer: fetch ALL state from the server and apply it locally ── */
-  // Called once on startup and then every 10 s so every device stays in sync.
+  // Called once on startup and then every 3 s so every device stays in sync.
   const syncFromServer = useCallback(async () => {
     try {
+      const p = pendingWritesRef.current;
       const [s, userRows] = await Promise.all([
         stateApi.getAll(),
         usersApi.list(),
       ]);
       if (!s) return;
-      if (s.companyInfo)       setCompanyInfo(s.companyInfo as CompanyInfo);
-      if (s.tanks)             setTanks(s.tanks as Tank[]);
-      if (s.lpgTanks)          setLpgTanks(s.lpgTanks as LPGTank[]);
-      if (s.pumps)             setPumps(s.pumps as Pump[]);
-      if (s.staff)             setStaff(s.staff as Staff[]);
-      if (s.branches)          setBranches(s.branches as Branch[]);
-      if (s.departments)       setDepartments(s.departments as Department[]);
+      if (s.companyInfo && !p.has('companyInfo'))             setCompanyInfo(s.companyInfo as CompanyInfo);
+      if (s.tanks && !p.has('tanks'))                         setTanks(s.tanks as Tank[]);
+      if (s.lpgTanks && !p.has('lpgTanks'))                   setLpgTanks(s.lpgTanks as LPGTank[]);
+      if (s.pumps && !p.has('pumps'))                         setPumps(s.pumps as Pump[]);
+      if (s.staff && !p.has('staff'))                         setStaff(s.staff as Staff[]);
+      if (s.branches && !p.has('branches'))                   setBranches(s.branches as Branch[]);
+      if (s.departments && !p.has('departments'))             setDepartments(s.departments as Department[]);
       // Users come from the dedicated DB table (authoritative) — overrides blob
       if (userRows && userRows.length > 0) {
         setUserAccounts(userRows.map(apiRowToUserAccount));
-      } else if (s.userAccounts) {
+      } else if (s.userAccounts && !p.has('userAccounts')) {
         setUserAccounts(s.userAccounts as UserAccount[]);
       }
-      if (s.prices)            setPrices(s.prices as Prices);
-      if (s.priceHistory)      setPriceHistory(s.priceHistory as PriceChange[]);
-      if (s.mgrPerms)          setMgrPerms(s.mgrPerms as Record<string, MgrPermissions>);
-      if (s.roleAccess)        setRoleAccess(s.roleAccess as Record<string, Record<string, boolean>>);
-      if (s.userAccess)        setUserAccess(s.userAccess as Record<number, Record<string, boolean>>);
-      if (s.expenses)          setExpenses(s.expenses as Expense[]);
-      if (s.budgets)           setBudgets(s.budgets as Budget[]);
-      if (s.sales)             setSales(s.sales as SalesEntry[]);
-      if (s.dips)              setDips(s.dips as DipRecord[]);
-      if (s.deliveries)        setDeliveries(s.deliveries as Delivery[]);
-      if (s.maintenance)       setMaintenance(s.maintenance as MaintenanceItem[]);
-      if (Array.isArray(s.audit)) setAudit(s.audit as AuditEntry[]);
+      if (s.prices && !p.has('prices'))                       setPrices(s.prices as Prices);
+      if (s.priceHistory && !p.has('priceHistory'))           setPriceHistory(s.priceHistory as PriceChange[]);
+      if (s.mgrPerms && !p.has('mgrPerms'))                   setMgrPerms(s.mgrPerms as Record<string, MgrPermissions>);
+      if (s.roleAccess && !p.has('roleAccess'))               setRoleAccess(s.roleAccess as Record<string, Record<string, boolean>>);
+      if (s.userAccess && !p.has('userAccess'))               setUserAccess(s.userAccess as Record<number, Record<string, boolean>>);
+      if (s.expenses && !p.has('expenses'))                   setExpenses(s.expenses as Expense[]);
+      if (s.budgets && !p.has('budgets'))                     setBudgets(s.budgets as Budget[]);
+      if (s.sales && !p.has('sales'))                         setSales(s.sales as SalesEntry[]);
+      if (s.dips && !p.has('dips'))                           setDips(s.dips as DipRecord[]);
+      if (s.deliveries && !p.has('deliveries'))               setDeliveries(s.deliveries as Delivery[]);
+      if (s.maintenance && !p.has('maintenance'))             setMaintenance(s.maintenance as MaintenanceItem[]);
+      if (Array.isArray(s.audit) && !p.has('audit'))          setAudit(s.audit as AuditEntry[]);
       // Messages: merge with local so read-flags are preserved
       if (s.messages && typeof s.messages === 'object' && !Array.isArray(s.messages)) {
         const serverMsgs = s.messages as Record<string, Message[]>;
@@ -707,27 +712,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return changed ? merged : prev;
         });
       }
-      if (s.tasks)             setTasks(s.tasks as Task[]);
-      if (s.kpis)              setKpis(s.kpis as KPI[]);
-      if (s.companyFiles)      setCompanyFiles(s.companyFiles as CompanyFile[]);
-      if (s.deliveryEvidences) setDeliveryEvidences(s.deliveryEvidences as DeliveryEvidence[]);
-      if (s.hrEmployees)       setHrEmployees(s.hrEmployees as HREmployee[]);
-      if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks as HREmployeeDoc[]);
-      if (s.hrRecommendations) setHrRecommendations(s.hrRecommendations as HRRecommendation[]);
-      if (s.priceProposals)    setPriceProposals(s.priceProposals as PriceProposal[]);
-      if (s.legalMatters)      setLegalMatters(s.legalMatters as LegalMatter[]);
-      if (s.corpProjects)      setCorpProjects(s.corpProjects as CorpProject[]);
-      if (Array.isArray(s.broadcasts)) {
+      if (s.tasks && !p.has('tasks'))                                     setTasks(s.tasks as Task[]);
+      if (s.kpis && !p.has('kpis'))                                       setKpis(s.kpis as KPI[]);
+      if (s.companyFiles && !p.has('companyFiles'))                       setCompanyFiles(s.companyFiles as CompanyFile[]);
+      if (s.deliveryEvidences && !p.has('deliveryEvidences'))             setDeliveryEvidences(s.deliveryEvidences as DeliveryEvidence[]);
+      if (s.hrEmployees && !p.has('hrEmployees'))                         setHrEmployees(s.hrEmployees as HREmployee[]);
+      if (s.hrHandbooks && !p.has('hrHandbooks'))                         setHrHandbooks(s.hrHandbooks as HREmployeeDoc[]);
+      if (s.hrRecommendations && !p.has('hrRecommendations'))             setHrRecommendations(s.hrRecommendations as HRRecommendation[]);
+      if (s.priceProposals && !p.has('priceProposals'))                   setPriceProposals(s.priceProposals as PriceProposal[]);
+      if (s.legalMatters && !p.has('legalMatters'))                       setLegalMatters(s.legalMatters as LegalMatter[]);
+      if (s.corpProjects && !p.has('corpProjects'))                       setCorpProjects(s.corpProjects as CorpProject[]);
+      if (Array.isArray(s.broadcasts) && !p.has('broadcasts')) {
         setBroadcasts(prev =>
           prev.length === (s.broadcasts as Broadcast[]).length &&
           prev.every((b, i) => b.id === (s.broadcasts as Broadcast[])[i]?.id)
             ? prev : (s.broadcasts as Broadcast[])
         );
       }
-      if (Array.isArray(s.callLog))    setCallLog(s.callLog as CallRecord[]);
-      if (s.meetingMinutes)            setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
-      if (Array.isArray(s.pumpDailyReports)) setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
-      if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object') setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
+      if (Array.isArray(s.callLog) && !p.has('callLog'))                  setCallLog(s.callLog as CallRecord[]);
+      if (s.meetingMinutes && !p.has('meetingMinutes'))                   setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
+      if (Array.isArray(s.pumpDailyReports) && !p.has('pumpDailyReports')) setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
+      if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
     } catch {
       // silently ignore — network errors must not break the UI
     }
@@ -743,7 +748,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   /* ── persistence: save each state slice to AsyncStorage + API when it changes ── */
   function syncSlice(key: string, value: unknown) {
     AsyncStorage.setItem(key, JSON.stringify(value));
-    stateApi.put(key, value);
+    pendingWritesRef.current.add(key);
+    stateApi.put(key, value).finally(() => pendingWritesRef.current.delete(key));
   }
   useEffect(() => { if (loaded) syncSlice('companyInfo',       companyInfo); },       [companyInfo, loaded]);
   useEffect(() => { if (loaded) syncSlice('tanks',             tanks); },             [tanks, loaded]);
