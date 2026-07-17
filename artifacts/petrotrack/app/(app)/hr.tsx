@@ -37,10 +37,10 @@ const DOC_STATUS_META: Record<HRDocStatus, { label: string; color: string; bg: s
 };
 
 const ONBOARD_META: Record<OnboardingStatus, { label: string; color: string; bg: string; step: number }> = {
-  draft:        { label: 'Draft',          color: '#7F8C8D', bg: '#F4F4F2', step: 0 },
-  forwarded:    { label: 'Pending MD',     color: '#BA7517', bg: '#FAEEDA', step: 1 },
-  md_approved:  { label: 'Pending CEO',    color: '#185FA5', bg: '#DCF0FF', step: 2 },
-  ceo_approved: { label: 'Fully Approved', color: '#27500A', bg: '#EAF3DE', step: 3 },
+  draft:        { label: 'Draft',            color: '#7F8C8D', bg: '#F4F4F2', step: 0 },
+  forwarded:    { label: 'Pending MD',       color: '#BA7517', bg: '#FAEEDA', step: 1 },
+  md_approved:  { label: 'Pending Admin',    color: '#185FA5', bg: '#DCF0FF', step: 2 },
+  ceo_approved: { label: 'Admin Approved',   color: '#27500A', bg: '#EAF3DE', step: 3 },
 };
 
 const DEPARTMENTS = ['Operations', 'Finance', 'Marketing', 'Administration', 'Management', 'IT', 'Legal', 'HR'];
@@ -99,9 +99,8 @@ export default function HRScreen() {
   const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
   const isCSM     = role === 'csm';
   const isMD      = role === 'md';
-  const isCEO     = role === 'ceo';
   const isAdmin   = role === 'admin';
-  const canApprove = isMD || isCEO;
+  const canApprove = isMD || isAdmin;
 
   const [activeTab, setActiveTab] = useState<TabId>(canApprove ? 'approvals' : 'employees');
   const [search, setSearch] = useState('');
@@ -141,8 +140,8 @@ export default function HRScreen() {
   const pendingRecs  = hrRecommendations.filter(r => r.status === 'pending').length;
   const pendingBooks = hrHandbooks.filter(h => !h.approved).length;
   const pendingApprovals = hrEmployees.filter(e => {
-    if (isMD)  return e.onboarding?.status === 'forwarded';
-    if (isCEO) return e.onboarding?.status === 'forwarded' || e.onboarding?.status === 'md_approved';
+    if (isMD)    return e.onboarding?.status === 'forwarded';
+    if (isAdmin) return e.onboarding?.status === 'forwarded' || e.onboarding?.status === 'md_approved';
     return false;
   }).length;
 
@@ -339,9 +338,9 @@ export default function HRScreen() {
     const ob = emp.onboarding ?? { status: 'draft' };
     const meta = ONBOARD_META[ob.status];
     const steps = [
-      { label: 'Submitted',    done: ob.status !== 'draft',       by: ob.forwardedBy,   at: ob.forwardedAt },
-      { label: 'MD Approved',  done: ob.status === 'md_approved' || ob.status === 'ceo_approved', by: ob.mdApprovedBy, at: ob.mdApprovedAt },
-      { label: 'CEO Approved', done: ob.status === 'ceo_approved', by: ob.ceoApprovedBy, at: ob.ceoApprovedAt },
+      { label: 'Submitted',      done: ob.status !== 'draft',       by: ob.forwardedBy,   at: ob.forwardedAt },
+      { label: 'MD Approved',    done: ob.status === 'md_approved' || ob.status === 'ceo_approved', by: ob.mdApprovedBy, at: ob.mdApprovedAt },
+      { label: 'Admin Approved', done: ob.status === 'ceo_approved', by: ob.ceoApprovedBy, at: ob.ceoApprovedAt },
     ];
     return (
       <View style={[styles.onboardSection, { borderColor: meta.bg, backgroundColor: meta.bg + '88' }]}>
@@ -363,11 +362,11 @@ export default function HRScreen() {
               <Text style={styles.forwardBtnText}>MD Approve</Text>
             </TouchableOpacity>
           )}
-          {isCEO && (ob.status === 'forwarded' || ob.status === 'md_approved') && (
+          {isAdmin && (ob.status === 'forwarded' || ob.status === 'md_approved') && (
             <TouchableOpacity onPress={() => handleApprove(emp.id, 'ceo')}
               style={[styles.forwardBtn, { backgroundColor: '#1a6e3c' }]}>
               <Ionicons name="checkmark-circle" size={12} color="#fff" />
-              <Text style={styles.forwardBtnText}>CEO Approve</Text>
+              <Text style={styles.forwardBtnText}>Admin Approve</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -606,8 +605,8 @@ export default function HRScreen() {
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {(() => {
             const list = hrEmployees.filter(e => {
-              if (isMD)  return e.onboarding?.status === 'forwarded';
-              if (isCEO) return e.onboarding?.status === 'forwarded' || e.onboarding?.status === 'md_approved';
+              if (isMD)    return e.onboarding?.status === 'forwarded';
+              if (isAdmin) return e.onboarding?.status === 'forwarded' || e.onboarding?.status === 'md_approved';
               return false;
             });
             if (list.length === 0) return (

@@ -206,7 +206,7 @@ export const usersApi = {
     employmentDocs?: string[];
   }) => post<StaffUserRecord>('/users', data),
 
-  /** Update credentials, role, or other fields (admin only) */
+  /** Update credentials, role, or enrollment fields (admin only) */
   update: (id: number, data: Partial<{
     empName: string;
     empId: string | null;
@@ -218,6 +218,12 @@ export const usersApi = {
     jobTitle: string | null;
     dept: string | null;
     phoneNumber: string | null;
+    nin: string | null;
+    staffAddress: string | null;
+    guarantorName: string | null;
+    guarantorPhone: string | null;
+    guarantorAddress: string | null;
+    employmentDocs: string[];
   }>) => putR<StaffUserRecord>(`/users/${id}`, data),
 
   /** Approve / suspend / reject with optional credential assignment (admin only) */
