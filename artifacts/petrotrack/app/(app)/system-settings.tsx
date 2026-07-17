@@ -381,29 +381,53 @@ export default function SystemSettingsScreen() {
                   </View>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Company Information</Text>
                 </View>
-                {([
-                  { label: 'Company Name', key: 'name', placeholder: 'e.g. PetroTrack Stations Ltd', kb: 'default' },
-                  { label: 'RC Number', key: 'rcNumber', placeholder: 'e.g. RC-123456', kb: 'default' },
-                  { label: 'Tax ID (TIN)', key: 'tin', placeholder: 'e.g. 1234567-0001', kb: 'default' },
-                  { label: 'Head Office Address', key: 'address', placeholder: 'Full address', kb: 'default' },
-                  { label: 'Phone Number', key: 'phone', placeholder: 'e.g. +234 801 000 0000', kb: 'phone-pad' },
-                  { label: 'Email Address', key: 'email', placeholder: 'info@company.com', kb: 'email-address' },
-                  { label: 'Website', key: 'website', placeholder: 'https://company.com', kb: 'url' },
-                ] as const).map((item, idx) => (
-                  <View key={item.key} style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: idx === 0 ? 0 : StyleSheet.hairlineWidth }]}>
-                    <Text style={[styles.settingLabel, { color: colors.textMuted }]}>{item.label}</Text>
-                    <TextInput
-                      style={[styles.settingInput, { color: colors.text }]}
-                      value={cDraft[item.key]}
-                      onChangeText={v => setCDraft(d => ({ ...d, [item.key]: v }))}
-                      placeholder={item.placeholder}
-                      placeholderTextColor={colors.textSubtle}
-                      keyboardType={item.kb as any}
-                      editable={isAdmin}
-                      autoCapitalize={item.kb === 'email-address' || item.kb === 'url' ? 'none' : 'sentences'}
-                    />
+                {!isAdmin && (
+                  <View style={[styles.lockBanner, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder, marginBottom: 8 }]}>
+                    <Ionicons name="lock-closed" size={14} color={colors.error} />
+                    <Text style={[styles.lockText, { color: colors.error }]}>View only — System Admin can edit these details.</Text>
                   </View>
-                ))}
+                )}
+                <FieldInput colors={colors} editable={isAdmin} label="Company Name *"
+                  value={cDraft.name}
+                  onChangeText={v => setCDraft(d => ({ ...d, name: v }))}
+                  placeholder="e.g. PetroTrack Stations Ltd"
+                  autoCapitalize="words"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="RC Number"
+                  value={cDraft.rcNumber}
+                  onChangeText={v => setCDraft(d => ({ ...d, rcNumber: v }))}
+                  placeholder="e.g. RC-123456"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="Tax ID (TIN)"
+                  value={cDraft.tin}
+                  onChangeText={v => setCDraft(d => ({ ...d, tin: v }))}
+                  placeholder="e.g. 1234567-0001"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="Head Office Address"
+                  value={cDraft.address}
+                  onChangeText={v => setCDraft(d => ({ ...d, address: v }))}
+                  placeholder="Full address"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="Phone Number"
+                  value={cDraft.phone}
+                  onChangeText={v => setCDraft(d => ({ ...d, phone: v }))}
+                  placeholder="e.g. +234 801 000 0000"
+                  keyboardType="phone-pad"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="Email Address"
+                  value={cDraft.email}
+                  onChangeText={v => setCDraft(d => ({ ...d, email: v }))}
+                  placeholder="info@company.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="Website"
+                  value={cDraft.website}
+                  onChangeText={v => setCDraft(d => ({ ...d, website: v }))}
+                  placeholder="https://company.com"
+                  keyboardType="url"
+                  autoCapitalize="none"
+                />
               </View>
 
               {/* ── Financial Settings ── */}
@@ -414,25 +438,28 @@ export default function SystemSettingsScreen() {
                   </View>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Financial Settings</Text>
                 </View>
-                {([
-                  { label: 'VAT Rate (%)', key: 'vatRate', placeholder: '7.5', kb: 'decimal-pad' },
-                  { label: 'WHT Rate (%)', key: 'whtRate', placeholder: '5', kb: 'decimal-pad' },
-                  { label: 'Currency', key: 'currency', placeholder: 'NGN', kb: 'default' },
-                  { label: 'Fiscal Year Start', key: 'fiscalYearStart', placeholder: 'e.g. January', kb: 'default' },
-                ] as const).map((item, idx) => (
-                  <View key={item.key} style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: idx === 0 ? 0 : StyleSheet.hairlineWidth }]}>
-                    <Text style={[styles.settingLabel, { color: colors.textMuted }]}>{item.label}</Text>
-                    <TextInput
-                      style={[styles.settingInput, { color: colors.text }]}
-                      value={cDraft[item.key]}
-                      onChangeText={v => setCDraft(d => ({ ...d, [item.key]: v }))}
-                      placeholder={item.placeholder}
-                      placeholderTextColor={colors.textSubtle}
-                      keyboardType={item.kb as any}
-                      editable={isAdmin}
-                    />
-                  </View>
-                ))}
+                <FieldInput colors={colors} editable={isAdmin} label="VAT Rate (%)"
+                  value={cDraft.vatRate}
+                  onChangeText={v => setCDraft(d => ({ ...d, vatRate: v }))}
+                  placeholder="7.5"
+                  keyboardType="decimal-pad"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="WHT Rate (%)"
+                  value={cDraft.whtRate}
+                  onChangeText={v => setCDraft(d => ({ ...d, whtRate: v }))}
+                  placeholder="5"
+                  keyboardType="decimal-pad"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="Currency"
+                  value={cDraft.currency}
+                  onChangeText={v => setCDraft(d => ({ ...d, currency: v }))}
+                  placeholder="NGN"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="Fiscal Year Start"
+                  value={cDraft.fiscalYearStart}
+                  onChangeText={v => setCDraft(d => ({ ...d, fiscalYearStart: v }))}
+                  placeholder="e.g. January"
+                />
               </View>
 
               {/* ── Operations Settings ── */}
@@ -443,23 +470,18 @@ export default function SystemSettingsScreen() {
                   </View>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Operations Settings</Text>
                 </View>
-                {([
-                  { label: 'Low Stock Alert (%)', key: 'lowStockAlert', placeholder: '20', kb: 'numeric' },
-                  { label: 'Reorder Level (%)',   key: 'reorderLevel',  placeholder: '30', kb: 'numeric' },
-                ] as const).map((item, idx) => (
-                  <View key={item.key} style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: idx === 0 ? 0 : StyleSheet.hairlineWidth }]}>
-                    <Text style={[styles.settingLabel, { color: colors.textMuted }]}>{item.label}</Text>
-                    <TextInput
-                      style={[styles.settingInput, { color: colors.text }]}
-                      value={cDraft[item.key]}
-                      onChangeText={v => setCDraft(d => ({ ...d, [item.key]: v }))}
-                      placeholder={item.placeholder}
-                      placeholderTextColor={colors.textSubtle}
-                      keyboardType={item.kb as any}
-                      editable={isAdmin}
-                    />
-                  </View>
-                ))}
+                <FieldInput colors={colors} editable={isAdmin} label="Low Stock Alert (%)"
+                  value={cDraft.lowStockAlert}
+                  onChangeText={v => setCDraft(d => ({ ...d, lowStockAlert: v }))}
+                  placeholder="20"
+                  keyboardType="numeric"
+                />
+                <FieldInput colors={colors} editable={isAdmin} label="Reorder Level (%)"
+                  value={cDraft.reorderLevel}
+                  onChangeText={v => setCDraft(d => ({ ...d, reorderLevel: v }))}
+                  placeholder="30"
+                  keyboardType="numeric"
+                />
                 <View style={[styles.settingRow, { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }]}>
                   <Text style={[styles.settingLabel, { color: colors.textMuted }]}>Daily Dip Required</Text>
                   <Switch
