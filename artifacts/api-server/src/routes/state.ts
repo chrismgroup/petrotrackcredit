@@ -21,7 +21,7 @@ const ADMIN_WRITE_KEYS = new Set([
   "userAccounts", "roleAccess", "userAccess", "mgrPerms",
   "hrEmployees", "hrHandbooks", "hrRecommendations",
   "companyFiles", "legalMatters", "meetingMinutes", "corpProjects",
-  "budgets", "companyInfo", "departments", "branches",
+  "companyInfo", "departments", "branches",
 ]);
 
 router.get("/state", async (_req, res): Promise<void> => {
