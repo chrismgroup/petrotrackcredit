@@ -66,6 +66,9 @@ export interface UserAccount {
   employmentDocs?: string[];
   mdApprovedBy?: string;
   mdApprovedAt?: string;
+  rejectionReason?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
 }
 export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
@@ -475,6 +478,8 @@ interface AppContextType {
   suspendUserAccount: (id: number) => Promise<void>;
   reactivateUserAccount: (id: number) => Promise<void>;
   rejectUserAccount: (id: number) => Promise<void>;
+  rejectEnrollmentWithReason: (id: number, reason: string, by: string) => Promise<void>;
+  resubmitEnrollment: (id: number, updates: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => Promise<void>;
   deleteUserAccount: (id: number) => Promise<void>;
   validateCredentials: (username: string, password: string) => Promise<UserAccount | null>;
   getConversation: (peerName: string) => Message[];
@@ -1492,6 +1497,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'rejected' } : a));
   }, []);
 
+  const rejectEnrollmentWithReason = useCallback(async (id: number, reason: string, by: string) => {
+    await usersApi.setStatus(id, 'rejected');
+    setUserAccounts(prev => {
+      const acc = prev.find(a => a.id === id);
+      const next = prev.map(a => a.id === id
+        ? { ...a, status: 'rejected' as AccountStatus, rejectionReason: reason, rejectedBy: by, rejectedAt: nowTs() }
+        : a
+      );
+      if (acc) {
+        const msgKey = chatKey('admin', 'csm');
+        setMessages(m => ({
+          ...m,
+          [msgKey]: [...(m[msgKey] || []), {
+            id: genId(), from: 'admin' as Role, to: 'csm' as Role, type: 'alert' as const,
+            body: `Enrollment rejected: ${acc.empName} — "${reason}"`,
+            alrt: { title: 'Enrollment Rejected by Admin', pri: 'High' as const, detail: `${acc.empName} (${acc.empId ?? ''}) — Reason: ${reason}. Please update and re-submit.` },
+            ts: nowTime(), read: false,
+          }],
+        }));
+        setAudit(a => [{ id: genId(), action: 'Enrollment rejected by Admin', user: by, detail: `${acc.empName} — ${reason}`, ts: nowTs() }, ...a]);
+      }
+      return next;
+    });
+  }, []);
+
+  const resubmitEnrollment = useCallback(async (id: number, updates: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => {
+    if (Object.keys(updates).length > 0) {
+      await usersApi.update(id, updates);
+    }
+    const row = await usersApi.setStatus(id, 'pending_admin');
+    if (row) {
+      setUserAccounts(prev => prev.map(a => a.id === id
+        ? { ...apiRowToUserAccount(row), ...updates, status: 'pending_admin' as AccountStatus, rejectionReason: undefined, rejectedBy: undefined, rejectedAt: undefined }
+        : a
+      ));
+    } else {
+      setUserAccounts(prev => prev.map(a => a.id === id
+        ? { ...a, ...updates, status: 'pending_admin' as AccountStatus, rejectionReason: undefined, rejectedBy: undefined, rejectedAt: undefined }
+        : a
+      ));
+    }
+    setAudit(a => [{ id: genId(), action: 'Enrollment resubmitted', user: by, detail: `${updates.empName ?? 'Enrollment'} re-submitted for Admin review`, ts: nowTs() }, ...a]);
+  }, []);
+
   const deleteUserAccount = useCallback(async (id: number) => {
     await usersApi.remove(id);
     setUserAccounts(prev => prev.filter(a => a.id !== id));
@@ -1820,7 +1869,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
-      userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, updateEnrollmentData, changeOwnPassword, enrollStaff, mdApproveEnrollment, mdRejectEnrollment, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, deleteUserAccount, validateCredentials,
+      userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, updateEnrollmentData, changeOwnPassword, enrollStaff, mdApproveEnrollment, mdRejectEnrollment, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, rejectEnrollmentWithReason, resubmitEnrollment, deleteUserAccount, validateCredentials,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,
       addHREmployee, updateHRDocStatus, removeHREmployee,
