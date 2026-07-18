@@ -10,7 +10,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   GeneratedLetter, HRDocType, HRDocStatus, HREmployee, OnboardingStatus,
-  ROLE_COLORS, fmtDate, fmtDateTime, useApp,
+  ROLE_COLORS, ROLE_LABELS, UserAccount, fmtDate, fmtDateTime, useApp, type Role,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -38,8 +38,8 @@ const DOC_STATUS_META: Record<HRDocStatus, { label: string; color: string; bg: s
 
 const ONBOARD_META: Record<OnboardingStatus, { label: string; color: string; bg: string; step: number }> = {
   draft:        { label: 'Draft',            color: '#7F8C8D', bg: '#F4F4F2', step: 0 },
-  forwarded:    { label: 'Pending MD',       color: '#BA7517', bg: '#FAEEDA', step: 1 },
-  md_approved:  { label: 'Pending Admin',    color: '#185FA5', bg: '#DCF0FF', step: 2 },
+  forwarded:    { label: 'Pending Admin',    color: '#BA7517', bg: '#FAEEDA', step: 1 },
+  md_approved:  { label: 'Admin Review',     color: '#185FA5', bg: '#DCF0FF', step: 2 },
   ceo_approved: { label: 'Admin Approved',   color: '#27500A', bg: '#EAF3DE', step: 3 },
 };
 
@@ -60,6 +60,8 @@ const REC_STATUS_META = {
   rejected: { label: 'Rejected',       color: '#7B1818', bg: '#FCEBEB' },
 };
 
+const ROLE_OPTS: Role[] = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'];
+
 function initials(name: string) {
   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
@@ -72,13 +74,13 @@ function fmtSize(b?: number) {
 
 function buildAppointmentLetter(emp: HREmployee, grade: string, salary: string, by: string) {
   const today = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' });
-  return `GASTSMARTS LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\n\nAPPOINTMENT LETTER\n\nDear ${emp.name.split(' ')[0]},\n\nWe are pleased to offer you employment with Gastsmarts Limited in the capacity of ${emp.role}, effective ${fmtDate(emp.joinDate)}.\n\nPosition:    ${emp.role}\nDepartment:  ${emp.dept}\nStaff ID:    ${emp.empId}\nGrade Level: ${grade || 'As agreed'}\nAnnual Salary: ₦${salary ? Number(salary.replace(/,/g, '')).toLocaleString() : '—'}\n\nThis appointment is subject to:\n1. Satisfactory completion of all pre-employment documentation.\n2. A probationary period of three (3) months from the date of assumption of duties.\n3. Compliance with the Company's Code of Conduct and all HR policies.\n\nPlease sign and return a copy of this letter to confirm your acceptance.\n\nCongratulations and welcome to Gastsmarts.\n\nYours sincerely,\n\n${by}\nCorporate Services Manager\nGastsmarts Limited`;
+  return `GASTSMARTS LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\n\nAPPOINTMENT LETTER\n\nDear ${emp.name.split(' ')[0]},\n\nWe are pleased to offer you employment with Gastsmarts Limited in the capacity of ${emp.role}, effective ${fmtDate(emp.joinDate)}.\n\nPosition:    ${emp.role}\nDepartment:  ${emp.dept}\nStaff ID:    ${emp.empId}\nGrade Level: ${grade || 'As agreed'}\nAnnual Salary: ₦${salary ? Number(salary.replace(/,/g, '')).toLocaleString() : '—'}\n\nThis appointment is subject to:\n1. Satisfactory completion of all pre-employment documentation.\n2. A probationary period of three (3) months from the date of assumption of duties.\n3. Compliance with the Company's Code of Conduct and all HR policies.\n\nPlease sign and return a copy of this letter to confirm your acceptance.\n\nCongratulations and welcome to Gastsmarts.\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nGastsmarts Limited`;
 }
 
 function buildPromotionLetter(emp: HREmployee, newRole: string, effDate: string, newGrade: string, by: string) {
   const today = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' });
   const dateStr = effDate ? fmtDate(effDate) : today;
-  return `GASTSMARTS LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\nStaff ID: ${emp.empId}\nCurrent Position: ${emp.role}\n\nLETTER OF PROMOTION\n\nDear ${emp.name.split(' ')[0]},\n\nOn behalf of Management of Gastsmarts Limited, we are delighted to inform you of your promotion to the position of ${newRole}, effective ${dateStr}.\n\nNew Position: ${newRole}\nDepartment:   ${emp.dept}\nEffective:    ${dateStr}\nNew Grade:    ${newGrade || 'As communicated'}\n\nThis promotion is in recognition of your dedication, hard work, and consistent contribution to the growth of the organisation. We are confident that you will excel in your new role.\n\nApplicable salary and benefits adjustments will be communicated by the Finance department.\n\nCongratulations on this well-deserved achievement!\n\nYours sincerely,\n\n${by}\nCorporate Services Manager\nGastsmarts Limited`;
+  return `GASTSMARTS LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\nStaff ID: ${emp.empId}\nCurrent Position: ${emp.role}\n\nLETTER OF PROMOTION\n\nDear ${emp.name.split(' ')[0]},\n\nOn behalf of Management of Gastsmarts Limited, we are delighted to inform you of your promotion to the position of ${newRole}, effective ${dateStr}.\n\nNew Position: ${newRole}\nDepartment:   ${emp.dept}\nEffective:    ${dateStr}\nNew Grade:    ${newGrade || 'As communicated'}\n\nThis promotion is in recognition of your dedication, hard work, and consistent contribution to the growth of the organisation. We are confident that you will excel in your new role.\n\nApplicable salary and benefits adjustments will be communicated by the Finance department.\n\nCongratulations on this well-deserved achievement!\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nGastsmarts Limited`;
 }
 
 type TabId = 'employees' | 'handbooks' | 'recommendations' | 'approvals';
@@ -87,8 +89,11 @@ export default function HRScreen() {
   const {
     role, userName,
     hrEmployees, hrRecommendations, hrHandbooks,
-    addHREmployee, removeHREmployee,
-    addUserAccount,
+    userAccounts, branches,
+    removeHREmployee,
+    enrollStaff,
+    approveUserAccount, updateEnrollmentData,
+    rejectUserAccount, deleteUserAccount,
     uploadHRDocFile, approveHRUpload,
     addHRRecommendation, resolveHRRecommendation,
     addHRHandbook, approveHRHandbook,
@@ -96,73 +101,207 @@ export default function HRScreen() {
   } = useApp();
 
   const colors    = useColors();
-  const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
-  const isCSM     = role === 'csm';
+  const isHR      = role === 'csm';
   const isMD      = role === 'md';
   const isAdmin   = role === 'admin';
-  const canApprove = isMD || isAdmin;
+  const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
 
-  const [activeTab, setActiveTab] = useState<TabId>(canApprove ? 'approvals' : 'employees');
-  const [search, setSearch] = useState('');
+  /* ── tab state ── */
+  const [activeTab, setActiveTab] = useState<TabId>(isAdmin ? 'approvals' : 'employees');
+  const [search, setSearch]       = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const [showAdd,    setShowAdd]    = useState(false);
-  const [newName,    setNewName]    = useState('');
-  const [newJobRole, setNewJobRole] = useState('');
-  const [newDept,    setNewDept]    = useState(DEPARTMENTS[0]);
-  const [newPhone,   setNewPhone]   = useState('');
-  const [newEmail,   setNewEmail]   = useState('');
-  const [newAddr,    setNewAddr]    = useState('');
-  const [newDob,     setNewDob]     = useState('');
-  const [newKin,     setNewKin]     = useState('');
+  /* ── enrollment form state (HR only) ── */
+  const [showAdd,            setShowAdd]           = useState(false);
+  const [newName,            setNewName]            = useState('');
+  const [newJobRole,         setNewJobRole]         = useState('');
+  const [newDept,            setNewDept]            = useState(DEPARTMENTS[0]);
+  const [newPhone,           setNewPhone]           = useState('');
+  const [newEmail,           setNewEmail]           = useState('');
+  const [newAddr,            setNewAddr]            = useState('');
+  const [newDob,             setNewDob]             = useState('');
+  const [newKin,             setNewKin]             = useState('');
+  const [newNin,             setNewNin]             = useState('');
+  const [newSalary,          setNewSalary]          = useState('');
+  const [newGrade,           setNewGrade]           = useState('');
+  const [newGuarantorName,   setNewGuarantorName]   = useState('');
+  const [newGuarantorPhone,  setNewGuarantorPhone]  = useState('');
+  const [newGuarantorAddr,   setNewGuarantorAddr]   = useState('');
+  const [enrollDocs, setEnrollDocs] = useState<{ name: string; uri: string; mimeType?: string }[]>([]);
 
-  const [hbCat, setHbCat] = useState(HANDBOOK_CATS[0]);
+  /* ── admin: approve enrollment modal ── */
+  const [approvingEnrollment,  setApprovingEnrollment] = useState<UserAccount | null>(null);
+  const [aRole,                setARole]               = useState<Role>('att');
+  const [aUsername,            setAUsername]           = useState('');
+  const [aPassword,            setAPassword]           = useState('');
+  const [aBranch,              setABranch]             = useState('');
+  const [showApprovePw,        setShowApprovePw]       = useState(false);
 
+  /* ── admin: edit enrollment modal ── */
+  const [editingEnrollment,   setEditingEnrollment] = useState<UserAccount | null>(null);
+  const [eEmpName,            setEEmpName]          = useState('');
+  const [eJobTitle,           setEJobTitle]         = useState('');
+  const [eDept,               setEDept]             = useState(DEPARTMENTS[0]);
+  const [ePhone,              setEPhone]            = useState('');
+  const [eNin,                setENin]              = useState('');
+  const [eAddr,               setEAddr]             = useState('');
+  const [eGuarantorName,      setEGuarantorName]    = useState('');
+  const [eGuarantorPhone,     setEGuarantorPhone]   = useState('');
+  const [eGuarantorAddr,      setEGuarantorAddr]    = useState('');
+
+  /* ── other state ── */
+  const [hbCat,     setHbCat]     = useState(HANDBOOK_CATS[0]);
   const [recEmpId,  setRecEmpId]  = useState<number | null>(null);
   const [recType,   setRecType]   = useState<'suspend' | 'deactivate' | 'delete'>('suspend');
   const [recReason, setRecReason] = useState('');
 
-  const [letterModal,   setLetterModal]   = useState<null | 'appointment' | 'promotion'>(null);
-  const [letterEmpId,   setLetterEmpId]   = useState<number | null>(null);
-  const [letterGrade,   setLetterGrade]   = useState('');
-  const [letterSalary,  setLetterSalary]  = useState('');
-  const [letterNewRole, setLetterNewRole] = useState('');
-  const [letterEffDate, setLetterEffDate] = useState('');
-  const [letterNewGrade,setLetterNewGrade]= useState('');
-  const [viewLetter,    setViewLetter]    = useState<GeneratedLetter | null>(null);
+  const [letterModal,    setLetterModal]    = useState<null | 'appointment' | 'promotion'>(null);
+  const [letterEmpId,    setLetterEmpId]    = useState<number | null>(null);
+  const [letterGrade,    setLetterGrade]    = useState('');
+  const [letterSalary,   setLetterSalary]   = useState('');
+  const [letterNewRole,  setLetterNewRole]  = useState('');
+  const [letterEffDate,  setLetterEffDate]  = useState('');
+  const [letterNewGrade, setLetterNewGrade] = useState('');
+  const [viewLetter,     setViewLetter]     = useState<GeneratedLetter | null>(null);
 
+  /* ── derived data ── */
   const filteredStaff = hrEmployees.filter(e =>
     e.name.toLowerCase().includes(search.toLowerCase()) ||
     e.empId.toLowerCase().includes(search.toLowerCase()) ||
     e.dept.toLowerCase().includes(search.toLowerCase())
   );
+  const pendingEnrollments = userAccounts.filter(a => a.status === 'pending_admin');
+  const pendingRecs   = hrRecommendations.filter(r => r.status === 'pending').length;
+  const pendingBooks  = hrHandbooks.filter(h => !h.approved).length;
 
-  const pendingRecs  = hrRecommendations.filter(r => r.status === 'pending').length;
-  const pendingBooks = hrHandbooks.filter(h => !h.approved).length;
-  const pendingApprovals = hrEmployees.filter(e => {
-    if (isMD)    return e.onboarding?.status === 'forwarded';
-    if (isAdmin) return e.onboarding?.status === 'forwarded' || e.onboarding?.status === 'md_approved';
-    return false;
-  }).length;
+  /* ═══════════════════════════════════════════════════
+     HANDLERS — HR ENROLLMENT
+  ═══════════════════════════════════════════════════ */
+  async function handleEnrollEmployee() {
+    if (!newName.trim())    { Alert.alert('Required', 'Full name is required.');           return; }
+    if (!newJobRole.trim()) { Alert.alert('Required', 'Job title is required.');           return; }
+    if (!newNin.trim())     { Alert.alert('Required', 'NIN is required for enrollment.'); return; }
+    if (!newPhone.trim())   { Alert.alert('Required', 'Phone number is required.');        return; }
 
-  function handleAddEmployee() {
-    if (!newName.trim() || !newJobRole.trim()) { Alert.alert('Required', 'Name and job title are required.'); return; }
-    const today = new Date().toISOString().split('T')[0];
-    addHREmployee({
-      name: newName.trim(), role: newJobRole.trim(), dept: newDept,
-      phone: newPhone.trim() || '—', email: newEmail.trim() || '—',
-      address: newAddr.trim() || '—', dob: newDob.trim() || '—',
-      joinDate: today, nextOfKin: newKin.trim() || '—',
-      status: 'active', docs: [], uploads: [],
-      onboarding: { status: 'draft' }, letters: [],
-    });
-    addUserAccount({ empName: newName.trim(), jobTitle: newJobRole.trim(), dept: newDept, createdBy: userName || 'CSM' });
+    const docMeta: string[] = enrollDocs.map(d => d.name);
+    if (newSalary.trim()) docMeta.push(`SALARY:${newSalary.trim()}`);
+    if (newGrade.trim())  docMeta.push(`GRADE:${newGrade.trim()}`);
+    if (newEmail.trim())  docMeta.push(`EMAIL:${newEmail.trim()}`);
+    if (newDob.trim())    docMeta.push(`DOB:${newDob.trim()}`);
+    if (newKin.trim())    docMeta.push(`NEXTOFKIN:${newKin.trim()}`);
+
+    await enrollStaff({
+      empName:          newName.trim(),
+      jobTitle:         newJobRole.trim(),
+      dept:             newDept,
+      phoneNumber:      newPhone.trim(),
+      nin:              newNin.trim(),
+      staffAddress:     newAddr.trim() || undefined,
+      guarantorName:    newGuarantorName.trim() || undefined,
+      guarantorPhone:   newGuarantorPhone.trim() || undefined,
+      guarantorAddress: newGuarantorAddr.trim() || undefined,
+      employmentDocs:   docMeta,
+    }, userName || 'HR', 'pending_admin');
+
     setNewName(''); setNewJobRole(''); setNewPhone(''); setNewEmail('');
     setNewAddr(''); setNewDob(''); setNewKin(''); setNewDept(DEPARTMENTS[0]);
+    setNewNin(''); setNewSalary(''); setNewGrade('');
+    setNewGuarantorName(''); setNewGuarantorPhone(''); setNewGuarantorAddr('');
+    setEnrollDocs([]);
     setShowAdd(false);
-    Alert.alert('Onboarded', `${newName.trim()} registered.\n\nUpload the required documents below, then forward to MD & CEO for final approval.`);
+    Alert.alert('Enrollment Submitted', `${newName.trim()} enrolled successfully.\n\nSubmitted to Admin for review and approval.`);
   }
 
+  async function handlePickEnrollDoc() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const file = result.assets[0];
+      setEnrollDocs(prev => [...prev, { name: file.name, uri: file.uri, mimeType: file.mimeType ?? undefined }]);
+    } catch {
+      Alert.alert('Error', 'Could not pick file. Please try again.');
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════
+     HANDLERS — ADMIN ENROLLMENT REVIEW
+  ═══════════════════════════════════════════════════ */
+  function openApproveModal(acc: UserAccount) {
+    const suggested = (acc.empName ?? '')
+      .split(' ').map((w: string) => w[0]?.toLowerCase()).join('') +
+      ((acc.empName ?? '').split(' ')[1] ?? '').toLowerCase().slice(0, 5);
+    setApprovingEnrollment(acc);
+    setARole('att');
+    setAUsername(suggested || '');
+    setAPassword('');
+    setABranch(acc.branchId ?? (branches[0]?.id ?? ''));
+    setShowApprovePw(false);
+  }
+
+  async function handleConfirmApprove() {
+    if (!approvingEnrollment) return;
+    if (!aUsername.trim())            { Alert.alert('Required', 'Username is required.');               return; }
+    if (aPassword.trim().length < 6)  { Alert.alert('Required', 'Password must be at least 6 characters.'); return; }
+    if (!aBranch)                     { Alert.alert('Required', 'Please assign a branch.');             return; }
+    const dup = userAccounts.find(a => a.username === aUsername.trim() && a.id !== approvingEnrollment.id && a.status === 'active');
+    if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
+    await approveUserAccount(approvingEnrollment.id, aRole, aUsername.trim().toLowerCase(), aPassword.trim(), userName || 'Admin', aBranch);
+    const name = approvingEnrollment.empName;
+    setApprovingEnrollment(null);
+    Alert.alert('Enrollment Approved ✓', `${name} has been approved.\n\nStaff record and user account (@${aUsername.trim().toLowerCase()}) created automatically.`);
+  }
+
+  function handleRejectEnrollment(acc: UserAccount) {
+    Alert.alert('Reject Enrollment', `Reject enrollment for ${acc.empName}?\n\nThe record will be marked rejected.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reject', style: 'destructive', onPress: async () => {
+        await rejectUserAccount(acc.id);
+        Alert.alert('Rejected', `Enrollment for ${acc.empName} has been rejected.`);
+      }},
+    ]);
+  }
+
+  function handleDeleteEnrollment(acc: UserAccount) {
+    Alert.alert('Delete Enrollment', `Permanently delete enrollment for ${acc.empName}?\n\nThis cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteUserAccount(acc.id); }},
+    ]);
+  }
+
+  function openEditModal(acc: UserAccount) {
+    setEditingEnrollment(acc);
+    setEEmpName(acc.empName ?? '');
+    setEJobTitle(acc.jobTitle ?? '');
+    setEDept(acc.dept ?? DEPARTMENTS[0]);
+    setEPhone(acc.phoneNumber ?? '');
+    setENin(acc.nin ?? '');
+    setEAddr(acc.staffAddress ?? '');
+    setEGuarantorName(acc.guarantorName ?? '');
+    setEGuarantorPhone(acc.guarantorPhone ?? '');
+    setEGuarantorAddr(acc.guarantorAddress ?? '');
+  }
+
+  async function handleSaveEdit() {
+    if (!editingEnrollment) return;
+    if (!eEmpName.trim()) { Alert.alert('Required', 'Full name is required.'); return; }
+    await updateEnrollmentData(editingEnrollment.id, {
+      empName:          eEmpName.trim(),
+      jobTitle:         eJobTitle.trim() || undefined,
+      dept:             eDept || undefined,
+      phoneNumber:      ePhone.trim() || undefined,
+      nin:              eNin.trim() || undefined,
+      staffAddress:     eAddr.trim() || undefined,
+      guarantorName:    eGuarantorName.trim() || undefined,
+      guarantorPhone:   eGuarantorPhone.trim() || undefined,
+      guarantorAddress: eGuarantorAddr.trim() || undefined,
+    }, userName || 'Admin');
+    setEditingEnrollment(null);
+    Alert.alert('Updated', 'Enrollment details updated successfully.');
+  }
+
+  /* ═══════════════════════════════════════════════════
+     HANDLERS — HR DOCS / LETTERS / HANDBOOKS / RECS
+  ═══════════════════════════════════════════════════ */
   async function handlePickDocFile(empId: number, docType: HRDocType) {
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
@@ -192,22 +331,22 @@ export default function HRScreen() {
     const missing = emp.docs.filter(d => d.status === 'pending').length;
     const msg = missing > 0
       ? `${missing} document(s) still missing.\n\nForward anyway for partial review?`
-      : 'All documents uploaded. Forward to MD & CEO for final approval?';
+      : 'All documents uploaded. Forward for final approval?';
     Alert.alert('Forward for Approval', msg, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Forward', onPress: () => {
-        forwardOnboardingForApproval(emp.id, userName || 'CSM');
-        Alert.alert('Forwarded', 'Onboarding forwarded to MD and CEO for final approval.');
+        forwardOnboardingForApproval(emp.id, userName || 'HR');
+        Alert.alert('Forwarded', 'Onboarding forwarded to Admin for final approval.');
       }},
     ]);
   }
 
   function handleApprove(empId: number, stage: 'md' | 'ceo') {
-    Alert.alert(`${stage === 'md' ? 'MD' : 'CEO'} Approval`, 'Confirm final approval for this employee onboarding?', [
+    Alert.alert('Confirm Approval', 'Confirm final approval for this employee onboarding?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Approve', onPress: () => {
         approveOnboarding(empId, stage, userName || '');
-        Alert.alert('Approved', `${stage === 'md' ? 'MD' : 'CEO'} approval recorded successfully.`);
+        Alert.alert('Approved', 'Onboarding approval recorded successfully.');
       }},
     ]);
   }
@@ -218,7 +357,7 @@ export default function HRScreen() {
     if (!emp) return;
     addHRRecommendation({ empId, empName: emp.name, type: recType, reason: recReason.trim(), by: userName || 'HR' });
     setRecEmpId(null); setRecReason('');
-    Alert.alert('Sent', `Recommendation for ${emp.name} sent for review.`);
+    Alert.alert('Sent', `Recommendation for ${emp.name} sent for Admin review.`);
   }
 
   function handleGenerateLetter() {
@@ -227,14 +366,14 @@ export default function HRScreen() {
     let content = '';
     let title   = '';
     if (letterModal === 'appointment') {
-      content = buildAppointmentLetter(emp, letterGrade, letterSalary, userName || 'CSM');
+      content = buildAppointmentLetter(emp, letterGrade, letterSalary, userName || 'HR');
       title   = `Appointment Letter — ${emp.name}`;
     } else {
       if (!letterNewRole.trim()) { Alert.alert('Required', 'New position is required.'); return; }
-      content = buildPromotionLetter(emp, letterNewRole.trim(), letterEffDate, letterNewGrade, userName || 'CSM');
+      content = buildPromotionLetter(emp, letterNewRole.trim(), letterEffDate, letterNewGrade, userName || 'HR');
       title   = `Promotion Letter — ${emp.name} → ${letterNewRole.trim()}`;
     }
-    addGeneratedLetter(emp.id, { type: letterModal, title, content, generatedBy: userName || 'CSM', newRole: letterNewRole || undefined });
+    addGeneratedLetter(emp.id, { type: letterModal, title, content, generatedBy: userName || 'HR', newRole: letterNewRole || undefined });
     setLetterModal(null); setLetterEmpId(null);
     setLetterGrade(''); setLetterSalary(''); setLetterNewRole(''); setLetterEffDate(''); setLetterNewGrade('');
     Alert.alert('Letter Generated', `${title}\n\nSaved to employee file.`);
@@ -246,16 +385,23 @@ export default function HRScreen() {
     return { submitted, total, pct: total ? submitted / total : 0 };
   }
 
-  const TABS: { key: TabId; label: string; badge?: number }[] = canApprove ? [
-    { key: 'approvals',  label: 'Approvals', badge: pendingApprovals },
-    { key: 'employees',  label: 'Staff' },
-    { key: 'handbooks',  label: 'Library' },
+  /* ═══════════════════════════════════════════════════
+     TABS
+  ═══════════════════════════════════════════════════ */
+  const TABS: { key: TabId; label: string; badge?: number }[] = isAdmin ? [
+    { key: 'approvals',       label: 'Approvals',  badge: pendingEnrollments.length || undefined },
+    { key: 'employees',       label: 'Staff' },
+    { key: 'handbooks',       label: 'Library' },
+    { key: 'recommendations', label: 'Actions',    badge: pendingRecs || undefined },
   ] : [
-    { key: 'employees',      label: 'Staff' },
-    { key: 'handbooks',      label: 'Library',  badge: pendingBooks },
-    { key: 'recommendations',label: 'Actions',  badge: pendingRecs  },
+    { key: 'employees',       label: 'Staff' },
+    { key: 'handbooks',       label: 'Library',    badge: pendingBooks || undefined },
+    { key: 'recommendations', label: 'Actions',    badge: pendingRecs  || undefined },
   ];
 
+  /* ═══════════════════════════════════════════════════
+     RENDER HELPERS
+  ═══════════════════════════════════════════════════ */
   function renderDocChecklist(emp: HREmployee) {
     if (!emp.docs.length) return null;
     return (
@@ -279,7 +425,7 @@ export default function HRScreen() {
                 <Ionicons name={sm.icon as any} size={10} color={sm.color} />
                 <Text style={[styles.docStatusText, { color: sm.color }]}>{sm.label}</Text>
               </View>
-              {isCSM && (doc.status === 'pending' || doc.status === 'n/a') && (
+              {isHR && (doc.status === 'pending' || doc.status === 'n/a') && (
                 <TouchableOpacity
                   onPress={() => handlePickDocFile(emp.id, rd.type)}
                   style={[styles.uploadBtn, { backgroundColor: roleColor }]}
@@ -299,7 +445,7 @@ export default function HRScreen() {
     return (
       <>
         <Text style={[styles.panelSection, { color: colors.text }]}>Generated Letters</Text>
-        {isCSM && (
+        {isHR && (
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
             <TouchableOpacity
               onPress={() => { setLetterEmpId(emp.id); setLetterModal('appointment'); }}
@@ -339,34 +485,27 @@ export default function HRScreen() {
     const meta = ONBOARD_META[ob.status];
     const steps = [
       { label: 'Submitted',      done: ob.status !== 'draft',       by: ob.forwardedBy,   at: ob.forwardedAt },
-      { label: 'MD Approved',    done: ob.status === 'md_approved' || ob.status === 'ceo_approved', by: ob.mdApprovedBy, at: ob.mdApprovedAt },
+      { label: 'Admin Review',   done: ob.status === 'md_approved' || ob.status === 'ceo_approved', by: ob.mdApprovedBy, at: ob.mdApprovedAt },
       { label: 'Admin Approved', done: ob.status === 'ceo_approved', by: ob.ceoApprovedBy, at: ob.ceoApprovedAt },
     ];
     return (
       <View style={[styles.onboardSection, { borderColor: meta.bg, backgroundColor: meta.bg + '88' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <View style={[styles.onboardBadge, { backgroundColor: meta.bg, borderColor: meta.color + '44' }]}>
             <Text style={[styles.onboardBadgeText, { color: meta.color }]}>{meta.label}</Text>
           </View>
-          {isCSM && (ob.status === 'draft' || ob.status === 'forwarded') && (
+          {isHR && (ob.status === 'draft' || ob.status === 'forwarded') && (
             <TouchableOpacity onPress={() => handleForward(emp)}
               style={[styles.forwardBtn, { backgroundColor: roleColor }]}>
               <Ionicons name="send" size={12} color="#fff" />
               <Text style={styles.forwardBtnText}>{ob.status === 'draft' ? 'Forward for Approval' : 'Re-Forward'}</Text>
             </TouchableOpacity>
           )}
-          {isMD && ob.status === 'forwarded' && (
-            <TouchableOpacity onPress={() => handleApprove(emp.id, 'md')}
-              style={[styles.forwardBtn, { backgroundColor: '#4527a0' }]}>
-              <Ionicons name="checkmark-circle" size={12} color="#fff" />
-              <Text style={styles.forwardBtnText}>MD Approve</Text>
-            </TouchableOpacity>
-          )}
           {isAdmin && (ob.status === 'forwarded' || ob.status === 'md_approved') && (
             <TouchableOpacity onPress={() => handleApprove(emp.id, 'ceo')}
               style={[styles.forwardBtn, { backgroundColor: '#1a6e3c' }]}>
               <Ionicons name="checkmark-circle" size={12} color="#fff" />
-              <Text style={styles.forwardBtnText}>Admin Approve</Text>
+              <Text style={styles.forwardBtnText}>Approve Onboarding</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -385,6 +524,88 @@ export default function HRScreen() {
               )}
             </React.Fragment>
           ))}
+        </View>
+      </View>
+    );
+  }
+
+  function renderEnrollmentCard(acc: UserAccount) {
+    const deptColor = DEPT_COLORS[acc.dept ?? ''] ?? '#4527a0';
+    const salaryMeta = (acc.employmentDocs ?? []).find((d: string) => d.startsWith('SALARY:'));
+    const gradeMeta  = (acc.employmentDocs ?? []).find((d: string) => d.startsWith('GRADE:'));
+    const fileDocs   = (acc.employmentDocs ?? []).filter((d: string) =>
+      !d.startsWith('SALARY:') && !d.startsWith('GRADE:') && !d.startsWith('EMAIL:') &&
+      !d.startsWith('DOB:') && !d.startsWith('NEXTOFKIN:')
+    );
+    return (
+      <View key={acc.id} style={[styles.enrollCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+          <View style={[styles.avatar, { backgroundColor: deptColor }]}>
+            <Text style={styles.avatarText}>{initials(acc.empName ?? '?')}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.empName, { color: colors.text }]}>{acc.empName}</Text>
+            <Text style={[styles.empSub, { color: colors.textMuted }]}>{acc.jobTitle ?? '—'} · {acc.dept ?? '—'}</Text>
+            <Text style={[styles.empSub, { color: colors.textSubtle }]}>{acc.empId}</Text>
+          </View>
+          <View style={[styles.pill, { backgroundColor: '#FAEEDA' }]}>
+            <Text style={[styles.pillText, { color: '#BA7517' }]}>Pending Admin</Text>
+          </View>
+        </View>
+
+        {/* Key fields */}
+        <View style={[styles.enrollInfoGrid, { borderColor: colors.border }]}>
+          {[
+            { label: 'NIN',       value: acc.nin           || '—' },
+            { label: 'Phone',     value: acc.phoneNumber   || '—' },
+            { label: 'Salary',    value: salaryMeta ? '₦' + salaryMeta.replace('SALARY:', '') : '—' },
+            { label: 'Grade',     value: gradeMeta  ? gradeMeta.replace('GRADE:', '') : '—' },
+            { label: 'Guarantor', value: acc.guarantorName || '—' },
+            { label: 'Address',   value: acc.staffAddress  || '—' },
+          ].map(item => (
+            <View key={item.label} style={styles.enrollInfoItem}>
+              <Text style={[styles.bioLabel, { color: colors.textMuted }]}>{item.label}</Text>
+              <Text style={[styles.bioValue, { color: colors.text }]} numberOfLines={1}>{item.value}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Uploaded docs */}
+        {fileDocs.length > 0 && (
+          <View style={{ marginTop: 6, marginBottom: 4 }}>
+            <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 4 }]}>Attached Files ({fileDocs.length})</Text>
+            {fileDocs.map((d: string, i: number) => (
+              <View key={i} style={[styles.enrollDocRow, { borderColor: colors.border }]}>
+                <Ionicons name="document-attach-outline" size={13} color={colors.textMuted} />
+                <Text style={[styles.enrollDocName, { color: colors.textMuted }]} numberOfLines={1}>{d}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Admin actions */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+          <TouchableOpacity onPress={() => openEditModal(acc)}
+            style={[styles.enrollActionBtn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }]}>
+            <Ionicons name="create-outline" size={14} color={colors.text} />
+            <Text style={[styles.enrollActionText, { color: colors.text }]}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleRejectEnrollment(acc)}
+            style={[styles.enrollActionBtn, { backgroundColor: '#FAEEDA', borderColor: '#BA7517', borderWidth: 1 }]}>
+            <Ionicons name="close-circle-outline" size={14} color="#BA7517" />
+            <Text style={[styles.enrollActionText, { color: '#BA7517' }]}>Reject</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleDeleteEnrollment(acc)}
+            style={[styles.enrollActionBtn, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C', borderWidth: 1 }]}>
+            <Ionicons name="trash-outline" size={14} color="#E74C3C" />
+            <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Delete</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => openApproveModal(acc)}
+            style={[styles.enrollApproveBtn, { backgroundColor: '#1a6e3c' }]}>
+            <Ionicons name="checkmark-circle" size={14} color="#fff" />
+            <Text style={styles.enrollApproveBtnText}>Approve & Create Account</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -459,12 +680,12 @@ export default function HRScreen() {
 
             {renderDocChecklist(emp)}
 
-            {isCSM && renderLetters(emp)}
+            {isHR && renderLetters(emp)}
 
             <Text style={[styles.panelSection, { color: colors.text }]}>Onboarding Approval</Text>
             {renderOnboardingStatus(emp)}
 
-            {isCSM && emp.status === 'active' && (
+            {isHR && emp.status === 'active' && (
               <>
                 <TouchableOpacity onPress={() => setRecEmpId(recEmpId === emp.id ? null : emp.id)}
                   style={[styles.sectionToggle, { borderColor: '#E74C3C55', backgroundColor: '#E74C3C0a' }]}>
@@ -508,6 +729,9 @@ export default function HRScreen() {
     );
   }
 
+  /* ═══════════════════════════════════════════════════
+     MAIN RENDER
+  ═══════════════════════════════════════════════════ */
   return (
     <ScreenLayout title="HR Panel">
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
@@ -528,6 +752,30 @@ export default function HRScreen() {
         ))}
       </View>
 
+      {/* ── APPROVALS TAB (Admin only) ── */}
+      {activeTab === 'approvals' && isAdmin && (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <View style={[styles.infoBox, { backgroundColor: '#DCF0FF', borderColor: '#185FA5' + '44' }]}>
+            <Ionicons name="information-circle" size={15} color="#185FA5" />
+            <Text style={[styles.infoText, { color: '#185FA5' }]}>
+              Review HR enrollments below. Once all required fields are verified, approve to automatically create the staff record and user account.
+            </Text>
+          </View>
+
+          {pendingEnrollments.length === 0 ? (
+            <View style={[styles.empty, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+              <Ionicons name="checkmark-done-circle-outline" size={40} color={colors.textSubtle} />
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No pending enrollments</Text>
+              <Text style={[styles.emptySubText, { color: colors.textSubtle }]}>HR will submit new staff enrollments here for your review</Text>
+            </View>
+          ) : (
+            pendingEnrollments.map(acc => renderEnrollmentCard(acc))
+          )}
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      )}
+
+      {/* ── EMPLOYEES TAB ── */}
       {activeTab === 'employees' && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={styles.statsRow}>
@@ -551,7 +799,7 @@ export default function HRScreen() {
                 value={search} onChangeText={setSearch}
                 style={[styles.searchInput, { color: colors.text }]} />
             </View>
-            {isCSM && (
+            {isHR && (
               <TouchableOpacity onPress={() => setShowAdd(v => !v)}
                 style={[styles.addBtn, { backgroundColor: roleColor }]}>
                 <Ionicons name={showAdd ? 'close' : 'person-add'} size={16} color="#fff" />
@@ -559,18 +807,46 @@ export default function HRScreen() {
             )}
           </View>
 
-          {showAdd && isCSM && (
+          {/* ── ENROLLMENT FORM (HR only) ── */}
+          {showAdd && isHR && (
             <View style={[styles.form, { backgroundColor: colors.surface, borderColor: roleColor + '44' }]}>
-              <Text style={[styles.formTitle, { color: colors.text }]}>Onboard New Employee</Text>
-              <Text style={[styles.formHint, { color: colors.textMuted }]}>Company ID (PTNG-XXXX) auto-assigned on save.</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Ionicons name="person-add" size={18} color={roleColor} />
+                <Text style={[styles.formTitle, { color: colors.text }]}>Enrol New Staff</Text>
+              </View>
+              <Text style={[styles.formHint, { color: colors.textMuted }]}>
+                Fill all required fields (*). Company ID is auto-assigned. Submitted to Admin for approval.
+              </Text>
+
+              {/* Required fields */}
+              <Text style={[styles.sectionHeading, { color: colors.text, marginTop: 8 }]}>Personal Details</Text>
               {[
-                { label: 'Full Name *',   val: newName,    set: setNewName,    ph: 'e.g. Kelechi Nwosu' },
-                { label: 'Job Title *',   val: newJobRole, set: setNewJobRole, ph: 'e.g. Senior Accountant' },
-                { label: 'Phone',         val: newPhone,   set: setNewPhone,   ph: '+234 8XX XXX XXXX' },
-                { label: 'Email',         val: newEmail,   set: setNewEmail,   ph: 'name@petrotrack.ng' },
-                { label: 'Date of Birth', val: newDob,     set: setNewDob,     ph: 'YYYY-MM-DD' },
-                { label: 'Home Address',  val: newAddr,    set: setNewAddr,    ph: 'Street, City' },
-                { label: 'Next of Kin',   val: newKin,     set: setNewKin,     ph: 'Full name' },
+                { label: 'Full Name *',      val: newName,    set: setNewName,    ph: 'e.g. Kelechi Nwosu',       kb: 'default' as const },
+                { label: 'Job Title *',      val: newJobRole, set: setNewJobRole, ph: 'e.g. Senior Accountant',   kb: 'default' as const },
+                { label: 'NIN *',            val: newNin,     set: setNewNin,     ph: '11-digit NIN number',      kb: 'numeric' as const },
+                { label: 'Phone Number *',   val: newPhone,   set: setNewPhone,   ph: '+234 8XX XXX XXXX',        kb: 'phone-pad' as const },
+                { label: 'Annual Salary ₦',  val: newSalary,  set: setNewSalary,  ph: 'e.g. 1200000',            kb: 'numeric' as const },
+                { label: 'Grade Level',      val: newGrade,   set: setNewGrade,   ph: 'e.g. GL 08',               kb: 'default' as const },
+                { label: 'Email',            val: newEmail,   set: setNewEmail,   ph: 'name@gastsmarts.com',      kb: 'email-address' as const },
+                { label: 'Date of Birth',    val: newDob,     set: setNewDob,     ph: 'YYYY-MM-DD',               kb: 'default' as const },
+                { label: 'Home Address',     val: newAddr,    set: setNewAddr,    ph: 'Street, City, State',      kb: 'default' as const },
+                { label: 'Next of Kin',      val: newKin,     set: setNewKin,     ph: 'Full name',                kb: 'default' as const },
+              ].map(f => (
+                <View key={f.label}>
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
+                  <TextInput value={f.val} onChangeText={f.set} placeholder={f.ph}
+                    keyboardType={f.kb}
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+                </View>
+              ))}
+
+              {/* Guarantor */}
+              <Text style={[styles.sectionHeading, { color: colors.text, marginTop: 8 }]}>Guarantor Information</Text>
+              {[
+                { label: 'Guarantor Name',    val: newGuarantorName,  set: setNewGuarantorName,  ph: 'Full name' },
+                { label: 'Guarantor Phone',   val: newGuarantorPhone, set: setNewGuarantorPhone, ph: '+234 8XX XXX XXXX' },
+                { label: 'Guarantor Address', val: newGuarantorAddr,  set: setNewGuarantorAddr,  ph: 'Street, City, State' },
               ].map(f => (
                 <View key={f.label}>
                   <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
@@ -579,6 +855,8 @@ export default function HRScreen() {
                     style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
                 </View>
               ))}
+
+              {/* Department */}
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Department</Text>
               <View style={styles.chipRow}>
                 {DEPARTMENTS.map(d => (
@@ -588,10 +866,33 @@ export default function HRScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-              <TouchableOpacity onPress={handleAddEmployee}
-                style={[styles.submitBtn, { backgroundColor: roleColor }]}>
-                <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                <Text style={styles.submitBtnText}>Onboard Employee</Text>
+
+              {/* Document upload */}
+              <Text style={[styles.sectionHeading, { color: colors.text, marginTop: 8 }]}>Supporting Documents</Text>
+              <Text style={[styles.formHint, { color: colors.textMuted }]}>Attach relevant files (PDF, image, Word, etc.)</Text>
+              <TouchableOpacity onPress={handlePickEnrollDoc}
+                style={[styles.uploadDocBtn, { borderColor: roleColor + '66', backgroundColor: roleColor + '0a' }]}>
+                <Ionicons name="cloud-upload-outline" size={16} color={roleColor} />
+                <Text style={[styles.uploadDocBtnText, { color: roleColor }]}>Attach File (any format)</Text>
+              </TouchableOpacity>
+              {enrollDocs.length > 0 && (
+                <View style={{ marginTop: 6 }}>
+                  {enrollDocs.map((d, i) => (
+                    <View key={i} style={[styles.enrollDocRow, { borderColor: colors.border }]}>
+                      <Ionicons name="document-attach-outline" size={13} color={colors.textMuted} />
+                      <Text style={[styles.enrollDocName, { color: colors.text, flex: 1 }]} numberOfLines={1}>{d.name}</Text>
+                      <TouchableOpacity onPress={() => setEnrollDocs(prev => prev.filter((_, j) => j !== i))}>
+                        <Ionicons name="close-circle" size={15} color="#E74C3C" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <TouchableOpacity onPress={handleEnrollEmployee}
+                style={[styles.submitBtn, { backgroundColor: roleColor, marginTop: 16 }]}>
+                <Ionicons name="send" size={16} color="#fff" />
+                <Text style={styles.submitBtnText}>Submit Enrollment to Admin</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -601,62 +902,10 @@ export default function HRScreen() {
         </ScrollView>
       )}
 
-      {activeTab === 'approvals' && canApprove && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-          {(() => {
-            const list = hrEmployees.filter(e => {
-              if (isMD)    return e.onboarding?.status === 'forwarded';
-              if (isAdmin) return e.onboarding?.status === 'forwarded' || e.onboarding?.status === 'md_approved';
-              return false;
-            });
-            if (list.length === 0) return (
-              <View style={[styles.empty, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                <Ionicons name="checkmark-done-circle-outline" size={40} color={colors.textSubtle} />
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>No pending onboarding approvals</Text>
-              </View>
-            );
-            return list.map(emp => {
-              const ob = emp.onboarding;
-              const { submitted, total } = docProgress(emp);
-              const deptColor = DEPT_COLORS[emp.dept] ?? roleColor;
-              return (
-                <View key={emp.id} style={[styles.approvalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                    <View style={[styles.avatar, { backgroundColor: deptColor }]}>
-                      <Text style={styles.avatarText}>{initials(emp.name)}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.empName, { color: colors.text }]}>{emp.name}</Text>
-                      <Text style={[styles.empSub, { color: colors.textMuted }]}>{emp.role} · {emp.dept}</Text>
-                      <Text style={[styles.empSub, { color: colors.textSubtle }]}>{emp.empId}</Text>
-                    </View>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                    {[
-                      { label: `${submitted}/${total} docs uploaded`, icon: 'document', color: submitted === total ? '#27500A' : '#BA7517' },
-                      ...(ob.forwardedBy ? [{ label: `Fwd by ${ob.forwardedBy}`, icon: 'send', color: '#185FA5' }] : []),
-                      ...(ob.mdApprovedBy ? [{ label: `MD: ${ob.mdApprovedBy}`, icon: 'checkmark-circle', color: '#27500A' }] : []),
-                    ].map((b, i) => (
-                      <View key={i} style={[styles.approvalMeta, { backgroundColor: b.color + '12' }]}>
-                        <Ionicons name={b.icon as any} size={10} color={b.color} />
-                        <Text style={[styles.approvalMetaText, { color: b.color }]}>{b.label}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  {renderOnboardingStatus(emp)}
-                </View>
-              );
-            });
-          })()}
-          <View style={{ height: 24 }} />
-        </ScrollView>
-      )}
-
+      {/* ── HANDBOOKS TAB ── */}
       {activeTab === 'handbooks' && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-          {isCSM && (
+          {isHR && (
             <View style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <Ionicons name="library" size={18} color={roleColor} />
@@ -716,6 +965,7 @@ export default function HRScreen() {
         </ScrollView>
       )}
 
+      {/* ── RECOMMENDATIONS TAB ── */}
       {activeTab === 'recommendations' && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={styles.statsRow}>
@@ -782,231 +1032,377 @@ export default function HRScreen() {
         </ScrollView>
       )}
 
-      {/* ── Generate Letter Modal ── */}
-      <ModalSheet visible={!!letterModal} onClose={() => setLetterModal(null)}>
-          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
-            keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-            <Text style={[styles.sheetTitle, { color: colors.text }]}>
-              {letterModal === 'appointment' ? 'Generate Appointment Letter' : 'Generate Promotion Letter'}
-            </Text>
-            {letterModal === 'appointment' && (
-              <>
-                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Grade Level (optional)</Text>
-                <TextInput value={letterGrade} onChangeText={setLetterGrade}
-                  placeholder="e.g. GL 08" placeholderTextColor={colors.textMuted}
-                  style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
-                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Annual Salary ₦ (optional)</Text>
-                <TextInput value={letterSalary} onChangeText={setLetterSalary}
-                  placeholder="e.g. 1200000" placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric"
-                  style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
-              </>
-            )}
-            {letterModal === 'promotion' && (
-              <>
-                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>New Position *</Text>
-                <TextInput value={letterNewRole} onChangeText={setLetterNewRole}
-                  placeholder="e.g. Senior Accountant" placeholderTextColor={colors.textMuted}
-                  style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
-                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>New Grade Level</Text>
-                <TextInput value={letterNewGrade} onChangeText={setLetterNewGrade}
-                  placeholder="e.g. GL 10" placeholderTextColor={colors.textMuted}
-                  style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
-                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Effective Date</Text>
-                <TextInput value={letterEffDate} onChangeText={setLetterEffDate}
-                  placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted}
-                  style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
-              </>
-            )}
-            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Employee</Text>
-            <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
-              {hrEmployees.map(emp => (
-                <TouchableOpacity key={emp.id} onPress={() => setLetterEmpId(emp.id)}
-                  style={[styles.empPickRow, {
-                    backgroundColor: letterEmpId === emp.id ? roleColor + '12' : colors.surface,
-                    borderColor: letterEmpId === emp.id ? roleColor : colors.border,
+      {/* ═══════════════════════════════════════════════════
+           MODALS
+      ═══════════════════════════════════════════════════ */}
+
+      {/* ── Admin: Approve Enrollment Modal ── */}
+      <ModalSheet visible={!!approvingEnrollment} onClose={() => setApprovingEnrollment(null)}>
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Ionicons name="checkmark-circle" size={20} color="#1a6e3c" />
+            <Text style={[styles.sheetTitle, { color: colors.text }]}>Approve Enrollment</Text>
+          </View>
+          <Text style={[styles.formHint, { color: colors.textMuted, marginBottom: 12 }]}>
+            Set login credentials and role for {approvingEnrollment?.empName}. A staff record and user account will be created automatically.
+          </Text>
+
+          <View style={[styles.enrollInfoGrid, { borderColor: colors.border, marginBottom: 12 }]}>
+            <View style={styles.enrollInfoItem}>
+              <Text style={[styles.bioLabel, { color: colors.textMuted }]}>Name</Text>
+              <Text style={[styles.bioValue, { color: colors.text }]}>{approvingEnrollment?.empName}</Text>
+            </View>
+            <View style={styles.enrollInfoItem}>
+              <Text style={[styles.bioLabel, { color: colors.textMuted }]}>Role/Title</Text>
+              <Text style={[styles.bioValue, { color: colors.text }]}>{approvingEnrollment?.jobTitle ?? '—'}</Text>
+            </View>
+            <View style={styles.enrollInfoItem}>
+              <Text style={[styles.bioLabel, { color: colors.textMuted }]}>NIN</Text>
+              <Text style={[styles.bioValue, { color: colors.text }]}>{approvingEnrollment?.nin ?? '—'}</Text>
+            </View>
+            <View style={styles.enrollInfoItem}>
+              <Text style={[styles.bioLabel, { color: colors.textMuted }]}>Phone</Text>
+              <Text style={[styles.bioValue, { color: colors.text }]}>{approvingEnrollment?.phoneNumber ?? '—'}</Text>
+            </View>
+          </View>
+
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>System Role *</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 4 }}>
+              {ROLE_OPTS.map(r => (
+                <TouchableOpacity key={r} onPress={() => setARole(r)}
+                  style={[styles.chip, {
+                    backgroundColor: r === aRole ? ROLE_COLORS[r] + '22' : colors.surface,
+                    borderColor: r === aRole ? ROLE_COLORS[r] : colors.border,
                   }]}>
-                  <View style={[styles.miniAvatar, { backgroundColor: DEPT_COLORS[emp.dept] ?? roleColor }]}>
-                    <Text style={styles.miniAvatarText}>{initials(emp.name)}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.empPickName, { color: letterEmpId === emp.id ? roleColor : colors.text }]}>{emp.name}</Text>
-                    <Text style={[styles.empPickRole, { color: colors.textMuted }]}>{emp.role}</Text>
-                  </View>
-                  {letterEmpId === emp.id && <Ionicons name="checkmark-circle" size={18} color={roleColor} />}
+                  <Text style={[styles.chipText, { color: r === aRole ? ROLE_COLORS[r] : colors.textMuted }]}>
+                    {ROLE_LABELS[r] ?? r}
+                  </Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 32 }}>
-              <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleGenerateLetter}>
-                <Ionicons name="document-text" size={14} color="#fff" />
-                <Text style={styles.submitBtnText}>Generate Letter</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setLetterModal(null)}>
-                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
             </View>
           </ScrollView>
+
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username *</Text>
+          <TextInput value={aUsername} onChangeText={setAUsername}
+            placeholder="e.g. kelechi.nwosu" placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
+
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Temporary Password *</Text>
+          <View style={[styles.pwRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TextInput value={aPassword} onChangeText={setAPassword}
+              placeholder="Min. 6 characters" placeholderTextColor={colors.textMuted}
+              secureTextEntry={!showApprovePw} style={[styles.pwInput, { color: colors.text }]} />
+            <TouchableOpacity onPress={() => setShowApprovePw(v => !v)}>
+              <Ionicons name={showApprovePw ? 'eye-off' : 'eye'} size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch *</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 4 }}>
+              {branches.map(b => (
+                <TouchableOpacity key={b.id} onPress={() => setABranch(b.id)}
+                  style={[styles.chip, {
+                    backgroundColor: b.id === aBranch ? '#1a6e3c22' : colors.surface,
+                    borderColor: b.id === aBranch ? '#1a6e3c' : colors.border,
+                  }]}>
+                  <Text style={[styles.chipText, { color: b.id === aBranch ? '#1a6e3c' : colors.textMuted }]}>{b.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+
+          <TouchableOpacity onPress={handleConfirmApprove}
+            style={[styles.submitBtn, { backgroundColor: '#1a6e3c' }]}>
+            <Ionicons name="checkmark-circle" size={16} color="#fff" />
+            <Text style={styles.submitBtnText}>Approve & Create Account</Text>
+          </TouchableOpacity>
+          <View style={{ height: 32 }} />
+        </ScrollView>
+      </ModalSheet>
+
+      {/* ── Admin: Edit Enrollment Modal ── */}
+      <ModalSheet visible={!!editingEnrollment} onClose={() => setEditingEnrollment(null)}>
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Ionicons name="create" size={18} color={roleColor} />
+            <Text style={[styles.sheetTitle, { color: colors.text }]}>Edit Enrollment</Text>
+          </View>
+          <Text style={[styles.formHint, { color: colors.textMuted, marginBottom: 10 }]}>
+            Update enrollment details for {editingEnrollment?.empName}.
+          </Text>
+
+          {[
+            { label: 'Full Name *',     val: eEmpName,       set: setEEmpName,       ph: 'Full name' },
+            { label: 'Job Title',       val: eJobTitle,      set: setEJobTitle,      ph: 'e.g. Senior Accountant' },
+            { label: 'NIN',             val: eNin,           set: setENin,           ph: '11-digit NIN' },
+            { label: 'Phone',           val: ePhone,         set: setEPhone,         ph: '+234 8XX XXX XXXX' },
+            { label: 'Address',         val: eAddr,          set: setEAddr,          ph: 'Street, City, State' },
+            { label: 'Guarantor Name',  val: eGuarantorName, set: setEGuarantorName, ph: 'Full name' },
+            { label: 'Guarantor Phone', val: eGuarantorPhone,set: setEGuarantorPhone,ph: '+234 8XX XXX XXXX' },
+            { label: 'Guarantor Addr',  val: eGuarantorAddr, set: setEGuarantorAddr, ph: 'Street, City, State' },
+          ].map(f => (
+            <View key={f.label}>
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
+              <TextInput value={f.val} onChangeText={f.set} placeholder={f.ph}
+                placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
+            </View>
+          ))}
+
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Department</Text>
+          <View style={styles.chipRow}>
+            {DEPARTMENTS.map(d => (
+              <TouchableOpacity key={d} onPress={() => setEDept(d)}
+                style={[styles.chip, { backgroundColor: d === eDept ? roleColor : colors.background, borderColor: d === eDept ? roleColor : colors.border }]}>
+                <Text style={[styles.chipText, { color: d === eDept ? '#fff' : colors.textMuted }]}>{d}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity onPress={handleSaveEdit}
+            style={[styles.submitBtn, { backgroundColor: roleColor, marginTop: 12 }]}>
+            <Ionicons name="save" size={15} color="#fff" />
+            <Text style={styles.submitBtnText}>Save Changes</Text>
+          </TouchableOpacity>
+          <View style={{ height: 32 }} />
+        </ScrollView>
+      </ModalSheet>
+
+      {/* ── Generate Letter Modal ── */}
+      <ModalSheet visible={!!letterModal} onClose={() => setLetterModal(null)}>
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <Text style={[styles.sheetTitle, { color: colors.text }]}>
+            {letterModal === 'appointment' ? 'Generate Appointment Letter' : 'Generate Promotion Letter'}
+          </Text>
+          {letterModal === 'appointment' && (
+            <>
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Grade Level (optional)</Text>
+              <TextInput value={letterGrade} onChangeText={setLetterGrade}
+                placeholder="e.g. GL 08" placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Annual Salary ₦ (optional)</Text>
+              <TextInput value={letterSalary} onChangeText={setLetterSalary}
+                placeholder="e.g. 1200000" placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+                style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
+            </>
+          )}
+          {letterModal === 'promotion' && (
+            <>
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>New Position *</Text>
+              <TextInput value={letterNewRole} onChangeText={setLetterNewRole}
+                placeholder="e.g. Senior Accountant" placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>New Grade Level</Text>
+              <TextInput value={letterNewGrade} onChangeText={setLetterNewGrade}
+                placeholder="e.g. GL 10" placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Effective Date</Text>
+              <TextInput value={letterEffDate} onChangeText={setLetterEffDate}
+                placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
+            </>
+          )}
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Employee</Text>
+          <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+            {hrEmployees.map(emp => (
+              <TouchableOpacity key={emp.id} onPress={() => setLetterEmpId(emp.id)}
+                style={[styles.empPickRow, {
+                  backgroundColor: letterEmpId === emp.id ? roleColor + '12' : colors.surface,
+                  borderColor: letterEmpId === emp.id ? roleColor : colors.border,
+                }]}>
+                <View style={[styles.miniAvatar, { backgroundColor: DEPT_COLORS[emp.dept] ?? roleColor }]}>
+                  <Text style={styles.miniAvatarText}>{initials(emp.name)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.empPickName, { color: letterEmpId === emp.id ? roleColor : colors.text }]}>{emp.name}</Text>
+                  <Text style={[styles.empPickRole, { color: colors.textMuted }]}>{emp.role}</Text>
+                </View>
+                {letterEmpId === emp.id && <Ionicons name="checkmark-circle" size={16} color={roleColor} />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <TouchableOpacity onPress={handleGenerateLetter}
+            style={[styles.submitBtn, { backgroundColor: letterModal === 'promotion' ? '#8E44AD' : '#2980B9', marginTop: 12 }]}>
+            <Ionicons name="document-text" size={15} color="#fff" />
+            <Text style={styles.submitBtnText}>Generate & Save Letter</Text>
+          </TouchableOpacity>
+          <View style={{ height: 32 }} />
+        </ScrollView>
       </ModalSheet>
 
       {/* ── View Letter Modal ── */}
       <ModalSheet visible={!!viewLetter} onClose={() => setViewLetter(null)}>
-          <View style={[styles.sheet, { backgroundColor: colors.background, maxHeight: '90%' }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <Ionicons name={viewLetter?.type === 'promotion' ? 'ribbon' : 'document-text'} size={18}
-                color={viewLetter?.type === 'promotion' ? '#8E44AD' : '#2980B9'} />
-              <Text style={[styles.sheetTitle, { color: colors.text, flex: 1, marginBottom: 0 }]} numberOfLines={2}>
-                {viewLetter?.title}
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}>
+          {viewLetter && (
+            <>
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>{viewLetter.title}</Text>
+              <Text style={[styles.letterMeta, { color: colors.textMuted }]}>
+                Generated by {viewLetter.generatedBy} · {fmtDateTime(viewLetter.generatedAt)}
               </Text>
-              <TouchableOpacity onPress={() => setViewLetter(null)}>
-                <Ionicons name="close-circle" size={22} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.letterMeta, { color: colors.textMuted }]}>
-              Generated by {viewLetter?.generatedBy} · {viewLetter ? fmtDateTime(viewLetter.generatedAt) : ''}
-            </Text>
-            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator>
-              <View style={[styles.letterContent, { backgroundColor: '#f9f9f7', borderColor: colors.border }]}>
-                <Text style={styles.letterText}>{viewLetter?.content}</Text>
+              <View style={[styles.letterContent, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.letterText, { color: colors.text }]}>{viewLetter.content}</Text>
               </View>
-            </ScrollView>
-            <TouchableOpacity onPress={() => setViewLetter(null)}
-              style={[styles.submitBtn, { backgroundColor: colors.surface, marginTop: 10 }]}>
-              <Text style={[styles.submitBtnText, { color: colors.text }]}>Close</Text>
-            </TouchableOpacity>
-          </View>
+            </>
+          )}
+          <View style={{ height: 32 }} />
+        </ScrollView>
       </ModalSheet>
     </ScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  tabBar:      { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
-  tabBtn:      { flex: 1, alignItems: 'center', paddingVertical: 11, borderBottomWidth: 2 },
-  tabBtnInner: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  tabLabel:    { fontSize: 12 },
-  tabBadge:    { minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  tabBadgeText:{ color: '#fff', fontSize: 9, fontWeight: '800' },
-  scroll:      { padding: 14 },
+  scroll:          { padding: 14, paddingBottom: 40 },
+  tabBar:          { flexDirection: 'row', borderBottomWidth: 1 },
+  tabBtn:          { flex: 1, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 2 },
+  tabBtnInner:     { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  tabLabel:        { fontSize: 12 },
+  tabBadge:        { minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  tabBadgeText:    { fontSize: 9, color: '#fff', fontWeight: '700' },
 
-  statsRow:  { flexDirection: 'row', gap: 6, marginBottom: 14 },
-  statCard:  { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center' },
-  statNum:   { fontSize: 20, fontWeight: '800' },
-  statLabel: { fontSize: 9, fontWeight: '600', marginTop: 2, textAlign: 'center' },
+  statsRow:        { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  statCard:        { flex: 1, borderRadius: 10, padding: 10, alignItems: 'center' },
+  statNum:         { fontSize: 22, fontWeight: '800' },
+  statLabel:       { fontSize: 10, fontWeight: '600', marginTop: 2 },
 
-  searchRow:   { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  searchWrap:  { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
-  searchInput: { flex: 1, fontSize: 13 },
-  addBtn:      { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  searchRow:       { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  searchWrap:      { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, height: 40 },
+  searchInput:     { flex: 1, fontSize: 13 },
+  addBtn:          { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
 
-  form:        { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 14, gap: 2 },
-  formTitle:   { fontSize: 15, fontWeight: '700' },
-  formHint:    { fontSize: 11, marginBottom: 8 },
-  fieldLabel:  { fontSize: 11, fontWeight: '600', marginTop: 10, marginBottom: 4 },
-  textInput:   { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
-  textArea:    { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, minHeight: 72, textAlignVertical: 'top' },
-  chipRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7, borderWidth: 1 },
-  chipText:    { fontSize: 11, fontWeight: '600' },
-  submitBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 10, marginTop: 12 },
-  submitBtnText:{ color: '#fff', fontSize: 14, fontWeight: '700' },
-  cancelBtn:   { borderRadius: 10, marginTop: 12, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ccc' },
-  cancelBtnText:{ fontSize: 14, fontWeight: '600' },
+  form:            { borderRadius: 12, borderWidth: 1.5, padding: 14, marginBottom: 14 },
+  formTitle:       { fontSize: 15, fontWeight: '700' },
+  formHint:        { fontSize: 12, marginTop: 2, marginBottom: 4, lineHeight: 17 },
 
-  empCard:    { borderRadius: 14, borderWidth: 1, marginBottom: 10, overflow: 'hidden' },
-  empHeader:  { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 13 },
-  avatar:     { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  idBadge:    { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
-  idText:     { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  pill:       { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  pillText:   { fontSize: 10, fontWeight: '700', textTransform: 'capitalize' },
-  empName:    { fontSize: 14, fontWeight: '700' },
-  empSub:     { fontSize: 11, marginTop: 1 },
+  sectionHeading:  { fontSize: 13, fontWeight: '700', marginBottom: 8, marginTop: 4 },
+  fieldLabel:      { fontSize: 12, marginBottom: 4, marginTop: 8, fontWeight: '500' },
+  textInput:       { borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, paddingVertical: 9, fontSize: 13 },
+  textArea:        { borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, paddingVertical: 9, fontSize: 13, minHeight: 70, textAlignVertical: 'top' },
 
-  progLabel:  { fontSize: 10, fontWeight: '600' },
-  progBar:    { height: 4, borderRadius: 2, overflow: 'hidden' },
-  progFill:   { height: '100%', borderRadius: 2 },
+  chipRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  chip:            { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
+  chipText:        { fontSize: 11, fontWeight: '500' },
 
-  expanded:     { borderTopWidth: StyleSheet.hairlineWidth, padding: 13, gap: 6 },
-  panelSection: { fontSize: 12, fontWeight: '700', marginTop: 8, marginBottom: 4 },
-  bioGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 6 },
-  bioItem:      { width: '47%' },
-  bioLabel:     { fontSize: 10, marginBottom: 1 },
-  bioValue:     { fontSize: 12, fontWeight: '600' },
+  submitBtn:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 10 },
+  submitBtnText:   { color: '#fff', fontSize: 13, fontWeight: '700' },
 
-  docCheckRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderRadius: 9, borderWidth: 1, marginBottom: 5 },
-  docCheckIcon:   { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  docCheckLabel:  { fontSize: 12, fontWeight: '600' },
-  docCheckFile:   { fontSize: 10, marginTop: 1 },
-  docCheckDate:   { fontSize: 10 },
-  docStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5 },
-  docStatusText:  { fontSize: 9, fontWeight: '700' },
-  uploadBtn:      { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 },
-  uploadBtnText:  { color: '#fff', fontSize: 10, fontWeight: '700' },
+  uploadDocBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1.5, borderStyle: 'dashed', marginTop: 4 },
+  uploadDocBtnText:{ fontSize: 13, fontWeight: '600' },
+  enrollDocRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 8, borderWidth: 1, borderRadius: 7, marginBottom: 4 },
+  enrollDocName:   { fontSize: 12 },
 
-  letterBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
-  letterBtnText: { fontSize: 11, fontWeight: '600', flex: 1 },
-  letterCard:    { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 9, borderWidth: 1, marginBottom: 5 },
-  letterCardTitle:{ fontSize: 12, fontWeight: '600', flex: 1 },
-  letterCardMeta: { fontSize: 10, marginTop: 2 },
-  noLetters:      { fontSize: 11, fontStyle: 'italic', marginBottom: 4 },
+  empCard:         { borderRadius: 12, borderWidth: 1, marginBottom: 10, overflow: 'hidden' },
+  empHeader:       { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13 },
+  avatar:          { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  avatarText:      { color: '#fff', fontWeight: '800', fontSize: 14 },
+  empName:         { fontSize: 14, fontWeight: '700' },
+  empSub:          { fontSize: 12, marginTop: 1 },
+  idBadge:         { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
+  idText:          { fontSize: 10, fontWeight: '700' },
+  pill:            { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 },
+  pillText:        { fontSize: 10, fontWeight: '600' },
+  progLabel:       { fontSize: 11 },
+  progBar:         { height: 4, borderRadius: 2 },
+  progFill:        { height: 4, borderRadius: 2 },
 
-  onboardSection: { borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 4 },
-  onboardBadge:   { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
-  onboardBadgeText:{ fontSize: 10, fontWeight: '700' },
-  forwardBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7 },
-  forwardBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  stepsRow:       { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 4 },
-  stepDot:        { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, marginBottom: 3 },
-  stepLabel:      { fontSize: 9, fontWeight: '600', textAlign: 'center' },
-  stepBy:         { fontSize: 9, textAlign: 'center' },
-  stepLine:       { flex: 1, height: 1.5, marginTop: 9 },
+  expanded:        { borderTopWidth: 1, padding: 13 },
+  panelSection:    { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginTop: 10, marginBottom: 6, letterSpacing: 0.5 },
+  bioGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 },
+  bioItem:         { width: '48%' },
+  bioLabel:        { fontSize: 10, fontWeight: '600' },
+  bioValue:        { fontSize: 12, fontWeight: '500', marginTop: 1 },
 
-  sectionToggle:     { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 9, borderRadius: 8, borderWidth: 1, marginTop: 8 },
-  sectionToggleText: { fontSize: 12, fontWeight: '600' },
-  panel:             { borderRadius: 10, borderWidth: 1, padding: 11, marginTop: 6 },
+  docCheckRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7, paddingHorizontal: 8, borderWidth: 1, borderRadius: 8, marginBottom: 5 },
+  docCheckIcon:    { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  docCheckLabel:   { fontSize: 12, fontWeight: '500' },
+  docCheckFile:    { fontSize: 11, marginTop: 1 },
+  docCheckDate:    { fontSize: 10, marginTop: 1 },
+  docStatusBadge:  { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8 },
+  docStatusText:   { fontSize: 9, fontWeight: '700' },
+  uploadBtn:       { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 7 },
+  uploadBtnText:   { color: '#fff', fontSize: 10, fontWeight: '600' },
 
-  approvalCard:     { borderRadius: 14, borderWidth: 1, padding: 13, marginBottom: 10 },
-  approvalMeta:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
-  approvalMetaText: { fontSize: 10, fontWeight: '600' },
+  noLetters:       { fontSize: 12, marginBottom: 8 },
+  letterBtn:       { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 9, borderWidth: 1 },
+  letterBtnText:   { fontSize: 11, fontWeight: '600' },
+  letterCard:      { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 9, borderWidth: 1, marginBottom: 5 },
+  letterCardTitle: { fontSize: 12, fontWeight: '600' },
+  letterCardMeta:  { fontSize: 11, marginTop: 1 },
 
-  sectionHeading: { fontSize: 13, fontWeight: '700', marginBottom: 10 },
-  fileCard:       { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
-  fileIconWrap:   { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  fileName:       { fontSize: 12, fontWeight: '600' },
-  fileMeta:       { fontSize: 11, marginTop: 2 },
-  fileDate:       { fontSize: 10, marginTop: 1 },
-  approvedBy:     { fontSize: 10, marginTop: 2, fontWeight: '600' },
-  approveBtn:     { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7 },
-  approveBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  onboardSection:  { borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 8 },
+  onboardBadge:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1 },
+  onboardBadgeText:{ fontSize: 11, fontWeight: '700' },
+  forwardBtn:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  forwardBtnText:  { color: '#fff', fontSize: 11, fontWeight: '600' },
+  stepsRow:        { flexDirection: 'row', alignItems: 'flex-start' },
+  stepDot:         { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  stepLabel:       { fontSize: 9, fontWeight: '600', textAlign: 'center', marginTop: 4, maxWidth: 60 },
+  stepBy:          { fontSize: 8, textAlign: 'center', maxWidth: 60 },
+  stepLine:        { flex: 1, height: 2, marginTop: 10 },
 
-  recCard:    { borderRadius: 12, borderWidth: 1, borderLeftWidth: 4, marginBottom: 10, overflow: 'hidden' },
-  recHeader:  { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11 },
-  recIcon:    { width: 36, height: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  recName:    { fontSize: 13, fontWeight: '700' },
-  recType:    { fontSize: 11, fontWeight: '600', marginTop: 1 },
-  recBody:    { borderTopWidth: StyleSheet.hairlineWidth, padding: 11 },
-  recReason:  { fontSize: 12, lineHeight: 18 },
-  recMeta:    { fontSize: 10, marginTop: 4 },
-  recActions: { flexDirection: 'row', gap: 8, padding: 11, paddingTop: 0 },
-  recActionBtn:{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
-  recActionText:{ color: '#fff', fontSize: 12, fontWeight: '700' },
+  sectionToggle:   { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, marginBottom: 6 },
+  sectionToggleText:{ fontSize: 12, fontWeight: '600' },
+  panel:           { borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 8 },
 
-  empty:     { borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', padding: 36, gap: 10, marginVertical: 20 },
-  emptyText: { fontSize: 13 },
+  empty:           { borderRadius: 12, borderWidth: 1, padding: 28, alignItems: 'center', gap: 8, marginBottom: 12 },
+  emptyText:       { fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  emptySubText:    { fontSize: 12, textAlign: 'center', maxWidth: 240 },
 
-  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  sheet:      { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '88%' },
-  sheetTitle: { fontSize: 17, fontWeight: '800', marginBottom: 14 },
+  enrollCard:      { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 12 },
+  enrollInfoGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 0, borderWidth: 1, borderRadius: 9, padding: 8, marginBottom: 4 },
+  enrollInfoItem:  { width: '50%', paddingHorizontal: 4, paddingVertical: 4 },
+  enrollActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
+  enrollActionText:{ fontSize: 12, fontWeight: '600' },
+  enrollApproveBtn:{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flex: 1, justifyContent: 'center' },
+  enrollApproveBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  empPickRow:     { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 9, borderWidth: 1, marginBottom: 5 },
-  miniAvatar:     { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  miniAvatarText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  empPickName:    { fontSize: 13, fontWeight: '600' },
-  empPickRole:    { fontSize: 11 },
+  infoBox:         { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
+  infoText:        { flex: 1, fontSize: 12, lineHeight: 17 },
 
-  letterMeta:    { fontSize: 11, marginBottom: 12 },
-  letterContent: { borderRadius: 8, borderWidth: 1, padding: 14, marginBottom: 8 },
-  letterText:    { fontSize: 12, lineHeight: 20, fontFamily: 'monospace' },
+  fileCard:        { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 8 },
+  fileIconWrap:    { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  fileName:        { fontSize: 13, fontWeight: '600' },
+  fileMeta:        { fontSize: 11, marginTop: 2 },
+  fileDate:        { fontSize: 10, marginTop: 1 },
+  approvedBy:      { fontSize: 10, marginTop: 2, fontWeight: '600' },
+  approveBtn:      { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  approveBtnText:  { color: '#fff', fontSize: 11, fontWeight: '700' },
+
+  recCard:         { borderRadius: 10, borderWidth: 1, borderLeftWidth: 4, marginBottom: 10, overflow: 'hidden' },
+  recHeader:       { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
+  recIcon:         { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  recName:         { fontSize: 13, fontWeight: '700' },
+  recType:         { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  recBody:         { borderTopWidth: 1, padding: 10 },
+  recReason:       { fontSize: 13 },
+  recMeta:         { fontSize: 11, marginTop: 4 },
+  recActions:      { flexDirection: 'row', gap: 8, padding: 10, paddingTop: 0 },
+  recActionBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, flex: 1, justifyContent: 'center' },
+  recActionText:   { color: '#fff', fontSize: 12, fontWeight: '600' },
+
+  approvalCard:    { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 12 },
+  approvalMeta:    { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  approvalMetaText:{ fontSize: 11, fontWeight: '600' },
+
+  sheet:           { padding: 18 },
+  sheetTitle:      { fontSize: 17, fontWeight: '800', marginBottom: 6 },
+  pwRow:           { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, paddingVertical: 9, marginBottom: 4 },
+  pwInput:         { flex: 1, fontSize: 13 },
+
+  empPickRow:      { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 9, borderRadius: 8, borderWidth: 1, marginBottom: 5 },
+  miniAvatar:      { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  miniAvatarText:  { color: '#fff', fontWeight: '700', fontSize: 11 },
+  empPickName:     { fontSize: 13, fontWeight: '600' },
+  empPickRole:     { fontSize: 11, marginTop: 1 },
+
+  letterMeta:      { fontSize: 12, marginBottom: 12 },
+  letterContent:   { borderRadius: 10, borderWidth: 1, padding: 14, marginTop: 4 },
+  letterText:      { fontSize: 12, lineHeight: 20, fontFamily: 'monospace' },
 });

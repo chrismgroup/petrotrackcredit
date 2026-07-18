@@ -468,7 +468,7 @@ interface AppContextType {
   updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => Promise<void>;
   updateEnrollmentData: (id: number, data: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => Promise<void>;
   changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
-  enrollStaff: (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string) => Promise<void>;
+  enrollStaff: (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string, initialStatus?: AccountStatus) => Promise<void>;
   mdApproveEnrollment: (id: number, by: string) => Promise<void>;
   mdRejectEnrollment: (id: number, by: string) => Promise<void>;
   approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => Promise<void>;
@@ -1378,7 +1378,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [userAccounts, userName]);
 
-  const enrollStaff = useCallback(async (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string) => {
+  const enrollStaff = useCallback(async (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string, initialStatus: AccountStatus = 'pending_md') => {
     const empId = generateEmpId(userAccounts);
     const row = await usersApi.create({
       empName:          acc.empName,
@@ -1393,13 +1393,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       guarantorPhone:   acc.guarantorPhone   ?? null,
       guarantorAddress: acc.guarantorAddress ?? null,
       employmentDocs:   acc.employmentDocs   ?? [],
-      status:           'pending_md',
+      status:           initialStatus,
     });
     if (row) {
       setUserAccounts(prev => [...prev, apiRowToUserAccount(row)]);
     } else {
       setUserAccounts(prev => [...prev, {
-        id: genId(), createdAt: nowTs(), status: 'pending_md' as AccountStatus,
+        id: genId(), createdAt: nowTs(), status: initialStatus,
         empName: acc.empName, empId, username: '', password: '', role: null,
         branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept,
         phoneNumber: acc.phoneNumber, nin: acc.nin,
@@ -1408,7 +1408,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         employmentDocs: acc.employmentDocs, createdBy: by,
       }]);
     }
-    setAudit(a => [{ id: genId(), action: 'Staff enrolled', user: by, detail: `${acc.empName} (${empId}) enrolled — forwarded to MD for approval`, ts: nowTs() }, ...a]);
+    const dest = initialStatus === 'pending_admin' ? 'Admin' : 'MD';
+    setAudit(a => [{ id: genId(), action: 'Staff enrolled', user: by, detail: `${acc.empName} (${empId}) enrolled — forwarded to ${dest} for approval`, ts: nowTs() }, ...a]);
   }, [userAccounts]);
 
   const mdApproveEnrollment = useCallback(async (id: number, by: string) => {
