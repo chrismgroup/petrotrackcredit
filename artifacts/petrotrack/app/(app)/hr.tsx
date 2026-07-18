@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import React, { useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput,
@@ -13,6 +14,7 @@ import {
   ROLE_COLORS, ROLE_LABELS, UserAccount, fmtDate, fmtDateTime, useApp, type Role,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { storageApi } from '@/lib/api';
 
 const REQUIRED_DOCS: { type: HRDocType; label: string; icon: string; color: string }[] = [
   { type: 'biodata',        label: 'Bio-Data Form',         icon: 'person',            color: '#27AE60' },
@@ -127,7 +129,9 @@ export default function HRScreen() {
   const [newGuarantorName,   setNewGuarantorName]   = useState('');
   const [newGuarantorPhone,  setNewGuarantorPhone]  = useState('');
   const [newGuarantorAddr,   setNewGuarantorAddr]   = useState('');
-  const [enrollDocs, setEnrollDocs] = useState<{ name: string; uri: string; mimeType?: string }[]>([]);
+  const [newBranch,          setNewBranch]          = useState('');
+  const [enrollDocs,         setEnrollDocs]         = useState<{ name: string; objectPath?: string; uploading?: boolean }[]>([]);
+  const [enrollDocUploading, setEnrollDocUploading] = useState(false);
 
   /* ── admin: approve enrollment modal ── */
   const [approvingEnrollment,  setApprovingEnrollment] = useState<UserAccount | null>(null);
@@ -198,8 +202,13 @@ export default function HRScreen() {
     if (!newJobRole.trim()) { Alert.alert('Required', 'Job title is required.');           return; }
     if (!newNin.trim())     { Alert.alert('Required', 'NIN is required for enrollment.'); return; }
     if (!newPhone.trim())   { Alert.alert('Required', 'Phone number is required.');        return; }
+    if (enrollDocUploading) { Alert.alert('Please wait', 'A document is still uploading. Wait for it to finish.'); return; }
 
-    const docMeta: string[] = enrollDocs.map(d => d.name);
+    const docMeta: string[] = [];
+    for (const d of enrollDocs) {
+      if (d.objectPath) docMeta.push(`DOC:${d.name}:${d.objectPath}`);
+      else if (!d.uploading) docMeta.push(`DOC:${d.name}`);
+    }
     if (newSalary.trim()) docMeta.push(`SALARY:${newSalary.trim()}`);
     if (newGrade.trim())  docMeta.push(`GRADE:${newGrade.trim()}`);
     if (newEmail.trim())  docMeta.push(`EMAIL:${newEmail.trim()}`);
@@ -210,6 +219,7 @@ export default function HRScreen() {
       empName:          newName.trim(),
       jobTitle:         newJobRole.trim(),
       dept:             newDept,
+      branchId:         newBranch || undefined,
       phoneNumber:      newPhone.trim(),
       nin:              newNin.trim(),
       staffAddress:     newAddr.trim() || undefined,
@@ -221,7 +231,7 @@ export default function HRScreen() {
 
     setNewName(''); setNewJobRole(''); setNewPhone(''); setNewEmail('');
     setNewAddr(''); setNewDob(''); setNewKin(''); setNewDept(DEPARTMENTS[0]);
-    setNewNin(''); setNewSalary(''); setNewGrade('');
+    setNewNin(''); setNewSalary(''); setNewGrade(''); setNewBranch('');
     setNewGuarantorName(''); setNewGuarantorPhone(''); setNewGuarantorAddr('');
     setEnrollDocs([]);
     setShowAdd(false);
@@ -233,7 +243,29 @@ export default function HRScreen() {
       const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (result.canceled) return;
       const file = result.assets[0];
-      setEnrollDocs(prev => [...prev, { name: file.name, uri: file.uri, mimeType: file.mimeType ?? undefined }]);
+      const idx = Date.now();
+      const placeholder = { name: file.name, uploading: true };
+      setEnrollDocs(prev => [...prev, placeholder]);
+      setEnrollDocUploading(true);
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(file.uri);
+        const size = fileInfo.exists ? (fileInfo as FileSystem.FileInfo & { size?: number }).size ?? 1 : 1;
+        const mimeType = file.mimeType ?? 'application/octet-stream';
+        const upload = await storageApi.requestUploadUrl(file.name, size, mimeType);
+        if (!upload) throw new Error('No upload URL returned');
+        const uploadResult = await FileSystem.uploadAsync(upload.uploadURL, file.uri, {
+          httpMethod: 'PUT',
+          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+          headers: { 'Content-Type': mimeType },
+        });
+        if (uploadResult.status < 200 || uploadResult.status >= 300) throw new Error(`Upload failed: ${uploadResult.status}`);
+        setEnrollDocs(prev => prev.map(d => d === placeholder ? { name: file.name, objectPath: upload.objectPath } : d));
+      } catch (err) {
+        setEnrollDocs(prev => prev.map(d => d === placeholder ? { name: file.name, objectPath: undefined } : d));
+        Alert.alert('Upload failed', 'File was attached locally but could not be uploaded to the server.');
+      } finally {
+        setEnrollDocUploading(false);
+      }
     } catch {
       Alert.alert('Error', 'Could not pick file. Please try again.');
     }
@@ -1018,6 +1050,17 @@ export default function HRScreen() {
                 ))}
               </View>
 
+              {/* Branch assignment */}
+              <Text style={[styles.fieldLabel, { color: colors.textMuted, marginTop: 8 }]}>Assigned Branch</Text>
+              <View style={styles.chipRow}>
+                {[{ id: '', name: 'Not assigned yet' }, ...branches.map(b => ({ id: b.id, name: b.name }))].map(b => (
+                  <TouchableOpacity key={b.id} onPress={() => setNewBranch(b.id)}
+                    style={[styles.chip, { backgroundColor: b.id === newBranch ? roleColor : colors.background, borderColor: b.id === newBranch ? roleColor : colors.border }]}>
+                    <Text style={[styles.chipText, { color: b.id === newBranch ? '#fff' : colors.textMuted }]}>{b.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               {/* Document upload */}
               <Text style={[styles.sectionHeading, { color: colors.text, marginTop: 8 }]}>Supporting Documents</Text>
               <Text style={[styles.formHint, { color: colors.textMuted }]}>Attach relevant files (PDF, image, Word, etc.)</Text>
@@ -1029,12 +1072,26 @@ export default function HRScreen() {
               {enrollDocs.length > 0 && (
                 <View style={{ marginTop: 6 }}>
                   {enrollDocs.map((d, i) => (
-                    <View key={i} style={[styles.enrollDocRow, { borderColor: colors.border }]}>
-                      <Ionicons name="document-attach-outline" size={13} color={colors.textMuted} />
-                      <Text style={[styles.enrollDocName, { color: colors.text, flex: 1 }]} numberOfLines={1}>{d.name}</Text>
-                      <TouchableOpacity onPress={() => setEnrollDocs(prev => prev.filter((_, j) => j !== i))}>
-                        <Ionicons name="close-circle" size={15} color="#E74C3C" />
-                      </TouchableOpacity>
+                    <View key={i} style={[styles.enrollDocRow, {
+                      borderColor: d.uploading ? roleColor + '88' : d.objectPath ? '#1a6e3c44' : colors.border,
+                      backgroundColor: d.uploading ? roleColor + '08' : d.objectPath ? '#EAF3DE' : colors.background,
+                    }]}>
+                      <Ionicons
+                        name={d.uploading ? 'cloud-upload-outline' : d.objectPath ? 'checkmark-circle' : 'document-attach-outline'}
+                        size={13}
+                        color={d.uploading ? roleColor : d.objectPath ? '#1a6e3c' : colors.textMuted}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.enrollDocName, { color: colors.text }]} numberOfLines={1}>{d.name}</Text>
+                        {d.uploading && <Text style={{ fontSize: 10, color: roleColor, marginTop: 1 }}>Uploading…</Text>}
+                        {d.objectPath && !d.uploading && <Text style={{ fontSize: 10, color: '#1a6e3c', marginTop: 1 }}>Uploaded ✓</Text>}
+                        {!d.objectPath && !d.uploading && <Text style={{ fontSize: 10, color: colors.textSubtle, marginTop: 1 }}>Attached locally</Text>}
+                      </View>
+                      {!d.uploading && (
+                        <TouchableOpacity onPress={() => setEnrollDocs(prev => prev.filter((_, j) => j !== i))}>
+                          <Ionicons name="close-circle" size={15} color="#E74C3C" />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ))}
                 </View>
