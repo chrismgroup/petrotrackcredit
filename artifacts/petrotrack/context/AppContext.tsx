@@ -1335,10 +1335,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => {
-    const hashedPw = await hashPassword(acc.password);
-    // Write to DB first — immediately available for login on all devices
+    // Send plaintext — server hashes via ensureHashed
     const row = await usersApi.create({
-      empName: acc.empName, username: acc.username, password: hashedPw,
+      empName: acc.empName, username: acc.username, password: acc.password,
       role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle,
       dept: acc.dept, phoneNumber: acc.phoneNumber ?? null, status: 'active',
     });
@@ -1349,7 +1348,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setUserAccounts(prev => [...prev, {
         id: genId(), createdAt: nowTs(), status: 'active',
         approvedBy: acc.createdBy, approvedAt: nowTs(),
-        empName: acc.empName, username: acc.username, password: hashedPw,
+        empName: acc.empName, username: acc.username, password: '',
         role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept,
         phoneNumber: acc.phoneNumber, createdBy: acc.createdBy,
       }]);
@@ -1358,8 +1357,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => {
+    // Send plaintext password — server hashes via ensureHashed
     const resolved: Record<string, unknown> = { ...updates };
-    if (resolved.password) resolved.password = await hashPassword(resolved.password as string);
     // Write to DB so login works on all devices immediately
     const row = await usersApi.update(id, resolved as Parameters<typeof usersApi.update>[1]);
     if (row) {
@@ -1373,12 +1372,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const changeOwnPassword = useCallback(async (currentPassword: string, newPassword: string): Promise<boolean> => {
     const acc = userAccounts.find(a => a.username === userName);
     if (!acc) return false;
-    // Local accounts loaded from API have empty password — fall back to server auth check
-    const valid = acc.password ? await verifyPassword(currentPassword, acc.password) : true;
-    if (!valid) return false;
-    const hashedPw = await hashPassword(newPassword);
-    await usersApi.update(acc.id, { password: hashedPw });
-    setUserAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, password: hashedPw } : a));
+    // API responses never include passwords — skip local check, server validates on next login
+    // Send plaintext; server hashes via ensureHashed
+    await usersApi.update(acc.id, { password: newPassword });
     setAudit(a => [{ id: genId(), action: 'Password changed', user: userName, detail: `${userName} changed their own password`, ts: nowTs() }, ...a]);
     return true;
   }, [userAccounts, userName]);
@@ -1444,16 +1440,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const approveUserAccount = useCallback(async (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
-    const hashedPw = await hashPassword(password);
-    // Write to DB — new user can log in immediately from any device
-    const row = await usersApi.setStatus(id, 'active', { username, password: hashedPw, role, branchId });
+    // Send plaintext password — server hashes via ensureHashed, new user can log in immediately
+    const row = await usersApi.setStatus(id, 'active', { username, password, role, branchId });
     const activated = row ? apiRowToUserAccount(row) : null;
     if (row) {
       setUserAccounts(prev => prev.map(a => a.id === id ? apiRowToUserAccount(row) : a));
     } else {
       setUserAccounts(prev => prev.map(a => {
         if (a.id !== id) return a;
-        return { ...a, role, username, password: hashedPw, status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId };
+        return { ...a, role, username, password: '', status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId };
       }));
     }
     // Auto-add to staff directory and HR records on activation
