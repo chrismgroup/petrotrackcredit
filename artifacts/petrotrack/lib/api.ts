@@ -237,3 +237,22 @@ export const usersApi = {
   /** Permanently delete a user account (admin only) */
   remove: (id: number) => del(`/users/${id}`),
 };
+
+/** Storage — presigned URL upload flow */
+export const storageApi = {
+  requestUploadUrl: async (name: string, size: number, contentType: string): Promise<{ uploadURL: string; objectPath: string } | null> => {
+    if (!BASE) return null;
+    try {
+      const headers = await authHeaders();
+      const r = await fetch(`${BASE}/storage/uploads/request-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ name, size, contentType }),
+      });
+      if (!r.ok) return null;
+      return r.json() as Promise<{ uploadURL: string; objectPath: string }>;
+    } catch {
+      return null;
+    }
+  },
+};
