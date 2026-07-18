@@ -153,6 +153,14 @@ export default function HRScreen() {
   const [rejectingEnrollment, setRejectingEnrollment] = useState<UserAccount | null>(null);
   const [rejectReasonText,    setRejectReasonText]    = useState('');
 
+  /* ── admin: approve loading state ── */
+  const [isApproving, setIsApproving] = useState(false);
+
+  /* ── admin: multi-select delete ── */
+  const [selectMode,   setSelectMode]   = useState(false);
+  const [selectedIds,  setSelectedIds]  = useState<Set<number>>(new Set());
+  const [isDeleting,   setIsDeleting]   = useState(false);
+
   /* ── HR: re-submit rejected enrollment modal ── */
   const [resubmittingEnrollment, setResubmittingEnrollment] = useState<UserAccount | null>(null);
 
@@ -253,10 +261,48 @@ export default function HRScreen() {
     if (!aBranch)                     { Alert.alert('Required', 'Please assign a branch.');             return; }
     const dup = userAccounts.find(a => a.username === aUsername.trim() && a.id !== approvingEnrollment.id && a.status === 'active');
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
-    await approveUserAccount(approvingEnrollment.id, aRole, aUsername.trim().toLowerCase(), aPassword.trim(), userName || 'Admin', aBranch);
-    const name = approvingEnrollment.empName;
-    setApprovingEnrollment(null);
-    Alert.alert('Enrollment Approved ✓', `${name} has been approved.\n\nStaff record and user account (@${aUsername.trim().toLowerCase()}) created automatically.`);
+    setIsApproving(true);
+    try {
+      await approveUserAccount(approvingEnrollment.id, aRole, aUsername.trim().toLowerCase(), aPassword.trim(), userName || 'Admin', aBranch);
+      const name = approvingEnrollment.empName;
+      setApprovingEnrollment(null);
+      Alert.alert('Account Activated ✓', `${name} can now log in.\n\nUsername: @${aUsername.trim().toLowerCase()}\nStaff record created automatically.`);
+    } catch (err: any) {
+      Alert.alert('Activation Failed', err?.message ?? 'Could not activate account. Check your connection and try again.');
+    } finally {
+      setIsApproving(false);
+    }
+  }
+
+  async function handleDeleteSelected() {
+    if (selectedIds.size === 0) return;
+    Alert.alert(
+      `Delete ${selectedIds.size} Enrollment${selectedIds.size > 1 ? 's' : ''}`,
+      `Permanently remove ${selectedIds.size} selected enrollment${selectedIds.size > 1 ? 's' : ''} from the database?\n\nThis cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete All', style: 'destructive', onPress: async () => {
+          setIsDeleting(true);
+          try {
+            for (const id of selectedIds) {
+              await deleteUserAccount(id);
+            }
+            setSelectedIds(new Set());
+            setSelectMode(false);
+          } finally {
+            setIsDeleting(false);
+          }
+        }},
+      ]
+    );
+  }
+
+  function toggleSelect(id: number) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
   function handleRejectEnrollment(acc: UserAccount) {
@@ -628,29 +674,46 @@ export default function HRScreen() {
           </View>
         )}
 
-        {/* Admin actions */}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-          <TouchableOpacity onPress={() => openEditModal(acc)}
-            style={[styles.enrollActionBtn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }]}>
-            <Ionicons name="create-outline" size={14} color={colors.text} />
-            <Text style={[styles.enrollActionText, { color: colors.text }]}>Edit</Text>
+        {/* Select mode checkbox OR action buttons */}
+        {selectMode ? (
+          <TouchableOpacity onPress={() => toggleSelect(acc.id)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingVertical: 4 }}>
+            <View style={{
+              width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+              borderColor: selectedIds.has(acc.id) ? '#E74C3C' : colors.border,
+              backgroundColor: selectedIds.has(acc.id) ? '#E74C3C' : colors.background,
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              {selectedIds.has(acc.id) && <Ionicons name="checkmark" size={14} color="#fff" />}
+            </View>
+            <Text style={{ fontSize: 13, color: selectedIds.has(acc.id) ? '#E74C3C' : colors.textMuted, fontWeight: '500' }}>
+              {selectedIds.has(acc.id) ? 'Selected for deletion' : 'Tap to select'}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleRejectEnrollment(acc)}
-            style={[styles.enrollActionBtn, { backgroundColor: '#FAEEDA', borderColor: '#BA7517', borderWidth: 1 }]}>
-            <Ionicons name="close-circle-outline" size={14} color="#BA7517" />
-            <Text style={[styles.enrollActionText, { color: '#BA7517' }]}>Reject</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleDeleteEnrollment(acc)}
-            style={[styles.enrollActionBtn, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C', borderWidth: 1 }]}>
-            <Ionicons name="trash-outline" size={14} color="#E74C3C" />
-            <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Delete</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => openApproveModal(acc)}
-            style={[styles.enrollApproveBtn, { backgroundColor: '#1a6e3c' }]}>
-            <Ionicons name="checkmark-circle" size={14} color="#fff" />
-            <Text style={styles.enrollApproveBtnText}>Approve & Create Account</Text>
-          </TouchableOpacity>
-        </View>
+        ) : (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <TouchableOpacity onPress={() => openEditModal(acc)}
+              style={[styles.enrollActionBtn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }]}>
+              <Ionicons name="create-outline" size={14} color={colors.text} />
+              <Text style={[styles.enrollActionText, { color: colors.text }]}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleRejectEnrollment(acc)}
+              style={[styles.enrollActionBtn, { backgroundColor: '#FAEEDA', borderColor: '#BA7517', borderWidth: 1 }]}>
+              <Ionicons name="close-circle-outline" size={14} color="#BA7517" />
+              <Text style={[styles.enrollActionText, { color: '#BA7517' }]}>Reject</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleDeleteEnrollment(acc)}
+              style={[styles.enrollActionBtn, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C', borderWidth: 1 }]}>
+              <Ionicons name="trash-outline" size={14} color="#E74C3C" />
+              <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => openApproveModal(acc)}
+              style={[styles.enrollApproveBtn, { backgroundColor: '#1a6e3c' }]}>
+              <Ionicons name="checkmark-circle" size={14} color="#fff" />
+              <Text style={styles.enrollApproveBtnText}>Activate Account</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   }
@@ -799,12 +862,56 @@ export default function HRScreen() {
       {/* ── APPROVALS TAB (Admin only) ── */}
       {activeTab === 'approvals' && isAdmin && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-          <View style={[styles.infoBox, { backgroundColor: '#DCF0FF', borderColor: '#185FA5' + '44' }]}>
-            <Ionicons name="information-circle" size={15} color="#185FA5" />
-            <Text style={[styles.infoText, { color: '#185FA5' }]}>
-              Review HR enrollments below. Once all required fields are verified, approve to automatically create the staff record and user account.
-            </Text>
-          </View>
+
+          {/* Select-mode toolbar */}
+          {pendingEnrollments.length > 0 && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              {selectMode ? (
+                <>
+                  <TouchableOpacity onPress={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+                    style={[styles.enrollActionBtn, { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }]}>
+                    <Ionicons name="close" size={14} color={colors.textMuted} />
+                    <Text style={[styles.enrollActionText, { color: colors.textMuted }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setSelectedIds(
+                      selectedIds.size === pendingEnrollments.length
+                        ? new Set()
+                        : new Set(pendingEnrollments.map(a => a.id))
+                    )}
+                    style={[styles.enrollActionBtn, { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }]}>
+                    <Ionicons name={selectedIds.size === pendingEnrollments.length ? 'checkbox' : 'square-outline'} size={14} color={colors.text} />
+                    <Text style={[styles.enrollActionText, { color: colors.text }]}>
+                      {selectedIds.size === pendingEnrollments.length ? 'Deselect All' : 'Select All'}
+                    </Text>
+                  </TouchableOpacity>
+                  {selectedIds.size > 0 && (
+                    <TouchableOpacity onPress={handleDeleteSelected} disabled={isDeleting}
+                      style={[styles.enrollActionBtn, { backgroundColor: '#E74C3C', flex: 1, justifyContent: 'center' }]}>
+                      <Ionicons name={isDeleting ? 'hourglass' : 'trash'} size={14} color="#fff" />
+                      <Text style={[styles.enrollActionText, { color: '#fff' }]}>
+                        {isDeleting ? 'Deleting…' : `Delete ${selectedIds.size} Selected`}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              ) : (
+                <>
+                  <View style={[styles.infoBox, { flex: 1, marginBottom: 0, backgroundColor: '#DCF0FF', borderColor: '#185FA5' + '44' }]}>
+                    <Ionicons name="information-circle" size={14} color="#185FA5" />
+                    <Text style={[styles.infoText, { color: '#185FA5' }]}>
+                      Verify details then tap <Text style={{ fontWeight: '700' }}>Activate Account</Text> to create login instantly.
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => { setSelectMode(true); setSelectedIds(new Set()); }}
+                    style={[styles.enrollActionBtn, { borderWidth: 1, borderColor: '#E74C3C44', backgroundColor: '#FFF5F5' }]}>
+                    <Ionicons name="trash-outline" size={14} color="#E74C3C" />
+                    <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Select</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          )}
 
           {pendingEnrollments.length === 0 ? (
             <View style={[styles.empty, { borderColor: colors.border, backgroundColor: colors.surface }]}>
@@ -1218,10 +1325,10 @@ export default function HRScreen() {
             </View>
           </ScrollView>
 
-          <TouchableOpacity onPress={handleConfirmApprove}
-            style={[styles.submitBtn, { backgroundColor: '#1a6e3c' }]}>
-            <Ionicons name="checkmark-circle" size={16} color="#fff" />
-            <Text style={styles.submitBtnText}>Approve & Create Account</Text>
+          <TouchableOpacity onPress={handleConfirmApprove} disabled={isApproving}
+            style={[styles.submitBtn, { backgroundColor: isApproving ? '#555' : '#1a6e3c' }]}>
+            <Ionicons name={isApproving ? 'hourglass' : 'flash'} size={16} color="#fff" />
+            <Text style={styles.submitBtnText}>{isApproving ? 'Activating…' : 'Activate Account Now'}</Text>
           </TouchableOpacity>
           <View style={{ height: 32 }} />
         </ScrollView>
