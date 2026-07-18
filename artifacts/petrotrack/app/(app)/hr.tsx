@@ -93,7 +93,7 @@ export default function HRScreen() {
     removeHREmployee,
     enrollStaff,
     approveUserAccount, updateEnrollmentData,
-    rejectUserAccount, deleteUserAccount,
+    rejectUserAccount, rejectEnrollmentWithReason, resubmitEnrollment, deleteUserAccount,
     uploadHRDocFile, approveHRUpload,
     addHRRecommendation, resolveHRRecommendation,
     addHRHandbook, approveHRHandbook,
@@ -149,6 +149,13 @@ export default function HRScreen() {
   const [eGuarantorPhone,     setEGuarantorPhone]   = useState('');
   const [eGuarantorAddr,      setEGuarantorAddr]    = useState('');
 
+  /* ── admin: reject enrollment with reason modal ── */
+  const [rejectingEnrollment, setRejectingEnrollment] = useState<UserAccount | null>(null);
+  const [rejectReasonText,    setRejectReasonText]    = useState('');
+
+  /* ── HR: re-submit rejected enrollment modal ── */
+  const [resubmittingEnrollment, setResubmittingEnrollment] = useState<UserAccount | null>(null);
+
   /* ── other state ── */
   const [hbCat,     setHbCat]     = useState(HANDBOOK_CATS[0]);
   const [recEmpId,  setRecEmpId]  = useState<number | null>(null);
@@ -170,7 +177,8 @@ export default function HRScreen() {
     e.empId.toLowerCase().includes(search.toLowerCase()) ||
     e.dept.toLowerCase().includes(search.toLowerCase())
   );
-  const pendingEnrollments = userAccounts.filter(a => a.status === 'pending_admin');
+  const pendingEnrollments  = userAccounts.filter(a => a.status === 'pending_admin');
+  const rejectedEnrollments = userAccounts.filter(a => a.status === 'rejected');
   const pendingRecs   = hrRecommendations.filter(r => r.status === 'pending').length;
   const pendingBooks  = hrHandbooks.filter(h => !h.approved).length;
 
@@ -252,13 +260,18 @@ export default function HRScreen() {
   }
 
   function handleRejectEnrollment(acc: UserAccount) {
-    Alert.alert('Reject Enrollment', `Reject enrollment for ${acc.empName}?\n\nThe record will be marked rejected.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Reject', style: 'destructive', onPress: async () => {
-        await rejectUserAccount(acc.id);
-        Alert.alert('Rejected', `Enrollment for ${acc.empName} has been rejected.`);
-      }},
-    ]);
+    setRejectingEnrollment(acc);
+    setRejectReasonText('');
+  }
+
+  async function handleConfirmReject() {
+    if (!rejectingEnrollment) return;
+    if (!rejectReasonText.trim()) { Alert.alert('Required', 'Please enter a reason for rejection so HR can act on it.'); return; }
+    await rejectEnrollmentWithReason(rejectingEnrollment.id, rejectReasonText.trim(), userName || 'Admin');
+    const name = rejectingEnrollment.empName;
+    setRejectingEnrollment(null);
+    setRejectReasonText('');
+    Alert.alert('Enrollment Rejected', `${name}'s enrollment has been rejected.\n\nHR has been notified and can edit and re-submit.`);
   }
 
   function handleDeleteEnrollment(acc: UserAccount) {
@@ -297,6 +310,37 @@ export default function HRScreen() {
     }, userName || 'Admin');
     setEditingEnrollment(null);
     Alert.alert('Updated', 'Enrollment details updated successfully.');
+  }
+
+  function openResubmitModal(acc: UserAccount) {
+    setResubmittingEnrollment(acc);
+    setEEmpName(acc.empName ?? '');
+    setEJobTitle(acc.jobTitle ?? '');
+    setEDept(acc.dept ?? DEPARTMENTS[0]);
+    setEPhone(acc.phoneNumber ?? '');
+    setENin(acc.nin ?? '');
+    setEAddr(acc.staffAddress ?? '');
+    setEGuarantorName(acc.guarantorName ?? '');
+    setEGuarantorPhone(acc.guarantorPhone ?? '');
+    setEGuarantorAddr(acc.guarantorAddress ?? '');
+  }
+
+  async function handleResubmitSave() {
+    if (!resubmittingEnrollment) return;
+    if (!eEmpName.trim()) { Alert.alert('Required', 'Full name is required.'); return; }
+    await resubmitEnrollment(resubmittingEnrollment.id, {
+      empName:          eEmpName.trim(),
+      jobTitle:         eJobTitle.trim() || undefined,
+      dept:             eDept || undefined,
+      phoneNumber:      ePhone.trim() || undefined,
+      nin:              eNin.trim() || undefined,
+      staffAddress:     eAddr.trim() || undefined,
+      guarantorName:    eGuarantorName.trim() || undefined,
+      guarantorPhone:   eGuarantorPhone.trim() || undefined,
+      guarantorAddress: eGuarantorAddr.trim() || undefined,
+    }, userName || 'HR');
+    setResubmittingEnrollment(null);
+    Alert.alert('Re-submitted ✓', `${eEmpName.trim()} enrollment has been re-submitted to Admin for review.`);
   }
 
   /* ═══════════════════════════════════════════════════
@@ -898,6 +942,65 @@ export default function HRScreen() {
           )}
 
           {filteredStaff.map(emp => renderEmployeeCard(emp))}
+
+          {/* ── Rejected Enrollments (HR only) ── */}
+          {isHR && rejectedEnrollments.length > 0 && (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E74C3C44', marginTop: 12, marginBottom: 4 }}>
+                <Ionicons name="close-circle" size={15} color="#E74C3C" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#E74C3C', flex: 1 }}>
+                  Returned Enrollments ({rejectedEnrollments.length})
+                </Text>
+              </View>
+              <Text style={[styles.formHint, { color: colors.textMuted, marginBottom: 8 }]}>
+                Admin returned these enrollments. Review the reason, correct the details, and re-submit.
+              </Text>
+              {rejectedEnrollments.map(acc => (
+                <View key={acc.id} style={[styles.rejectedCard, { backgroundColor: colors.surface, borderColor: '#E74C3C44' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <View style={[styles.miniAvatar, { backgroundColor: '#FCEBEB' }]}>
+                      <Text style={[styles.miniAvatarText, { color: '#E74C3C' }]}>{initials(acc.empName)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{acc.empName}</Text>
+                      <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>{acc.jobTitle ?? '—'}</Text>
+                    </View>
+                    <View style={[styles.pill, { backgroundColor: '#FCEBEB' }]}>
+                      <Text style={[styles.pillText, { color: '#E74C3C' }]}>Returned</Text>
+                    </View>
+                  </View>
+
+                  {acc.rejectionReason ? (
+                    <View style={[styles.rejectionReasonBox, { backgroundColor: '#FFF0F0', borderColor: '#E74C3C44' }]}>
+                      <Ionicons name="alert-circle" size={14} color="#E74C3C" style={{ marginTop: 1 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#7B1818', marginBottom: 2 }}>Admin Note</Text>
+                        <Text style={{ fontSize: 12, color: '#7B1818', lineHeight: 17 }}>{acc.rejectionReason}</Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <Text style={{ fontSize: 11, color: colors.textSubtle, marginTop: 4, marginBottom: 8 }}>
+                    Returned by {acc.rejectedBy ?? 'Admin'}{acc.rejectedAt ? ` · ${acc.rejectedAt}` : ''}
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity onPress={() => openResubmitModal(acc)}
+                      style={[styles.enrollActionBtn, { backgroundColor: '#DCF0FF', borderColor: '#185FA5', borderWidth: 1, flex: 1, justifyContent: 'center' }]}>
+                      <Ionicons name="refresh-circle-outline" size={14} color="#185FA5" />
+                      <Text style={[styles.enrollActionText, { color: '#185FA5' }]}>Edit & Re-submit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteEnrollment(acc)}
+                      style={[styles.enrollActionBtn, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C', borderWidth: 1 }]}>
+                      <Ionicons name="trash-outline" size={14} color="#E74C3C" />
+                      <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </>
+          )}
+
           <View style={{ height: 24 }} />
         </ScrollView>
       )}
@@ -1173,6 +1276,116 @@ export default function HRScreen() {
         </ScrollView>
       </ModalSheet>
 
+      {/* ── Admin: Reject Enrollment with Reason Modal ── */}
+      <ModalSheet visible={!!rejectingEnrollment} onClose={() => setRejectingEnrollment(null)}>
+        <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Ionicons name="close-circle" size={20} color="#E74C3C" />
+            <Text style={[styles.sheetTitle, { color: colors.text }]}>Reject Enrollment</Text>
+          </View>
+          <Text style={[styles.formHint, { color: colors.textMuted, marginBottom: 12 }]}>
+            Provide a clear reason so HR can correct and re-submit the enrollment for {rejectingEnrollment?.empName}.
+          </Text>
+
+          <View style={[styles.infoBox, { backgroundColor: '#FFF0F0', borderColor: '#E74C3C44', marginBottom: 12 }]}>
+            <Ionicons name="information-circle" size={14} color="#E74C3C" />
+            <Text style={[styles.infoText, { color: '#7B1818' }]}>
+              HR will be notified immediately. The enrollment form will be returned to them with your note pre-displayed.
+            </Text>
+          </View>
+
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Reason for Rejection *</Text>
+          <TextInput
+            value={rejectReasonText}
+            onChangeText={setRejectReasonText}
+            placeholder="e.g. NIN number is invalid, guarantor details incomplete, salary grade not approved for this role…"
+            placeholderTextColor={colors.textMuted}
+            multiline
+            numberOfLines={4}
+            style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text, marginBottom: 16 }]}
+          />
+
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity onPress={() => setRejectingEnrollment(null)}
+              style={[styles.enrollActionBtn, { flex: 1, justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }]}>
+              <Text style={[styles.enrollActionText, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleConfirmReject}
+              style={[styles.submitBtn, { flex: 2, backgroundColor: '#E74C3C' }]}>
+              <Ionicons name="close-circle" size={15} color="#fff" />
+              <Text style={styles.submitBtnText}>Reject & Notify HR</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ height: 16 }} />
+        </View>
+      </ModalSheet>
+
+      {/* ── HR: Re-submit Rejected Enrollment Modal ── */}
+      <ModalSheet visible={!!resubmittingEnrollment} onClose={() => setResubmittingEnrollment(null)}>
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Ionicons name="refresh-circle" size={20} color="#185FA5" />
+            <Text style={[styles.sheetTitle, { color: colors.text }]}>Edit & Re-submit</Text>
+          </View>
+          <Text style={[styles.formHint, { color: colors.textMuted, marginBottom: 8 }]}>
+            Correct the details below and re-submit to Admin for review.
+          </Text>
+
+          {resubmittingEnrollment?.rejectionReason ? (
+            <View style={[styles.rejectionReasonBox, { backgroundColor: '#FFF0F0', borderColor: '#E74C3C44', marginBottom: 12 }]}>
+              <Ionicons name="alert-circle" size={14} color="#E74C3C" style={{ marginTop: 1 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#7B1818', marginBottom: 2 }}>
+                  Admin Note — Reason for Return
+                </Text>
+                <Text style={{ fontSize: 13, color: '#7B1818', lineHeight: 18 }}>
+                  {resubmittingEnrollment.rejectionReason}
+                </Text>
+                <Text style={{ fontSize: 11, color: '#BA7517', marginTop: 4 }}>
+                  Returned by {resubmittingEnrollment.rejectedBy ?? 'Admin'}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {[
+            { label: 'Full Name *',     val: eEmpName,       set: setEEmpName,       ph: 'Full name' },
+            { label: 'Job Title',       val: eJobTitle,      set: setEJobTitle,      ph: 'e.g. Senior Accountant' },
+            { label: 'NIN',             val: eNin,           set: setENin,           ph: '11-digit NIN' },
+            { label: 'Phone',           val: ePhone,         set: setEPhone,         ph: '+234 8XX XXX XXXX' },
+            { label: 'Address',         val: eAddr,          set: setEAddr,          ph: 'Street, City, State' },
+            { label: 'Guarantor Name',  val: eGuarantorName, set: setEGuarantorName, ph: 'Full name' },
+            { label: 'Guarantor Phone', val: eGuarantorPhone,set: setEGuarantorPhone,ph: '+234 8XX XXX XXXX' },
+            { label: 'Guarantor Addr',  val: eGuarantorAddr, set: setEGuarantorAddr, ph: 'Street, City, State' },
+          ].map(f => (
+            <View key={f.label}>
+              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
+              <TextInput value={f.val} onChangeText={f.set} placeholder={f.ph}
+                placeholderTextColor={colors.textMuted}
+                style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
+            </View>
+          ))}
+
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Department</Text>
+          <View style={styles.chipRow}>
+            {DEPARTMENTS.map(d => (
+              <TouchableOpacity key={d} onPress={() => setEDept(d)}
+                style={[styles.chip, { backgroundColor: d === eDept ? '#185FA5' : colors.background, borderColor: d === eDept ? '#185FA5' : colors.border }]}>
+                <Text style={[styles.chipText, { color: d === eDept ? '#fff' : colors.textMuted }]}>{d}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity onPress={handleResubmitSave}
+            style={[styles.submitBtn, { backgroundColor: '#185FA5', marginTop: 12 }]}>
+            <Ionicons name="send" size={15} color="#fff" />
+            <Text style={styles.submitBtnText}>Re-submit to Admin</Text>
+          </TouchableOpacity>
+          <View style={{ height: 32 }} />
+        </ScrollView>
+      </ModalSheet>
+
       {/* ── Generate Letter Modal ── */}
       <ModalSheet visible={!!letterModal} onClose={() => setLetterModal(null)}>
         <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
@@ -1362,6 +1575,9 @@ const styles = StyleSheet.create({
   enrollActionText:{ fontSize: 12, fontWeight: '600' },
   enrollApproveBtn:{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flex: 1, justifyContent: 'center' },
   enrollApproveBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+  rejectedCard:       { borderRadius: 12, borderWidth: 1.5, padding: 14, marginBottom: 12 },
+  rejectionReasonBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 9, borderWidth: 1, marginBottom: 4 },
 
   infoBox:         { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
   infoText:        { flex: 1, fontSize: 12, lineHeight: 17 },
