@@ -107,14 +107,17 @@ export default function SalesScreen() {
           </View>
         )}
 
-        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 8 }]}>Today's Volume by Product</Text>
+        <View style={styles.prodSectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>Revenue & Volume by Product</Text>
+          <Text style={[styles.prodSectionSub, { color: colors.textMuted }]}>Sum = Today's Revenue above</Text>
+        </View>
         <View style={styles.prodGrid}>
           {prodBreakdown.map(p => (
             <View key={p.key} style={[styles.prodCard, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
               <View style={[styles.prodDot, { backgroundColor: p.color }]} />
               <Text style={[styles.prodLabel, { color: p.color }]}>{p.key}</Text>
-              <Text style={[styles.prodVol, { color: colors.text }]}>{p.vol.toLocaleString()} {p.unit}</Text>
-              <Text style={[styles.prodRev, { color: colors.textMuted }]}>{fmt(p.rev)}</Text>
+              <Text style={[styles.prodRev, { color: colors.text }]}>{fmt(p.rev)}</Text>
+              <Text style={[styles.prodVol, { color: colors.textMuted }]}>{p.vol.toLocaleString()} {p.unit}</Text>
             </View>
           ))}
         </View>
@@ -234,6 +237,8 @@ const styles = StyleSheet.create({
   posBar:         { height: 6, borderRadius: 3, overflow: 'hidden', flexDirection: 'row', marginBottom: 4 },
   posBarFill:     { borderRadius: 3 },
   posBarLabel:    { fontSize: 10, textAlign: 'center' },
+  prodSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 },
+  prodSectionSub: { fontSize: 10 },
   prodGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   prodCard:       { width: '48%', padding: 12, borderRadius: 12, borderWidth: 1, gap: 3 },
   prodDot:        { width: 8, height: 8, borderRadius: 4, marginBottom: 2 },
