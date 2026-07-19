@@ -28,6 +28,13 @@ export interface PriceProposal {
 export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId?: string; }
 export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
 export interface Budget { id: number; month: number; year: number; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
+export interface BankLoan { bank: string; amount: number; }
+export interface FinancialEntry {
+  cashInBank: number; posValue: number; goodsOnTransit: number;
+  cashInHand: number; debtsFromCustomers: number; capitalInjection: number;
+  bankLoans: BankLoan[]; liabilities: number;
+  updatedBy: string; updatedAt: string;
+}
 export interface NavItem { id: string; icon: string; label: string; }
 export interface UserInfo { name: string; color: string; initials: string; role: string; online: boolean; }
 export interface MgrPermissions {
@@ -381,6 +388,11 @@ const INIT_HR_HANDBOOKS: HREmployeeDoc[] = [];
 const INIT_LEGAL: LegalMatter[] = [];
 const INIT_CORP_PROJECTS: CorpProject[] = [];
 const INIT_MEETING_MINUTES: MeetingMinutes[] = [];
+const INIT_FINANCIAL_ENTRY: FinancialEntry = {
+  cashInBank: 0, posValue: 0, goodsOnTransit: 0, cashInHand: 0,
+  debtsFromCustomers: 0, capitalInjection: 0, bankLoans: [], liabilities: 0,
+  updatedBy: '', updatedAt: '',
+};
 
 interface AppContextType {
   companyInfo: CompanyInfo; updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
@@ -393,6 +405,8 @@ interface AppContextType {
   dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
   sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
+  financialEntry: FinancialEntry;
+  updateFinancialEntry: (updates: Partial<Omit<FinancialEntry, 'updatedBy' | 'updatedAt'>>) => void;
   addBudget: (b: Omit<Budget, 'id' | 'workflow'>) => void;
   updateBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string }) => void;
   deleteBudget: (id: number) => void;
@@ -582,6 +596,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [callLog, setCallLog] = useState<CallRecord[]>([]);
   const [pumpDailyReports, setPumpDailyReports] = useState<PumpDailyReport[]>([]);
   const [pumpInitialMeters, setPumpInitialMeters] = useState<Record<string, number>>({});
+  const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
   const [loaded, setLoaded] = useState(false);
@@ -593,7 +608,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
-      'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters',
+      'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'financialEntry',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -650,6 +665,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.meetingMinutes)    setMeetingMinutes(s.meetingMinutes);
       if (s.broadcasts)        setBroadcasts(s.broadcasts);
       if (s.callLog)           setCallLog(s.callLog);
+      if (s.financialEntry)    setFinancialEntry(s.financialEntry);
       setLoaded(true);
     });
   }, []);
@@ -747,6 +763,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.meetingMinutes && !p.has('meetingMinutes'))                   setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
       if (Array.isArray(s.pumpDailyReports) && !p.has('pumpDailyReports')) setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
+      if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(s.financialEntry as FinancialEntry);
       // Lift the startup write-gate: server state is now applied, safe to accept user writes.
       initialSyncDoneRef.current = true;
     } catch {
@@ -808,6 +825,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpDailyReports', pumpDailyReports); },  [pumpDailyReports, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
+  useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
 
   /* ── Version-check poll: 3 s lightweight ping → full sync only when data changed ── */
   // /api/version returns a ~50-byte timestamp. syncFromServer() only fires when it changes,
@@ -1866,6 +1884,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCallLog(prev => [{ ...r, id: genId(), ts: nowTs() }, ...prev]);
   }, []);
 
+  const updateFinancialEntry = useCallback((updates: Partial<Omit<FinancialEntry, 'updatedBy' | 'updatedAt'>>) => {
+    setFinancialEntry(prev => ({ ...prev, ...updates, updatedBy: userName, updatedAt: nowTs() }));
+  }, [userName]);
+
   const navItems: NavItem[] = role === 'admin'
     ? baseNav
     : baseNav.filter(item => {
@@ -1883,7 +1905,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       role, userName, branchId, staffId, isServerAuthenticated, navItems, mgrPerms,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
-      maintenance, sales, staff, branches, docs, expenses, budgets, messages, broadcasts, callLog,
+      maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts, callLog,
       addBroadcast, addCallRecord,
       audit, departments, companyFiles, deliveryEvidences,
       priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
