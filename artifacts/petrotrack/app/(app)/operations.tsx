@@ -23,8 +23,8 @@ const SHIFT_REPORT_COLOR: Record<string, string> = {
   approved:           '#1a6e3c',
 };
 
-const DIP_SUBTABS_ALL = ['Dip Form', 'Inventory'];
-const DIP_SUBTABS_MD  = ['Inventory'];
+const DIP_SUBTABS_MGR  = ['Dip Form', 'Inventory'];
+const DIP_SUBTABS_APPR = ['Approvals', 'Inventory'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
@@ -42,7 +42,7 @@ export default function OperationsScreen() {
   const {
     role, userName, branchId, mgrPerms,
     tanks, lpgTanks, dips,
-    addDip,
+    addDip, approveDip, rejectDip,
     prices,
     sales, pumpDailyReports,
     maintenance, addMaintenance,
@@ -50,22 +50,24 @@ export default function OperationsScreen() {
 
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
-  const isMgr     = role === 'mgr';
-  const isMD      = role === 'md';
-  const isAtt     = role === 'att';
+  const isMgr      = role === 'mgr';
+  const isMD       = role === 'md';
+  const isAdmin    = role === 'admin';
+  const isAtt      = role === 'att';
+  const canApprove = isMD || isAdmin;
 
   const topTabs: { key: TopTab; label: string; icon: string }[] = [
-    ...(isMgr || isMD ? [{ key: 'dip' as TopTab, label: 'Tank Dip', icon: 'water-outline' }] : []),
+    ...(isMgr || canApprove ? [{ key: 'dip' as TopTab, label: 'Tank Dip', icon: 'water-outline' }] : []),
     { key: 'sales', label: 'Sales',        icon: 'bar-chart-outline' },
     { key: 'maint', label: 'Maintenance',  icon: 'build-outline'     },
   ];
 
-  const defaultTab: TopTab = (isMgr || isMD) ? 'dip' : 'sales';
+  const defaultTab: TopTab = (isMgr || canApprove) ? 'dip' : 'sales';
   const [topTab, setTopTab] = useState<TopTab>(defaultTab);
 
   // ── Dip state ────────────────────────────────────────────────────────────
-  // MD starts on "Log & Delivery" (content index 1); mgr starts on "Dip Form" (index 0)
-  const [dipSubTab, setDipSubTab]     = useState(isMD ? 1 : 0);
+  // MD/Admin start on Approvals (content index 1); mgr starts on Dip Form (index 0)
+  const [dipSubTab, setDipSubTab]     = useState(canApprove ? 1 : 0);
   const [readings, setReadings]       = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
@@ -138,18 +140,33 @@ export default function OperationsScreen() {
       {topTab === 'dip' && (
         <>
           {(() => {
-            // MD sees only Log & Delivery (idx 1) and Inventory (idx 2) — no Dip Form
-            const dipTabItems = (isMD ? DIP_SUBTABS_MD : DIP_SUBTABS_ALL).map(
-              (label, vi) => ({ label, contentIdx: isMD ? vi + 1 : vi })
+            // MD/Admin see [Approvals→1, Inventory→2]; Mgr sees [Dip Form→0, Inventory→2]
+            const pendingCount = dips.filter(d => d.status === 'pending').length;
+            const dipTabItems = (canApprove ? DIP_SUBTABS_APPR : DIP_SUBTABS_MGR).map(
+              (label, vi) => ({
+                label,
+                contentIdx: canApprove ? vi + 1 : (vi === 0 ? 0 : 2),
+              })
             );
             return (
               <View style={[styles.subTabBar, { borderBottomColor: colors.border }]}>
-                {dipTabItems.map(({ label, contentIdx }) => (
-                  <TouchableOpacity key={label} onPress={() => setDipSubTab(contentIdx)}
-                    style={[styles.subTabBtn, { borderBottomColor: contentIdx === dipSubTab ? roleColor : 'transparent' }]}>
-                    <Text style={[styles.subTabLabel, { color: contentIdx === dipSubTab ? roleColor : colors.textMuted, fontWeight: contentIdx === dipSubTab ? '700' : '400' }]}>{label}</Text>
-                  </TouchableOpacity>
-                ))}
+                {dipTabItems.map(({ label, contentIdx }) => {
+                  const isActive   = contentIdx === dipSubTab;
+                  const showBadge  = label === 'Approvals' && pendingCount > 0;
+                  return (
+                    <TouchableOpacity key={label} onPress={() => setDipSubTab(contentIdx)}
+                      style={[styles.subTabBtn, { borderBottomColor: isActive ? roleColor : 'transparent' }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Text style={[styles.subTabLabel, { color: isActive ? roleColor : colors.textMuted, fontWeight: isActive ? '700' : '400' }]}>{label}</Text>
+                        {showBadge && (
+                          <View style={[styles.subTabBadge, { backgroundColor: '#BA7517' }]}>
+                            <Text style={styles.subTabBadgeText}>{pendingCount}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             );
           })()}
@@ -239,8 +256,154 @@ export default function OperationsScreen() {
             </ScrollView>
           )}
 
-          {/* Inventory */}
+          {/* ── Approvals (MD / Admin) ── */}
           {dipSubTab === 1 && (
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+              {dips.filter(d => d.status === 'pending').length === 0 ? (
+                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
+                  <Ionicons name="checkmark-circle-outline" size={16} color={colors.textMuted} />
+                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No pending dip records. All caught up!</Text>
+                </View>
+              ) : (
+                <>
+                  <View style={[styles.mdBanner, { backgroundColor: '#BA751712', borderColor: '#BA751744' }]}>
+                    <Ionicons name="time-outline" size={16} color="#BA7517" />
+                    <Text style={[styles.mdBannerText, { color: '#BA7517' }]}>
+                      {dips.filter(d => d.status === 'pending').length} dip record{dips.filter(d => d.status === 'pending').length > 1 ? 's' : ''} awaiting approval. Approving will update tank inventory.
+                    </Text>
+                  </View>
+                  {dips.filter(d => d.status === 'pending').map(dip => (
+                    <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: '#BA751744', borderWidth: 1.5 }]}>
+                      <View style={styles.logHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.logDate, { color: colors.text }]}>{fmtDateTime(dip.dt)}</Text>
+                          <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
+                        </View>
+                        <View style={[styles.dipStatusBadge, { backgroundColor: '#BA751718' }]}>
+                          <Ionicons name="time" size={11} color="#BA7517" />
+                          <Text style={[styles.dipStatusText, { color: '#BA7517' }]}>Pending</Text>
+                        </View>
+                      </View>
+
+                      {/* Tank readings */}
+                      <View style={styles.readingsGrid}>
+                        {Object.entries(dip.rd).map(([tid, litres]) => {
+                          const tank = tanks.find(t => t.id === tid);
+                          return (
+                            <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                              <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{tank?.name ?? tid}</Text>
+                              <Text style={[styles.readingVal, { color: roleColor }]}>{Number(litres).toLocaleString()} L</Text>
+                            </View>
+                          );
+                        })}
+                        {Object.entries(dip.lpg).map(([lid, kg]) => {
+                          const lt = lpgTanks.find(l => l.id === lid);
+                          return (
+                            <View key={lid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                              <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{lt?.name ?? lid}</Text>
+                              <Text style={[styles.readingVal, { color: colors.teal ?? '#1a6e3c' }]}>{Number(kg).toLocaleString()} kg</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+
+                      {dip.obs ? (
+                        <Text style={[styles.dipObs, { color: colors.warning }]}>⚠ {dip.obs}</Text>
+                      ) : null}
+
+                      {/* Action row */}
+                      <View style={styles.mdActions}>
+                        <TouchableOpacity
+                          style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
+                          onPress={() => {
+                            approveDip(dip.id);
+                            Alert.alert('Approved', 'Dip record approved. Tank inventory has been updated.');
+                          }}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="checkmark" size={15} color="#fff" />
+                          <Text style={styles.mdActionText}>Approve &amp; Update Inventory</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.rejectBtn, { borderColor: '#A32D2D' }]}
+                          onPress={() =>
+                            Alert.alert(
+                              isAdmin ? 'Reset Dip Record' : 'Reject Dip Record',
+                              isAdmin
+                                ? `Reject this dip by "${dip.by}" so they can submit a new one?`
+                                : `Reject this dip submission by ${dip.by}?`,
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                  text: isAdmin ? 'Reset' : 'Reject',
+                                  style: 'destructive',
+                                  onPress: () => {
+                                    rejectDip(dip.id);
+                                    Alert.alert(
+                                      isAdmin ? 'Reset' : 'Rejected',
+                                      isAdmin ? 'Dip reset. Manager can now submit a new reading.' : 'Dip record rejected.'
+                                    );
+                                  },
+                                },
+                              ]
+                            )
+                          }
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name={isAdmin ? 'refresh' : 'close'} size={15} color="#A32D2D" />
+                          <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>{isAdmin ? 'Reset' : 'Reject'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {/* Show all-time dip history below pending ones */}
+              {dips.filter(d => d.status !== 'pending').length > 0 && (
+                <>
+                  <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Dip History</Text>
+                  {dips.filter(d => d.status !== 'pending').slice(0, 20).map(dip => {
+                    const sc = DIP_STATUS_COLOR[dip.status] || '#888';
+                    return (
+                      <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <View style={styles.logHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.logDate, { color: colors.text }]}>{fmtDateTime(dip.dt)}</Text>
+                            <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
+                          </View>
+                          <View style={[styles.dipStatusBadge, { backgroundColor: sc + '18' }]}>
+                            <Ionicons name={DIP_STATUS_ICON[dip.status] as any} size={11} color={sc} />
+                            <Text style={[styles.dipStatusText, { color: sc }]}>{DIP_STATUS_LABEL[dip.status]}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.readingsGrid}>
+                          {Object.entries(dip.rd).map(([tid, litres]) => {
+                            const tank = tanks.find(t => t.id === tid);
+                            return (
+                              <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                                <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{tank?.name ?? tid}</Text>
+                                <Text style={[styles.readingVal, { color: roleColor }]}>{Number(litres).toLocaleString()} L</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                        {dip.approvedBy && (
+                          <Text style={[styles.approvedByText, { color: colors.textMuted }]}>
+                            {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </>
+              )}
+              <View style={{ height: 16 }} />
+            </ScrollView>
+          )}
+
+          {/* Inventory */}
+          {dipSubTab === 2 && (
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
               {visibleTanks.length === 0 && visibleLpgTanks.length === 0 && (
                 <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
@@ -543,9 +706,11 @@ const styles = StyleSheet.create({
   topTabBar:   { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   topTabBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 11, borderBottomWidth: 2 },
   topTabLabel: { fontSize: 12 },
-  subTabBar:   { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: 'transparent' },
-  subTabBtn:   { flex: 1, alignItems: 'center', paddingVertical: 8, borderBottomWidth: 2 },
-  subTabLabel: { fontSize: 12 },
+  subTabBar:        { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: 'transparent' },
+  subTabBtn:        { flex: 1, alignItems: 'center', paddingVertical: 8, borderBottomWidth: 2 },
+  subTabLabel:      { fontSize: 12 },
+  subTabBadge:      { minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
+  subTabBadgeText:  { color: '#fff', fontSize: 9, fontWeight: '800' },
   scroll:      { padding: 14 },
 
   formSection:      { fontSize: 13, fontWeight: '700', marginBottom: 10, marginTop: 4 },
