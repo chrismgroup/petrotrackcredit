@@ -1062,11 +1062,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (rec) {
       setTanks(ts => ts.map(tank => {
         const lvl = rec.rd[tank.id];
-        return lvl !== undefined ? { ...tank, op: lvl } : tank;
+        return lvl !== undefined ? { ...tank, op: lvl, rv: 0, sl: 0 } : tank;
       }));
       setLpgTanks(ts => ts.map(lt => {
         const lvl = rec.lpg[lt.id];
-        return lvl !== undefined ? { ...lt, op: lvl } : lt;
+        return lvl !== undefined ? { ...lt, op: lvl, rv: 0, sl: 0 } : lt;
       }));
     }
     setDips(d => d.map(r => r.id === id ? { ...r, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : r));
@@ -1135,6 +1135,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
     setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'md_approved' as const, sellingPrice, mdNote: mdNote || '', approvedBy: userName, approvedAt: nowTs(), mdBy: userName, mdAt: nowTs() } : rec));
+    setTanks(ts => {
+      const matching = ts.filter(t => t.prod === d.prod && (!d.branchId || !t.branchId || t.branchId === d.branchId));
+      if (matching.length === 0) return ts;
+      const share = d.rec / matching.length;
+      const ids = new Set(matching.map(t => t.id));
+      return ts.map(t => ids.has(t.id) ? { ...t, rv: t.rv + share } : t);
+    });
     // Update global selling price for this product
     updatePrice(d.prod, sellingPrice, userName);
     setAudit(a => [{ id: genId(), action: 'Delivery MD-approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L · Cost ₦${d.costPrice}/L · Sell ₦${sellingPrice}/L · permanently locked`, ts: nowTs() }, ...a]);
@@ -1677,6 +1684,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pos: report.posAmount,
         branchId: report.branchId,
       }];
+    });
+    setTanks(ts => {
+      const matching = ts.filter(t => t.prod === report.product && (!report.branchId || !t.branchId || t.branchId === report.branchId));
+      if (matching.length === 0) return ts;
+      const share = report.liters / matching.length;
+      const ids = new Set(matching.map(t => t.id));
+      return ts.map(t => ids.has(t.id) ? { ...t, sl: t.sl + share } : t);
     });
     setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} — ${report.pumpName} · ${report.liters}L · sales record auto-created`, ts: nowTs() }, ...a]);
   }, [userName]);
