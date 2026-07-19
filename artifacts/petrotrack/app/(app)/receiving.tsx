@@ -6,7 +6,7 @@ import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity
 import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { Delivery, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
+import { Delivery, LPGTank, Tank, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
@@ -28,6 +28,10 @@ const APPR_MAP: Record<string, { label: string; color: string; bg: string; icon:
 const PROD_COLORS: Record<string, string> = {
   PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11',
 };
+
+type TankRow   = { id: string; name: string; stock: number; cap: number; dipDt: string | null };
+type ProdInv   = { prod: string; unit: string; totalStock: number; totalCap: number; tanks: TankRow[]; lastDipDt: string | null; dipBased: boolean };
+type BranchInv = { branchId: string | null; branchName: string; prods: ProdInv[] };
 
 type MgrFormState = {
   prod: string; sup: string; wb: string;
@@ -168,7 +172,7 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
 export default function ReceivingScreen() {
   const {
     role, userName, branchId,
-    tanks, lpgTanks, dips, deliveries, prices, sales, pumpDailyReports,
+    tanks, lpgTanks, dips, deliveries, prices, branches,
     deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery,
@@ -216,78 +220,78 @@ export default function ReceivingScreen() {
   const pendingAccCount = sortedDeliveries.filter(d => d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending').length;
   const pendingMdCount  = sortedDeliveries.filter(d => d.approvalStatus === 'pending_md').length;
 
-  // Branch-scoped tanks
+  // Branch-scoped tanks (used for evidence uploads and branch-user inventory)
   const myTanks    = tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
   const myLpgTanks = lpgTanks.filter(l => !branchId || !l.branchId || l.branchId === branchId);
 
-  // Inventory: last approved dip reading + approved deliveries since that dip
-  // − approved sales since that dip. This keeps the book stock in sync with the
-  // physical dip reconciliation performed by the manager.
-  function tankCurrentStock(t: { id: string; prod: string; cap: number; op: number; rv: number; sl: number; branchId?: string }) {
-    const lastDipRec = dips
-      .filter(d => d.status === 'approved' && d.rd[t.id] !== undefined)
+  // ── Dip-based inventory ─────────────────────────────────────────────────────
+  // Inventory = latest approved dip reading per tank, summed per product per branch.
+  // Multiple PMS tanks are summed. LPG uses its own tank array.
+  // Lube Oil falls back to net approved deliveries if no tanks are configured.
+
+  function dipStockForTank(tankId: string): { stock: number; dt: string | null } {
+    const r = dips
+      .filter(d => d.status === 'approved' && d.rd[tankId] !== undefined)
       .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime())[0];
-    const baseline = lastDipRec ? (lastDipRec.rd[t.id] ?? 0) : 0;
-    const dipDt    = lastDipRec?.dt;
-    const recvd = deliveries
-      .filter(d => d.prod === t.prod &&
-        (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
-        (!dipDt || d.dt > dipDt))
-      .reduce((s, d) => s + d.rec, 0);
-    const sold = sales
-      .filter(e => e.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
-        (!dipDt || e.dt > dipDt))
-      .reduce((s, e) => s + e.L, 0);
-    return Math.max(0, baseline + recvd - sold);
+    return { stock: r ? (r.rd[tankId] ?? 0) : 0, dt: r?.dt ?? null };
   }
 
-  const petrolProds = ['PMS', 'AGO', 'DPK'] as const;
-  const petrolInv = petrolProds
-    .map(prod => {
-      const prodTanks = myTanks.filter(t => t.prod === prod);
-      const currentStock = prodTanks.reduce((s, t) => s + tankCurrentStock(t), 0);
-      const totalCap     = prodTanks.reduce((s, t) => s + t.cap, 0);
-      // Received: all deliveries not in draft/rejected
-      const received = deliveries
-        .filter(d => d.prod === prod && d.approvalStatus !== 'draft' && d.approvalStatus !== 'rejected')
-        .reduce((s, d) => s + d.rec, 0);
-      // Sold: from approved pump shift reports
-      const sold = pumpDailyReports
-        .filter(r => r.product === prod && r.status === 'approved')
-        .reduce((s, r) => s + r.liters, 0);
-      // Avg cost from fully approved deliveries
-      const appDlv    = deliveries.filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
-      const appRec    = appDlv.reduce((s, d) => s + d.rec, 0);
-      const avgCost   = appRec > 0 ? appDlv.reduce((s, d) => s + (d.costPrice ?? 0) * d.rec, 0) / appRec : 0;
-      if (prodTanks.length === 0 && received === 0) return null;
-      return { prod, currentStock, totalCap, totalReceived: received, totalSold: sold, avgCost, unit: 'L' };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
-
-  const lpgStock = myLpgTanks.reduce((s, l) => {
-    const lastDipRec = dips
-      .filter(d => d.status === 'approved' && d.lpg[l.id] !== undefined)
+  function dipStockForLpgTank(tankId: string): { stock: number; dt: string | null } {
+    const r = dips
+      .filter(d => d.status === 'approved' && d.lpg[tankId] !== undefined)
       .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime())[0];
-    const baseline = lastDipRec ? (lastDipRec.lpg[l.id] ?? 0) : 0;
-    const dipDt    = lastDipRec?.dt;
-    const recvd = deliveries
-      .filter(d => d.prod === 'LPG' &&
-        (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
-        (!dipDt || d.dt > dipDt))
-      .reduce((sum, d) => sum + d.rec, 0);
-    return s + Math.max(0, baseline + recvd);
-  }, 0);
-  const lpgCap      = myLpgTanks.reduce((s, l) => s + l.cap, 0);
-  const lpgReceived = deliveries.filter(d => d.prod === 'LPG' && d.approvalStatus !== 'draft' && d.approvalStatus !== 'rejected').reduce((s, d) => s + d.rec, 0);
-  const lpgSold     = pumpDailyReports.filter(r => r.product === 'LPG' && r.status === 'approved').reduce((s, r) => s + r.liters, 0);
-  const lpgAppDlv   = deliveries.filter(d => d.prod === 'LPG' && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
-  const lpgAppRec   = lpgAppDlv.reduce((s, d) => s + d.rec, 0);
-  const lpgAvgCost  = lpgAppRec > 0 ? lpgAppDlv.reduce((s, d) => s + (d.costPrice ?? 0) * d.rec, 0) / lpgAppRec : 0;
-  const lpgInv = (myLpgTanks.length > 0 || lpgReceived > 0)
-    ? [{ prod: 'LPG', currentStock: lpgStock, totalCap: lpgCap, totalReceived: lpgReceived, totalSold: lpgSold, avgCost: lpgAvgCost, unit: 'kg' }]
-    : [];
+    return { stock: r ? (r.lpg[tankId] ?? 0) : 0, dt: r?.dt ?? null };
+  }
 
-  const inventory = [...petrolInv, ...lpgInv];
+  function buildProdInventory(scopeTanks: Tank[], scopeLpgTanks: LPGTank[], scopeDeliveries: Delivery[]): ProdInv[] {
+    const result: ProdInv[] = [];
+    const PROD_ORDER = ['PMS', 'AGO', 'DPK', 'Lube Oil'] as const;
+    for (const prod of PROD_ORDER) {
+      const prodTanks = scopeTanks.filter(t => t.prod === prod);
+      if (prodTanks.length > 0) {
+        const rows: TankRow[] = prodTanks.map(t => {
+          const { stock, dt } = dipStockForTank(t.id);
+          return { id: t.id, name: t.name, stock, cap: t.cap, dipDt: dt };
+        });
+        const lastDipDt = rows.map(r => r.dipDt).filter((d): d is string => !!d).sort().reverse()[0] ?? null;
+        result.push({ prod, unit: 'L', totalStock: rows.reduce((s, r) => s + r.stock, 0), totalCap: rows.reduce((s, r) => s + r.cap, 0), tanks: rows, lastDipDt, dipBased: true });
+      } else if (prod === 'Lube Oil') {
+        const recv = scopeDeliveries
+          .filter(d => d.prod === 'Lube Oil' && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
+          .reduce((s, d) => s + d.rec, 0);
+        if (recv > 0) result.push({ prod: 'Lube Oil', unit: 'L', totalStock: recv, totalCap: 0, tanks: [], lastDipDt: null, dipBased: false });
+      }
+    }
+    if (scopeLpgTanks.length > 0) {
+      const rows: TankRow[] = scopeLpgTanks.map(l => {
+        const { stock, dt } = dipStockForLpgTank(l.id);
+        return { id: l.id, name: l.name, stock, cap: l.cap, dipDt: dt };
+      });
+      const lastDipDt = rows.map(r => r.dipDt).filter((d): d is string => !!d).sort().reverse()[0] ?? null;
+      result.push({ prod: 'LPG', unit: 'kg', totalStock: rows.reduce((s, r) => s + r.stock, 0), totalCap: rows.reduce((s, r) => s + r.cap, 0), tanks: rows, lastDipDt, dipBased: true });
+    }
+    return result;
+  }
+
+  // Global viewers see every branch separately; branch users see only their branch.
+  const branchInventories: BranchInv[] = isGlobalViewer
+    ? (() => {
+        const bmap = new Map<string | null, { name: string; ts: Tank[]; ls: LPGTank[]; ds: Delivery[] }>();
+        for (const b of branches) bmap.set(b.id, { name: b.name, ts: [], ls: [], ds: [] });
+        if (!bmap.has(null)) bmap.set(null, { name: 'Unassigned', ts: [], ls: [], ds: [] });
+        tanks.forEach(t => { const slot = bmap.get(t.branchId ?? null) ?? bmap.get(null)!; slot.ts.push(t); });
+        lpgTanks.forEach(l => { const slot = bmap.get(l.branchId ?? null) ?? bmap.get(null)!; slot.ls.push(l); });
+        deliveries.forEach(d => { const slot = bmap.get(d.branchId ?? null) ?? bmap.get(null)!; slot.ds.push(d); });
+        return [...bmap.entries()]
+          .filter(([, { ts, ls }]) => ts.length > 0 || ls.length > 0)
+          .map(([bid, { name, ts, ls, ds }]) => ({ branchId: bid, branchName: name, prods: buildProdInventory(ts, ls, ds) }))
+          .filter(b => b.prods.length > 0);
+      })()
+    : [{
+        branchId: branchId ?? null,
+        branchName: branches.find(b => b.id === branchId)?.name ?? 'This Branch',
+        prods: buildProdInventory(myTanks, myLpgTanks, sortedDeliveries),
+      }].filter(b => b.prods.length > 0);
 
   function fmtSize(bytes?: number): string {
     if (!bytes) return '';
@@ -540,58 +544,79 @@ export default function ReceivingScreen() {
           </View>
         ) : null}
 
-        {inventory.length > 0 ? (
+        {branchInventories.length > 0 ? (
           <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Current Inventory</Text>
-            <View style={styles.inventoryGrid}>
-              {inventory.map(inv => {
-                const pc  = PROD_COLORS[inv.prod] || roleColor;
-                const low = inv.totalCap > 0 ? inv.currentStock < inv.totalCap * 0.2 : false;
-                return (
-                  <View key={inv.prod} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: low ? '#BA7517' : colors.border }]}>
-                    <View style={[styles.invProdBadge, { backgroundColor: pc + '18' }]}>
-                      <Ionicons name="cube-outline" size={12} color={pc} />
-                      <Text style={[styles.invProdText, { color: pc }]}>{inv.prod}</Text>
-                    </View>
-                    <Text style={[styles.invAvail, { color: low ? '#BA7517' : '#27500A' }]}>
-                      {inv.currentStock.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      <Text style={[styles.invUnit, { color: colors.textMuted }]}>{' ' + inv.unit + ' in stock'}</Text>
-                    </Text>
-                    {inv.totalCap > 0 ? (
-                      <View style={[styles.progressBg, { backgroundColor: colors.border, marginBottom: 8 }]}>
-                        <View style={[styles.progressBar, { width: `${Math.min(100, Math.round((inv.currentStock / inv.totalCap) * 100))}%` as any, backgroundColor: low ? '#BA7517' : pc }]} />
-                      </View>
-                    ) : null}
-                    <View style={styles.invDetail}>
-                      <View style={styles.invDetailItem}>
-                        <Text style={[styles.invDetailLabel, { color: colors.textMuted }]}>Received</Text>
-                        <Text style={[styles.invDetailVal, { color: colors.text }]}>{inv.totalReceived.toLocaleString()}{' ' + inv.unit}</Text>
-                      </View>
-                      <View style={[styles.invDetailDivider, { backgroundColor: colors.border }]} />
-                      <View style={styles.invDetailItem}>
-                        <Text style={[styles.invDetailLabel, { color: colors.textMuted }]}>Sold</Text>
-                        <Text style={[styles.invDetailVal, { color: '#791F1F' }]}>{inv.totalSold.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' ' + inv.unit}</Text>
-                      </View>
-                      {inv.avgCost > 0 ? (
-                        <>
-                          <View style={[styles.invDetailDivider, { backgroundColor: colors.border }]} />
-                          <View style={styles.invDetailItem}>
-                            <Text style={[styles.invDetailLabel, { color: colors.textMuted }]}>Avg Cost</Text>
-                            <Text style={[styles.invDetailVal, { color: colors.text }]}>{'₦'}{Math.round(inv.avgCost).toLocaleString()}</Text>
-                          </View>
-                        </>
-                      ) : null}
-                    </View>
-                    {low ? (
-                      <View style={[styles.lowBadge, { backgroundColor: '#FAEEDA' }]}>
-                        <Ionicons name="warning-outline" size={11} color="#BA7517" />
-                        <Text style={[styles.lowText, { color: '#BA7517' }]}>Low stock</Text>
-                      </View>
-                    ) : null}
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Inventory by Dip Reading</Text>
+            {branchInventories.map(branch => (
+              <View key={branch.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>
+                {isGlobalViewer ? (
+                  <View style={[styles.branchHeader, { backgroundColor: roleColor + '12', borderColor: roleColor + '30' }]}>
+                    <Ionicons name="business-outline" size={13} color={roleColor} />
+                    <Text style={[styles.branchHeaderText, { color: roleColor }]}>{branch.branchName}</Text>
                   </View>
-                );
-              })}
-            </View>
+                ) : null}
+                <View style={styles.inventoryGrid}>
+                  {branch.prods.map(inv => {
+                    const pc  = PROD_COLORS[inv.prod] || roleColor;
+                    const pct = inv.totalCap > 0 ? Math.min(100, Math.round((inv.totalStock / inv.totalCap) * 100)) : null;
+                    const low = pct !== null ? pct < 20 : false;
+                    return (
+                      <View key={inv.prod} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: low ? '#BA7517' : colors.border }]}>
+                        <View style={styles.invCardTop}>
+                          <View style={[styles.invProdBadge, { backgroundColor: pc + '18' }]}>
+                            <Ionicons name="cube-outline" size={12} color={pc} />
+                            <Text style={[styles.invProdText, { color: pc }]}>{inv.prod}</Text>
+                          </View>
+                          {!inv.dipBased ? (
+                            <View style={[styles.invSourceBadge, { backgroundColor: '#F4F4F4', borderColor: '#CCC' }]}>
+                              <Text style={[styles.invSourceText, { color: '#666' }]}>Delivery-based</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text style={[styles.invAvail, { color: low ? '#BA7517' : '#27500A' }]}>
+                          {inv.totalStock.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          <Text style={[styles.invUnit, { color: colors.textMuted }]}>{' ' + inv.unit}</Text>
+                        </Text>
+                        {pct !== null ? (
+                          <>
+                            <View style={[styles.progressBg, { backgroundColor: colors.border }]}>
+                              <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: low ? '#BA7517' : pc }]} />
+                            </View>
+                            <Text style={[styles.invCapText, { color: colors.textSubtle }]}>
+                              {pct}{'% of '}{inv.totalCap.toLocaleString()}{' ' + inv.unit + ' cap · '}{inv.tanks.length}{inv.tanks.length === 1 ? ' tank' : ' tanks'}
+                            </Text>
+                          </>
+                        ) : null}
+                        {inv.tanks.length > 1 ? (
+                          <View style={[styles.tankBreakdown, { borderTopColor: colors.border }]}>
+                            {inv.tanks.map(t => (
+                              <View key={t.id} style={styles.tankRow}>
+                                <Text style={[styles.tankName, { color: colors.textMuted }]} numberOfLines={1}>{t.name}</Text>
+                                <Text style={[styles.tankStock, { color: colors.text }]}>{t.stock.toLocaleString()}{' L'}</Text>
+                                {t.dipDt
+                                  ? <Text style={[styles.tankDipDt, { color: colors.textSubtle }]}>{fmtDate(t.dipDt)}</Text>
+                                  : <Text style={[styles.tankDipDt, { color: '#BA7517' }]}>No dip</Text>}
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+                        <View style={styles.invFooter}>
+                          {inv.lastDipDt
+                            ? <Text style={[styles.invDipDate, { color: colors.textSubtle }]}>{'Last dip: '}{fmtDate(inv.lastDipDt)}</Text>
+                            : <Text style={[styles.invDipDate, { color: '#BA7517' }]}>No dip on record</Text>}
+                          {low ? (
+                            <View style={[styles.lowBadge, { backgroundColor: '#FAEEDA' }]}>
+                              <Ionicons name="warning-outline" size={10} color="#BA7517" />
+                              <Text style={[styles.lowText, { color: '#BA7517' }]}>Low</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
           </>
         ) : null}
 
@@ -1131,20 +1156,28 @@ const styles = StyleSheet.create({
   banner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 12 },
   bannerText: { fontSize: 13, fontWeight: '600', flex: 1 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, marginTop: 4 },
+  branchHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8 },
+  branchHeaderText: { fontSize: 13, fontWeight: '700', flex: 1 },
   inventoryGrid: { gap: 8, marginBottom: 16 },
-  invCard: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 8 },
+  invCard: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 6 },
+  invCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  invSourceBadge: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2 },
+  invSourceText: { fontSize: 10, fontWeight: '600' },
   progressBg:  { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressBar: { height: 6, borderRadius: 3 },
   invProdBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   invProdText: { fontSize: 12, fontWeight: '700' },
-  invAvail: { fontSize: 24, fontWeight: '800' },
+  invAvail: { fontSize: 26, fontWeight: '800' },
   invUnit: { fontSize: 14, fontWeight: '500' },
-  invDetail: { flexDirection: 'row', alignItems: 'center', gap: 0 },
-  invDetailItem: { flex: 1, alignItems: 'center', gap: 2 },
-  invDetailDivider: { width: 1, height: 28 },
-  invDetailLabel: { fontSize: 10 },
-  invDetailVal: { fontSize: 12, fontWeight: '700' },
-  lowBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  invCapText: { fontSize: 11, fontWeight: '500' },
+  tankBreakdown: { borderTopWidth: 1, paddingTop: 8, gap: 5 },
+  tankRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tankName: { fontSize: 11, flex: 1 },
+  tankStock: { fontSize: 12, fontWeight: '700' },
+  tankDipDt: { fontSize: 10, minWidth: 56, textAlign: 'right' },
+  invFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  invDipDate: { fontSize: 11, fontWeight: '500' },
+  lowBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   lowText: { fontSize: 11, fontWeight: '700' },
   delivCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10, gap: 8 },
   delivHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },

@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword } from '@/lib/crypto';
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
 export interface Tank {
-  id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK';
+  id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'Lube Oil';
   cap: number; dip: number; op: number; rv: number; sl: number; branchId?: string;
 }
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; branchId?: string; }
