@@ -25,12 +25,13 @@ export default function HomeScreen() {
   const openMaint = maintenance.filter(m => m.st === 'Open');
   const pendingExp = expenses.filter(e => e.status === 'pending');
   const monthKey = new Date().toISOString().slice(0, 7);
+  const isGlobal = role === 'md' || role === 'ceo';
   const totalRev = pumpDailyReports
-    .filter(r => r.status === 'approved' && r.date.startsWith(monthKey) && (!branchId || !r.branchId || r.branchId === branchId))
+    .filter(r => r.status === 'approved' && r.date.startsWith(monthKey) && (isGlobal || !branchId || !r.branchId || r.branchId === branchId))
     .reduce((s, r) => s + r.grossAmount, 0);
   const activeBranches = branches.filter(b => b.st === 'Active').length;
-  const myTanks = tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
-  const totalStockL = myTanks.reduce((s, t) => s + (t.op - t.sl), 0);
+  const myTanks = isGlobal ? tanks : tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
+  const totalStockL = myTanks.reduce((s, t) => s + (t.op + t.rv - t.sl), 0);
   const unread = unreadCount();
 
   function expDaysLeft(exp: string) {
