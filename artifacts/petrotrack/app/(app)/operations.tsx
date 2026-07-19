@@ -23,8 +23,8 @@ const SHIFT_REPORT_COLOR: Record<string, string> = {
   approved:           '#1a6e3c',
 };
 
-const DIP_SUBTABS_ALL = ['Dip Form', 'Log & Delivery', 'Inventory'];
-const DIP_SUBTABS_MD  = ['Log & Delivery', 'Inventory'];
+const DIP_SUBTABS_ALL = ['Dip Form', 'Inventory'];
+const DIP_SUBTABS_MD  = ['Inventory'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
@@ -41,9 +41,9 @@ type TopTab = 'dip' | 'sales' | 'maint';
 export default function OperationsScreen() {
   const {
     role, userName, branchId, mgrPerms,
-    tanks, lpgTanks, dips, deliveries,
-    addDip, approveDip, rejectDip, addDelivery,
-    prices, deliveryEvidences, addDeliveryEvidence,
+    tanks, lpgTanks, dips,
+    addDip,
+    prices,
     sales, pumpDailyReports,
     maintenance, addMaintenance,
   } = useApp();
@@ -69,8 +69,6 @@ export default function OperationsScreen() {
   const [readings, setReadings]       = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
-  const [showDelForm, setShowDelForm] = useState(false);
-  const [delForm, setDelForm]         = useState({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
 
   const perms           = isMgr ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
@@ -89,12 +87,6 @@ export default function OperationsScreen() {
     Alert.alert('Dip Submitted', 'Tank readings recorded successfully.');
   }
 
-  function handleDeliverySubmit() {
-    addDelivery({ dt: new Date().toISOString(), sup: delForm.sup, prod: delForm.prod, wb: delForm.wb, ord: parseFloat(delForm.ord) || 0, rec: parseFloat(delForm.rec) || 0, st: delForm.st as any, notes: delForm.notes });
-    setDelForm({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
-    setShowDelForm(false);
-    Alert.alert('Delivery Recorded', 'Delivery entry saved.');
-  }
 
   function stockPct(t: { op: number; sl: number; rv: number; cap: number }) {
     return Math.round(((t.op + t.rv - t.sl) / t.cap) * 100);
@@ -243,189 +235,12 @@ export default function OperationsScreen() {
                 </TouchableOpacity>
               )}
 
-              <Text style={[styles.formSection, { color: colors.text }]}>Record Delivery</Text>
-              {!showDelForm ? (
-                <TouchableOpacity style={[styles.addOutlineBtn, { borderColor: roleColor }]} onPress={() => setShowDelForm(true)}>
-                  <Ionicons name="add" size={18} color={roleColor} />
-                  <Text style={[styles.addOutlineBtnText, { color: roleColor }]}>Record New Delivery</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                    {['PMS', 'AGO', 'DPK', 'LPG'].map(p => (
-                      <TouchableOpacity key={p} onPress={() => setDelForm(f => ({ ...f, prod: p }))}
-                        style={[styles.prodBtn, { backgroundColor: delForm.prod === p ? roleColor : colors.background, borderColor: delForm.prod === p ? roleColor : colors.border }]}>
-                        <Text style={{ color: delForm.prod === p ? '#fff' : colors.textMuted, fontSize: 12, fontWeight: '600' }}>{p}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  {[
-                    { key: 'sup', label: 'Supplier Name' }, { key: 'wb', label: 'Waybill Number' },
-                    { key: 'ord', label: 'Ordered Qty (L)' }, { key: 'rec', label: 'Received Qty (L)' },
-                    { key: 'notes', label: 'Notes' },
-                  ].map(f => (
-                    <TextInput key={f.key}
-                      style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                      placeholder={f.label} placeholderTextColor={colors.textSubtle}
-                      keyboardType={['ord', 'rec'].includes(f.key) ? 'numeric' : 'default'}
-                      value={(delForm as any)[f.key]}
-                      onChangeText={v => setDelForm(fv => ({ ...fv, [f.key]: v }))}
-                    />
-                  ))}
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                    {['ok', 'short', 'spill', 'seal'].map(s => (
-                      <TouchableOpacity key={s} onPress={() => setDelForm(f => ({ ...f, st: s }))}
-                        style={[styles.prodBtn, { backgroundColor: delForm.st === s ? roleColor : colors.background, borderColor: delForm.st === s ? roleColor : colors.border }]}>
-                        <Text style={{ color: delForm.st === s ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{STATUS_LABELS[s]}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleDeliverySubmit} activeOpacity={0.85}>
-                      <Text style={styles.submitBtnText}>Save</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={() => setShowDelForm(false)}>
-                      <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-              <View style={{ height: 16 }} />
-            </ScrollView>
-          )}
-
-          {/* Log & Delivery */}
-          {dipSubTab === 1 && (
-            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-              {isMD && dips.some(d => d.status === 'pending') && (
-                <View style={[styles.mdBanner, { backgroundColor: '#4527a018', borderColor: '#4527a0' }]}>
-                  <Ionicons name="alert-circle" size={16} color="#4527a0" />
-                  <Text style={[styles.mdBannerText, { color: '#4527a0' }]}>
-                    {dips.filter(d => d.status === 'pending').length} dip record{dips.filter(d => d.status === 'pending').length > 1 ? 's' : ''} awaiting your approval
-                  </Text>
-                </View>
-              )}
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Records</Text>
-              {dips.map(dip => {
-                const sc = DIP_STATUS_COLOR[dip.status] || '#888';
-                const isPending = dip.status === 'pending';
-                return (
-                  <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: isPending ? sc + '66' : colors.border, borderWidth: isPending ? 1.5 : 1 }]}>
-                    <View style={styles.logHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.logDate, { color: colors.text }]}>{fmtDateTime(dip.dt)}</Text>
-                        <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
-                      </View>
-                      <View style={[styles.dipStatusBadge, { backgroundColor: sc + '18' }]}>
-                        <Ionicons name={DIP_STATUS_ICON[dip.status] as any} size={11} color={sc} />
-                        <Text style={[styles.dipStatusText, { color: sc }]}>{DIP_STATUS_LABEL[dip.status]}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.readingsGrid}>
-                      {Object.entries(dip.rd).map(([tid, litres]) => {
-                        const tank = tanks.find(t => t.id === tid);
-                        return (
-                          <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                            <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{tank?.name.replace('Tank ', 'T')}</Text>
-                            <Text style={[styles.readingVal, { color: roleColor }]}>{Number(litres).toLocaleString()}L</Text>
-                          </View>
-                        );
-                      })}
-                      {Object.entries(dip.lpg).map(([lid, kg]) => {
-                        const lt = lpgTanks.find(l => l.id === lid);
-                        return (
-                          <View key={lid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                            <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{lt?.name.replace('LPG Tank ', 'L')}</Text>
-                            <Text style={[styles.readingVal, { color: colors.teal }]}>{Number(kg).toLocaleString()} kg</Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                    {dip.obs ? <Text style={[styles.dipObs, { color: colors.warning }]}>⚠ {dip.obs}</Text> : null}
-                    {dip.approvedBy && (
-                      <Text style={[styles.approvedByText, { color: colors.textMuted }]}>
-                        {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
-                      </Text>
-                    )}
-                    {isMD && isPending && (
-                      <View style={styles.mdActions}>
-                        <TouchableOpacity style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]} activeOpacity={0.85}
-                          onPress={() => { approveDip(dip.id); Alert.alert('Approved', 'Dip record approved.'); }}>
-                          <Ionicons name="checkmark" size={15} color="#fff" />
-                          <Text style={styles.mdActionText}>Approve</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.rejectBtn, { borderColor: '#A32D2D' }]} activeOpacity={0.85}
-                          onPress={() => { rejectDip(dip.id); Alert.alert('Rejected', 'Dip record rejected.'); }}>
-                          <Ionicons name="close" size={15} color="#A32D2D" />
-                          <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Reject</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>Delivery Records</Text>
-              {deliveries.filter(d => !branchId || !d.branchId || d.branchId === branchId).map(rec => {
-                const evidence = deliveryEvidences.filter(e => e.delivId === rec.id);
-                return (
-                  <View key={rec.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={styles.logHeader}>
-                      <View>
-                        <Text style={[styles.logDate, { color: colors.text }]}>{rec.prod} — {rec.sup}</Text>
-                        <Text style={[styles.logBy, { color: colors.textMuted }]}>WB: {rec.wb} · {fmtDateTime(rec.dt)}</Text>
-                      </View>
-                      <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[rec.st] + '22' }]}>
-                        <Text style={[styles.statusText, { color: STATUS_COLORS[rec.st] }]}>{STATUS_LABELS[rec.st]}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.deliveryStats}>
-                      <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Ordered: <Text style={{ color: colors.text, fontWeight: '600' }}>{rec.ord.toLocaleString()}L</Text></Text>
-                      <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Received: <Text style={{ color: roleColor, fontWeight: '700' }}>{rec.rec.toLocaleString()}L</Text></Text>
-                      {rec.ord !== rec.rec && <Text style={{ color: STATUS_COLORS[rec.st], fontSize: 12 }}>Diff: {(rec.rec - rec.ord).toLocaleString()}L</Text>}
-                    </View>
-                    {rec.notes ? <Text style={[styles.dipObs, { color: colors.textMuted }]}>{rec.notes}</Text> : null}
-                    <View style={[styles.evidenceSection, { borderTopColor: colors.border }]}>
-                      <View style={styles.evidenceHeader}>
-                        <Ionicons name="camera" size={13} color={colors.textMuted} />
-                        <Text style={[styles.evidenceTitle, { color: colors.textMuted }]}>Evidence ({evidence.length})</Text>
-                        {canDip && (
-                          <View style={styles.evidenceBtns}>
-                            <TouchableOpacity
-                              style={[styles.evidenceAddBtn, { backgroundColor: roleColor + '18', borderColor: roleColor + '44' }]}
-                              onPress={() => { const n = `WB-${rec.wb}_photo_${Date.now()}.jpg`; addDeliveryEvidence({ delivId: rec.id, type: 'photo', name: n, by: userName || 'Manager' }); Alert.alert('Photo Added', n); }}>
-                              <Ionicons name="camera" size={11} color={roleColor} />
-                              <Text style={[styles.evidenceAddText, { color: roleColor }]}>Photo</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.evidenceAddBtn, { backgroundColor: '#8E44AD18', borderColor: '#8E44AD44' }]}
-                              onPress={() => { const n = `WB-${rec.wb}_video_${Date.now()}.mp4`; addDeliveryEvidence({ delivId: rec.id, type: 'video', name: n, by: userName || 'Manager' }); Alert.alert('Video Added', n); }}>
-                              <Ionicons name="videocam" size={11} color="#8E44AD" />
-                              <Text style={[styles.evidenceAddText, { color: '#8E44AD' }]}>Video</Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
-                      {evidence.length === 0 && <Text style={[styles.evidenceEmpty, { color: colors.textSubtle }]}>No evidence attached</Text>}
-                      {evidence.map(ev => (
-                        <View key={ev.id} style={[styles.evidenceItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                          <Ionicons name={ev.type === 'photo' ? 'image' : 'videocam'} size={14} color={ev.type === 'photo' ? roleColor : '#8E44AD'} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.evidenceName, { color: colors.text }]} numberOfLines={1}>{ev.name}</Text>
-                            <Text style={[styles.evidenceMeta, { color: colors.textSubtle }]}>by {ev.by} · {fmtDateTime(ev.dt)}</Text>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                );
-              })}
               <View style={{ height: 16 }} />
             </ScrollView>
           )}
 
           {/* Inventory */}
-          {dipSubTab === 2 && (
+          {dipSubTab === 1 && (
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
               {visibleTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>}
               {visibleTanks.map(t => {
