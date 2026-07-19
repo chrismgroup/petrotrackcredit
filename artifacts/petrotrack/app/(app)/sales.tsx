@@ -40,9 +40,20 @@ export default function SalesScreen() {
   const totalPOS   = todaySales.reduce((s, e) => s + (e.pos || 0), 0);
   const totalCash  = totalAmt - totalPOS;
 
-  const pmsSales = todaySales.filter(s => s.pump.includes('PMS'));
-  const agoSales = todaySales.filter(s => s.pump.includes('AGO'));
-  const dkpSales = todaySales.filter(s => s.pump.includes('DPK'));
+  const PROD_DEF = [
+    { key: 'PMS',      color: '#185FA5', unit: 'L' },
+    { key: 'AGO',      color: '#BA7517', unit: 'L' },
+    { key: 'DPK',      color: '#6B4F9E', unit: 'L' },
+    { key: 'LPG',      color: '#1a6e3c', unit: 'kg' },
+    { key: 'Lube Oil', color: '#A32D2D', unit: 'L' },
+  ] as const;
+
+  const prodBreakdown = PROD_DEF.map(({ key, color, unit }) => {
+    const entries = todaySales.filter(s => s.pump.includes(key));
+    const vol = entries.reduce((s, e) => s + e.L, 0);
+    const rev = entries.reduce((s, e) => s + e.L * e.price, 0);
+    return { key, color, unit, vol, rev };
+  }).filter(p => p.vol > 0);
 
   const sortedReports = [...pumpDailyReports]
     .filter(r => inMyBranch(r.branchId))
@@ -96,18 +107,21 @@ export default function SalesScreen() {
           </View>
         )}
 
-        <View style={styles.prodRow}>
-          {[
-            { label: 'PMS', L: pmsSales.reduce((s, e) => s + e.L, 0), color: colors.primary },
-            { label: 'AGO', L: agoSales.reduce((s, e) => s + e.L, 0), color: colors.blue   },
-            { label: 'DPK', L: dkpSales.reduce((s, e) => s + e.L, 0), color: colors.amber  },
-          ].map(p => (
-            <View key={p.label} style={[styles.prodCard, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
-              <Text style={[styles.prodLabel, { color: p.color }]}>{p.label}</Text>
-              <Text style={[styles.prodL, { color: colors.text }]}>{p.L.toLocaleString()}L</Text>
+        {prodBreakdown.length > 0 && (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 8 }]}>Today's Volume by Product</Text>
+            <View style={styles.prodGrid}>
+              {prodBreakdown.map(p => (
+                <View key={p.key} style={[styles.prodCard, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
+                  <View style={[styles.prodDot, { backgroundColor: p.color }]} />
+                  <Text style={[styles.prodLabel, { color: p.color }]}>{p.key}</Text>
+                  <Text style={[styles.prodVol, { color: colors.text }]}>{p.vol.toLocaleString()} {p.unit}</Text>
+                  <Text style={[styles.prodRev, { color: colors.textMuted }]}>{fmt(p.rev)}</Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+          </>
+        )}
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Shift Reports</Text>
 
@@ -224,10 +238,12 @@ const styles = StyleSheet.create({
   posBar:         { height: 6, borderRadius: 3, overflow: 'hidden', flexDirection: 'row', marginBottom: 4 },
   posBarFill:     { borderRadius: 3 },
   posBarLabel:    { fontSize: 10, textAlign: 'center' },
-  prodRow:        { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  prodCard:       { flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
-  prodLabel:      { fontSize: 12, fontWeight: '700' },
-  prodL:          { fontSize: 14, fontWeight: '700', marginTop: 2 },
+  prodGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  prodCard:       { width: '48%', padding: 12, borderRadius: 12, borderWidth: 1, gap: 3 },
+  prodDot:        { width: 8, height: 8, borderRadius: 4, marginBottom: 2 },
+  prodLabel:      { fontSize: 12, fontWeight: '800' },
+  prodVol:        { fontSize: 15, fontWeight: '700' },
+  prodRev:        { fontSize: 11 },
   sectionTitle:   { fontSize: 15, fontWeight: '700', marginBottom: 10 },
   emptyCard:      { padding: 32, borderRadius: 14, borderWidth: 1, alignItems: 'center', gap: 8, marginBottom: 8 },
   emptyText:      { fontSize: 14, fontWeight: '600' },
