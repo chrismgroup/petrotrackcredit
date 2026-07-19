@@ -65,6 +65,8 @@ export default function TanksScreen() {
 
   const canEdit = role === 'mgr';
   const isMD = role === 'md';
+  const isAdmin = role === 'admin';
+  const pendingDips = dips.filter(d => d.status === 'pending');
   const hasPendingDip = canEdit && dips.some(d => d.by === userName && d.status === 'pending');
 
   const perms = role === 'mgr' ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
@@ -155,11 +157,21 @@ export default function TanksScreen() {
   return (
     <ScreenLayout title="Tank Dipping">
       <View style={styles.tabBar}>
-        {TABS.map((t, i) => (
-          <TouchableOpacity key={t} onPress={() => setActiveTab(i)} style={[styles.tabBtn, { borderBottomColor: i === activeTab ? roleColor : 'transparent', borderBottomWidth: 2 }]}>
-            <Text style={[styles.tabLabel, { color: i === activeTab ? roleColor : colors.textMuted, fontWeight: i === activeTab ? '700' : '400' }]}>{t}</Text>
-          </TouchableOpacity>
-        ))}
+        {TABS.map((t, i) => {
+          const showBadge = i === 1 && (isMD || isAdmin) && pendingDips.length > 0;
+          return (
+            <TouchableOpacity key={t} onPress={() => setActiveTab(i)} style={[styles.tabBtn, { borderBottomColor: i === activeTab ? roleColor : 'transparent', borderBottomWidth: 2 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Text style={[styles.tabLabel, { color: i === activeTab ? roleColor : colors.textMuted, fontWeight: i === activeTab ? '700' : '400' }]}>{t}</Text>
+                {showBadge && (
+                  <View style={[styles.tabBadge, { backgroundColor: '#BA7517' }]}>
+                    <Text style={styles.tabBadgeText}>{pendingDips.length}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {activeTab === 0 && (
@@ -332,7 +344,10 @@ export default function TanksScreen() {
             {hasPendingDip ? (
               <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517', marginBottom: 0 }]}>
                 <Ionicons name="time-outline" size={16} color="#BA7517" />
-                <Text style={[styles.pendingText, { color: '#BA7517', flex: 1 }]}>Dip record pending MD approval — submit again after it is resolved.</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.pendingText, { color: '#BA7517' }]}>Dip record pending MD approval.</Text>
+                  <Text style={[styles.pendingText, { color: '#BA7517', fontSize: 11, marginTop: 2 }]}>Check "Log &amp; Delivery" tab for status. Ask an admin to reset if MD is unresponsive.</Text>
+                </View>
               </View>
             ) : (
               <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor, marginBottom: 0 }]} onPress={handleDipSubmit} activeOpacity={0.85}>
@@ -414,6 +429,35 @@ export default function TanksScreen() {
                     >
                       <Ionicons name="close" size={15} color="#A32D2D" />
                       <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {isAdmin && isPending && (
+                  <View style={[styles.mdActions, { marginTop: 6 }]}>
+                    <TouchableOpacity
+                      style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
+                      onPress={() => { approveDip(dip.id); Alert.alert('Approved', 'Dip record approved by admin.'); }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="checkmark" size={15} color="#fff" />
+                      <Text style={styles.mdActionText}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.rejectBtn, { borderColor: '#791F1F', backgroundColor: '#FCEBEB' }]}
+                      onPress={() =>
+                        Alert.alert(
+                          'Reset Dip Record',
+                          `This will reject the pending dip by "${dip.by}" so they can submit a new one. Continue?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Reset', style: 'destructive', onPress: () => { rejectDip(dip.id); Alert.alert('Reset', 'Dip reset. Manager can now submit a new dip.'); } },
+                          ]
+                        )
+                      }
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="refresh" size={15} color="#791F1F" />
+                      <Text style={[styles.mdActionText, { color: '#791F1F' }]}>Reset (Unblock)</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -647,6 +691,8 @@ const styles = StyleSheet.create({
   tabBar: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e5e5e3' },
   tabBtn: { flex: 1, paddingVertical: 12, alignItems: 'center' },
   tabLabel: { fontSize: 13 },
+  tabBadge: { minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
+  tabBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   scroll: { padding: 16 },
   formSection: { fontSize: 14, fontWeight: '700', marginBottom: 10, marginTop: 4 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
