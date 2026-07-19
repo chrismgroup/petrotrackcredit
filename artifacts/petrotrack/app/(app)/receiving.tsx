@@ -107,6 +107,24 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
         />
       </View>
 
+      {(() => {
+        const ordN = parseFloat(f.ord);
+        const recN = parseFloat(f.rec);
+        if (!ordN || !recN || ordN === recN) return null;
+        const diff = recN - ordN;
+        const short = diff < 0;
+        return (
+          <View style={[styles.mismatchBox, { backgroundColor: short ? '#FAEEDA' : '#FCEBEB', borderColor: short ? '#BA7517' : '#791F1F' }]}>
+            <Ionicons name={short ? 'warning-outline' : 'alert-circle-outline'} size={15} color={short ? '#BA7517' : '#791F1F'} />
+            <Text style={[styles.mismatchText, { color: short ? '#BA7517' : '#791F1F' }]}>
+              {short
+                ? `Shortage of ${Math.abs(diff).toLocaleString()} L — received less than ordered`
+                : `Overage of ${diff.toLocaleString()} L — received more than ordered`}
+            </Text>
+          </View>
+        );
+      })()}
+
       <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Delivery Condition</Text>
       <View style={styles.chipRow}>
         {(Object.entries(ST_MAP) as [string, typeof ST_MAP.ok][]).map(([k, v]) => (
@@ -364,12 +382,18 @@ export default function ReceivingScreen() {
   }
 
   function handleSubmitToAcc(d: Delivery) {
+    const mismatch = d.rec !== d.ord;
+    const mismatchLine = mismatch
+      ? `\n\n⚠️ ${d.rec < d.ord
+          ? `Shortage: received ${(d.ord - d.rec).toLocaleString()} L less than ordered`
+          : `Overage: received ${(d.rec - d.ord).toLocaleString()} L more than ordered`}`
+      : '';
     Alert.alert(
-      'Forward to Accountant?',
-      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}\n\nAccountant will set the cost price and forward to MD for approval.`,
+      mismatch ? '⚠️ Quantity Mismatch — Forward Anyway?' : 'Forward to Accountant?',
+      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}${mismatchLine}\n\nAccountant will set the cost price and forward to MD for approval.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Forward', onPress: () => submitDeliveryForApproval(d.id) },
+        { text: mismatch ? 'Forward Anyway' : 'Forward', style: mismatch ? 'destructive' : 'default', onPress: () => submitDeliveryForApproval(d.id) },
       ]
     );
   }
@@ -617,10 +641,28 @@ export default function ReceivingScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.delivWb, { color: colors.text }]}>{'WB: '}{d.wb}</Text>
                   <Text style={[styles.delivSup, { color: colors.textMuted }]}>{d.sup}</Text>
-                  <Text style={[styles.delivQty, { color: colors.textMuted }]}>
-                    {'Ordered: '}{d.ord.toLocaleString()}{' L · Received: '}
-                    <Text style={{ fontWeight: '700', color: colors.text }}>{d.rec.toLocaleString()}{' L'}</Text>
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                    <Text style={[styles.delivQty, { color: colors.textMuted }]}>
+                      {'Ordered: '}{d.ord.toLocaleString()}{' L · Received: '}
+                      <Text style={{ fontWeight: '700', color: colors.text }}>{d.rec.toLocaleString()}{' L'}</Text>
+                    </Text>
+                    {d.rec !== d.ord ? (
+                      <View style={[styles.mismatchBadge, {
+                        backgroundColor: d.rec < d.ord ? '#FAEEDA' : '#FCEBEB',
+                      }]}>
+                        <Ionicons
+                          name={d.rec < d.ord ? 'warning-outline' : 'alert-circle-outline'}
+                          size={11}
+                          color={d.rec < d.ord ? '#BA7517' : '#791F1F'}
+                        />
+                        <Text style={[styles.mismatchBadgeText, { color: d.rec < d.ord ? '#BA7517' : '#791F1F' }]}>
+                          {d.rec < d.ord
+                            ? `Short ${(d.ord - d.rec).toLocaleString()} L`
+                            : `+${(d.rec - d.ord).toLocaleString()} L over`}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
                   {d.notes ? <Text style={[styles.delivNotes, { color: colors.textSubtle }]}>{d.notes}</Text> : null}
                   {(apSt === 'pending_acc' || apSt === 'pending') && d.rejectedNote ? (
                     <Text style={[styles.delivNotes, { color: '#791F1F' }]}>{'Returned by MD: '}{d.rejectedNote}</Text>
@@ -822,7 +864,7 @@ export default function ReceivingScreen() {
           <View style={[styles.infoBox, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
             <Ionicons name="information-circle-outline" size={15} color="#185FA5" />
             <Text style={[styles.infoText, { color: '#185FA5' }]}>
-              {'Record the physical delivery details. Cost price will be set by the accountant after you forward this record.'}
+              {'Record the physical delivery details. Cost price will be set by the accountant after you forward this record. You can attach evidence (photos, videos, documents) to saved records.'}
             </Text>
           </View>
           <MgrFormFields f={form} setF={setForm} roleColor={roleColor} />
@@ -1146,6 +1188,10 @@ const styles = StyleSheet.create({
   accPendingSup: { fontSize: 13, fontWeight: '600' },
   accPendingBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, marginTop: 2 },
   accPendingBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  mismatchBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 8 },
+  mismatchText: { fontSize: 12, fontWeight: '600', flex: 1 },
+  mismatchBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  mismatchBadgeText: { fontSize: 11, fontWeight: '700' },
   headerBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingTop: 24, maxHeight: '92%' },
   smallModal: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 14 },
