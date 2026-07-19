@@ -94,7 +94,7 @@ export default function ReportsScreen() {
   const {
     role, userName, branchId,
     expenses, sales, branches, deliveries, prices, priceHistory, priceProposals,
-    maintenance, dips, staff, hrEmployees,
+    maintenance, dips, staff, hrEmployees, pumpDailyReports,
   } = useApp();
   const colors = useColors();
   const rc = ROLE_COLORS[role || 'acc'] || colors.primary;
@@ -105,14 +105,15 @@ export default function ReportsScreen() {
   const [exporting, setExporting] = useState(false);
 
   /* Safety guards */
-  const safeSales       = Array.isArray(sales)          ? sales          : [];
-  const safeDeliveries  = Array.isArray(deliveries)     ? deliveries     : [];
-  const safeExpenses    = Array.isArray(expenses)        ? expenses       : [];
-  const safeBranches    = Array.isArray(branches)        ? branches       : [];
-  const safeMaintenance = Array.isArray(maintenance)     ? maintenance    : [];
-  const safeDips        = Array.isArray(dips)            ? dips           : [];
-  const safeHrEmployees = Array.isArray(hrEmployees)     ? hrEmployees    : [];
-  const safeProposals   = Array.isArray(priceProposals)  ? priceProposals : [];
+  const safeSales       = Array.isArray(sales)            ? sales            : [];
+  const safeDeliveries  = Array.isArray(deliveries)       ? deliveries       : [];
+  const safeExpenses    = Array.isArray(expenses)         ? expenses         : [];
+  const safeBranches    = Array.isArray(branches)         ? branches         : [];
+  const safeMaintenance = Array.isArray(maintenance)      ? maintenance      : [];
+  const safeDips        = Array.isArray(dips)             ? dips             : [];
+  const safeHrEmployees = Array.isArray(hrEmployees)      ? hrEmployees      : [];
+  const safeProposals   = Array.isArray(priceProposals)   ? priceProposals   : [];
+  const safePumpReports = Array.isArray(pumpDailyReports) ? pumpDailyReports : [];
 
   const defaultType: ReportType = perms.visible[0] ?? 'summary';
   // att and mgr are locked to their own branch; other roles can switch branches
@@ -135,6 +136,35 @@ export default function ReportsScreen() {
   const fSales = useMemo(() => fb(safeSales),      [safeSales, selBranch]);
   const fDelvs = useMemo(() => fb(safeDeliveries), [safeDeliveries, selBranch]);
   const fExps  = useMemo(() => fb(safeExpenses),   [safeExpenses, selBranch]);
+
+  /* ── Shift-report-based sales ──────────────────────────── */
+  const fPumpReports = useMemo(() =>
+    safePumpReports.filter((r: any) =>
+      r.status === 'approved' &&
+      (selBranch === null || r.branchId === selBranch || !r.branchId)
+    ),
+    [safePumpReports, selBranch]
+  );
+
+  const mgrBranchExps = useMemo(() =>
+    fExps.filter((e: any) => e.by === 'mgr' && e.status === 'approved'),
+    [fExps]
+  );
+
+  const shiftGross    = useMemo(() => Math.round(fPumpReports.reduce((s: number, r: any) => s + r.grossAmount, 0) / 30 * scale), [fPumpReports, scale]);
+  const mgrExpScaled  = useMemo(() => Math.round(mgrBranchExps.reduce((s: number, e: any) => s + e.amt, 0) / 30 * scale), [mgrBranchExps, scale]);
+  const netSalesFigure = shiftGross - mgrExpScaled;
+
+  const shiftProdSales = useMemo(() =>
+    (['PMS','AGO','DPK','LPG'] as const).map(prod => {
+      const color = PROD_COLORS[prod] || rc;
+      const reps = fPumpReports.filter((r: any) => r.product === prod);
+      const L    = reps.reduce((s: number, r: any) => s + r.liters, 0);
+      const gross = reps.reduce((s: number, r: any) => s + r.grossAmount, 0);
+      return { prod, color, L, scaledL: Math.round(L / 30 * scale), scaledGross: Math.round(gross / 30 * scale) };
+    }).filter(p => p.L > 0),
+    [fPumpReports, scale, rc]
+  );
 
   const approved  = useMemo(() => fExps.filter((e: any) => e.status === 'approved'), [fExps]);
   const totalExp  = useMemo(() => approved.reduce((s: number, e: any) => s + e.amt, 0), [approved]);
@@ -272,9 +302,19 @@ export default function ReportsScreen() {
       });
     } else if (reportType === 'sales') {
       html = buildPdf({ ...common, title: 'Sales Report',
-        sections: [{ heading: 'Summary', rows: [{ label: 'Total Sales Revenue', value: nfmt(scaledSales) }] }],
-        tables: [{ heading: 'Sales by Product', headers: ['Product','Volume (L)','Unit Price','Revenue'],
-          rows: prodSales.map(p => [p.prod, p.scaledL.toLocaleString(), nfmt(p.price), nfmt(p.scaledRev)]) }],
+        sections: [{ heading: 'Sales Summary', rows: [
+          { label: 'Gross Sales (Shift Reports)', value: nfmt(shiftGross)      },
+          { label: 'Less: Manager Expenses',      value: `(${nfmt(mgrExpScaled)})` },
+          { label: 'Net Sales',                   value: nfmt(netSalesFigure)  },
+          { label: 'Shift Reports',               value: `${fPumpReports.length}` },
+          { label: 'Manager Expense Items',       value: `${mgrBranchExps.length}` },
+        ]}],
+        tables: [
+          { heading: 'Product Breakdown', headers: ['Product','Volume (L)','Gross Revenue'],
+            rows: shiftProdSales.map(p => [p.prod, p.scaledL.toLocaleString(), nfmt(p.scaledGross)]) },
+          ...(mgrBranchExps.length > 0 ? [{ heading: 'Manager Expenses Deducted', headers: ['Category','Description','By','Amount','Approved By'],
+            rows: mgrBranchExps.map((e: any) => [e.cat, e.desc, e.byName, nfmt(e.amt), e.approvedBy ?? '—']) }] : []),
+        ],
       });
     } else if (reportType === 'prices') {
       html = buildPdf({ ...common, title: 'Price Report',
@@ -549,12 +589,62 @@ export default function ReportsScreen() {
         {/* ── SALES ── */}
         {reportType === 'sales' ? (
           <>
-            <View style={[s.totalPill, { backgroundColor: rc + '18', borderColor: rc + '33' }]}>
-              <Text style={[s.totalPillLabel, { color: rc }]}>Total Sales Revenue</Text>
-              <Text style={[s.totalPillValue, { color: rc }]}>{fmt(scaledSales)}</Text>
+            {/* Net Sales pill */}
+            <View style={[s.totalPill, { backgroundColor: (netSalesFigure >= 0 ? '#27500A' : '#791F1F') + '18', borderColor: (netSalesFigure >= 0 ? '#27500A' : '#791F1F') + '33' }]}>
+              <Text style={[s.totalPillLabel, { color: netSalesFigure >= 0 ? '#27500A' : '#791F1F' }]}>Net Sales</Text>
+              <Text style={[s.totalPillValue, { color: netSalesFigure >= 0 ? '#27500A' : '#791F1F' }]}>{fmt(netSalesFigure)}</Text>
             </View>
-            {prodSales.length === 0 ? <EmptyState icon="bar-chart-outline" label="No sales data" colors={colors} /> : null}
-            {prodSales.map(p => <ProdSaleRow key={p.prod} p={p} colors={colors} />)}
+
+            {/* Breakdown card */}
+            <View style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 4 }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
+                <Text style={{ fontSize: 13, color: colors.text }}>Gross Sales (shift reports)</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#185FA5' }}>{fmt(shiftGross)}</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: colors.border }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
+                <Text style={{ fontSize: 13, color: colors.text }}>Less: Manager Expenses</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#791F1F' }}>({fmt(mgrExpScaled)})</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: colors.border }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Net Sales</Text>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: netSalesFigure >= 0 ? '#27500A' : '#791F1F' }}>{fmt(netSalesFigure)}</Text>
+              </View>
+            </View>
+
+            {/* Manager expenses detail */}
+            {mgrBranchExps.length > 0 && (
+              <>
+                <SecTitle label={`Manager Expenses (${mgrBranchExps.length})`} colors={colors} />
+                {mgrBranchExps.map((e: any) => (
+                  <View key={e.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.rowCardTitle, { color: colors.text }]}>{e.cat}</Text>
+                      <Text style={[s.rowCardSub, { color: colors.textMuted }]}>{e.desc}</Text>
+                      <Text style={{ fontSize: 10, marginTop: 3, color: colors.textSubtle }}>by {e.byName} · Approved by {e.approvedBy}</Text>
+                    </View>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#791F1F' }}>{fmt(e.amt)}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {/* Product breakdown from shift reports */}
+            {shiftProdSales.length > 0 && <SecTitle label="Shift Report Breakdown by Product" colors={colors} />}
+            {shiftProdSales.length === 0 && fPumpReports.length === 0 ? <EmptyState icon="bar-chart-outline" label="No approved shift reports" colors={colors} /> : null}
+            {shiftProdSales.map(p => (
+              <View key={p.prod} style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[s.prodDot, { backgroundColor: p.color }]} />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{p.prod}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: p.color }}>{fmt(p.scaledGross)}</Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>{p.scaledL.toLocaleString()} L</Text>
+                </View>
+              </View>
+            ))}
           </>
         ) : null}
 
