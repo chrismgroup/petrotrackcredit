@@ -94,7 +94,9 @@ export default function ShiftReportScreen() {
   const isMgr   = role === 'mgr';
   const isAcc   = role === 'acc';
   const isAdmin = role === 'admin';
-  const canView = isAtt || isMgr || isAcc || isAdmin;
+  const isMd    = role === 'md';
+  const isCeo   = role === 'ceo';
+  const canView = isAtt || isMgr || isAcc || isAdmin || isMd || isCeo;
 
   const today = new Date().toISOString().slice(0, 10);
   const activePumps = pumps.filter(p => {
@@ -113,9 +115,8 @@ export default function ShiftReportScreen() {
   }, [pumpDailyReports, pumpInitialMeters]);
 
   /* ── tab state ── */
-  type Tab = 'dashboard' | 'submit' | 'history' | 'review' | 'pending_acc' | 'approved' | 'initial';
-  const defaultTab: Tab = isAtt ? 'dashboard' : isMgr ? 'review' : isAcc ? 'pending_acc' : 'initial';
-  const [tab, setTab] = useState<Tab>(defaultTab);
+  const defaultTab = isAtt ? 'dashboard' : isMgr ? 'review' : isAcc ? 'pending_acc' : (isMd || isCeo) ? 'all_records' : 'initial';
+  const [tab, setTab] = useState(defaultTab);
 
   /* ── selected pump (att) ── */
   const [selPump, setSelPump] = useState(() => activePumps[0]?.id ?? '');
@@ -271,9 +272,18 @@ export default function ShiftReportScreen() {
       .sort((a, b) => b.date.localeCompare(a.date)),
     [pumpDailyReports]
   );
+  const pendingAccMgr = useMemo(() =>
+    pumpDailyReports.filter(r => r.status === 'pending_accountant' && inMyBranch(r))
+      .sort((a, b) => b.date.localeCompare(a.date)),
+    [pumpDailyReports, branchId]
+  );
   const approvedAll = useMemo(() =>
     pumpDailyReports.filter(r => r.status === 'approved')
       .sort((a, b) => b.date.localeCompare(a.date)),
+    [pumpDailyReports]
+  );
+  const allReports = useMemo(() =>
+    [...pumpDailyReports].sort((a, b) => b.date.localeCompare(a.date) || b.submittedAt.localeCompare(a.submittedAt)),
     [pumpDailyReports]
   );
 
@@ -308,13 +318,15 @@ export default function ShiftReportScreen() {
   );
 
   /* ── tab definitions ── */
+  type Tab = 'dashboard' | 'submit' | 'history' | 'review' | 'pending_acc' | 'approved' | 'initial' | 'all_records';
   const tabs: { key: Tab; label: string; badge?: number; roles: string[] }[] = [
     { key: 'dashboard',   label: 'My Summary',    badge: returnedReports.length || undefined, roles: ['att'] },
     { key: 'submit',      label: 'Record Meters', roles: ['att'] },
     { key: 'history',     label: 'My History',    roles: ['att'] },
-    { key: 'review',      label: 'Review',        badge: pendingMgr.length + returnedMgr.length, roles: ['mgr'] },
+    { key: 'review',      label: 'Review',        badge: pendingMgr.length + returnedMgr.length + pendingAccMgr.length, roles: ['mgr'] },
     { key: 'pending_acc', label: 'Approvals',     badge: pendingAcc.length, roles: ['acc'] },
     { key: 'approved',    label: 'Approved',      roles: ['acc', 'mgr'] },
+    { key: 'all_records', label: 'All Records',   roles: ['admin', 'md', 'ceo'] },
     { key: 'initial',     label: 'Set Meters',    roles: ['admin'] },
   ];
   const visibleTabs = tabs.filter(t => role && t.roles.includes(role));
@@ -685,7 +697,7 @@ export default function ShiftReportScreen() {
       {/* ══ MANAGER: REVIEW ══ */}
       {tab === 'review' && isMgr && (
         <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
-          {pendingMgr.length === 0 && returnedMgr.length === 0 && (
+          {pendingMgr.length === 0 && returnedMgr.length === 0 && pendingAccMgr.length === 0 && (
             <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="checkmark-done-circle-outline" size={36} color={colors.textSubtle} />
               <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No shift reports awaiting your review</Text>
@@ -704,6 +716,14 @@ export default function ShiftReportScreen() {
               <Text style={[c.sectionLabel, { color: '#BA7517' }]}>Awaiting Your Review ({pendingMgr.length})</Text>
               {pendingMgr.map(r => (
                 <ReportCard key={r.id} report={r} roleColor={roleColor} colors={colors} onPress={() => openReport(r)} />
+              ))}
+            </>
+          )}
+          {pendingAccMgr.length > 0 && (
+            <>
+              <Text style={[c.sectionLabel, { color: '#185FA5' }]}>Forwarded — With Accountant ({pendingAccMgr.length})</Text>
+              {pendingAccMgr.map(r => (
+                <ReportCard key={r.id} report={r} roleColor="#185FA5" colors={colors} onPress={() => openReport(r)} />
               ))}
             </>
           )}
@@ -739,6 +759,38 @@ export default function ShiftReportScreen() {
           {approvedAll.map(r => (
             <ReportCard key={r.id} report={r} roleColor="#27500A" colors={colors} onPress={() => openReport(r)} />
           ))}
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      )}
+
+      {/* ══ ADMIN / MD / CEO: ALL RECORDS ══ */}
+      {tab === 'all_records' && (
+        <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
+          {allReports.length === 0 && (
+            <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="document-text-outline" size={36} color={colors.textSubtle} />
+              <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No shift reports submitted yet</Text>
+            </View>
+          )}
+          {allReports.length > 0 && (
+            <>
+              {(['approved', 'pending_accountant', 'pending_manager', 'returned'] as const).map(st => {
+                const group = allReports.filter(r => r.status === st);
+                if (group.length === 0) return null;
+                const meta = STATUS_META[st] ?? STATUS_META.pending_manager;
+                return (
+                  <React.Fragment key={st}>
+                    <Text style={[c.sectionLabel, { color: meta.color }]}>
+                      {meta.label} ({group.length})
+                    </Text>
+                    {group.map(r => (
+                      <ReportCard key={r.id} report={r} roleColor={meta.color} colors={colors} onPress={() => openReport(r)} />
+                    ))}
+                  </React.Fragment>
+                );
+              })}
+            </>
+          )}
           <View style={{ height: 24 }} />
         </ScrollView>
       )}
