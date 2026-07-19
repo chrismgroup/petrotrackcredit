@@ -53,7 +53,7 @@ export default function SalesScreen() {
     const vol = entries.reduce((s, e) => s + e.L, 0);
     const rev = entries.reduce((s, e) => s + e.L * e.price, 0);
     return { key, color, unit, vol, rev };
-  }).filter(p => p.vol > 0);
+  });
 
   const sortedReports = [...pumpDailyReports]
     .filter(r => inMyBranch(r.branchId))
@@ -107,21 +107,17 @@ export default function SalesScreen() {
           </View>
         )}
 
-        {prodBreakdown.length > 0 && (
-          <>
-            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 8 }]}>Today's Volume by Product</Text>
-            <View style={styles.prodGrid}>
-              {prodBreakdown.map(p => (
-                <View key={p.key} style={[styles.prodCard, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
-                  <View style={[styles.prodDot, { backgroundColor: p.color }]} />
-                  <Text style={[styles.prodLabel, { color: p.color }]}>{p.key}</Text>
-                  <Text style={[styles.prodVol, { color: colors.text }]}>{p.vol.toLocaleString()} {p.unit}</Text>
-                  <Text style={[styles.prodRev, { color: colors.textMuted }]}>{fmt(p.rev)}</Text>
-                </View>
-              ))}
+        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 8 }]}>Today's Volume by Product</Text>
+        <View style={styles.prodGrid}>
+          {prodBreakdown.map(p => (
+            <View key={p.key} style={[styles.prodCard, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
+              <View style={[styles.prodDot, { backgroundColor: p.color }]} />
+              <Text style={[styles.prodLabel, { color: p.color }]}>{p.key}</Text>
+              <Text style={[styles.prodVol, { color: colors.text }]}>{p.vol.toLocaleString()} {p.unit}</Text>
+              <Text style={[styles.prodRev, { color: colors.textMuted }]}>{fmt(p.rev)}</Text>
             </View>
-          </>
-        )}
+          ))}
+        </View>
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Shift Reports</Text>
 
