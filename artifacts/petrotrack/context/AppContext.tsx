@@ -658,6 +658,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Prevents the 3-second poll from overwriting data whose PUT hasn't landed yet.
   const pendingWritesRef = useRef<Set<string>>(new Set());
 
+  /* ── Initial-sync gate: block all server PUTs until the first syncFromServer completes ──
+     On startup React fires every syncSlice effect the moment `loaded` becomes true.
+     Without this gate those effects would PUT the stale AsyncStorage snapshot to the
+     server, silently overwriting data that other users submitted (e.g. a manager's
+     delivery that the accountant hasn't pulled yet).  The gate is lifted the moment the
+     initial syncFromServer resolves, so every subsequent user-triggered change flows
+     through to the server normally. */
+  const initialSyncDoneRef = useRef(false);
+
   /* ── syncFromServer: fetch ALL state from the server and apply it locally ── */
   // Called once on startup and then every 3 s so every device stays in sync.
   const syncFromServer = useCallback(async () => {
@@ -738,8 +747,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.meetingMinutes && !p.has('meetingMinutes'))                   setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
       if (Array.isArray(s.pumpDailyReports) && !p.has('pumpDailyReports')) setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
+      // Lift the startup write-gate: server state is now applied, safe to accept user writes.
+      initialSyncDoneRef.current = true;
     } catch {
       // silently ignore — network errors must not break the UI
+      // Still lift the gate on error so the app remains functional offline.
+      initialSyncDoneRef.current = true;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -753,6 +766,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   /* ── persistence: save each state slice to AsyncStorage + API when it changes ── */
   function syncSlice(key: string, value: unknown) {
     AsyncStorage.setItem(key, JSON.stringify(value));
+    // Block server writes until the initial syncFromServer has completed so that
+    // stale AsyncStorage snapshots can't overwrite data written by other users.
+    if (!initialSyncDoneRef.current) return;
     pendingWritesRef.current.add(key);
     stateApi.put(key, value).finally(() => pendingWritesRef.current.delete(key));
   }
@@ -811,6 +827,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // silently ignore transient network errors
       }
     };
+
+    // Fire immediately on login/app-open so new data appears within ~300 ms,
+    // not after the first 3-second interval tick.
+    check();
 
     // Poll every 3 seconds
     const id = setInterval(check, 3_000);
