@@ -12,7 +12,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 
 export default function HomeScreen() {
-  const { role, branchId, userName, tanks, lpgTanks, maintenance, expenses, audit, branches, staff, departments, dips, unreadCount, companyInfo } = useApp();
+  const { role, branchId, userName, tanks, lpgTanks, maintenance, expenses, audit, branches, staff, departments, dips, unreadCount, companyInfo, pumpDailyReports } = useApp();
   const colors = useColors();
   const router = useRouter();
 
@@ -24,7 +24,10 @@ export default function HomeScreen() {
 
   const openMaint = maintenance.filter(m => m.st === 'Open');
   const pendingExp = expenses.filter(e => e.status === 'pending');
-  const totalRev = branches.reduce((s, b) => s + b.rev, 0);
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const totalRev = pumpDailyReports
+    .filter(r => r.status === 'approved' && r.date.startsWith(monthKey) && (!branchId || !r.branchId || r.branchId === branchId))
+    .reduce((s, r) => s + r.grossAmount, 0);
   const activeBranches = branches.filter(b => b.st === 'Active').length;
   const myTanks = tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
   const totalStockL = myTanks.reduce((s, t) => s + (t.op - t.sl), 0);

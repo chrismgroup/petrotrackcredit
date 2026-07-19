@@ -166,14 +166,13 @@ export default function ReportsScreen() {
     [fPumpReports, scale, rc]
   );
 
-  const approved  = useMemo(() => fExps.filter((e: any) => e.status === 'approved'), [fExps]);
-  const totalExp  = useMemo(() => approved.reduce((s: number, e: any) => s + e.amt, 0), [approved]);
-  const totalRev  = safeBranches.filter(b => selBranch === null || b.id === selBranch).reduce((s, b) => s + b.rev, 0);
-  const scaledExp = Math.round(totalExp / 30 * scale);
-  const scaledRev = Math.round(totalRev / 30 * scale);
+  const approved    = useMemo(() => fExps.filter((e: any) => e.status === 'approved'), [fExps]);
+  const totalExp    = useMemo(() => approved.reduce((s: number, e: any) => s + e.amt, 0), [approved]);
+  const scaledExp   = Math.round(totalExp / 30 * scale);
+  const scaledRev   = shiftGross;
   const scaledSales = Math.round(fSales.reduce((s: number, e: any) => s + e.L * e.price, 0) / 30 * scale);
-  const scaledNet = scaledRev - scaledExp;
-  const margin    = scaledRev > 0 ? Math.round((scaledNet / scaledRev) * 100) : 0;
+  const scaledNet   = scaledRev - scaledExp;
+  const margin      = scaledRev > 0 ? Math.round((scaledNet / scaledRev) * 100) : 0;
 
   const allProds = useMemo(() => {
     const set = new Set<string>();
@@ -229,14 +228,14 @@ export default function ReportsScreen() {
   const branchBD = useMemo(() => {
     if (selBranch !== null || safeBranches.length === 0) return [];
     return safeBranches.map(b => {
-      const bS  = safeSales.filter((sale: any) => sale.branchId === b.id);
+      const bPR = safePumpReports.filter((r: any) => r.status === 'approved' && r.branchId === b.id);
+      const bR  = Math.round(bPR.reduce((s: number, r: any) => s + r.grossAmount, 0) / 30 * scale);
       const bE  = safeExpenses.filter((e: any) => e.status === 'approved' && e.branchId === b.id);
-      const bR  = Math.round(b.rev / 30 * scale);
       const bX  = Math.round(bE.reduce((sum: number, e: any) => sum + e.amt, 0) / 30 * scale);
-      const bSR = Math.round(bS.reduce((sum: number, e: any) => sum + e.L * e.price, 0) / 30 * scale);
+      const bSR = Math.round(safeSales.filter((s: any) => s.branchId === b.id).reduce((sum: number, e: any) => sum + e.L * e.price, 0) / 30 * scale);
       return { id: b.id, name: b.name, rev: bR, exp: bX, salesRev: bSR, net: bR - bX };
     });
-  }, [safeBranches, safeSales, safeExpenses, selBranch, scale]);
+  }, [safeBranches, safePumpReports, safeSales, safeExpenses, selBranch, scale]);
 
   const maintOpen   = safeMaintenance.filter((m: any) => m.st === 'Open').length;
   const maintDone   = safeMaintenance.filter((m: any) => m.st === 'Done').length;
