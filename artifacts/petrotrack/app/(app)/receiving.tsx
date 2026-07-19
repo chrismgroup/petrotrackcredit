@@ -468,12 +468,43 @@ export default function ReceivingScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
         {isAcc && pendingAccCount > 0 ? (
-          <View style={[styles.banner, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
-            <Ionicons name="pricetag" size={16} color="#185FA5" />
-            <Text style={[styles.bannerText, { color: '#185FA5' }]}>
-              {pendingAccCount}{' record'}{pendingAccCount > 1 ? 's' : ''}{' awaiting your cost price entry'}
-            </Text>
-          </View>
+          <>
+            <View style={[styles.banner, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
+              <Ionicons name="pricetag" size={16} color="#185FA5" />
+              <Text style={[styles.bannerText, { color: '#185FA5' }]}>
+                {pendingAccCount}{' record'}{pendingAccCount > 1 ? 's' : ''}{' awaiting your cost price entry'}
+              </Text>
+            </View>
+
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Pending Cost Entry</Text>
+            {sortedDeliveries.filter(d => canAccSet(d)).map(d => {
+              const pc = PROD_COLORS[d.prod] || '#185FA5';
+              return (
+                <View key={d.id} style={[styles.accPendingCard, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
+                  <View style={styles.accPendingTop}>
+                    <View style={[styles.accPendingProdBadge, { backgroundColor: pc + '22' }]}>
+                      <Ionicons name="cube-outline" size={12} color={pc} />
+                      <Text style={[styles.accPendingProd, { color: pc }]}>{d.prod}</Text>
+                    </View>
+                    <Text style={[styles.accPendingMeta, { color: '#185FA5' }]}>
+                      {d.rec.toLocaleString()}{' L  ·  WB: '}{d.wb}
+                    </Text>
+                    <Text style={[styles.accPendingDate, { color: '#185FA5' }]}>{fmtDate(d.dt)}</Text>
+                  </View>
+                  <Text style={[styles.accPendingSup, { color: colors.text }]}>
+                    {d.sup}{d.notes ? '  —  ' + d.notes : ''}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => openAccModal(d)}
+                    style={[styles.accPendingBtn, { backgroundColor: '#185FA5' }]}
+                  >
+                    <Ionicons name="pricetag-outline" size={14} color="#fff" />
+                    <Text style={styles.accPendingBtnText}>Set Cost Price & Forward to MD</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </>
         ) : null}
 
         {isMd && pendingMdCount > 0 ? (
@@ -1106,6 +1137,15 @@ const styles = StyleSheet.create({
   approveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   lockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   lockText: { fontSize: 11, fontWeight: '600' },
+  accPendingCard: { borderRadius: 12, borderWidth: 1.5, padding: 14, marginBottom: 10, gap: 6 },
+  accPendingTop: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  accPendingProdBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  accPendingProd: { fontSize: 12, fontWeight: '700' },
+  accPendingMeta: { fontSize: 12, fontWeight: '600', flex: 1 },
+  accPendingDate: { fontSize: 11, fontWeight: '500' },
+  accPendingSup: { fontSize: 13, fontWeight: '600' },
+  accPendingBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, marginTop: 2 },
+  accPendingBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   headerBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingTop: 24, maxHeight: '92%' },
   smallModal: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 14 },
