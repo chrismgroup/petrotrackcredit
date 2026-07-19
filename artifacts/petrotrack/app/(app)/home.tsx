@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { FinancialStatusCard } from '@/components/FinancialStatusCard';
 import { PriceTicker } from '@/components/PriceTicker';
 import { SalesForecastCard } from '@/components/SalesForecastCard';
 import { ScreenLayout } from '@/components/ScreenLayout';
@@ -217,6 +218,11 @@ export default function HomeScreen() {
               {pendingExp.length} expense{pendingExp.length > 1 ? 's' : ''} awaiting approval ({fmt(pendingExp.reduce((s, e) => s + e.amt, 0))})
             </Text>
           </View>
+        )}
+
+        {/* ── Financial status card ── */}
+        {isBudgetViewer && (
+          <FinancialStatusCard roleColor={roleColor} />
         )}
 
         {/* ── Budget summary card ── */}
