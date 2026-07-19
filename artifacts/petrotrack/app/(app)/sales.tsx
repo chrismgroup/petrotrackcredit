@@ -30,7 +30,8 @@ export default function SalesScreen() {
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
 
-  const inMyBranch = (bId?: string) => !branchId || !bId || bId === branchId;
+  const isGlobal   = role === 'md' || role === 'ceo';
+  const inMyBranch = (bId?: string) => isGlobal || !branchId || !bId || bId === branchId;
 
   const today      = new Date().toISOString().slice(0, 10);
   const todaySales = sales.filter(s => s.dt.startsWith(today) && inMyBranch(s.branchId));
