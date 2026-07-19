@@ -206,11 +206,11 @@ export default function ReceivingScreen() {
   const [mdSellingPrice, setMdSellingPrice] = useState('');
 
   /* ── branch + role scoping ─────────────────────────────────────────────
-     - admin / ceo / md / mktg : see all deliveries (approval chain)
-     - acc / csm                : branch-scoped (all deliveries in their branch)
+     - admin / ceo / md / mktg / acc : see all deliveries (approval chain)
+     - csm                           : branch-scoped
      - mgr                      : only their own submissions, branch-scoped
   ── */
-  const isGlobalViewer = role === 'admin' || role === 'ceo' || role === 'md' || role === 'mktg';
+  const isGlobalViewer = role === 'admin' || role === 'ceo' || role === 'md' || role === 'mktg' || role === 'acc';
   const sortedDeliveries = [...deliveries]
     .filter(d => {
       if (isGlobalViewer) return true;
