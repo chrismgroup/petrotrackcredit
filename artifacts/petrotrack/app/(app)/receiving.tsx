@@ -29,9 +29,12 @@ const PROD_COLORS: Record<string, string> = {
   PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11',
 };
 
-type TankRow   = { id: string; name: string; stock: number; cap: number; dipDt: string | null };
-type ProdInv   = { prod: string; unit: string; totalStock: number; totalCap: number; tanks: TankRow[]; lastDipDt: string | null; dipBased: boolean };
-type BranchInv = { branchId: string | null; branchName: string; prods: ProdInv[] };
+type TankRow        = { id: string; name: string; stock: number; cap: number; dipDt: string | null };
+type ProdInv        = { prod: string; unit: string; totalStock: number; totalCap: number; tanks: TankRow[]; lastDipDt: string | null; dipBased: boolean };
+type BranchInv      = { branchId: string | null; branchName: string; prods: ProdInv[] };
+type StockProdRow   = { prod: string; unit: string; delivered: number; sold: number; bookStock: number };
+type BranchStockRpt = { branchId: string | null; branchName: string; rows: StockProdRow[] };
+type MismatchRow    = { branchName: string; prod: string; dipStock: number; bookStock: number; diff: number; unit: string };
 
 type MgrFormState = {
   prod: string; sup: string; wb: string;
@@ -173,6 +176,7 @@ export default function ReceivingScreen() {
   const {
     role, userName, branchId,
     tanks, lpgTanks, dips, deliveries, prices, branches,
+    pumpDailyReports,
     deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery,
@@ -180,9 +184,11 @@ export default function ReceivingScreen() {
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
 
-  const isMgr = role === 'mgr' || role === 'csm' || role === 'admin';
-  const isAcc = role === 'acc' || role === 'admin';
-  const isMd  = role === 'md'  || role === 'ceo' || role === 'admin';
+  const isMgr        = role === 'mgr' || role === 'csm' || role === 'admin';
+  const isAcc        = role === 'acc' || role === 'admin';
+  const isMd         = role === 'md'  || role === 'ceo' || role === 'admin';
+  const canSeeStock  = role === 'acc' || role === 'md' || role === 'ceo' || role === 'csm' || role === 'admin';
+  const isMdOrCeo    = role === 'md'  || role === 'ceo' || role === 'admin';
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<MgrFormState>(blankMgrForm());
@@ -292,6 +298,56 @@ export default function ReceivingScreen() {
         branchName: branches.find(b => b.id === branchId)?.name ?? 'This Branch',
         prods: buildProdInventory(myTanks, myLpgTanks, sortedDeliveries),
       }].filter(b => b.prods.length > 0);
+
+  // ── Stock Report (book-stock = total approved deliveries − total sold via pump reports) ──
+  const ALL_PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
+  const PROD_UNIT: Record<string, string> = { PMS: 'L', AGO: 'L', DPK: 'L', LPG: 'kg', 'Lube Oil': 'L' };
+
+  function buildStockRows(scopeBranchId: string | null, scopeDeliveries: Delivery[], scopeReports: typeof pumpDailyReports): StockProdRow[] {
+    return ALL_PRODS
+      .map(prod => {
+        const delivered = scopeDeliveries
+          .filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+            (scopeBranchId === null || d.branchId === scopeBranchId || (!d.branchId && scopeBranchId === null)))
+          .reduce((s, d) => s + d.rec, 0);
+        const sold = scopeReports
+          .filter(r => r.product === prod && r.status === 'approved' &&
+            (scopeBranchId === null || r.branchId === scopeBranchId || (!r.branchId && scopeBranchId === null)))
+          .reduce((s, r) => s + r.liters, 0);
+        const bookStock = Math.max(0, delivered - sold);
+        if (delivered === 0 && sold === 0) return null;
+        return { prod, unit: PROD_UNIT[prod] ?? 'L', delivered, sold, bookStock };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }
+
+  const branchStockReports: BranchStockRpt[] = isGlobalViewer
+    ? branches
+        .map(b => ({ branchId: b.id, branchName: b.name, rows: buildStockRows(b.id, deliveries, pumpDailyReports) }))
+        .filter(b => b.rows.length > 0)
+    : [{
+        branchId: branchId ?? null,
+        branchName: branches.find(b => b.id === branchId)?.name ?? 'This Branch',
+        rows: buildStockRows(branchId ?? null, sortedDeliveries, pumpDailyReports.filter(r => !branchId || r.branchId === branchId)),
+      }].filter(b => b.rows.length > 0);
+
+  // ── Mismatch alarms (dip stock vs book stock, per product per branch) ──
+  const MISMATCH_THRESHOLD_L   = 200;  // litres — flag if diff > 200 L
+  const MISMATCH_THRESHOLD_KG  = 50;   // kg for LPG
+
+  const mismatches: MismatchRow[] = [];
+  for (const bInv of branchInventories) {
+    for (const pi of bInv.prods) {
+      const sr = branchStockReports.find(b => b.branchId === bInv.branchId);
+      const bookRow = sr?.rows.find(r => r.prod === pi.prod);
+      if (!bookRow) continue;
+      const diff = Math.abs(pi.totalStock - bookRow.bookStock);
+      const threshold = pi.unit === 'kg' ? MISMATCH_THRESHOLD_KG : MISMATCH_THRESHOLD_L;
+      if (diff > threshold) {
+        mismatches.push({ branchName: bInv.branchName, prod: pi.prod, dipStock: pi.totalStock, bookStock: bookRow.bookStock, diff, unit: pi.unit });
+      }
+    }
+  }
 
   function fmtSize(bytes?: number): string {
     if (!bytes) return '';
@@ -544,6 +600,33 @@ export default function ReceivingScreen() {
           </View>
         ) : null}
 
+        {isMdOrCeo && mismatches.length > 0 ? (
+          <View style={[styles.mismatchBanner, { backgroundColor: '#FCEBEB', borderColor: '#791F1F' }]}>
+            <View style={styles.mismatchBannerHeader}>
+              <Ionicons name="alert-circle" size={18} color="#791F1F" />
+              <Text style={[styles.mismatchBannerTitle, { color: '#791F1F' }]}>
+                {'Stock Discrepancy Alert — '}{mismatches.length}{' product'}{mismatches.length > 1 ? 's' : ''}
+              </Text>
+            </View>
+            <Text style={[styles.mismatchBannerSub, { color: '#791F1F' }]}>Dip reading differs from book stock by more than the accepted threshold</Text>
+            {mismatches.map((m, i) => {
+              const pc = PROD_COLORS[m.prod] || '#791F1F';
+              const over = m.dipStock > m.bookStock;
+              return (
+                <View key={i} style={[styles.mismatchRow, { backgroundColor: '#fff3' }]}>
+                  <View style={[styles.mismatchProdDot, { backgroundColor: pc }]} />
+                  <Text style={[styles.mismatchProdName, { color: '#791F1F' }]}>{m.prod}</Text>
+                  {isGlobalViewer ? <Text style={[styles.mismatchBranch, { color: '#791F1F' }]}>{m.branchName}</Text> : null}
+                  <Text style={[styles.mismatchDiff, { color: '#791F1F' }]}>
+                    {over ? '+' : '−'}{m.diff.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' ' + m.unit}
+                    <Text style={{ fontWeight: '500', fontSize: 10 }}>{over ? ' excess in dip' : ' shortage in dip'}</Text>
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
         {branchInventories.length > 0 ? (
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Inventory by Dip Reading</Text>
@@ -611,6 +694,55 @@ export default function ReceivingScreen() {
                             </View>
                           ) : null}
                         </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {canSeeStock && branchStockReports.length > 0 ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Report (Delivery − Sales)</Text>
+            {branchStockReports.map(bsr => (
+              <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>
+                {isGlobalViewer ? (
+                  <View style={[styles.branchHeader, { backgroundColor: roleColor + '12', borderColor: roleColor + '30' }]}>
+                    <Ionicons name="business-outline" size={13} color={roleColor} />
+                    <Text style={[styles.branchHeaderText, { color: roleColor }]}>{bsr.branchName}</Text>
+                  </View>
+                ) : null}
+                <View style={[styles.stockTable, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[styles.stockTableHeader, { borderBottomColor: colors.border }]}>
+                    <Text style={[styles.stockColProd, styles.stockHeaderText, { color: colors.textMuted }]}>Product</Text>
+                    <Text style={[styles.stockColNum,  styles.stockHeaderText, { color: colors.textMuted }]}>Delivered</Text>
+                    <Text style={[styles.stockColNum,  styles.stockHeaderText, { color: colors.textMuted }]}>Sold</Text>
+                    <Text style={[styles.stockColNum,  styles.stockHeaderText, { color: colors.textMuted }]}>Book Stock</Text>
+                    {isMdOrCeo ? <Text style={[styles.stockColFlag, styles.stockHeaderText, { color: colors.textMuted }]}>Δ</Text> : null}
+                  </View>
+                  {bsr.rows.map(row => {
+                    const pc = PROD_COLORS[row.prod] || roleColor;
+                    const mismatch = isMdOrCeo ? mismatches.find(m => m.branchName === bsr.branchName && m.prod === row.prod) : null;
+                    return (
+                      <View key={row.prod} style={[styles.stockTableRow, { borderBottomColor: colors.border }]}>
+                        <View style={styles.stockColProd}>
+                          <View style={[styles.stockProdDot, { backgroundColor: pc }]} />
+                          <Text style={[styles.stockProdText, { color: colors.text }]}>{row.prod}</Text>
+                        </View>
+                        <Text style={[styles.stockColNum, styles.stockNum, { color: colors.textMuted }]}>{row.delivered.toLocaleString()}</Text>
+                        <Text style={[styles.stockColNum, styles.stockNum, { color: '#791F1F' }]}>{row.sold.toLocaleString()}</Text>
+                        <Text style={[styles.stockColNum, styles.stockNum, { color: '#27500A', fontWeight: '800' }]}>{row.bookStock.toLocaleString()}</Text>
+                        {isMdOrCeo ? (
+                          <View style={styles.stockColFlag}>
+                            {mismatch ? (
+                              <Ionicons name="warning" size={14} color="#791F1F" />
+                            ) : (
+                              <Ionicons name="checkmark-circle" size={14} color="#27500A" />
+                            )}
+                          </View>
+                        ) : null}
                       </View>
                     );
                   })}
@@ -1179,6 +1311,25 @@ const styles = StyleSheet.create({
   invDipDate: { fontSize: 11, fontWeight: '500' },
   lowBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   lowText: { fontSize: 11, fontWeight: '700' },
+  mismatchBanner: { borderRadius: 12, borderWidth: 1.5, padding: 14, gap: 8, marginBottom: 14 },
+  mismatchBannerHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  mismatchBannerTitle: { fontSize: 14, fontWeight: '800', flex: 1 },
+  mismatchBannerSub: { fontSize: 12, fontWeight: '400', opacity: 0.85, marginBottom: 2 },
+  mismatchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  mismatchProdDot: { width: 9, height: 9, borderRadius: 5 },
+  mismatchProdName: { fontSize: 13, fontWeight: '700', minWidth: 52 },
+  mismatchBranch: { fontSize: 12, flex: 1, opacity: 0.8 },
+  mismatchDiff: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
+  stockTable: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 14 },
+  stockTableHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1 },
+  stockHeaderText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  stockTableRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  stockColProd: { flex: 2, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  stockColNum: { flex: 2, textAlign: 'right' },
+  stockColFlag: { flex: 0.6, alignItems: 'center' },
+  stockProdDot: { width: 8, height: 8, borderRadius: 4 },
+  stockProdText: { fontSize: 12, fontWeight: '600' },
+  stockNum: { fontSize: 12 },
   delivCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10, gap: 8 },
   delivHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   prodTag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
