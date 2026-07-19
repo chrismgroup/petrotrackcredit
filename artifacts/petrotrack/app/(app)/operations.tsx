@@ -72,8 +72,8 @@ export default function OperationsScreen() {
 
   const perms           = isMgr ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
-  const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : tanks.filter(inMyBranch);
-  const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : lpgTanks.filter(inMyBranch);
+  const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : isMD ? tanks : tanks.filter(inMyBranch);
+  const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : isMD ? lpgTanks : lpgTanks.filter(inMyBranch);
   const canDip          = isMgr;
   const hasPendingDip   = canDip && dips.some(d => d.by === userName && d.status === 'pending');
 
@@ -242,6 +242,12 @@ export default function OperationsScreen() {
           {/* Inventory */}
           {dipSubTab === 1 && (
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+              {visibleTanks.length === 0 && visibleLpgTanks.length === 0 && (
+                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
+                  <Ionicons name="cube-outline" size={16} color={colors.textMuted} />
+                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No tanks found. Add tanks in System Settings.</Text>
+                </View>
+              )}
               {visibleTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>}
               {visibleTanks.map(t => {
                 const stock = t.op + t.rv - t.sl;
