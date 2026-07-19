@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ROLE_COLORS, fmt, fmtDateTime, useApp, type Budget } from '@/context/AppContext';
+import { ROLE_COLORS, fmt, fmtDateTime, useApp, type Budget, type Expense } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -23,6 +23,13 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 const STEP_ICON:  Record<string, string> = { submit: 'send', forward: 'share-social', approve: 'checkmark-circle', reject: 'close-circle' };
 const STEP_COLOR: Record<string, string> = { submit: '#185FA5', forward: '#0C447C', approve: '#27500A', reject: '#791F1F' };
 const STEP_BG:    Record<string, string> = { submit: '#E6F1FB', forward: '#E8F0FB', approve: '#EAF3DE', reject: '#FCEBEB' };
+
+const OVER_COLOR  = '#791F1F';
+const OVER_BG     = '#FCEBEB';
+const SAFE_COLOR  = '#27500A';
+const SAFE_BG     = '#EAF3DE';
+const WARN_COLOR  = '#BA7517';
+const WARN_BG     = '#FAEEDA';
 
 type LineItem = { cat: string; amt: string };
 function blankItem(): LineItem { return { cat: '', amt: '' }; }
@@ -77,9 +84,54 @@ function ItemEditor({ items, setItems, roleColor }: ItemEditorProps) {
   );
 }
 
+/* ─── Budget performance helpers ─── */
+interface BranchPerf { id: string; name: string; spent: number; pct: number; isOver: boolean }
+interface BudgetPerf {
+  totalSpent: number;
+  remaining: number;
+  pct: number;
+  isOver: boolean;
+  isWarning: boolean;
+  byBranch: BranchPerf[];
+}
+
+function calcPerf(b: Budget, expenses: Expense[], branchMap: Record<string, string>): BudgetPerf {
+  const linked = expenses.filter(e => e.budgetId === b.id && e.status === 'approved');
+  const totalSpent = linked.reduce((s, e) => s + e.amt, 0);
+  const pct = b.total > 0 ? totalSpent / b.total : 0;
+  const isOver    = totalSpent > b.total;
+  const isWarning = !isOver && pct >= 0.8;
+
+  const grouped: Record<string, number> = {};
+  for (const e of linked) {
+    const key = e.branchId ?? 'unassigned';
+    grouped[key] = (grouped[key] ?? 0) + e.amt;
+  }
+  const byBranch: BranchPerf[] = Object.entries(grouped).map(([id, spent]) => ({
+    id,
+    name: branchMap[id] ?? id,
+    spent,
+    pct: b.total > 0 ? spent / b.total : 0,
+    isOver: spent > b.total,
+  })).sort((a, z) => z.spent - a.spent);
+
+  return { totalSpent, remaining: b.total - totalSpent, pct, isOver, isWarning, byBranch };
+}
+
+/* ─── Mini progress bar ─── */
+function PerfBar({ pct, isOver, isWarning }: { pct: number; isOver: boolean; isWarning: boolean }) {
+  const fill = Math.min(pct, 1);
+  const color = isOver ? OVER_COLOR : isWarning ? WARN_COLOR : SAFE_COLOR;
+  return (
+    <View style={styles.perfBarTrack}>
+      <View style={[styles.perfBarFill, { width: `${fill * 100}%` as any, backgroundColor: color }]} />
+    </View>
+  );
+}
+
 export default function BudgetScreen() {
   const {
-    role, userName, budgets,
+    role, userName, budgets, expenses, branches,
     addBudget, updateBudget, deleteBudget, submitBudgetToAcc,
     forwardBudget, approveBudget, rejectBudget,
   } = useApp();
@@ -93,19 +145,20 @@ export default function BudgetScreen() {
 
   const [tab, setTab] = useState<string>(isMgr ? 'mine' : 'pending');
 
-  /* Detail modal */
   const [selected, setSelected]     = useState<Budget | null>(null);
   const [actionType, setActionType] = useState<'forward' | 'approve' | 'reject' | null>(null);
   const [actionNote, setActionNote] = useState('');
 
-  /* Create/Edit form modal */
   const [showForm, setShowForm]     = useState(false);
   const [editTarget, setEditTarget] = useState<Budget | null>(null);
   const [formMonth, setFormMonth]   = useState(new Date().getMonth());
   const [formYear, setFormYear]     = useState(new Date().getFullYear());
   const [formItems, setFormItems]   = useState<LineItem[]>([blankItem()]);
 
-  /* Lists per role */
+  /* Branch name lookup */
+  const branchMap: Record<string, string> = {};
+  for (const br of branches) branchMap[br.id] = br.name;
+
   const pendingForAcc = budgets.filter(b => b.status === 'submitted');
   const pendingForMD  = budgets.filter(b => b.status === 'acc_forwarded');
   const myBudgets     = budgets.filter(b => b.by === role || b.byName === userName);
@@ -114,6 +167,12 @@ export default function BudgetScreen() {
     isMD  ? (tab === 'pending' ? pendingForMD  : budgets)
     : isAcc ? (tab === 'pending' ? pendingForAcc : budgets)
     : myBudgets;
+
+  /* Approved budgets summary for MD/ACC overview */
+  const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
+  const totalApproved   = approvedBudgets.reduce((s, b) => s + b.total, 0);
+  const totalSpentAll   = approvedBudgets.reduce((s, b) => s + calcPerf(b, expenses, branchMap).totalSpent, 0);
+  const showSummary     = (isMD || isAcc) && approvedBudgets.length > 0 && tab !== 'pending';
 
   function openCreate() {
     setEditTarget(null);
@@ -146,7 +205,6 @@ export default function BudgetScreen() {
     if (editTarget) {
       updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear });
     } else {
-      /* Accountant-created budgets go straight to 'submitted' so they appear in their For-Review queue */
       const status = isAcc ? 'submitted' : 'draft';
       addBudget({ month: formMonth + 1, year: formYear, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status });
     }
@@ -191,13 +249,11 @@ export default function BudgetScreen() {
     setActionType(null); setActionNote(''); setSelected(null);
   }
 
-  /* Edit rights */
   const mgrCanEdit   = (b: Budget) =>
     isMgr && (b.status === 'draft' || b.status === 'rejected') && (b.by === role || b.byName === userName);
   const accCanEdit   = (b: Budget) => isAcc && (b.status === 'submitted' || b.status === 'rejected');
   const accCanDelete = (b: Budget) => isAcc && (b.status === 'submitted' || b.status === 'rejected');
 
-  /* Tabs */
   const TABS_MGR = [{ key: 'mine', label: 'My Budgets' }];
   const TABS_ACC = [
     { key: 'pending', label: 'For Review', count: pendingForAcc.length },
@@ -208,6 +264,9 @@ export default function BudgetScreen() {
     { key: 'all',     label: 'All Budgets' },
   ];
   const tabs = isMD ? TABS_MD : isAcc ? TABS_ACC : TABS_MGR;
+
+  /* Detail-modal performance (computed once when selected changes) */
+  const selPerf = selected ? calcPerf(selected, expenses, branchMap) : null;
 
   return (
     <ScreenLayout
@@ -240,6 +299,38 @@ export default function BudgetScreen() {
       ) : null}
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* ── Approved-budgets summary banner (MD / ACC, All-tab) ── */}
+        {showSummary ? (
+          <View style={[styles.summaryCard, { borderColor: SAFE_COLOR + '44' }]}>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryHalf}>
+                <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total Approved</Text>
+                <Text style={[styles.summaryAmt, { color: SAFE_COLOR }]}>{fmt(totalApproved)}</Text>
+              </View>
+              <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.summaryHalf}>
+                <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total Spent</Text>
+                <Text style={[styles.summaryAmt, {
+                  color: totalSpentAll > totalApproved ? OVER_COLOR : totalSpentAll >= totalApproved * 0.8 ? WARN_COLOR : SAFE_COLOR,
+                }]}>{fmt(totalSpentAll)}</Text>
+              </View>
+            </View>
+            <PerfBar
+              pct={totalApproved > 0 ? totalSpentAll / totalApproved : 0}
+              isOver={totalSpentAll > totalApproved}
+              isWarning={!( totalSpentAll > totalApproved) && totalSpentAll >= totalApproved * 0.8}
+            />
+            <Text style={[styles.summaryNote, { color: colors.textMuted }]}>
+              {approvedBudgets.length} approved budget{approvedBudgets.length !== 1 ? 's' : ''}
+              {' · '}
+              {totalSpentAll > totalApproved
+                ? `over budget by ${fmt(totalSpentAll - totalApproved)}`
+                : `${fmt(totalApproved - totalSpentAll)} remaining`}
+            </Text>
+          </View>
+        ) : null}
+
         {displayList.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="wallet-outline" size={44} color={colors.textMuted} />
@@ -252,10 +343,11 @@ export default function BudgetScreen() {
         ) : null}
 
         {displayList.map(b => {
-          const st = STATUS_MAP[b.status] || STATUS_MAP.draft;
+          const st        = STATUS_MAP[b.status] || STATUS_MAP.draft;
           const canMgrEdit = mgrCanEdit(b);
           const canAccEdit = accCanEdit(b);
-          const locked = b.status === 'fully_approved';
+          const locked    = b.status === 'fully_approved';
+          const perf      = locked ? calcPerf(b, expenses, branchMap) : null;
 
           return (
             <TouchableOpacity key={b.id} onPress={() => setSelected(b)} activeOpacity={0.85}
@@ -263,9 +355,11 @@ export default function BudgetScreen() {
                 backgroundColor: colors.surface,
                 borderColor: b.status === 'submitted' ? '#0C447C'
                   : b.status === 'acc_forwarded' ? '#BA7517'
+                  : b.status === 'fully_approved' ? (perf && perf.isOver ? OVER_COLOR : SAFE_COLOR)
                   : colors.border,
-                borderWidth: b.status === 'submitted' || b.status === 'acc_forwarded' ? 1.5 : 1,
+                borderWidth: b.status === 'submitted' || b.status === 'acc_forwarded' || locked ? 1.5 : 1,
               }]}>
+
               <View style={styles.cardTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>{b.label}{' Budget'}</Text>
@@ -275,14 +369,52 @@ export default function BudgetScreen() {
                   <Text style={[styles.statusText, { color: st.color }]}>{st.label}</Text>
                 </View>
               </View>
-              <Text style={[styles.cardTotal, { color: roleColor }]}>{fmt(b.total)}</Text>
 
-              {/* Progress dots */}
-              <View style={styles.stepDots}>
-                {[0,1,2,3].map(i => (
-                  <View key={i} style={[styles.stepDot, { backgroundColor: i < b.workflow.length ? st.color : colors.border }]} />
-                ))}
-              </View>
+              {/* Approved budget: show amount + performance */}
+              {locked && perf ? (
+                <>
+                  <View style={[styles.approvedBanner, { backgroundColor: SAFE_BG, borderColor: SAFE_COLOR + '55' }]}>
+                    <Ionicons name="checkmark-circle" size={16} color={SAFE_COLOR} />
+                    <Text style={[styles.approvedLabel, { color: SAFE_COLOR }]}>Approved Budget</Text>
+                    <Text style={[styles.approvedAmt, { color: SAFE_COLOR }]}>{fmt(b.total)}</Text>
+                  </View>
+                  <View style={styles.perfRow}>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.perfRowTop}>
+                        <Text style={[styles.perfSpentLabel, { color: colors.textMuted }]}>Spent</Text>
+                        <Text style={[styles.perfSpentAmt, {
+                          color: perf.isOver ? OVER_COLOR : perf.isWarning ? WARN_COLOR : SAFE_COLOR,
+                          fontWeight: '700',
+                        }]}>{fmt(perf.totalSpent)}</Text>
+                      </View>
+                      <PerfBar pct={perf.pct} isOver={perf.isOver} isWarning={perf.isWarning} />
+                    </View>
+                    <View style={[styles.perfPill, {
+                      backgroundColor: perf.isOver ? OVER_BG : perf.isWarning ? WARN_BG : SAFE_BG,
+                    }]}>
+                      <Ionicons
+                        name={perf.isOver ? 'trending-up' : 'trending-down'}
+                        size={11}
+                        color={perf.isOver ? OVER_COLOR : perf.isWarning ? WARN_COLOR : SAFE_COLOR}
+                      />
+                      <Text style={[styles.perfPillText, {
+                        color: perf.isOver ? OVER_COLOR : perf.isWarning ? WARN_COLOR : SAFE_COLOR,
+                      }]}>
+                        {perf.isOver ? 'Over' : perf.isWarning ? 'Near limit' : 'Under'}
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.cardTotal, { color: roleColor }]}>{fmt(b.total)}</Text>
+                  <View style={styles.stepDots}>
+                    {[0,1,2,3].map(i => (
+                      <View key={i} style={[styles.stepDot, { backgroundColor: i < b.workflow.length ? st.color : colors.border }]} />
+                    ))}
+                  </View>
+                </>
+              )}
 
               {/* Mgr inline actions */}
               {canMgrEdit ? (
@@ -305,7 +437,7 @@ export default function BudgetScreen() {
                 </View>
               ) : null}
 
-              {/* Acc inline actions: edit, delete, forward */}
+              {/* Acc inline actions */}
               {canAccEdit ? (
                 <View style={styles.cardActions}>
                   <TouchableOpacity onPress={e => { e.stopPropagation?.(); openEdit(b); }}
@@ -339,12 +471,6 @@ export default function BudgetScreen() {
                   <Text style={[styles.lockText, { color: '#BA7517' }]}>Awaiting MD approval</Text>
                 </View>
               ) : null}
-              {locked ? (
-                <View style={[styles.lockRow, { borderColor: '#27500A' }]}>
-                  <Ionicons name="lock-closed" size={11} color="#27500A" />
-                  <Text style={[styles.lockText, { color: '#27500A' }]}>Approved by MD — record locked</Text>
-                </View>
-              ) : null}
             </TouchableOpacity>
           );
         })}
@@ -354,21 +480,115 @@ export default function BudgetScreen() {
       {/* ═══ DETAIL MODAL ═══ */}
       <Modal visible={!!selected} animationType="slide"
         onRequestClose={() => { setSelected(null); setActionType(null); setActionNote(''); }}>
-        {selected ? (
-          <View style={{ flex: 1, backgroundColor: colors.background }}>
-            <View style={[styles.modalHeader, { backgroundColor: roleColor, paddingTop: 52 }]}>
-              <TouchableOpacity onPress={() => { setSelected(null); setActionType(null); setActionNote(''); }} style={styles.headerBack}>
-                <Ionicons name="arrow-back" size={22} color="#fff" />
-              </TouchableOpacity>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>{selected.label}{' Budget'}</Text>
-                <Text style={styles.modalSub}>{fmt(selected.total)}{' · '}{STATUS_MAP[selected.status]?.label}</Text>
+        {selected ? (() => {
+          const isApproved = selected.status === 'fully_approved';
+          const headerBg   = isApproved ? SAFE_COLOR : roleColor;
+          return (
+            <View style={{ flex: 1, backgroundColor: colors.background }}>
+              <View style={[styles.modalHeader, { backgroundColor: headerBg, paddingTop: 52 }]}>
+                <TouchableOpacity onPress={() => { setSelected(null); setActionType(null); setActionNote(''); }} style={styles.headerBack}>
+                  <Ionicons name="arrow-back" size={22} color="#fff" />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalTitle}>{selected.label}{' Budget'}</Text>
+                  <Text style={styles.modalSub}>{fmt(selected.total)}{' · '}{STATUS_MAP[selected.status]?.label}</Text>
+                </View>
               </View>
-            </View>
 
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+              <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
-                <Text style={[styles.section, { color: colors.text }]}>Budget Items</Text>
+                {/* ── Approved: performance dashboard ── */}
+                {isApproved && selPerf ? (
+                  <>
+                    {/* Approved amount banner */}
+                    <View style={[styles.approvedDetailBanner, { borderColor: SAFE_COLOR + '44' }]}>
+                      <View style={styles.approvedDetailTop}>
+                        <Ionicons name="checkmark-circle" size={22} color={SAFE_COLOR} />
+                        <Text style={[styles.approvedDetailTitle, { color: SAFE_COLOR }]}>Total Amount Approved</Text>
+                      </View>
+                      <Text style={[styles.approvedDetailAmt, { color: SAFE_COLOR }]}>{fmt(selected.total)}</Text>
+                    </View>
+
+                    {/* Overall performance */}
+                    <View style={[styles.perfCard, {
+                      backgroundColor: selPerf.isOver ? OVER_BG : selPerf.isWarning ? WARN_BG : SAFE_BG,
+                      borderColor: (selPerf.isOver ? OVER_COLOR : selPerf.isWarning ? WARN_COLOR : SAFE_COLOR) + '55',
+                    }]}>
+                      <View style={styles.perfCardHeader}>
+                        <Ionicons
+                          name={selPerf.isOver ? 'alert-circle' : selPerf.isWarning ? 'warning' : 'checkmark-circle'}
+                          size={18}
+                          color={selPerf.isOver ? OVER_COLOR : selPerf.isWarning ? WARN_COLOR : SAFE_COLOR}
+                        />
+                        <Text style={[styles.perfCardTitle, {
+                          color: selPerf.isOver ? OVER_COLOR : selPerf.isWarning ? WARN_COLOR : SAFE_COLOR,
+                        }]}>
+                          {selPerf.isOver
+                            ? `Over Budget by ${fmt(Math.abs(selPerf.remaining))}`
+                            : selPerf.isWarning
+                            ? `Near Limit — ${fmt(selPerf.remaining)} remaining`
+                            : `Under Budget — ${fmt(selPerf.remaining)} remaining`}
+                        </Text>
+                      </View>
+                      <View style={styles.perfMetricRow}>
+                        <View style={styles.perfMetric}>
+                          <Text style={[styles.perfMetricLabel, { color: colors.textMuted }]}>Budgeted</Text>
+                          <Text style={[styles.perfMetricAmt, { color: colors.text }]}>{fmt(selected.total)}</Text>
+                        </View>
+                        <View style={styles.perfMetric}>
+                          <Text style={[styles.perfMetricLabel, { color: colors.textMuted }]}>Spent</Text>
+                          <Text style={[styles.perfMetricAmt, {
+                            color: selPerf.isOver ? OVER_COLOR : selPerf.isWarning ? WARN_COLOR : SAFE_COLOR,
+                          }]}>{fmt(selPerf.totalSpent)}</Text>
+                        </View>
+                        <View style={styles.perfMetric}>
+                          <Text style={[styles.perfMetricLabel, { color: colors.textMuted }]}>Utilisation</Text>
+                          <Text style={[styles.perfMetricAmt, {
+                            color: selPerf.isOver ? OVER_COLOR : selPerf.isWarning ? WARN_COLOR : SAFE_COLOR,
+                          }]}>{Math.round(selPerf.pct * 100)}%</Text>
+                        </View>
+                      </View>
+                      <PerfBar pct={selPerf.pct} isOver={selPerf.isOver} isWarning={selPerf.isWarning} />
+                    </View>
+
+                    {/* Branch breakdown */}
+                    {selPerf.byBranch.length > 0 ? (
+                      <>
+                        <Text style={[styles.section, { color: colors.text }]}>Spending by Branch</Text>
+                        {selPerf.byBranch.map(br => {
+                          const brColor = br.isOver ? OVER_COLOR : br.pct >= 0.8 ? WARN_COLOR : SAFE_COLOR;
+                          const brBg    = br.isOver ? OVER_BG    : br.pct >= 0.8 ? WARN_BG    : SAFE_BG;
+                          return (
+                            <View key={br.id} style={[styles.branchRow, { backgroundColor: colors.surface, borderColor: brColor + '44' }]}>
+                              <View style={styles.branchRowTop}>
+                                <View style={[styles.branchDot, { backgroundColor: brColor }]} />
+                                <Text style={[styles.branchName, { color: colors.text }]}>{br.name}</Text>
+                                <View style={[styles.branchPill, { backgroundColor: brBg }]}>
+                                  <Text style={[styles.branchPillText, { color: brColor }]}>
+                                    {br.isOver ? '⬆ Over' : br.pct >= 0.8 ? '⚠ Near' : '✓ OK'}
+                                  </Text>
+                                </View>
+                              </View>
+                              <View style={styles.branchAmtRow}>
+                                <Text style={[styles.branchAmt, { color: brColor }]}>{fmt(br.spent)}</Text>
+                                <Text style={[styles.branchPct, { color: colors.textMuted }]}>{Math.round(br.pct * 100)}% of budget</Text>
+                              </View>
+                              <PerfBar pct={br.pct} isOver={br.isOver} isWarning={br.pct >= 0.8 && !br.isOver} />
+                            </View>
+                          );
+                        })}
+                      </>
+                    ) : (
+                      <View style={[styles.noExpBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Ionicons name="receipt-outline" size={22} color={colors.textMuted} />
+                        <Text style={[styles.noExpText, { color: colors.textMuted }]}>No approved expenses linked to this budget yet.</Text>
+                      </View>
+                    )}
+                  </>
+                ) : null}
+
+                {/* Budget line items */}
+                <Text style={[styles.section, { color: colors.text, marginTop: isApproved ? 20 : 0 }]}>Budget Items</Text>
                 {selected.items.map((item, i) => (
                   <View key={i} style={[styles.itemRow, { borderBottomColor: colors.border }]}>
                     <Text style={[styles.itemCat, { color: colors.text }]}>{item.cat}</Text>
@@ -380,6 +600,7 @@ export default function BudgetScreen() {
                   <Text style={[styles.totalAmt, { color: roleColor }]}>{fmt(selected.total)}</Text>
                 </View>
 
+                {/* Workflow */}
                 {selected.workflow.length > 0 ? (
                   <>
                     <Text style={[styles.section, { color: colors.text, marginTop: 20 }]}>Workflow</Text>
@@ -481,9 +702,12 @@ export default function BudgetScreen() {
                     </View>
                   </View>
                 ) : null}
+
+                <View style={{ height: 32 }} />
               </ScrollView>
-          </View>
-        ) : null}
+            </View>
+          );
+        })() : null}
       </Modal>
 
       {/* ═══ CREATE / EDIT MODAL ═══ */}
@@ -545,6 +769,17 @@ const styles = StyleSheet.create({
   badge:             { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8 },
   badgeText:         { color: '#fff', fontSize: 11, fontWeight: '700' },
   headerBtn:         { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+
+  /* Summary banner */
+  summaryCard:       { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 16, backgroundColor: '#F3FAF0', gap: 8 },
+  summaryRow:        { flexDirection: 'row', alignItems: 'center' },
+  summaryHalf:       { flex: 1, alignItems: 'center', gap: 2 },
+  summaryDivider:    { width: 1, height: 40, marginHorizontal: 8 },
+  summaryLabel:      { fontSize: 11, fontWeight: '600' },
+  summaryAmt:        { fontSize: 20, fontWeight: '800' },
+  summaryNote:       { fontSize: 11, textAlign: 'center' },
+
+  /* Card */
   card:              { padding: 16, borderRadius: 14, borderWidth: 1, marginBottom: 12, gap: 8 },
   cardTop:           { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   cardTitle:         { fontSize: 15, fontWeight: '700' },
@@ -554,6 +789,22 @@ const styles = StyleSheet.create({
   cardTotal:         { fontSize: 22, fontWeight: '700' },
   stepDots:          { flexDirection: 'row', gap: 4 },
   stepDot:           { width: 22, height: 6, borderRadius: 3 },
+
+  /* Approved card elements */
+  approvedBanner:    { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1 },
+  approvedLabel:     { fontSize: 12, fontWeight: '700', flex: 1 },
+  approvedAmt:       { fontSize: 16, fontWeight: '800' },
+  perfRow:           { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  perfRowTop:        { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  perfSpentLabel:    { fontSize: 11 },
+  perfSpentAmt:      { fontSize: 13 },
+  perfPill:          { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  perfPillText:      { fontSize: 11, fontWeight: '700' },
+
+  /* Progress bar */
+  perfBarTrack:      { height: 7, borderRadius: 4, backgroundColor: '#E0E0E0', overflow: 'hidden' },
+  perfBarFill:       { height: 7, borderRadius: 4 },
+
   cardActions:       { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   cardActionBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1.5 },
   cardActionText:    { fontSize: 12, fontWeight: '600' },
@@ -563,10 +814,42 @@ const styles = StyleSheet.create({
   lockText:          { fontSize: 11, fontWeight: '600' },
   empty:             { alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 12 },
   emptyText:         { fontSize: 14, textAlign: 'center', maxWidth: 260 },
+
+  /* Modal */
   modalHeader:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
   headerBack:        { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   modalTitle:        { color: '#fff', fontSize: 18, fontWeight: '700', flex: 1 },
   modalSub:          { color: 'rgba(255,255,255,0.65)', fontSize: 12 },
+
+  /* Approved detail banner */
+  approvedDetailBanner: { backgroundColor: SAFE_BG, borderWidth: 1.5, borderColor: SAFE_COLOR + '55', borderRadius: 14, padding: 16, gap: 6, marginBottom: 12 },
+  approvedDetailTop:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  approvedDetailTitle:  { fontSize: 13, fontWeight: '700', flex: 1, color: SAFE_COLOR },
+  approvedDetailAmt:    { fontSize: 30, fontWeight: '800', color: SAFE_COLOR },
+
+  /* Performance card */
+  perfCard:          { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10, marginBottom: 16 },
+  perfCardHeader:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  perfCardTitle:     { fontSize: 13, fontWeight: '700', flex: 1 },
+  perfMetricRow:     { flexDirection: 'row', gap: 4 },
+  perfMetric:        { flex: 1, alignItems: 'center', gap: 2 },
+  perfMetricLabel:   { fontSize: 10, fontWeight: '600' },
+  perfMetricAmt:     { fontSize: 14, fontWeight: '800' },
+
+  /* Branch breakdown */
+  branchRow:         { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 8, gap: 6 },
+  branchRowTop:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  branchDot:         { width: 8, height: 8, borderRadius: 4 },
+  branchName:        { fontSize: 13, fontWeight: '700', flex: 1 },
+  branchPill:        { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
+  branchPillText:    { fontSize: 10, fontWeight: '700' },
+  branchAmtRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  branchAmt:         { fontSize: 16, fontWeight: '800' },
+  branchPct:         { fontSize: 11 },
+  noExpBox:          { borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', padding: 20, alignItems: 'center', gap: 8, marginBottom: 12 },
+  noExpText:         { fontSize: 13, textAlign: 'center', maxWidth: 240 },
+
+  /* Workflow, items, actions */
   section:           { fontSize: 15, fontWeight: '700', marginBottom: 10 },
   itemRow:           { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   itemCat:           { fontSize: 14 },
@@ -593,6 +876,8 @@ const styles = StyleSheet.create({
   noteCard:          { borderRadius: 14, borderWidth: 1, padding: 16, gap: 10, marginTop: 12 },
   noteLabel:         { fontSize: 14, fontWeight: '600' },
   noteInput:         { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14, minHeight: 80, textAlignVertical: 'top' },
+
+  /* Form */
   fieldLabel:        { fontSize: 13, fontWeight: '600', marginBottom: 6 },
   chipRow:           { marginBottom: 6 },
   chip:              { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, marginRight: 6 },
