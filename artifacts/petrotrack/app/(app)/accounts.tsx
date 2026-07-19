@@ -7,12 +7,14 @@ import { ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 export default function AccountsScreen() {
-  const { prices, tanks, sales, branches, expenses, companyInfo } = useApp();
-  const { role } = useApp();
+  const { role, prices, tanks, sales, branches, expenses, companyInfo, pumpDailyReports } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
 
-  const totalRevenue  = branches.reduce((s, b) => s + b.rev, 0);
+  const branchRev = (branchId: string) =>
+    pumpDailyReports.filter(r => r.status === 'approved' && r.branchId === branchId)
+      .reduce((s, r) => s + r.grossAmount, 0);
+  const totalRevenue  = branches.reduce((s, b) => s + branchRev(b.id), 0);
   const totalExpenses = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + e.amt, 0);
   const grossProfit   = totalRevenue - totalExpenses;
 
@@ -142,7 +144,7 @@ export default function AccountsScreen() {
                 {b.st}
               </Text>
             </View>
-            <Text style={[styles.branchRev, { color: roleColor }]}>{fmt(b.rev)}</Text>
+            <Text style={[styles.branchRev, { color: roleColor }]}>{fmt(branchRev(b.id))}</Text>
           </View>
         ))}
 
