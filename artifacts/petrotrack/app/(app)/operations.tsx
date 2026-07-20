@@ -96,7 +96,10 @@ export default function OperationsScreen() {
 
   // ── Sales metrics (from approved shift reports via SalesEntry) ───────────
   const today      = new Date().toISOString().slice(0, 10);
-  const todaySales = sales.filter(s => s.dt.startsWith(today));
+  const todaySales = sales.filter(s =>
+    s.dt.startsWith(today) &&
+    (!isMgr || !branchId || !s.branchId || s.branchId === branchId)
+  );
   const totalL     = todaySales.reduce((s, e) => s + e.L, 0);
   const totalAmt   = todaySales.reduce((s, e) => s + e.L * e.price, 0);
   const totalPOS   = todaySales.reduce((s, e) => s + (e.pos || 0), 0);
