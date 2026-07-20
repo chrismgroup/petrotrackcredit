@@ -131,7 +131,7 @@ function PerfBar({ pct, isOver, isWarning }: { pct: number; isOver: boolean; isW
 
 export default function BudgetScreen() {
   const {
-    role, userName, budgets, expenses, branches,
+    role, userName, branchId, budgets, expenses, branches,
     addBudget, updateBudget, deleteBudget, submitBudgetToAcc,
     forwardBudget, approveBudget, rejectBudget,
   } = useApp();
@@ -161,7 +161,10 @@ export default function BudgetScreen() {
 
   const pendingForAcc = budgets.filter(b => b.status === 'submitted');
   const pendingForMD  = budgets.filter(b => b.status === 'acc_forwarded');
-  const myBudgets     = budgets.filter(b => b.by === role || b.byName === userName);
+  // mgr: only budgets they personally submitted (not all mgr-role budgets across branches)
+  const myBudgets     = budgets.filter(b =>
+    role === 'mgr' ? b.byName === userName : (b.by === role || b.byName === userName)
+  );
 
   const displayList: Budget[] =
     isMD  ? (tab === 'pending' ? pendingForMD  : budgets)
@@ -266,7 +269,12 @@ export default function BudgetScreen() {
   const tabs = isMD ? TABS_MD : isAcc ? TABS_ACC : TABS_MGR;
 
   /* Detail-modal performance (computed once when selected changes) */
-  const selPerf = selected ? calcPerf(selected, expenses, branchMap) : null;
+  // mgr only sees their own branch's expenses
+  const visibleExpenses = role === 'mgr' && branchId
+    ? expenses.filter(e => !e.branchId || e.branchId === branchId)
+    : expenses;
+
+  const selPerf = selected ? calcPerf(selected, visibleExpenses, branchMap) : null;
 
   return (
     <ScreenLayout
