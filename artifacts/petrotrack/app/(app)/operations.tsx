@@ -217,22 +217,35 @@ export default function OperationsScreen() {
                   <Text style={[styles.noBannerText, { color: colors.textMuted }]}>LPG tank access not granted for this branch</Text>
                 </View>
               )}
-              {visibleLpgTanks.map(l => (
-                <View key={l.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Text style={[styles.dipCardTitle, { color: colors.text }]}>{l.name}</Text>
-                  <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Cap: {l.cap.toLocaleString()} kg</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                    placeholder="Fill percentage (0-100)"
-                    placeholderTextColor={colors.textSubtle}
-                    keyboardType="numeric"
-                    value={lpgReadings[l.id] || ''}
-                    onChangeText={v => setLpgReadings(r => ({ ...r, [l.id]: v }))}
-                    editable={canDip}
-                  />
-                  {lpgReadings[l.id] ? <Text style={[styles.calcResult, { color: roleColor }]}>≈ {Math.round((parseFloat(lpgReadings[l.id] || '0') / 100) * l.cap).toLocaleString()} kg</Text> : null}
-                </View>
-              ))}
+              {visibleLpgTanks.map(l => {
+                const enteredKg = parseFloat(lpgReadings[l.id] || '');
+                const pct = !isNaN(enteredKg) && l.cap > 0 ? Math.round((enteredKg / l.cap) * 100) : null;
+                return (
+                  <View key={l.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.dipCardHeader}>
+                      <Text style={[styles.dipCardTitle, { color: colors.text }]}>{l.name}</Text>
+                      <View style={[styles.prodBadge, { backgroundColor: (colors.teal ?? '#1a6e3c') + '22' }]}>
+                        <Text style={[styles.prodBadgeText, { color: colors.teal ?? '#1a6e3c' }]}>LPG</Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Capacity: {l.cap.toLocaleString()} kg</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                      placeholder={`Current level in kg (max ${l.cap.toLocaleString()} kg)`}
+                      placeholderTextColor={colors.textSubtle}
+                      keyboardType="numeric"
+                      value={lpgReadings[l.id] || ''}
+                      onChangeText={v => setLpgReadings(r => ({ ...r, [l.id]: v }))}
+                      editable={canDip}
+                    />
+                    {pct !== null && (
+                      <Text style={[styles.calcResult, { color: pct < 20 ? '#A32D2D' : pct < 50 ? '#BA7517' : colors.teal ?? '#1a6e3c' }]}>
+                        {enteredKg.toLocaleString()} kg — {pct}% full
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
 
               <TextInput
                 style={[styles.obsInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
