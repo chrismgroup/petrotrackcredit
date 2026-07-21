@@ -422,7 +422,10 @@ interface AppContextType {
   companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[];
   pumpDailyReports: PumpDailyReport[];
   pumpInitialMeters: Record<string, number>;
+  pumpLockedMeters: Record<string, number>;
   setPumpInitialMeter: (pumpId: string, meter: number) => void;
+  lockPumpMeter: (pumpId: string, meter: number) => void;
+  unlockPumpMeter: (pumpId: string) => void;
   submitPumpReport: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => void;
   mgrForwardPumpReport: (id: number, mgrNote: string) => void;
   accApprovePumpReport: (report: PumpDailyReport, accNote: string) => void;
@@ -597,6 +600,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [callLog, setCallLog] = useState<CallRecord[]>([]);
   const [pumpDailyReports, setPumpDailyReports] = useState<PumpDailyReport[]>([]);
   const [pumpInitialMeters, setPumpInitialMeters] = useState<Record<string, number>>({});
+  const [pumpLockedMeters, setPumpLockedMeters] = useState<Record<string, number>>({});
   const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
@@ -609,7 +613,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
-      'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'financialEntry',
+      'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -764,6 +768,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.meetingMinutes && !p.has('meetingMinutes'))                   setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
       if (Array.isArray(s.pumpDailyReports) && !p.has('pumpDailyReports')) setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
+      if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
       if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(s.financialEntry as FinancialEntry);
       // Lift the startup write-gate: server state is now applied, safe to accept user writes.
       initialSyncDoneRef.current = true;
@@ -826,6 +831,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpDailyReports', pumpDailyReports); },  [pumpDailyReports, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
+  useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
 
   /* ── Version-check poll: 3 s lightweight ping → full sync only when data changed ── */
@@ -1672,6 +1678,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Pump initial meter set', user: userName, detail: `Pump ${pumpId}: ${meter.toLocaleString()} L`, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const lockPumpMeter = useCallback((pumpId: string, meter: number) => {
+    setPumpLockedMeters(m => ({ ...m, [pumpId]: meter }));
+    setAudit(a => [{ id: genId(), action: 'Pump opening meter locked', user: userName, detail: `Pump ${pumpId}: ${meter.toLocaleString()} L (opening meter pinned by admin)`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const unlockPumpMeter = useCallback((pumpId: string) => {
+    setPumpLockedMeters(m => { const n = { ...m }; delete n[pumpId]; return n; });
+    setAudit(a => [{ id: genId(), action: 'Pump opening meter unlocked', user: userName, detail: `Pump ${pumpId}: opening meter released to auto-carry`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const submitPumpReport = useCallback((r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
     setPumpDailyReports(rs => [...rs, { ...r, id: genId(), status: 'pending_manager', submittedAt: nowTs() }]);
     setAudit(a => [{ id: genId(), action: 'Pump report submitted', user: userName, detail: `${r.pumpName} · ${r.liters.toLocaleString()}L · variance: ₦${r.variance.toLocaleString()}`, ts: nowTs() }, ...a]);
@@ -1915,7 +1931,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence,
-      pumpDailyReports, pumpInitialMeters, setPumpInitialMeter,
+      pumpDailyReports, pumpInitialMeters, pumpLockedMeters, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
