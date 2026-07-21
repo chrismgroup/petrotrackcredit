@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/vessel-marketplace/"
+title = "Nigerian Vessel Marketplace"
+version = "1.0.0"
+id = "artifacts/vessel-marketplace"
+router = "path"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/vessel-marketplace/" ]
+localPort = 26090
+
+[services.development]
+run = "pnpm --filter @workspace/vessel-marketplace run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vessel-marketplace", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/vessel-marketplace", "run", "serve" ]
+
+[services.env]
+PORT = "26090"
+BASE_PATH = "/vessel-marketplace/"
