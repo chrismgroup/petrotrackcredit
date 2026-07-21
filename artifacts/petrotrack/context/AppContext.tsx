@@ -206,8 +206,8 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 export const ROLE_COLORS: Record<string, string> = {
-  admin: '#6B0D17', ceo: '#C0152A', md: '#8B0000', mktg: '#B8860B',
-  csm: '#A0041E', acc: '#8B1A00', mgr: '#C0152A', att: '#5C1A23',
+  admin: '#0C1E14', ceo: '#0D5C2E', md: '#4C1D95', mktg: '#B45309',
+  csm: '#0D6E56', acc: '#1E3A8A', mgr: '#1D5FA5', att: '#374151',
 };
 
 export const TASK_CAN_ASSIGN: Record<string, Role[]> = {

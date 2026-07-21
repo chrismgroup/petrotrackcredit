@@ -1,62 +1,60 @@
 const colors = {
   light: {
     // ── Brand ────────────────────────────────────────────────
-    primary:            '#C0152A',   // deep company red
-    primaryDark:        '#A01020',   // pressed / active
+    primary:            '#0D5C2E',   // deep forest green
+    primaryDark:        '#0A4824',   // pressed / active
     primaryForeground:  '#ffffff',
 
     // ── Accent spectrum ───────────────────────────────────────
-    gold:               '#C8960C',   // rich gold accent
-    goldLight:          '#F5C842',   // lighter gold highlight
-    purple:             '#7B1FA2',
-    blue:               '#1565C0',
-    amber:              '#C8960C',
-    coral:              '#E53935',
-    red:                '#B71C1C',
-    teal:               '#00695C',
-    brown:              '#6D4C41',
+    purple:             '#4C1D95',
+    blue:               '#1D4ED8',
+    amber:              '#D97706',
+    coral:              '#DC4E22',
+    red:                '#B91C1C',
+    teal:               '#0D6E56',
+    brown:              '#7C3F0E',
 
     // ── Surfaces ─────────────────────────────────────────────
-    background:         '#FDF5F5',   // warm off-white with red cast
-    surface:            '#FFFFFF',   // pure white cards
+    background:         '#EFF4F1',   // warm off-white with green cast
+    surface:            '#FFFFFF',   // card / elevated surface
     card:               '#FFFFFF',
 
     // ── Typography ───────────────────────────────────────────
-    text:               '#1A0A0A',   // near-black with warm tint
-    textMuted:          '#6B4A4A',   // muted warm grey
-    textSubtle:         '#A08080',
+    text:               '#0F172A',
+    textMuted:          '#64748B',
+    textSubtle:         '#94A3B8',
 
     // ── Borders / inputs ─────────────────────────────────────
-    border:             '#EDD8D8',
-    inputBorder:        '#DFC0C0',
+    border:             '#DDE5E0',
+    inputBorder:        '#C8D5CD',
 
     // ── Navigation tints ─────────────────────────────────────
-    tint:               '#C0152A',
-    tabIconDefault:     '#A08080',
-    tabIconSelected:    '#C0152A',
+    tint:               '#0D5C2E',
+    tabIconDefault:     '#94A3B8',
+    tabIconSelected:    '#0D5C2E',
 
     // ── Semantic: success ─────────────────────────────────────
-    success:            '#1B5E20',
-    successBg:          '#E8F5E9',
-    successBorder:      '#A5D6A7',
+    success:            '#166534',
+    successBg:          '#DCFCE7',
+    successBorder:      '#86EFAC',
 
     // ── Semantic: warning ─────────────────────────────────────
-    warning:            '#E65100',
-    warningBg:          '#FFF3E0',
-    warningBorder:      '#FFCC80',
+    warning:            '#92400E',
+    warningBg:          '#FEF3C7',
+    warningBorder:      '#FCD34D',
 
     // ── Semantic: error ───────────────────────────────────────
-    error:              '#B71C1C',
-    errorBg:            '#FFEBEE',
-    errorBorder:        '#EF9A9A',
+    error:              '#991B1B',
+    errorBg:            '#FEE2E2',
+    errorBorder:        '#FCA5A5',
 
     // ── Semantic: info ────────────────────────────────────────
-    info:               '#0D47A1',
-    infoBg:             '#E3F2FD',
+    info:               '#1D4ED8',
+    infoBg:             '#EFF6FF',
 
     // ── Chat ─────────────────────────────────────────────────
-    messageMine:        '#C0152A',
-    messageOther:       '#FDF5F5',
+    messageMine:        '#0D5C2E',
+    messageOther:       '#EFF4F1',
   },
   radius: 14,
 };
