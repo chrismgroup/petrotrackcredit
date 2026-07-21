@@ -440,7 +440,7 @@ interface AppContextType {
   rejectPriceProposal: (id: number, note?: string) => void;
   addTank: (t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => void;
   addLpgTank: (t: Omit<LPGTank, 'id' | 'op' | 'rv' | 'sl'>) => void;
-  addPump: (p: Omit<Pump, 'id'>) => void;
+  addPump: (p: Omit<Pump, 'id'>) => Pump;
   updateTank: (id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip' | 'branchId'>>) => void;
   updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap' | 'branchId'>>) => void;
   updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId'>>) => void;
@@ -1050,10 +1050,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'LPG tank added', user: userName, detail: `${t.name} (${t.cap.toLocaleString()} kg)`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const addPump = useCallback((p: Omit<Pump, 'id'>) => {
+  const addPump = useCallback((p: Omit<Pump, 'id'>): Pump => {
     const id = `P${Date.now()}`;
-    setPumps(ps => [...ps, { ...p, id }]);
+    const pump: Pump = { ...p, id };
+    setPumps(ps => [...ps, pump]);
     setAudit(a => [{ id: genId(), action: 'Pump added', user: userName, detail: `${p.name} (${p.prod})`, ts: nowTs() }, ...a]);
+    return pump;
   }, [userName]);
 
   const updateTank = useCallback((id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip' | 'branchId'>>) => {
