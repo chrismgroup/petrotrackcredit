@@ -14,7 +14,7 @@ import {
   Period, ReportType,
   buildPdf, getPerms, matchesProd, nfmt, periodRange,
   priBg, priColor, stColor,
-} from './_helpers';
+} from '@/lib/report-helpers';
 
 /* ═══════════════════════════════════════════════════════════
    EXPORT — iOS-native share sheet (no print dialog)
