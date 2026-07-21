@@ -53,7 +53,27 @@ export default function HomeScreen() {
     .reduce((s, r) => s + r.grossAmount, 0);
   const activeBranches = branches.filter(b => b.st === 'Active').length;
   const myTanks = isGlobal ? tanks : tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
-  const totalStockL = myTanks.reduce((s, t) => s + (t.op + t.rv - t.sl), 0);
+  const myLpgTanks = isGlobal ? lpgTanks : lpgTanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
+
+  // Per-product stock totals
+  const PROD_ORDER = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
+  const PROD_COLORS: Record<string, string> = {
+    PMS: colors.primary, AGO: colors.blue, DPK: '#BA7517',
+    LPG: colors.teal, 'Lube Oil': colors.purple,
+  };
+  const prodStockMap: Record<string, { total: number; count: number }> = {};
+  for (const t of myTanks) {
+    const stock = Math.max(0, t.op + t.rv - t.sl);
+    prodStockMap[t.prod] = prodStockMap[t.prod]
+      ? { total: prodStockMap[t.prod].total + stock, count: prodStockMap[t.prod].count + 1 }
+      : { total: stock, count: 1 };
+  }
+  const lpgStock = myLpgTanks.reduce((s, t) => s + Math.max(0, t.op + t.rv - t.sl), 0);
+  if (myLpgTanks.length > 0) prodStockMap['LPG'] = { total: lpgStock, count: myLpgTanks.length };
+  const fuelRows = [
+    ...PROD_ORDER.filter(p => prodStockMap[p]),
+    ...Object.keys(prodStockMap).filter(p => !(PROD_ORDER as readonly string[]).includes(p)),
+  ].map(p => ({ prod: p, ...prodStockMap[p] }));
   const unread = unreadCount();
 
   function expDaysLeft(exp: string) {
@@ -127,7 +147,6 @@ export default function HomeScreen() {
 
   const metrics = [
     { label: 'Monthly Revenue', value: fmt(totalRev), icon: 'trending-up', col: colors.primary, sub: 'All branches' },
-    { label: 'Fuel Stock', value: totalStockL.toLocaleString() + ' L', icon: 'water', col: colors.blue, sub: `${myTanks.length} tanks` },
     { label: 'Open Maintenance', value: String(openMaint.length), icon: 'build', col: openMaint.length > 0 ? colors.warning : colors.success, sub: openMaint.length > 0 ? `${openMaint.filter(m => m.pri === 'Urgent').length} urgent` : 'All clear' },
     { label: 'Unread Messages', value: String(unread), icon: 'chatbubbles', col: unread > 0 ? colors.coral : colors.primary, sub: unread > 0 ? 'Tap to view' : 'All read' },
   ];
@@ -176,6 +195,33 @@ export default function HomeScreen() {
               <Text style={[styles.metricSub, { color: m.col }]}>{m.sub}</Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 12 }]}>
+          <View style={styles.fuelStockHeader}>
+            <View style={[styles.metricIcon, { backgroundColor: colors.blue + '18', marginBottom: 0 }]}>
+              <Ionicons name="water" size={18} color={colors.blue} />
+            </View>
+            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0, flex: 1 }]}>Fuel Stock</Text>
+            <Text style={[styles.metricSub, { color: colors.textMuted }]}>{myTanks.length + myLpgTanks.length} tanks</Text>
+          </View>
+          {fuelRows.length === 0 ? (
+            <Text style={[styles.fuelStockEmpty, { color: colors.textMuted }]}>No tanks configured yet</Text>
+          ) : (
+            <View style={styles.fuelStockGrid}>
+              {fuelRows.map(row => {
+                const col = PROD_COLORS[row.prod] || colors.primary;
+                return (
+                  <View key={row.prod} style={[styles.fuelStockItem, { backgroundColor: col + '12', borderColor: col + '33' }]}>
+                    <View style={[styles.fuelStockDot, { backgroundColor: col }]} />
+                    <Text style={[styles.fuelStockProd, { color: colors.text }]}>{row.prod}</Text>
+                    <Text style={[styles.fuelStockVal, { color: col }]}>{row.total.toLocaleString()} L</Text>
+                    <Text style={[styles.fuelStockCount, { color: colors.textMuted }]}>{row.count} {row.count === 1 ? 'tank' : 'tanks'}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {lastDip && (
@@ -377,6 +423,14 @@ const styles = StyleSheet.create({
   dipPct: { fontSize: 10 },
   alertCard: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
   alertText: { flex: 1, fontSize: 13, fontWeight: '500' },
+  fuelStockHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  fuelStockEmpty: { fontSize: 12, fontStyle: 'italic', paddingTop: 4 },
+  fuelStockGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fuelStockItem: { width: '47.5%', padding: 10, borderRadius: 10, borderWidth: 1, gap: 3 },
+  fuelStockDot: { width: 8, height: 8, borderRadius: 4, marginBottom: 2 },
+  fuelStockProd: { fontSize: 13, fontWeight: '700' },
+  fuelStockVal: { fontSize: 17, fontWeight: '800' },
+  fuelStockCount: { fontSize: 10 },
   adminBanner: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 14, marginBottom: 10 },
   setupPrompt: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 12 },
   adminBannerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
