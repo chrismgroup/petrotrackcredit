@@ -4,7 +4,6 @@ import { eq, sql } from "drizzle-orm";
 import { db, appStateTable, staffUsersTable } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { expireHires } from "./lib/expireHires";
 
 const rawPort = process.env["PORT"];
 
@@ -183,8 +182,6 @@ async function seedAndMigrateUsers(): Promise<void> {
   }
 }
 
-const EXPIRE_HIRES_INTERVAL_MS = 5 * 60 * 1000;
-
 seedAndMigrateUsers().then(() => {
   app.listen(port, (err) => {
     if (err) {
@@ -192,16 +189,5 @@ seedAndMigrateUsers().then(() => {
       process.exit(1);
     }
     logger.info({ port }, "Server listening");
-
-    setInterval(() => {
-      expireHires().catch((err) => {
-        logger.error({ err }, "Background expireHires failed");
-      });
-    }, EXPIRE_HIRES_INTERVAL_MS);
-
-    logger.info(
-      { intervalMs: EXPIRE_HIRES_INTERVAL_MS },
-      "Charter expiry background job scheduled",
-    );
   });
 });
