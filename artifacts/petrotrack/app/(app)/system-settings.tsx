@@ -42,7 +42,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 const BLANK_TANK  = { name: '', cap: '', dip: '', prod: 'PMS' as Tank['prod'], branchId: '' };
 const BLANK_LPG   = { name: '', cap: '', branchId: '' };
-const BLANK_PUMP  = { name: '', prod: 'PMS' as Pump['prod'], active: true, branchId: '' };
+const BLANK_PUMP  = { name: '', prod: 'PMS' as Pump['prod'], active: true, branchId: '', openingMeter: '' };
 const BLANK_STAFF = { name: '', email: '', role: 'att' as typeof ROLE_OPTS[number], sal: '', username: '', password: '', branchId: '' };
 
 function autoUsername(name: string): string {
@@ -188,7 +188,7 @@ export default function SystemSettingsScreen() {
     updateTank, updateLpgTank, updatePump, updateStaff,
     deleteTank, deleteLpgTank, deletePump, deleteStaff,
     userAccounts, companyInfo, updateCompanyInfo,
-    departments, assignStaffDept,
+    departments, assignStaffDept, setPumpInitialMeter,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -311,7 +311,9 @@ export default function SystemSettingsScreen() {
 
   function createPump() {
     if (!newPump.name.trim()) { Alert.alert('Error', 'Pump name is required.'); return; }
-    addPump({ name: newPump.name.trim(), prod: newPump.prod, active: newPump.active, branchId: newPump.branchId || undefined });
+    const pump = addPump({ name: newPump.name.trim(), prod: newPump.prod, active: newPump.active, branchId: newPump.branchId || undefined });
+    const om = parseFloat(newPump.openingMeter.replace(/,/g, ''));
+    if (!isNaN(om) && om >= 0) setPumpInitialMeter(pump.id, om);
     setNewPump(BLANK_PUMP);
     setShowNewPump(false);
     Alert.alert('Pump Added', `"${newPump.name.trim()}" is now available in the Sales screen.`);
@@ -856,6 +858,7 @@ export default function SystemSettingsScreen() {
                         </View>
                     }
                   </View>
+                  <FieldInput colors={colors} label="Opening Meter Reading (L)" value={newPump.openingMeter} onChangeText={v => setNewPump(n => ({ ...n, openingMeter: v }))} placeholder="e.g. 12500 (optional)" keyboardType="decimal-pad" />
                   <View style={[styles.settingRow, { borderTopWidth: 0, paddingTop: 4 }]}>
                     <Text style={[styles.settingLabel, { color: colors.textMuted }]}>Active from the start</Text>
                     <Switch value={newPump.active} onValueChange={v => setNewPump(n => ({ ...n, active: v }))} trackColor={{ true: roleColor, false: colors.border }} thumbColor="#fff" />
