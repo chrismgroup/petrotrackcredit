@@ -35,7 +35,7 @@ function ClassicTabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.mutedForeground,
+        tabBarInactiveTintColor: colors.tabIconDefault,
         headerShown: true,
         tabBarStyle: {
           position: "absolute",
