@@ -10,6 +10,7 @@ import { VESSEL_TYPES } from '@/lib/types';
 import { useAuth } from '@/context/AuthContext';
 import { VesselPhotoUploader, type PendingPhoto } from '@/components/VesselPhotoUploader';
 import type { VesselPhoto } from '@/lib/types';
+import { validateVesselFields, hasVesselErrors, type VesselFieldErrors } from '@/lib/vesselValidation';
 
 const STATUSES = ['available', 'laid_up', 'decommissioned'];
 
@@ -55,12 +56,32 @@ export default function AddVesselScreen() {
     address: '',
   });
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
+  const [errors, setErrors] = useState<VesselFieldErrors & { name?: string }>({});
 
-  const set = (key: string) => (val: string) => setForm(f => ({ ...f, [key]: val }));
+  const set = (key: string) => (val: string) => {
+    setForm(f => ({ ...f, [key]: val }));
+    setErrors(e => ({ ...e, [key]: undefined }));
+  };
+
+  const validate = (): boolean => {
+    const fieldErrors: VesselFieldErrors & { name?: string } = {};
+    if (!form.name.trim()) fieldErrors.name = 'Vessel name is required';
+    const vesselErrors = validateVesselFields({
+      imoNumber: form.imoNumber,
+      dwt: form.dwt,
+      grt: form.grt,
+      yearBuilt: form.yearBuilt,
+      loa: form.loa,
+      beam: form.beam,
+      draft: form.draft,
+    });
+    Object.assign(fieldErrors, vesselErrors);
+    setErrors(fieldErrors);
+    return !fieldErrors.name && !hasVesselErrors(vesselErrors);
+  };
 
   const submit = async () => {
-    if (!form.name.trim()) { Alert.alert('Validation', 'Vessel name is required'); return; }
-    if (!form.vesselType) { Alert.alert('Validation', 'Vessel type is required'); return; }
+    if (!validate()) return;
 
     setLoading(true);
     const contacts = contact.contactName.trim()
@@ -122,8 +143,8 @@ export default function AddVesselScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: Platform.OS === 'web' ? 34 : insets.bottom + 24 }}>
       <Section title="Basic Information">
-        <Field label="Vessel Name *" value={form.name} onChangeText={set('name')} placeholder="e.g. MV Ocean Pride" />
-        <Field label="IMO Number" value={form.imoNumber} onChangeText={set('imoNumber')} placeholder="e.g. 9123456" />
+        <Field label="Vessel Name *" value={form.name} onChangeText={set('name')} placeholder="e.g. MV Ocean Pride" error={errors.name} />
+        <Field label="IMO Number" value={form.imoNumber} onChangeText={set('imoNumber')} placeholder="e.g. 9074729" error={errors.imoNumber} />
         <Field label="Flag State" value={form.flag} onChangeText={set('flag')} placeholder="e.g. Nigeria" />
 
         <Text style={styles.fieldLabel}>Vessel Type *</Text>
@@ -160,26 +181,26 @@ export default function AddVesselScreen() {
       <Section title="Technical Specifications">
         <View style={styles.row}>
           <View style={styles.col}>
-            <Field label="DWT (tonnes)" value={form.dwt} onChangeText={set('dwt')} placeholder="e.g. 50000" keyboardType="numeric" />
+            <Field label="DWT (tonnes)" value={form.dwt} onChangeText={set('dwt')} placeholder="e.g. 50000" keyboardType="numeric" error={errors.dwt} />
           </View>
           <View style={styles.col}>
-            <Field label="GRT" value={form.grt} onChangeText={set('grt')} placeholder="e.g. 30000" keyboardType="numeric" />
-          </View>
-        </View>
-        <View style={styles.row}>
-          <View style={styles.col}>
-            <Field label="Year Built" value={form.yearBuilt} onChangeText={set('yearBuilt')} placeholder="e.g. 2010" keyboardType="numeric" />
-          </View>
-          <View style={styles.col}>
-            <Field label="LOA (m)" value={form.loa} onChangeText={set('loa')} placeholder="e.g. 185" keyboardType="numeric" />
+            <Field label="GRT" value={form.grt} onChangeText={set('grt')} placeholder="e.g. 30000" keyboardType="numeric" error={errors.grt} />
           </View>
         </View>
         <View style={styles.row}>
           <View style={styles.col}>
-            <Field label="Beam (m)" value={form.beam} onChangeText={set('beam')} placeholder="e.g. 28" keyboardType="numeric" />
+            <Field label="Year Built" value={form.yearBuilt} onChangeText={set('yearBuilt')} placeholder="e.g. 2010" keyboardType="numeric" error={errors.yearBuilt} />
           </View>
           <View style={styles.col}>
-            <Field label="Draft (m)" value={form.draft} onChangeText={set('draft')} placeholder="e.g. 12" keyboardType="numeric" />
+            <Field label="LOA (m)" value={form.loa} onChangeText={set('loa')} placeholder="e.g. 185" keyboardType="numeric" error={errors.loa} />
+          </View>
+        </View>
+        <View style={styles.row}>
+          <View style={styles.col}>
+            <Field label="Beam (m)" value={form.beam} onChangeText={set('beam')} placeholder="e.g. 28" keyboardType="numeric" error={errors.beam} />
+          </View>
+          <View style={styles.col}>
+            <Field label="Draft (m)" value={form.draft} onChangeText={set('draft')} placeholder="e.g. 12" keyboardType="numeric" error={errors.draft} />
           </View>
         </View>
         <Field label="Classification Society" value={form.classificationSociety} onChangeText={set('classificationSociety')} placeholder="e.g. Lloyd's Register" />
@@ -232,15 +253,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({ label, value, onChangeText, placeholder, keyboardType, multiline }: {
+function Field({ label, value, onChangeText, placeholder, keyboardType, multiline, error }: {
   label: string; value: string; onChangeText: (v: string) => void;
-  placeholder?: string; keyboardType?: any; multiline?: boolean;
+  placeholder?: string; keyboardType?: any; multiline?: boolean; error?: string;
 }) {
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
-        style={[styles.input, multiline && styles.multiline]}
+        style={[styles.input, multiline && styles.multiline, error ? styles.inputError : null]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -249,6 +270,7 @@ function Field({ label, value, onChangeText, placeholder, keyboardType, multilin
         multiline={multiline}
         numberOfLines={multiline ? 4 : 1}
       />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
 }
@@ -260,7 +282,9 @@ const styles = StyleSheet.create({
   field: { marginBottom: 14 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, marginBottom: 6, fontFamily: 'Inter_600SemiBold' },
   input: { borderWidth: 1, borderColor: Colors.border, borderRadius: Colors.radiusSm, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: Colors.text, backgroundColor: Colors.background, fontFamily: 'Inter_400Regular' },
+  inputError: { borderColor: Colors.danger },
   multiline: { height: 96, textAlignVertical: 'top', paddingTop: 10 },
+  errorText: { fontSize: 12, color: Colors.danger, marginTop: 4, fontFamily: 'Inter_400Regular' },
   row: { flexDirection: 'row', gap: 10 },
   col: { flex: 1 },
   typeScroll: { marginBottom: 14, flexGrow: 0 },

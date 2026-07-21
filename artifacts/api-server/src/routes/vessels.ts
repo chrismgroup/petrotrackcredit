@@ -22,6 +22,65 @@ import { expireHires } from "../lib/expireHires";
 const pId = (p: string | string[]): number =>
   parseInt(Array.isArray(p) ? p[0] : p, 10);
 
+const CURRENT_YEAR = new Date().getFullYear();
+
+function validateIMONumber(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  const s = String(value).trim();
+  if (!/^\d{7}$/.test(s)) return "IMO number must be exactly 7 digits";
+  const digits = s.split("").map(Number);
+  const weights = [7, 6, 5, 4, 3, 2];
+  const sum = digits.slice(0, 6).reduce((acc, d, i) => acc + d * weights[i], 0);
+  if ((sum % 10) !== digits[6]) return "IMO number has an invalid check digit";
+  return null;
+}
+
+function validatePositiveDecimal(value: unknown, label: string, min: number, max: number): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  const num = Number(value);
+  if (isNaN(num) || !isFinite(num)) return `${label} must be a number`;
+  if (num <= 0) return `${label} must be greater than 0`;
+  if (num < min) return `${label} must be at least ${min}`;
+  if (num > max) return `${label} must be at most ${max.toLocaleString()}`;
+  return null;
+}
+
+function validateYearBuilt(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  const num = Number(value);
+  if (!Number.isInteger(num) || isNaN(num)) return "Year built must be a whole number";
+  if (num < 1900) return "Year built must be 1900 or later";
+  if (num > CURRENT_YEAR + 1) return "Year built cannot be in the future";
+  return null;
+}
+
+interface VesselFieldsInput {
+  imoNumber?: unknown;
+  dwt?: unknown;
+  grt?: unknown;
+  yearBuilt?: unknown;
+  loa?: unknown;
+  beam?: unknown;
+  draft?: unknown;
+}
+
+function validateVesselFields(fields: VesselFieldsInput): Record<string, string> {
+  const errors: Record<string, string> = {};
+  const checks: [string | null, string][] = [
+    [validateIMONumber(fields.imoNumber), "imoNumber"],
+    [validatePositiveDecimal(fields.dwt, "DWT", 1, 500_000), "dwt"],
+    [validatePositiveDecimal(fields.grt, "GRT", 1, 300_000), "grt"],
+    [validateYearBuilt(fields.yearBuilt), "yearBuilt"],
+    [validatePositiveDecimal(fields.loa, "LOA", 1, 500), "loa"],
+    [validatePositiveDecimal(fields.beam, "Beam", 1, 100), "beam"],
+    [validatePositiveDecimal(fields.draft, "Draft", 0.1, 30), "draft"],
+  ];
+  for (const [msg, field] of checks) {
+    if (msg) errors[field] = msg;
+  }
+  return errors;
+}
+
 const router: IRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_TTL = "24h";
@@ -224,6 +283,11 @@ router.post("/vessels", requireVesselAuth, requireVesselRole(["owner", "admin"])
 
   if (!name || !vesselType) { res.status(400).json({ error: "name and vesselType are required" }); return; }
 
+  const fieldErrors = validateVesselFields({ imoNumber, dwt, grt, yearBuilt, loa, beam, draft });
+  if (Object.keys(fieldErrors).length > 0) {
+    res.status(400).json({ error: "Validation failed", fields: fieldErrors }); return;
+  }
+
   const [vessel] = await db.insert(vesselsTable).values({
     ownerId: req.vesselAuth!.userId,
     name: String(name).trim(),
@@ -271,6 +335,11 @@ router.put("/vessels/:id", requireVesselAuth, async (req, res): Promise<void> =>
 
   const { name, imoNumber, vesselType, flag, dwt, grt, yearBuilt, loa, beam, draft,
     classificationSociety, tradingArea, description, contacts } = req.body ?? {};
+
+  const fieldErrors = validateVesselFields({ imoNumber, dwt, grt, yearBuilt, loa, beam, draft });
+  if (Object.keys(fieldErrors).length > 0) {
+    res.status(400).json({ error: "Validation failed", fields: fieldErrors }); return;
+  }
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (name !== undefined) updates.name = name;
