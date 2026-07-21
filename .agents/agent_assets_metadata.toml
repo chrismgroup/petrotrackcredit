@@ -1,8 +1,13 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "eVsFpow37EABZgmFj2cXL"
 uri = "file://artifacts/petrotrack/assets/images/icon.png"
 type = "image"
 title = "Gastsmarts icon"
+
+[[outputs]]
+id = "YGbLwfhanCQREdZK-LbkP"
+uri = "file://nigerian-vessel-marketplace.zip"
+type = "unspecified"
+title = "Nigerian Vessel Marketplace — Standalone Project"
