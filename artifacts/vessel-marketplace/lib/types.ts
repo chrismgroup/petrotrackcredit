@@ -72,6 +72,7 @@ export interface Vessel {
   createdAt: string;
   updatedAt: string;
   ownerName?: string;
+  firstPhotoPath?: string | null;
 }
 
 export interface VesselContact {
@@ -83,8 +84,17 @@ export interface VesselContact {
   address: string | null;
 }
 
+export interface VesselPhoto {
+  id: number;
+  vesselId: number;
+  objectPath: string;
+  sortOrder: number;
+  uploadedAt: string;
+}
+
 export interface VesselWithContacts extends Vessel {
   contacts: VesselContact[];
+  photos: VesselPhoto[];
 }
 
 export interface CharterParty {

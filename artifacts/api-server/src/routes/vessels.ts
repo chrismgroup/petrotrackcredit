@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import jwt from "jsonwebtoken";
 
@@ -10,12 +10,14 @@ import {
   vesselContactsTable,
   charterPartiesTable,
   vesselNotificationsTable,
+  vesselPhotosTable,
 } from "@workspace/db";
 import {
   requireVesselAuth,
   optionalVesselAuth,
   requireVesselRole,
 } from "../middlewares/requireVesselAuth";
+import { expireHires } from "../lib/expireHires";
 
 const pId = (p: string | string[]): number =>
   parseInt(Array.isArray(p) ? p[0] : p, 10);
@@ -51,20 +53,6 @@ async function createNotification(
       userId, type, title, message, relatedId: relatedId ?? null,
     });
   } catch { /* non-critical */ }
-}
-
-async function expireHires() {
-  const now = new Date();
-  const active = await db
-    .select({ id: charterPartiesTable.id, vesselId: charterPartiesTable.vesselId, hireEnd: charterPartiesTable.hireEnd })
-    .from(charterPartiesTable)
-    .where(eq(charterPartiesTable.status, "active"));
-  for (const cp of active) {
-    if (cp.hireEnd && new Date(cp.hireEnd) <= now) {
-      await db.update(charterPartiesTable).set({ status: "terminated", updatedAt: now }).where(eq(charterPartiesTable.id, cp.id));
-      await db.update(vesselsTable).set({ status: "available", updatedAt: now }).where(eq(vesselsTable.id, cp.vesselId));
-    }
-  }
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
@@ -169,7 +157,20 @@ router.get("/vessels", optionalVesselAuth, async (req, res): Promise<void> => {
     );
   }
 
-  res.json(result);
+  const vesselIds = result.map(v => v.id);
+  const firstPhotos = vesselIds.length > 0
+    ? await db
+        .select({ vesselId: vesselPhotosTable.vesselId, objectPath: vesselPhotosTable.objectPath })
+        .from(vesselPhotosTable)
+        .where(inArray(vesselPhotosTable.vesselId, vesselIds))
+        .orderBy(asc(vesselPhotosTable.sortOrder), asc(vesselPhotosTable.uploadedAt))
+    : [];
+  const firstPhotoMap = new Map<number, string>();
+  for (const p of firstPhotos) {
+    if (!firstPhotoMap.has(p.vesselId)) firstPhotoMap.set(p.vesselId, p.objectPath);
+  }
+
+  res.json(result.map(v => ({ ...v, firstPhotoPath: firstPhotoMap.get(v.id) ?? null })));
 });
 
 router.get("/vessels/:id", optionalVesselAuth, async (req, res): Promise<void> => {
@@ -208,7 +209,13 @@ router.get("/vessels/:id", optionalVesselAuth, async (req, res): Promise<void> =
     contacts = await db.select().from(vesselContactsTable).where(eq(vesselContactsTable.vesselId, id));
   }
 
-  res.json({ ...vessel, contacts });
+  const photos = await db
+    .select()
+    .from(vesselPhotosTable)
+    .where(eq(vesselPhotosTable.vesselId, id))
+    .orderBy(vesselPhotosTable.sortOrder, vesselPhotosTable.uploadedAt);
+
+  res.json({ ...vessel, contacts, photos });
 });
 
 router.post("/vessels", requireVesselAuth, requireVesselRole(["owner", "admin"]), async (req, res): Promise<void> => {
@@ -330,6 +337,78 @@ router.get("/vessels/:id/contacts", requireVesselAuth, async (req, res): Promise
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const contacts = await db.select().from(vesselContactsTable).where(eq(vesselContactsTable.vesselId, id));
   res.json(contacts);
+});
+
+// ── VESSEL PHOTOS ──────────────────────────────────────────────────────────────
+
+router.get("/vessels/:id/photos", async (req, res): Promise<void> => {
+  const id = pId(req.params.id);
+  if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const photos = await db
+    .select()
+    .from(vesselPhotosTable)
+    .where(eq(vesselPhotosTable.vesselId, id))
+    .orderBy(asc(vesselPhotosTable.sortOrder), asc(vesselPhotosTable.uploadedAt));
+  res.json(photos);
+});
+
+router.post("/vessels/:id/photos", requireVesselAuth, async (req, res): Promise<void> => {
+  const id = pId(req.params.id);
+  if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [vessel] = await db.select().from(vesselsTable).where(eq(vesselsTable.id, id));
+  if (!vessel) { res.status(404).json({ error: "Vessel not found" }); return; }
+
+  const auth = req.vesselAuth!;
+  if (auth.role !== "admin" && vessel.ownerId !== auth.userId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const { objectPath } = req.body ?? {};
+  if (!objectPath || typeof objectPath !== "string") {
+    res.status(400).json({ error: "objectPath is required" }); return;
+  }
+
+  const existing = await db
+    .select({ id: vesselPhotosTable.id })
+    .from(vesselPhotosTable)
+    .where(eq(vesselPhotosTable.vesselId, id));
+  if (existing.length >= 5) {
+    res.status(400).json({ error: "Maximum 5 photos per vessel" }); return;
+  }
+
+  const [photo] = await db.insert(vesselPhotosTable).values({
+    vesselId: id,
+    objectPath: String(objectPath),
+    sortOrder: existing.length,
+  }).returning();
+
+  res.status(201).json(photo);
+});
+
+router.delete("/vessels/:id/photos/:photoId", requireVesselAuth, async (req, res): Promise<void> => {
+  const id = pId(req.params.id);
+  const photoId = pId(req.params.photoId);
+  if (Number.isNaN(id) || Number.isNaN(photoId)) {
+    res.status(400).json({ error: "Invalid id" }); return;
+  }
+
+  const [vessel] = await db.select().from(vesselsTable).where(eq(vesselsTable.id, id));
+  if (!vessel) { res.status(404).json({ error: "Vessel not found" }); return; }
+
+  const auth = req.vesselAuth!;
+  if (auth.role !== "admin" && vessel.ownerId !== auth.userId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const [photo] = await db.select().from(vesselPhotosTable)
+    .where(and(eq(vesselPhotosTable.id, photoId), eq(vesselPhotosTable.vesselId, id)));
+  if (!photo) { res.status(404).json({ error: "Photo not found" }); return; }
+
+  await db.delete(vesselPhotosTable)
+    .where(and(eq(vesselPhotosTable.id, photoId), eq(vesselPhotosTable.vesselId, id)));
+
+  res.status(204).end();
 });
 
 // ── CHARTER PARTIES ───────────────────────────────────────────────────────────

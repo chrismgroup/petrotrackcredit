@@ -74,6 +74,14 @@ export const vesselNotificationsTable = pgTable("vessel_notifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const vesselPhotosTable = pgTable("vessel_photos", {
+  id:          serial("id").primaryKey(),
+  vesselId:    integer("vessel_id").notNull().references(() => vesselsTable.id, { onDelete: "cascade" }),
+  objectPath:  text("object_path").notNull(),
+  sortOrder:   integer("sort_order").notNull().default(0),
+  uploadedAt:  timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type VesselUserRow    = typeof vesselUsersTable.$inferSelect;
 export type VesselUserInsert = typeof vesselUsersTable.$inferInsert;
 export type VesselRow        = typeof vesselsTable.$inferSelect;
@@ -81,3 +89,5 @@ export type VesselInsert     = typeof vesselsTable.$inferInsert;
 export type VesselContactRow    = typeof vesselContactsTable.$inferSelect;
 export type CharterPartyRow     = typeof charterPartiesTable.$inferSelect;
 export type VesselNotificationRow = typeof vesselNotificationsTable.$inferSelect;
+export type VesselPhotoRow    = typeof vesselPhotosTable.$inferSelect;
+export type VesselPhotoInsert = typeof vesselPhotosTable.$inferInsert;

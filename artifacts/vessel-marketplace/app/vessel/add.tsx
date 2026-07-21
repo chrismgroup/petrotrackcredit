@@ -5,9 +5,11 @@ import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { vmVessels } from '@/lib/api';
+import { vmVessels, requestUploadUrl, uploadToPresignedUrl } from '@/lib/api';
 import { VESSEL_TYPES } from '@/lib/types';
 import { useAuth } from '@/context/AuthContext';
+import { VesselPhotoUploader, type PendingPhoto } from '@/components/VesselPhotoUploader';
+import type { VesselPhoto } from '@/lib/types';
 
 const STATUSES = ['available', 'laid_up', 'decommissioned'];
 
@@ -52,6 +54,7 @@ export default function AddVesselScreen() {
     email: '',
     address: '',
   });
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
 
   const set = (key: string) => (val: string) => setForm(f => ({ ...f, [key]: val }));
 
@@ -64,7 +67,7 @@ export default function AddVesselScreen() {
       ? [{ contactName: contact.contactName.trim(), phone: contact.phone || null, email: contact.email || null, address: contact.address || null }]
       : [];
 
-    const { error } = await vmVessels.create({
+    const { data: vessel, error } = await vmVessels.create({
       name: form.name.trim(),
       imoNumber: form.imoNumber || undefined,
       vesselType: form.vesselType,
@@ -81,13 +84,40 @@ export default function AddVesselScreen() {
       status: form.status,
       contacts,
     } as any);
-    setLoading(false);
 
-    if (error) { Alert.alert('Error', error); return; }
+    if (error || !vessel) { setLoading(false); Alert.alert('Error', error ?? 'Failed to create vessel'); return; }
+
+    for (const p of pendingPhotos) {
+      try {
+        const { data: urlData, error: urlErr } = await requestUploadUrl({ name: p.name, size: p.size, contentType: p.contentType });
+        if (urlErr || !urlData) continue;
+        const blob = await uriToBlob(p.uri);
+        const ok = await uploadToPresignedUrl(urlData.uploadURL, blob, p.contentType);
+        if (!ok) continue;
+        await vmVessels.addPhoto(vessel.id, urlData.objectPath);
+      } catch { /* non-critical */ }
+    }
+
+    setLoading(false);
     qc.invalidateQueries({ queryKey: ['vessels'] });
     qc.invalidateQueries({ queryKey: ['my-vessels'] });
     Alert.alert('Success', 'Vessel added to marketplace', [{ text: 'OK', onPress: () => router.back() }]);
   };
+
+  async function uriToBlob(uri: string): Promise<Blob> {
+    if (typeof window !== 'undefined') {
+      const res = await fetch(uri);
+      return res.blob();
+    }
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = () => resolve(xhr.response);
+      xhr.onerror = reject;
+      xhr.responseType = 'blob';
+      xhr.open('GET', uri, true);
+      xhr.send(null);
+    });
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: Platform.OS === 'web' ? 34 : insets.bottom + 24 }}>
@@ -158,6 +188,15 @@ export default function AddVesselScreen() {
       <Section title="Trading Information">
         <Field label="Trading Area" value={form.tradingArea} onChangeText={set('tradingArea')} placeholder="e.g. West African Coast" />
         <Field label="Description" value={form.description} onChangeText={set('description')} placeholder="Vessel details, history, condition..." multiline />
+      </Section>
+
+      <Section title="Photos (Optional)">
+        <VesselPhotoUploader
+          photos={[]}
+          onPhotosChange={() => {}}
+          pendingPhotos={pendingPhotos}
+          onPendingPhotosChange={setPendingPhotos}
+        />
       </Section>
 
       <Section title="Owner Contact (Optional)">

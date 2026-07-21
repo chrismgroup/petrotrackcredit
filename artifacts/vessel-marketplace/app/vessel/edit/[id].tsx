@@ -7,6 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { vmVessels } from '@/lib/api';
 import { VESSEL_TYPES } from '@/lib/types';
+import type { VesselPhoto } from '@/lib/types';
+import { VesselPhotoUploader } from '@/components/VesselPhotoUploader';
 
 const STATUSES = ['available', 'laid_up', 'decommissioned'];
 
@@ -26,9 +28,11 @@ export default function EditVesselScreen() {
   });
 
   const [form, setForm] = useState<Record<string, string> | null>(null);
+  const [photos, setPhotos] = useState<VesselPhoto[]>([]);
 
   React.useEffect(() => {
     if (vessel && !form) {
+      setPhotos(vessel.photos ?? []);
       setForm({
         name: vessel.name ?? '',
         imoNumber: vessel.imoNumber ?? '',
@@ -131,6 +135,15 @@ export default function EditVesselScreen() {
         <Field label="Classification Society" value={form.classificationSociety} onChangeText={set('classificationSociety')} />
         <Field label="Trading Area" value={form.tradingArea} onChangeText={set('tradingArea')} />
         <Field label="Description" value={form.description} onChangeText={set('description')} multiline />
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Photos</Text>
+        <VesselPhotoUploader
+          vesselId={vessel?.id}
+          photos={photos}
+          onPhotosChange={setPhotos}
+        />
       </View>
 
       <View style={styles.section}>
