@@ -17,6 +17,7 @@ import {
   optionalVesselAuth,
   requireVesselRole,
 } from "../middlewares/requireVesselAuth";
+import { expireHires } from "../lib/expireHires";
 
 const pId = (p: string | string[]): number =>
   parseInt(Array.isArray(p) ? p[0] : p, 10);
@@ -52,20 +53,6 @@ async function createNotification(
       userId, type, title, message, relatedId: relatedId ?? null,
     });
   } catch { /* non-critical */ }
-}
-
-async function expireHires() {
-  const now = new Date();
-  const active = await db
-    .select({ id: charterPartiesTable.id, vesselId: charterPartiesTable.vesselId, hireEnd: charterPartiesTable.hireEnd })
-    .from(charterPartiesTable)
-    .where(eq(charterPartiesTable.status, "active"));
-  for (const cp of active) {
-    if (cp.hireEnd && new Date(cp.hireEnd) <= now) {
-      await db.update(charterPartiesTable).set({ status: "terminated", updatedAt: now }).where(eq(charterPartiesTable.id, cp.id));
-      await db.update(vesselsTable).set({ status: "available", updatedAt: now }).where(eq(vesselsTable.id, cp.vesselId));
-    }
-  }
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
