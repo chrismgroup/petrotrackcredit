@@ -23,6 +23,7 @@ export function TabBar() {
 
   if (!role) return null;
   const roleColor = ROLE_COLORS[role] || colors.primary;
+
   function isActive(id: string): boolean {
     const seg = PATH_MAP[id] || id;
     return pathname.includes(seg);
@@ -33,20 +34,29 @@ export function TabBar() {
     if (route) router.replace(route as never);
   }
 
-  const bottomPad = Platform.OS === 'web' ? 34 : insets.bottom;
+  const bottomPad = Platform.OS === 'web' ? 30 : insets.bottom;
 
   return (
-    <View style={[styles.container, { borderTopColor: colors.border, paddingBottom: bottomPad, backgroundColor: colors.background }]}>
+    <View style={[styles.container, {
+      paddingBottom: bottomPad,
+      backgroundColor: colors.surface,
+      shadowColor: '#000',
+    }]}>
       {navItems.map(item => {
         const active = isActive(item.id);
         return (
           <TouchableOpacity key={item.id} style={styles.tab} onPress={() => navigate(item.id)} activeOpacity={0.7}>
-            <Ionicons
-              name={(active ? item.icon : `${item.icon}-outline`) as any}
-              size={22}
-              color={active ? roleColor : colors.textMuted}
-            />
-            <Text style={[styles.label, { color: active ? roleColor : colors.textMuted, fontWeight: active ? '700' : '400' }]}>
+            <View style={[styles.iconPill, active && { backgroundColor: roleColor + '1A' }]}>
+              <Ionicons
+                name={(active ? item.icon : `${item.icon}-outline`) as any}
+                size={22}
+                color={active ? roleColor : colors.tabIconDefault}
+              />
+            </View>
+            <Text style={[styles.label, {
+              color: active ? roleColor : colors.tabIconDefault,
+              fontWeight: active ? '700' : '500',
+            }]}>
               {item.label}
             </Text>
           </TouchableOpacity>
@@ -58,15 +68,17 @@ export function TabBar() {
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 8,
+    flexDirection: 'row',
+    paddingTop: 6,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 8,
   },
-  tab: { flex: 1, alignItems: 'center', gap: 2 },
-  iconWrap: { position: 'relative' },
-  badge: {
-    position: 'absolute', top: -4, right: -8, minWidth: 16, height: 16,
-    borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
+  tab: { flex: 1, alignItems: 'center', paddingVertical: 2, gap: 2 },
+  iconPill: {
+    width: 44, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
   },
-  badgeText: { color: '#fff', fontSize: 9, fontWeight: '700' },
-  label: { fontSize: 10, textAlign: 'center' },
+  label: { fontSize: 10, textAlign: 'center', letterSpacing: 0.1 },
 });
