@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
-import type { AuthResult, Vessel, VesselContact, VesselWithContacts, CharterParty, VesselNotification, VesselUser } from './types';
+import type { AuthResult, Vessel, VesselContact, VesselPhoto, VesselWithContacts, CharterParty, VesselNotification, VesselUser } from './types';
 
 const TOKEN_KEY = 'vm_auth_token';
 
@@ -81,6 +81,24 @@ async function get<T>(url: string) { return request<T>(url, { method: 'GET' }); 
 async function post<T>(url: string, body: unknown) { return request<T>(url, { method: 'POST', body: JSON.stringify(body) }); }
 async function put<T>(url: string, body: unknown) { return request<T>(url, { method: 'PUT', body: JSON.stringify(body) }); }
 async function patch<T>(url: string, body?: unknown) { return request<T>(url, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }); }
+async function del(url: string) { return request<null>(url, { method: 'DELETE' }); }
+
+export async function requestUploadUrl(file: { name: string; size: number; contentType: string }) {
+  return post<{ uploadURL: string; objectPath: string }>(`${BASE}/storage/uploads/request-url`, file);
+}
+
+export async function uploadToPresignedUrl(uploadURL: string, blob: Blob, contentType: string): Promise<boolean> {
+  try {
+    const res = await fetch(uploadURL, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: blob,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 export const vmAuth = {
   register: (data: { name: string; email: string; password: string; role: string; company?: string; phone?: string }) =>
@@ -113,6 +131,11 @@ export const vmVessels = {
     put<Vessel>(`${VESSEL_BASE}/${id}`, data),
   setStatus: (id: number, status: string) =>
     patch<Vessel>(`${VESSEL_BASE}/${id}/status`, { status }),
+  getPhotos: (id: number) => get<VesselPhoto[]>(`${VESSEL_BASE}/${id}/photos`),
+  addPhoto: (id: number, objectPath: string) =>
+    post<VesselPhoto>(`${VESSEL_BASE}/${id}/photos`, { objectPath }),
+  deletePhoto: (vesselId: number, photoId: number) =>
+    del(`${VESSEL_BASE}/${vesselId}/photos/${photoId}`),
 };
 
 export const vmCharters = {

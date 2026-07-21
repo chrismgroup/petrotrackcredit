@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Platform, Image, FlatList, Dimensions } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -8,6 +8,17 @@ import { Colors } from '@/constants/colors';
 import { vmVessels } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAuth } from '@/context/AuthContext';
+import type { VesselPhoto } from '@/lib/types';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+function getImageUrl(objectPath: string): string {
+  if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
+    return `${window.location.origin}/api/storage${objectPath}`;
+  }
+  const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? '';
+  return `https://${DOMAIN}/api/storage${objectPath}`;
+}
 
 const ALLOWED_STATUS = ['available', 'laid_up', 'decommissioned'];
 
@@ -17,6 +28,7 @@ export default function VesselDetailScreen() {
   const { user, isAuthenticated, isOwnerOrAdmin, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [statusLoading, setStatusLoading] = useState(false);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
 
   const { data: vessel, isLoading, error } = useQuery({
     queryKey: ['vessel', id],
@@ -66,15 +78,53 @@ export default function VesselDetailScreen() {
     );
   }
 
+  const photos: VesselPhoto[] = vessel.photos ?? [];
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: Platform.OS === 'web' ? 34 : insets.bottom + 24 }}>
-      <View style={styles.hero}>
-        <View style={styles.heroContent}>
-          <Text style={styles.vesselName}>{vessel.name}</Text>
-          {vessel.imoNumber && <Text style={styles.imo}>IMO: {vessel.imoNumber}</Text>}
-          <StatusBadge type="vessel" status={vessel.status} />
+      {photos.length > 0 ? (
+        <View style={styles.photoGallery}>
+          <FlatList
+            data={photos}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={p => String(p.id)}
+            onScroll={e => {
+              const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+              setActivePhotoIndex(idx);
+            }}
+            scrollEventThrottle={16}
+            renderItem={({ item }) => (
+              <Image
+                source={{ uri: getImageUrl(item.objectPath) }}
+                style={styles.galleryImage}
+                resizeMode="cover"
+              />
+            )}
+          />
+          {photos.length > 1 && (
+            <View style={styles.photoDots}>
+              {photos.map((_, i) => (
+                <View key={i} style={[styles.dot, i === activePhotoIndex && styles.dotActive]} />
+              ))}
+            </View>
+          )}
+          <View style={styles.heroOverlay}>
+            <Text style={styles.vesselName}>{vessel.name}</Text>
+            {vessel.imoNumber && <Text style={styles.imo}>IMO: {vessel.imoNumber}</Text>}
+            <StatusBadge type="vessel" status={vessel.status} />
+          </View>
         </View>
-      </View>
+      ) : (
+        <View style={styles.hero}>
+          <View style={styles.heroContent}>
+            <Text style={styles.vesselName}>{vessel.name}</Text>
+            {vessel.imoNumber && <Text style={styles.imo}>IMO: {vessel.imoNumber}</Text>}
+            <StatusBadge type="vessel" status={vessel.status} />
+          </View>
+        </View>
+      )}
 
       {canManage && (
         <View style={styles.actionRow}>
@@ -181,6 +231,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   hero: { backgroundColor: Colors.navy, padding: 20, paddingBottom: 24 },
   heroContent: { gap: 8 },
+  photoGallery: { position: 'relative', height: 240, backgroundColor: Colors.navy },
+  galleryImage: { width: SCREEN_WIDTH, height: 240 },
+  photoDots: { position: 'absolute', bottom: 56, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 5 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
+  dotActive: { backgroundColor: '#fff', width: 8, height: 8, borderRadius: 4 },
+  heroOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.45)', padding: 16, gap: 6 },
   vesselName: { fontSize: 24, fontWeight: '700', color: Colors.textInverse, fontFamily: 'Inter_700Bold' },
   imo: { fontSize: 13, color: 'rgba(255,255,255,0.6)', fontFamily: 'Inter_400Regular' },
   actionRow: { flexDirection: 'row', gap: 12, padding: 16, backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.borderLight },

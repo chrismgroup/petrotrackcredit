@@ -1,23 +1,36 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { StatusBadge } from './StatusBadge';
-import type { Vessel } from '@/lib/types';
+import type { Vessel, VesselPhoto } from '@/lib/types';
+
+function getImageUrl(objectPath: string): string {
+  if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
+    return `${window.location.origin}/api/storage${objectPath}`;
+  }
+  const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? '';
+  return `https://${DOMAIN}/api/storage${objectPath}`;
+}
 
 interface Props {
   vessel: Vessel;
 }
 
 export function VesselCard({ vessel }: Props) {
+  const thumbUrl = vessel.firstPhotoPath ? getImageUrl(vessel.firstPhotoPath) : null;
+
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
       onPress={() => router.push(`/vessel/${vessel.id}`)}
       testID={`vessel-card-${vessel.id}`}
     >
-      <View style={styles.header}>
+      {thumbUrl && (
+        <Image source={{ uri: thumbUrl }} style={styles.thumbnail} resizeMode="cover" />
+      )}
+      <View style={[styles.header, thumbUrl && styles.headerWithThumb]}>
         <View style={styles.titleRow}>
           <Text style={styles.name} numberOfLines={1}>{vessel.name}</Text>
           <StatusBadge type="vessel" status={vessel.status} small />
@@ -62,7 +75,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.card,
     borderRadius: Colors.radius,
-    padding: 16,
+    overflow: 'hidden',
     marginHorizontal: 16,
     marginBottom: 12,
     shadowColor: '#000',
@@ -74,15 +87,17 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderLight,
   },
   pressed: { opacity: 0.85 },
-  header: { marginBottom: 10 },
+  thumbnail: { width: '100%', height: 160 },
+  header: { padding: 16, marginBottom: 0 },
+  headerWithThumb: { paddingTop: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   name: { fontSize: 16, fontWeight: '700', color: Colors.text, flex: 1, marginRight: 8 },
   imo: { fontSize: 11, color: Colors.textMuted },
-  meta: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  meta: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8, paddingHorizontal: 16 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   metaText: { fontSize: 12, color: Colors.textSecondary },
-  location: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 10 },
+  location: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 10, paddingHorizontal: 16 },
   locationText: { fontSize: 12, color: Colors.textMuted },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: Colors.borderLight, paddingTop: 10 },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: Colors.borderLight, paddingTop: 10, paddingHorizontal: 16, paddingBottom: 16 },
   type: { fontSize: 12, color: Colors.primaryMid, fontWeight: '600' },
 });
