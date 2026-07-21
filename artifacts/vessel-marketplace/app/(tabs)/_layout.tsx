@@ -3,12 +3,34 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
+import { useUnreadCount } from '@/hooks/useUnreadCount';
 
 function TabIcon({ name, focused, label }: { name: React.ComponentProps<typeof Ionicons>['name']; focused: boolean; label: string }) {
   return (
     <View style={styles.tabIcon}>
       <Ionicons name={name} size={24} color={focused ? Colors.tabBarActive : Colors.tabBarInactive} />
       <Text style={[styles.tabLabel, { color: focused ? Colors.tabBarActive : Colors.tabBarInactive }]}>{label}</Text>
+    </View>
+  );
+}
+
+function AlertsTabIcon({ focused }: { focused: boolean }) {
+  const unread = useUnreadCount();
+  return (
+    <View style={styles.tabIcon}>
+      <View>
+        <Ionicons
+          name={focused ? 'notifications' : 'notifications-outline'}
+          size={24}
+          color={focused ? Colors.tabBarActive : Colors.tabBarInactive}
+        />
+        {unread > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{unread > 99 ? '99+' : String(unread)}</Text>
+          </View>
+        )}
+      </View>
+      <Text style={[styles.tabLabel, { color: focused ? Colors.tabBarActive : Colors.tabBarInactive }]}>Alerts</Text>
     </View>
   );
 }
@@ -49,7 +71,7 @@ export default function TabsLayout() {
         name="notifications"
         options={{
           title: 'Alerts',
-          tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'notifications' : 'notifications-outline'} focused={focused} label="Alerts" />,
+          tabBarIcon: ({ focused }) => <AlertsTabIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -88,5 +110,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'Inter_500Medium',
     letterSpacing: 0.2,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: 'Inter_700Bold',
   },
 });

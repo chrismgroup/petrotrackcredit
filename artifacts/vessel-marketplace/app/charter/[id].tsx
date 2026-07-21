@@ -26,6 +26,8 @@ export default function CharterDetailScreen() {
       return all?.find(c => c.id === Number(id)) ?? null;
     },
     enabled: !!id,
+    refetchInterval: 5000,
+    staleTime: 4000,
   });
 
   const isOwner = charter?.ownerId === user?.id || isAdmin;

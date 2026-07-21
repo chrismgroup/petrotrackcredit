@@ -29,6 +29,8 @@ export default function NotificationsScreen() {
       return data ?? [];
     },
     enabled: isAuthenticated,
+    refetchInterval: 5000,
+    staleTime: 4000,
   });
 
   const unreadCount = notifs?.filter(n => !n.read).length ?? 0;

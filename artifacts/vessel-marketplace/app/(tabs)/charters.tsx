@@ -21,6 +21,8 @@ export default function ChartersScreen() {
       return data ?? [];
     },
     enabled: isAuthenticated,
+    refetchInterval: 5000,
+    staleTime: 4000,
   });
 
   if (!isAuthenticated) {
