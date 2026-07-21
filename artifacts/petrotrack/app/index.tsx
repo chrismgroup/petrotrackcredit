@@ -33,8 +33,8 @@ async function clearCredentials() {
   await SecureStore.deleteItemAsync(BIOMETRIC_KEY).catch(() => {});
 }
 
-const BG_DARK = '#071910';
-const BG_MID  = '#0D2E1A';
+const BG_DARK = '#3D0009';
+const BG_MID  = '#6B0D17';
 
 export default function LoginScreen() {
   const { role, login } = useApp();
@@ -289,12 +289,12 @@ const styles = StyleSheet.create({
   // ── Decorative blobs ─────────────────────────────────────────
   blob1: {
     position: 'absolute', width: 280, height: 280, borderRadius: 140,
-    backgroundColor: '#16813E', opacity: 0.12,
+    backgroundColor: '#C8960C', opacity: 0.12,
     top: -80, right: -60,
   },
   blob2: {
     position: 'absolute', width: 180, height: 180, borderRadius: 90,
-    backgroundColor: '#0D5C2E', opacity: 0.20,
+    backgroundColor: '#E53935', opacity: 0.18,
     top: 120, left: -50,
   },
 
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
     width: 88, height: 88, borderRadius: 24, overflow: 'hidden',
     marginBottom: 16,
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.18)',
-    shadowColor: '#22C55E', shadowOpacity: 0.4, shadowRadius: 20,
+    shadowColor: '#C8960C', shadowOpacity: 0.5, shadowRadius: 20,
     elevation: 12,
   },
   logo:         { width: 88, height: 88 },
