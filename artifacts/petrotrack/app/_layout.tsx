@@ -53,11 +53,11 @@ export default function RootLayout() {
 
   return (
     <AppProvider>
-      <SoundController />
       <SafeAreaProvider>
         <ErrorBoundary>
           <QueryClientProvider client={queryClient}>
             <GestureHandlerRootView style={{ flex: 1 }}>
+              <SoundController />
               <RootLayoutNav />
             </GestureHandlerRootView>
           </QueryClientProvider>

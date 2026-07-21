@@ -1,4 +1,4 @@
-import { useAudioPlayer } from 'expo-audio';
+import { createAudioPlayer } from 'expo-audio';
 import { useEffect, useMemo, useRef } from 'react';
 
 import { useApp } from '@/context/AppContext';
@@ -7,8 +7,23 @@ const notificationSound = require('../assets/sounds/notification.wav');
 
 export function useNotificationSound() {
   const { messages } = useApp();
-  const player = useAudioPlayer(notificationSound);
+  const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   const prevCountRef = useRef(-1);
+
+  useEffect(() => {
+    try {
+      playerRef.current = createAudioPlayer(notificationSound);
+    } catch {
+      playerRef.current = null;
+    }
+    return () => {
+      try {
+        playerRef.current?.remove();
+      } catch {
+        // ignore cleanup errors
+      }
+    };
+  }, []);
 
   const totalUnread = useMemo(
     () =>
@@ -25,14 +40,14 @@ export function useNotificationSound() {
       prevCountRef.current = totalUnread;
       return;
     }
-    if (totalUnread > prevCountRef.current) {
+    if (totalUnread > prevCountRef.current && playerRef.current) {
       try {
-        player.seekTo(0);
-        player.play();
+        playerRef.current.seekTo(0);
+        playerRef.current.play();
       } catch {
         // silently ignore if audio is unavailable
       }
     }
     prevCountRef.current = totalUnread;
-  }, [totalUnread, player]);
+  }, [totalUnread]);
 }
