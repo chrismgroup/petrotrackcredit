@@ -82,10 +82,10 @@ function Field({ label, value, colors, accent }: FieldProps) {
 export default function ShiftReportScreen() {
   const {
     role, userName, branchId, pumps, prices,
-    pumpDailyReports, pumpInitialMeters,
+    pumpDailyReports, pumpInitialMeters, pumpLockedMeters,
     submitPumpReport, mgrForwardPumpReport,
     accApprovePumpReport, accRejectPumpReport,
-    mgrResubmitPumpReport, setPumpInitialMeter, deletePumpReport,
+    mgrResubmitPumpReport, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, deletePumpReport,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
@@ -107,12 +107,14 @@ export default function ShiftReportScreen() {
 
   /* ── derive opening meter from last closing or admin initial ── */
   const getOpeningMeter = useCallback((pumpId: string) => {
+    // Admin-locked value always wins
+    if (pumpLockedMeters[pumpId] !== undefined) return pumpLockedMeters[pumpId];
     const sorted = [...pumpDailyReports]
       .filter(r => r.pumpId === pumpId)
       .sort((a, b) => b.date.localeCompare(a.date));
     if (sorted.length > 0) return sorted[0].closingMeter;
     return pumpInitialMeters[pumpId] ?? 0;
-  }, [pumpDailyReports, pumpInitialMeters]);
+  }, [pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
 
   /* ── tab state ── */
   const defaultTab = isAtt ? 'dashboard' : isMgr ? 'review' : isAcc ? 'pending_acc' : (isMd || isCeo) ? 'all_records' : 'initial';
@@ -236,12 +238,44 @@ export default function ShiftReportScreen() {
   const [initMeters, setInitMeters] = useState<Record<string, string>>(
     Object.fromEntries(activePumps.map(p => [p.id, String(pumpInitialMeters[p.id] ?? '')]))
   );
+  const [lockInputs, setLockInputs] = useState<Record<string, string>>({});
 
   function saveInitMeter(pumpId: string) {
     const v = parseFloat(initMeters[pumpId].replace(/,/g, ''));
     if (isNaN(v) || v < 0) { Alert.alert('Invalid', 'Enter a valid meter reading.'); return; }
     setPumpInitialMeter(pumpId, v);
     Alert.alert('Saved', 'Initial meter reading updated.');
+  }
+
+  function handleLockMeter(pumpId: string) {
+    const raw = lockInputs[pumpId] ?? '';
+    const v = parseFloat(raw.replace(/,/g, ''));
+    if (isNaN(v) || v < 0) { Alert.alert('Invalid', 'Enter a valid meter reading to lock.'); return; }
+    Alert.alert(
+      'Lock Opening Meter',
+      `Lock the opening meter for this pump to ${fmtL(v)}?\n\nAttendants will always see this value as their opening until you unlock it.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Lock', style: 'destructive',
+          onPress: () => {
+            lockPumpMeter(pumpId, v);
+            setLockInputs(m => ({ ...m, [pumpId]: '' }));
+          },
+        },
+      ]
+    );
+  }
+
+  function handleUnlockMeter(pumpId: string) {
+    Alert.alert(
+      'Unlock Opening Meter',
+      'Release the lock? The opening meter will resume auto-carry from the last closing meter.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Unlock', onPress: () => unlockPumpMeter(pumpId) },
+      ]
+    );
   }
 
   /* ── branch-scoped filter: both att and mgr see ONLY their branch ── */
@@ -810,36 +844,72 @@ export default function ShiftReportScreen() {
           <View style={[c.infoBanner, { backgroundColor: '#185FA522', borderColor: '#185FA544' }]}>
             <Ionicons name="information-circle" size={16} color="#185FA5" />
             <Text style={[c.infoBannerTxt, { color: '#185FA5' }]}>
-              Set the initial meter reading for each pump. This is the starting point — future openings will auto-carry from the last closing.
+              Set the initial meter reading (first-time seed). To override the next opening meter, enter a value and tap <Text style={{ fontWeight: '700' }}>Lock</Text> — attendants will see that value until you unlock it.
             </Text>
           </View>
           {activePumps.map(p => {
             const current = pumpInitialMeters[p.id];
+            const locked = pumpLockedMeters[p.id];
+            const isLocked = locked !== undefined;
             const lastReport = [...pumpDailyReports].filter(r => r.pumpId === p.id).sort((a, b) => b.date.localeCompare(a.date))[0];
+            const effectiveOpening = getOpeningMeter(p.id);
             return (
-              <View key={p.id} style={[c.initCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <View style={[c.pumpAvatar, { backgroundColor: roleColor + '18' }]}>
-                    <Ionicons name="speedometer-outline" size={18} color={roleColor} />
+              <View key={p.id} style={[c.initCard, { backgroundColor: colors.surface, borderColor: isLocked ? '#C0392B55' : colors.border }]}>
+                {/* Header */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <View style={[c.pumpAvatar, { backgroundColor: isLocked ? '#FDECEA' : roleColor + '18' }]}>
+                    <Ionicons name={isLocked ? 'lock-closed' : 'speedometer-outline'} size={18} color={isLocked ? '#C0392B' : roleColor} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[c.cardTitle, { color: colors.text }]}>{p.name}</Text>
                     <Text style={[c.cardSub, { color: colors.textMuted }]}>{p.prod}</Text>
                   </View>
-                  {current !== undefined && (
-                    <View style={[c.badge, { backgroundColor: '#EAF3DE' }]}>
-                      <Text style={[c.badgeTxt, { color: '#27500A' }]}>Initial: {fmtL(current)}</Text>
+                  {isLocked ? (
+                    <View style={[c.badge, { backgroundColor: '#FDECEA' }]}>
+                      <Ionicons name="lock-closed" size={10} color="#C0392B" />
+                      <Text style={[c.badgeTxt, { color: '#C0392B' }]}>LOCKED</Text>
                     </View>
-                  )}
+                  ) : current !== undefined ? (
+                    <View style={[c.badge, { backgroundColor: '#EAF3DE' }]}>
+                      <Text style={[c.badgeTxt, { color: '#27500A' }]}>Seed: {fmtL(current)}</Text>
+                    </View>
+                  ) : null}
                 </View>
+
+                {/* Current effective opening */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 2 }}>
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Current opening (attendant sees)</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: isLocked ? '#C0392B' : colors.text }}>
+                    {fmtL(effectiveOpening)} L
+                  </Text>
+                </View>
+
                 {lastReport && (
                   <Text style={[c.cardSub, { color: colors.textMuted, marginBottom: 8 }]}>
-                    Last closing: {fmtL(lastReport.closingMeter)} L on {fmtDate(lastReport.date)}
+                    Last closing: {fmtL(lastReport.closingMeter)} L · {fmtDate(lastReport.date)}
                   </Text>
                 )}
-                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+
+                {/* Unlock banner when locked */}
+                {isLocked && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FDECEA', borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                    <Ionicons name="lock-closed" size={14} color="#C0392B" />
+                    <Text style={{ flex: 1, fontSize: 12, color: '#C0392B' }}>
+                      Opening meter locked at {fmtL(locked)} L
+                    </Text>
+                    <TouchableOpacity onPress={() => handleUnlockMeter(p.id)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#C0392B', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 }}>
+                      <Ionicons name="lock-open-outline" size={13} color="#fff" />
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Unlock</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Seed / initial meter row */}
+                <Text style={[c.inputLabel, { color: colors.textMuted, marginBottom: 4 }]}>Initial seed meter (L)</Text>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 10 }}>
                   <TextInput
-                    style={[c.textInput, { flex: 1, backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border, color: colors.text }]}
+                    style={[c.textInput, { flex: 1, marginBottom: 0, backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border, color: colors.text }]}
                     placeholder={current !== undefined ? String(current) : 'Enter initial meter (L)'}
                     placeholderTextColor={colors.textSubtle}
                     keyboardType="decimal-pad"
@@ -850,6 +920,24 @@ export default function ShiftReportScreen() {
                     style={[c.saveBtn, { backgroundColor: roleColor }]}>
                     <Ionicons name="save-outline" size={15} color="#fff" />
                     <Text style={c.saveBtnTxt}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Lock override row */}
+                <Text style={[c.inputLabel, { color: '#C0392B', marginBottom: 4 }]}>Override &amp; lock opening meter (L)</Text>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <TextInput
+                    style={[c.textInput, { flex: 1, marginBottom: 0, backgroundColor: colors.background, borderColor: '#C0392B44', color: colors.text }]}
+                    placeholder="Enter new opening meter to lock"
+                    placeholderTextColor={colors.textSubtle}
+                    keyboardType="decimal-pad"
+                    value={lockInputs[p.id] ?? ''}
+                    onChangeText={v => setLockInputs(m => ({ ...m, [p.id]: v }))}
+                  />
+                  <TouchableOpacity onPress={() => handleLockMeter(p.id)}
+                    style={[c.saveBtn, { backgroundColor: '#C0392B' }]}>
+                    <Ionicons name="lock-closed-outline" size={15} color="#fff" />
+                    <Text style={c.saveBtnTxt}>Lock</Text>
                   </TouchableOpacity>
                 </View>
               </View>
