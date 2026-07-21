@@ -87,6 +87,22 @@ export interface Message { id: number; from: string; to: string; type: 'txt' | '
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
 export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; duration?: string; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
+export interface InventoryLogEntry {
+  id: number;
+  dipId: number;
+  dt: string;
+  approvedBy: string;
+  tankId: string;
+  tankName: string;
+  product: string;
+  opening: number;
+  received: number;
+  sold: number;
+  expected: number;
+  actual: number;
+  discrepancy: number;
+  branchId?: string;
+}
 export interface CompanyInfo {
   name: string; rcNumber: string; tin: string; address: string;
   phone: string; email: string; website: string;
@@ -368,6 +384,7 @@ const INIT_BUDGETS: Budget[] = [];
 const INIT_TASKS: Task[] = [];
 const INIT_KPIS: KPI[] = [];
 const INIT_AUDIT: AuditEntry[] = [];
+const INIT_INVENTORY_LOG: InventoryLogEntry[] = [];
 const INIT_DEPTS: Department[] = [];
 const INIT_MSGS: Record<string, Message[]> = {};
 
@@ -423,6 +440,7 @@ interface AppContextType {
   pumpDailyReports: PumpDailyReport[];
   pumpInitialMeters: Record<string, number>;
   pumpLockedMeters: Record<string, number>;
+  inventoryLog: InventoryLogEntry[];
   setPumpInitialMeter: (pumpId: string, meter: number) => void;
   lockPumpMeter: (pumpId: string, meter: number) => void;
   unlockPumpMeter: (pumpId: string) => void;
@@ -602,6 +620,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pumpDailyReports, setPumpDailyReports] = useState<PumpDailyReport[]>([]);
   const [pumpInitialMeters, setPumpInitialMeters] = useState<Record<string, number>>({});
   const [pumpLockedMeters, setPumpLockedMeters] = useState<Record<string, number>>({});
+  const [inventoryLog, setInventoryLog] = useState<InventoryLogEntry[]>(INIT_INVENTORY_LOG);
   const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
@@ -614,7 +633,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
-      'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry',
+      'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -748,6 +767,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return changed ? merged : prev;
         });
       }
+      if (Array.isArray(s.inventoryLog) && !p.has('inventoryLog'))       setInventoryLog(s.inventoryLog as InventoryLogEntry[]);
       if (s.tasks && !p.has('tasks'))                                     setTasks(s.tasks as Task[]);
       if (s.kpis && !p.has('kpis'))                                       setKpis(s.kpis as KPI[]);
       if (s.companyFiles && !p.has('companyFiles'))                       setCompanyFiles(s.companyFiles as CompanyFile[]);
@@ -821,6 +841,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('callLog',           callLog); },           [callLog, loaded]);
   useEffect(() => { if (loaded) syncSlice('tasks',             tasks); },             [tasks, loaded]);
   useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
+  useEffect(() => { if (loaded) syncSlice('inventoryLog',     inventoryLog); },    [inventoryLog, loaded]);
   useEffect(() => { if (loaded) syncSlice('companyFiles',      companyFiles); },      [companyFiles, loaded]);
   useEffect(() => { if (loaded) syncSlice('deliveryEvidences', deliveryEvidences); }, [deliveryEvidences, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrEmployees',       hrEmployees); },       [hrEmployees, loaded]);
@@ -1088,6 +1109,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const approveDip = useCallback((id: number) => {
     const rec = dips.find(r => r.id === id);
     if (rec) {
+      // Snapshot tank state BEFORE resetting to compute discrepancies
+      const logEntries: InventoryLogEntry[] = [];
+      for (const tank of tanks) {
+        const lvl = rec.rd[tank.id];
+        if (lvl !== undefined) {
+          const expected = tank.op + tank.rv - tank.sl;
+          const actual = lvl;
+          logEntries.push({
+            id: genId(),
+            dipId: id,
+            dt: nowTs(),
+            approvedBy: userName ?? 'admin',
+            tankId: tank.id,
+            tankName: tank.name,
+            product: tank.prod,
+            opening: tank.op,
+            received: tank.rv,
+            sold: tank.sl,
+            expected,
+            actual,
+            discrepancy: actual - expected,
+            branchId: tank.branchId,
+          });
+        }
+      }
+
       setTanks(ts => ts.map(tank => {
         const lvl = rec.rd[tank.id];
         return lvl !== undefined ? { ...tank, op: lvl, rv: 0, sl: 0 } : tank;
@@ -1096,10 +1143,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const lvl = rec.lpg[lt.id];
         return lvl !== undefined ? { ...lt, op: lvl, rv: 0, sl: 0 } : lt;
       }));
+
+      if (logEntries.length > 0) {
+        setInventoryLog(log => [...log, ...logEntries]);
+
+        // Send notifications for discrepancies > 50L
+        const notifRoles: Role[] = ['md', 'ceo', 'acc', 'csm'];
+        for (const entry of logEntries) {
+          if (Math.abs(entry.discrepancy) > 50) {
+            const dir = entry.discrepancy < 0 ? 'Shortage' : 'Overage';
+            const detail = `${entry.tankName} (${entry.product}): Expected ${entry.expected.toLocaleString()}L · Actual ${entry.actual.toLocaleString()}L · ${dir}: ${Math.abs(entry.discrepancy).toLocaleString()}L`;
+            for (const toRole of notifRoles) {
+              const msgKey = chatKey('admin', toRole);
+              setMessages(m => ({
+                ...m,
+                [msgKey]: [...(m[msgKey] || []), {
+                  id: genId(),
+                  from: 'admin',
+                  to: toRole,
+                  type: 'alert' as const,
+                  body: detail,
+                  ts: nowTs(),
+                  read: false,
+                  alrt: { title: `⚠️ Inventory Discrepancy — ${entry.tankName}`, pri: 'high', detail },
+                } satisfies Message],
+              }));
+            }
+          }
+        }
+      }
     }
     setDips(d => d.map(r => r.id === id ? { ...r, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : r));
     setAudit(a => [{ id: genId(), action: 'Dip approved', user: userName, detail: `Dip record #${id} approved.`, ts: nowTs() }, ...a]);
-  }, [userName, dips]);
+  }, [userName, dips, tanks]);
 
   const rejectDip = useCallback((id: number) => {
     setDips(d => d.map(rec => rec.id === id ? { ...rec, status: 'rejected', approvedBy: userName, approvedDt: nowTs() } : rec));
@@ -1962,7 +2038,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence,
-      pumpDailyReports, pumpInitialMeters, pumpLockedMeters, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
+      pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
