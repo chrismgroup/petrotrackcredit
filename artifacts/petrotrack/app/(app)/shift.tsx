@@ -66,12 +66,12 @@ function ReportCard({ report, onPress, roleColor, colors }: ReportCardProps) {
   );
 }
 
-interface FieldProps { label: string; value: string; colors: any }
-function Field({ label, value, colors }: FieldProps) {
+interface FieldProps { label: string; value: string; colors: any; accent?: string }
+function Field({ label, value, colors, accent }: FieldProps) {
   return (
     <View style={[c.field, { borderBottomColor: colors.border }]}>
       <Text style={[c.fieldLabel, { color: colors.textMuted }]}>{label}</Text>
-      <Text style={[c.fieldValue, { color: colors.text }]}>{value}</Text>
+      <Text style={[c.fieldValue, { color: accent ?? colors.text }]}>{value}</Text>
     </View>
   );
 }
@@ -126,19 +126,21 @@ export default function ShiftReportScreen() {
   const openingMeter = pump ? getOpeningMeter(pump.id) : 0;
   const [closeMeter, setCloseMeter] = useState('');
   const [posAmt, setPosAmt]         = useState('');
-  const [cashAmt, setCashAmt]       = useState('');
-  const [xferAmt, setXferAmt]       = useState('');
-  const [noteAtt, setNoteAtt]       = useState('');
+  const [cashAmt, setCashAmt]         = useState('');
+  const [xferAmt, setXferAmt]         = useState('');
+  const [creditAmt, setCreditAmt]     = useState('');
+  const [noteAtt, setNoteAtt]         = useState('');
 
   const closeVal  = parseFloat(closeMeter.replace(/,/g, '')) || 0;
   const liters    = closeVal > openingMeter ? parseFloat((closeVal - openingMeter).toFixed(4)) : 0;
   const unitPrice = pump ? ((prices as any)[pump.prod] ?? 0) : 0;
   const grossAmt  = liters * unitPrice;
-  const posVal    = parseFloat(posAmt.replace(/,/g, ''))  || 0;
-  const cashVal   = parseFloat(cashAmt.replace(/,/g, '')) || 0;
-  const xferVal   = parseFloat(xferAmt.replace(/,/g, '')) || 0;
+  const posVal    = parseFloat(posAmt.replace(/,/g, ''))    || 0;
+  const cashVal   = parseFloat(cashAmt.replace(/,/g, ''))   || 0;
+  const xferVal   = parseFloat(xferAmt.replace(/,/g, ''))   || 0;
+  const creditVal = parseFloat(creditAmt.replace(/,/g, '')) || 0;
   const totalColl = posVal + cashVal + xferVal;
-  const variance  = totalColl - grossAmt;
+  const variance  = totalColl + creditVal - grossAmt;
   const varColor  = variance === 0 ? '#27500A' : variance > 0 ? '#185FA5' : '#791F1F';
 
   const todayBlockingReport = useMemo(() =>
@@ -152,7 +154,7 @@ export default function ShiftReportScreen() {
   function handleSubmit() {
     if (!pump) { Alert.alert('Error', 'No active pump selected.'); return; }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
-    if (totalColl <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, or transfer).'); return; }
+    if (totalColl + creditVal <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, transfer, or credit).'); return; }
     if (todayBlockingReport) {
       const label = todayBlockingReport.status === 'returned'
         ? 'was returned and must be re-forwarded by the manager'
@@ -166,12 +168,12 @@ export default function ShiftReportScreen() {
       branchId: branchId ?? '',
       openingMeter, closingMeter: closeVal, liters,
       unitPrice, grossAmount: grossAmt,
-      posAmount: posVal, cashAmount: cashVal, transferAmount: xferVal,
+      posAmount: posVal, cashAmount: cashVal, transferAmount: xferVal, creditAmount: creditVal,
       totalCollected: totalColl, variance,
       note: noteAtt.trim(),
       submittedBy: userName ?? '', submittedByName: userName ?? '',
     });
-    setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setNoteAtt('');
+    setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditAmt(''); setNoteAtt('');
     const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
     Alert.alert('Shift Report Submitted', `${pump.name} · ${fmtL(liters)}L\nGross: ${fmt(grossAmt)}\n${vLabel}\nSent to branch manager for review.`);
     setTab('history');
@@ -612,12 +614,13 @@ export default function ShiftReportScreen() {
                   {/* Payment breakdown */}
                   <View style={[c.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <Text style={[c.formTitle, { color: colors.text }]}>Payment Breakdown</Text>
-                    <Text style={[c.formHint, { color: colors.textMuted }]}>Enter all amounts received. POS + Cash + Transfer must equal gross sales.</Text>
+                    <Text style={[c.formHint, { color: colors.textMuted }]}>Enter all amounts received. POS + Cash + Transfer + Credit must equal gross sales.</Text>
 
                     {[
                       { label: 'POS Amount (₦)', val: posAmt, set: setPosAmt, icon: 'card-outline', color: '#185FA5' },
                       { label: 'Cash Amount (₦)', val: cashAmt, set: setCashAmt, icon: 'cash-outline', color: '#27500A' },
                       { label: 'Bank Transfer (₦)', val: xferAmt, set: setXferAmt, icon: 'swap-horizontal-outline', color: '#7B3FA8' },
+                      { label: 'Credit to Customer (₦)', val: creditAmt, set: setCreditAmt, icon: 'person-outline', color: '#A85E1A' },
                     ].map(f => (
                       <View key={f.label} style={{ marginBottom: 10 }}>
                         <Text style={[c.inputLabel, { color: colors.textMuted }]}>{f.label}</Text>
@@ -633,7 +636,7 @@ export default function ShiftReportScreen() {
                     ))}
 
                     {/* Balance summary */}
-                    {(posVal + cashVal + xferVal) > 0 && (
+                    {(posVal + cashVal + xferVal + creditVal) > 0 && (
                       <View style={[c.balanceCard, { backgroundColor: varColor + '10', borderColor: varColor + '33' }]}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                           <Text style={{ fontSize: 12, color: colors.textMuted }}>Gross Amount</Text>
@@ -643,6 +646,12 @@ export default function ShiftReportScreen() {
                           <Text style={{ fontSize: 12, color: colors.textMuted }}>Total Collected</Text>
                           <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{fmt(totalColl)}</Text>
                         </View>
+                        {creditVal > 0 && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <Text style={{ fontSize: 12, color: '#A85E1A' }}>Credit to Customer</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: '#A85E1A' }}>{fmt(creditVal)}</Text>
+                          </View>
+                        )}
                         <View style={[c.divider, { backgroundColor: colors.border }]} />
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
                           <Text style={{ fontSize: 13, fontWeight: '700', color: varColor }}>
@@ -908,6 +917,9 @@ export default function ShiftReportScreen() {
             <Field label="POS" value={fmt(viewing.posAmount)} colors={colors} />
             <Field label="Cash" value={fmt(viewing.cashAmount)} colors={colors} />
             <Field label="Bank Transfer" value={fmt(viewing.transferAmount)} colors={colors} />
+            {(viewing.creditAmount ?? 0) > 0 && (
+              <Field label="Credit to Customer" value={fmt(viewing.creditAmount ?? 0)} colors={colors} accent="#A85E1A" />
+            )}
             <Field label="Total Collected" value={fmt(viewing.totalCollected)} colors={colors} />
             {(() => {
               const vc = viewing.variance === 0 ? '#27500A' : viewing.variance > 0 ? '#185FA5' : '#791F1F';

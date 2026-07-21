@@ -124,6 +124,7 @@ export interface PumpDailyReport {
   posAmount: number;
   cashAmount: number;
   transferAmount: number;
+  creditAmount: number;
   totalCollected: number;
   variance: number;
   note: string;
