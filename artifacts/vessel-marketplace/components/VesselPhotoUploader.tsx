@@ -31,9 +31,14 @@ export function VesselPhotoUploader({
   onPendingPhotosChange,
 }: Props) {
   const [uploading, setUploading] = useState(false);
+  const [settingCover, setSettingCover] = useState<number | null>(null);
 
   const totalCount = photos.length + pendingPhotos.length;
   const canAdd = totalCount < MAX_PHOTOS;
+
+  // Photos sorted by sortOrder so the cover is always first
+  const sortedPhotos = [...photos].sort((a, b) => a.sortOrder - b.sortOrder);
+  const coverPhotoId = sortedPhotos[0]?.id ?? null;
 
   const pickImage = async () => {
     if (!canAdd) {
@@ -133,6 +138,23 @@ export function VesselPhotoUploader({
     onPendingPhotosChange(pendingPhotos.filter((_, i) => i !== index));
   };
 
+  const handleSetCover = async (photo: VesselPhoto) => {
+    if (!vesselId || photo.id === coverPhotoId) return;
+    setSettingCover(photo.id);
+    const { data: updated, error } = await vmVessels.setCover(vesselId, photo.id);
+    setSettingCover(null);
+    if (error) { Alert.alert('Error', error); return; }
+    if (updated) {
+      // Update the local photos list: set the chosen photo to sortOrder=0
+      // and shift others up to maintain order matching the server's re-sequencing
+      const remaining = photos
+        .filter(p => p.id !== photo.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((p, i) => ({ ...p, sortOrder: i + 1 }));
+      onPhotosChange([{ ...photo, sortOrder: 0 }, ...remaining]);
+    }
+  };
+
   const getImageUrl = (objectPath: string) => {
     if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
       return `${window.location.origin}/api/storage${objectPath}`;
@@ -167,14 +189,41 @@ export function VesselPhotoUploader({
         </Pressable>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll} contentContainerStyle={styles.photoList}>
-          {photos.map(photo => (
-            <View key={photo.id} style={styles.photoItem}>
-              <Image source={{ uri: getImageUrl(photo.objectPath) }} style={styles.photo} resizeMode="cover" />
-              <Pressable style={styles.removeBtn} onPress={() => removeExisting(photo)}>
-                <Ionicons name="close-circle" size={20} color="#fff" />
-              </Pressable>
-            </View>
-          ))}
+          {sortedPhotos.map(photo => {
+            const isCover = photo.id === coverPhotoId;
+            const isSettingThis = settingCover === photo.id;
+            return (
+              <View key={photo.id} style={styles.photoItem}>
+                <Image source={{ uri: getImageUrl(photo.objectPath) }} style={styles.photo} resizeMode="cover" />
+
+                {isCover ? (
+                  <View style={styles.coverBadge}>
+                    <Ionicons name="star" size={10} color="#fff" />
+                    <Text style={styles.coverBadgeText}>Cover</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={styles.setCoverBtn}
+                    onPress={() => handleSetCover(photo)}
+                    disabled={isSettingThis || settingCover !== null}
+                  >
+                    {isSettingThis ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="star-outline" size={10} color="#fff" />
+                        <Text style={styles.setCoverText}>Cover</Text>
+                      </>
+                    )}
+                  </Pressable>
+                )}
+
+                <Pressable style={styles.removeBtn} onPress={() => removeExisting(photo)}>
+                  <Ionicons name="close-circle" size={20} color="#fff" />
+                </Pressable>
+              </View>
+            );
+          })}
           {pendingPhotos.map((p, i) => (
             <View key={`pending-${i}`} style={styles.photoItem}>
               <Image source={{ uri: p.uri }} style={styles.photo} resizeMode="cover" />
@@ -228,6 +277,30 @@ const styles = StyleSheet.create({
   photoItem: { position: 'relative', width: PHOTO_SIZE, height: PHOTO_SIZE },
   photo: { width: PHOTO_SIZE, height: PHOTO_SIZE, borderRadius: Colors.radiusSm },
   removeBtn: { position: 'absolute', top: -6, right: -6, zIndex: 10 },
+  coverBadge: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: Colors.primary,
+    borderBottomLeftRadius: Colors.radiusSm,
+    borderBottomRightRadius: Colors.radiusSm,
+    paddingVertical: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  coverBadgeText: { fontSize: 9, color: '#fff', fontFamily: 'Inter_600SemiBold' },
+  setCoverBtn: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderBottomLeftRadius: Colors.radiusSm,
+    borderBottomRightRadius: Colors.radiusSm,
+    paddingVertical: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  setCoverText: { fontSize: 9, color: '#fff', fontFamily: 'Inter_500Medium' },
   pendingOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', borderBottomLeftRadius: Colors.radiusSm, borderBottomRightRadius: Colors.radiusSm, paddingVertical: 2, alignItems: 'center' },
   pendingText: { fontSize: 9, color: '#fff', fontFamily: 'Inter_600SemiBold' },
   addTile: { width: PHOTO_SIZE, height: PHOTO_SIZE, borderRadius: Colors.radiusSm, borderWidth: 1, borderColor: Colors.border, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },

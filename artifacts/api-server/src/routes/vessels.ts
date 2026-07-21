@@ -455,6 +455,58 @@ router.post("/vessels/:id/photos", requireVesselAuth, async (req, res): Promise<
   res.status(201).json(photo);
 });
 
+router.patch("/vessels/:id/photos/:photoId", requireVesselAuth, async (req, res): Promise<void> => {
+  const id = pId(req.params.id);
+  const photoId = pId(req.params.photoId);
+  if (Number.isNaN(id) || Number.isNaN(photoId)) {
+    res.status(400).json({ error: "Invalid id" }); return;
+  }
+
+  const [vessel] = await db.select().from(vesselsTable).where(eq(vesselsTable.id, id));
+  if (!vessel) { res.status(404).json({ error: "Vessel not found" }); return; }
+
+  const auth = req.vesselAuth!;
+  if (auth.role !== "admin" && vessel.ownerId !== auth.userId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const [photo] = await db.select().from(vesselPhotosTable)
+    .where(and(eq(vesselPhotosTable.id, photoId), eq(vesselPhotosTable.vesselId, id)));
+  if (!photo) { res.status(404).json({ error: "Photo not found" }); return; }
+
+  const { sortOrder } = req.body ?? {};
+  if (sortOrder === undefined || typeof sortOrder !== "number" || !Number.isInteger(sortOrder) || sortOrder < 0) {
+    res.status(400).json({ error: "sortOrder must be a non-negative integer" }); return;
+  }
+
+  // When setting a photo as cover (sortOrder=0), re-sequence all other photos
+  // to maintain a clean 0-based ordering without gaps.
+  const allPhotos = await db
+    .select({ id: vesselPhotosTable.id, sortOrder: vesselPhotosTable.sortOrder })
+    .from(vesselPhotosTable)
+    .where(eq(vesselPhotosTable.vesselId, id))
+    .orderBy(asc(vesselPhotosTable.sortOrder), asc(vesselPhotosTable.uploadedAt));
+
+  // Re-order: target photo goes to sortOrder, others fill in around it
+  const others = allPhotos.filter(p => p.id !== photoId);
+  // Assign new sequential positions for the others, skipping the target's slot
+  const newOrders: { id: number; order: number }[] = [];
+  let seq = 0;
+  for (const other of others) {
+    if (seq === sortOrder) seq++; // skip the slot reserved for the target
+    newOrders.push({ id: other.id, order: seq });
+    seq++;
+  }
+  newOrders.push({ id: photoId, order: sortOrder });
+
+  for (const { id: pid, order } of newOrders) {
+    await db.update(vesselPhotosTable).set({ sortOrder: order }).where(eq(vesselPhotosTable.id, pid));
+  }
+
+  const [updated] = await db.select().from(vesselPhotosTable).where(eq(vesselPhotosTable.id, photoId));
+  res.json(updated);
+});
+
 router.delete("/vessels/:id/photos/:photoId", requireVesselAuth, async (req, res): Promise<void> => {
   const id = pId(req.params.id);
   const photoId = pId(req.params.photoId);

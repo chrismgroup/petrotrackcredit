@@ -136,6 +136,8 @@ export const vmVessels = {
     post<VesselPhoto>(`${VESSEL_BASE}/${id}/photos`, { objectPath }),
   deletePhoto: (vesselId: number, photoId: number) =>
     del(`${VESSEL_BASE}/${vesselId}/photos/${photoId}`),
+  setCover: (vesselId: number, photoId: number) =>
+    patch<VesselPhoto>(`${VESSEL_BASE}/${vesselId}/photos/${photoId}`, { sortOrder: 0 }),
 };
 
 export const vmCharters = {
