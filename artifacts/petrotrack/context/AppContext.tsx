@@ -426,6 +426,7 @@ interface AppContextType {
   setPumpInitialMeter: (pumpId: string, meter: number) => void;
   lockPumpMeter: (pumpId: string, meter: number) => void;
   unlockPumpMeter: (pumpId: string) => void;
+  resetOperationalData: () => void;
   submitPumpReport: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => void;
   mgrForwardPumpReport: (id: number, mgrNote: string) => void;
   accApprovePumpReport: (report: PumpDailyReport, accNote: string) => void;
@@ -1690,6 +1691,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Pump opening meter unlocked', user: userName, detail: `Pump ${pumpId}: opening meter released to auto-carry`, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const resetOperationalData = useCallback(() => {
+    setSales([]);
+    setExpenses([]);
+    setBudgets([]);
+    setDips([]);
+    setDeliveries([]);
+    setMaintenance([]);
+    setAudit([]);
+    setMessages({});
+    setTasks([]);
+    setKpis([]);
+    setCompanyFiles([]);
+    setDeliveryEvidences([]);
+    setHrEmployees([]);
+    setHrHandbooks([]);
+    setHrRecommendations([]);
+    setPriceProposals([]);
+    setLegalMatters([]);
+    setCorpProjects([]);
+    setMeetingMinutes([]);
+    setBroadcasts([]);
+    setCallLog([]);
+    setPumpDailyReports([]);
+    setPumpLockedMeters({});
+    setPriceHistory([]);
+    setFinancialEntry(INIT_FINANCIAL_ENTRY);
+  }, []);
+
   const submitPumpReport = useCallback((r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
     setPumpDailyReports(rs => [...rs, { ...r, id: genId(), status: 'pending_manager', submittedAt: nowTs() }]);
     setAudit(a => [{ id: genId(), action: 'Pump report submitted', user: userName, detail: `${r.pumpName} · ${r.liters.toLocaleString()}L · variance: ₦${r.variance.toLocaleString()}`, ts: nowTs() }, ...a]);
@@ -1933,7 +1962,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery, addMaintenance, addSales,
       addCompanyFile, addDeliveryEvidence,
-      pumpDailyReports, pumpInitialMeters, pumpLockedMeters, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter,
+      pumpDailyReports, pumpInitialMeters, pumpLockedMeters, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,

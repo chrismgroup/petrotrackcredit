@@ -188,7 +188,7 @@ export default function SystemSettingsScreen() {
     updateTank, updateLpgTank, updatePump, updateStaff,
     deleteTank, deleteLpgTank, deletePump, deleteStaff,
     userAccounts, companyInfo, updateCompanyInfo,
-    departments, assignStaffDept, setPumpInitialMeter,
+    departments, assignStaffDept, setPumpInitialMeter, resetOperationalData,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -1240,14 +1240,65 @@ export default function SystemSettingsScreen() {
                 </View>
               ))}
               {isAdmin && (
-                <TouchableOpacity
-                  style={[styles.dangerBtn, { borderColor: colors.errorBorder }]}
-                  onPress={() => Alert.alert('Confirm', 'Clear all cached data?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => {} }])}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="trash-outline" size={16} color={colors.error} />
-                  <Text style={[styles.dangerBtnText, { color: colors.error }]}>Clear Cache</Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    style={[styles.dangerBtn, { borderColor: colors.errorBorder }]}
+                    onPress={() => Alert.alert('Confirm', 'Clear all cached data?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => {} }])}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={colors.error} />
+                    <Text style={[styles.dangerBtnText, { color: colors.error }]}>Clear Cache</Text>
+                  </TouchableOpacity>
+
+                  <View style={{ marginTop: 20 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <Ionicons name="warning" size={16} color="#C0392B" />
+                      <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.5, color: '#C0392B', textTransform: 'uppercase' }}>Production Reset</Text>
+                    </View>
+                    <View style={[styles.card, { backgroundColor: '#FDF2F0', borderColor: '#C0392B33', marginBottom: 0 }]}>
+                      <Text style={{ fontSize: 13, color: '#C0392B', lineHeight: 20, marginBottom: 12 }}>
+                        Clears all test/operational data — shift reports, sales, expenses, deliveries, messages, HR records, and more.{'\n\n'}
+                        <Text style={{ fontWeight: '700' }}>Admin settings are preserved:</Text> pumps, tanks, staff, branches, prices, user accounts, and role permissions stay intact.
+                      </Text>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#C0392B', paddingVertical: 13, borderRadius: 12 }}
+                        activeOpacity={0.85}
+                        onPress={() =>
+                          Alert.alert(
+                            'Reset for Production?',
+                            'This will permanently delete all test data (shift reports, sales, expenses, deliveries, messages, HR records, etc.).\n\nAdmin settings, pumps, staff, prices and user accounts will NOT be touched.\n\nThis cannot be undone.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Yes, Reset',
+                                style: 'destructive',
+                                onPress: () =>
+                                  Alert.alert(
+                                    'Are you absolutely sure?',
+                                    'Tap CONFIRM to erase all operational data and prepare the app for live use.',
+                                    [
+                                      { text: 'Cancel', style: 'cancel' },
+                                      {
+                                        text: 'CONFIRM — Erase Test Data',
+                                        style: 'destructive',
+                                        onPress: () => {
+                                          resetOperationalData();
+                                          Alert.alert('Done', 'All test data has been cleared. The app is ready for live use.');
+                                        },
+                                      },
+                                    ]
+                                  ),
+                              },
+                            ]
+                          )
+                        }
+                      >
+                        <Ionicons name="refresh-circle-outline" size={18} color="#fff" />
+                        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Reset for Production</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
               )}
             </>
           )}
