@@ -33,6 +33,9 @@ async function clearCredentials() {
   await SecureStore.deleteItemAsync(BIOMETRIC_KEY).catch(() => {});
 }
 
+const BG_DARK = '#071910';
+const BG_MID  = '#0D2E1A';
+
 export default function LoginScreen() {
   const { role, login } = useApp();
   const colors = useColors();
@@ -45,7 +48,6 @@ export default function LoginScreen() {
   const [showPw, setShowPw]     = useState(false);
   const [loading, setLoading]   = useState(false);
 
-  /* ── Biometric state ── */
   const [bioAvailable,  setBioAvailable]  = useState(false);
   const [bioType,       setBioType]       = useState<'face' | 'fingerprint' | 'biometric'>('biometric');
   const [bioLoading,    setBioLoading]    = useState(false);
@@ -54,12 +56,10 @@ export default function LoginScreen() {
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
 
-  /* Redirect if already logged in */
   useEffect(() => {
     if (role) router.replace('/(app)/home');
   }, [role]);
 
-  /* Check biometric availability + stored credentials on mount */
   useEffect(() => {
     (async () => {
       if (Platform.OS === 'web') return;
@@ -68,23 +68,17 @@ export default function LoginScreen() {
         LocalAuthentication.isEnrolledAsync(),
       ]);
       if (!hasHw || !enrolled) return;
-
       const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
       if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
         setBioType('face');
       } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
         setBioType('fingerprint');
       }
-
       const creds = await loadCredentials();
-      if (creds) {
-        setBioCreds(creds);
-        setBioAvailable(true);
-      }
+      if (creds) { setBioCreds(creds); setBioAvailable(true); }
     })();
   }, []);
 
-  /* Auto-prompt biometrics when available */
   useEffect(() => {
     if (bioAvailable && bioCreds) {
       const t = setTimeout(handleBiometric, 400);
@@ -102,32 +96,26 @@ export default function LoginScreen() {
         disableDeviceFallback: false,
       });
       if (!result.success) { setBioLoading(false); return; }
-
       const serverResult = await apiLogin(bioCreds.username, bioCreds.password);
       setBioLoading(false);
       if (typeof serverResult === 'string') {
         if (serverResult === 'network') {
           Alert.alert('No Connection', 'Cannot reach the server. Check your internet connection and try again.');
         } else {
-          /* Stored credentials no longer valid — clear them */
           await clearCredentials();
-          setBioAvailable(false);
-          setBioCreds(null);
+          setBioAvailable(false); setBioCreds(null);
           Alert.alert('Sign-in Failed', 'Your saved credentials are no longer valid. Please sign in with your password.');
         }
       } else {
         login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, undefined, serverResult.branchId ?? undefined);
       }
-    } catch {
-      setBioLoading(false);
-    }
+    } catch { setBioLoading(false); }
   }, [bioCreds, bioLoading, login]);
 
   async function handleLogin() {
     const u = username.trim();
     const p = password.trim();
     if (!u || !p) { Alert.alert('Required', 'Please enter your username and password.'); return; }
-
     setLoading(true);
     const serverResult = await apiLogin(u, p);
     setLoading(false);
@@ -141,7 +129,6 @@ export default function LoginScreen() {
       }
       return;
     }
-    /* Save credentials for future biometric use */
     await saveCredentials(u, p);
     login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, undefined, serverResult.branchId ?? undefined);
   }
@@ -150,44 +137,68 @@ export default function LoginScreen() {
   const bioLabel = bioType === 'face' ? 'Face ID' : bioType === 'fingerprint' ? 'Fingerprint' : 'Biometrics';
 
   return (
-    <View style={[styles.container, { backgroundColor: '#0f2718' }]}>
-      <View style={[styles.header, { paddingTop: topPad + 24 }]}>
-        <View style={styles.logoWrap}>
+    <View style={[styles.root, { backgroundColor: BG_DARK }]}>
+      {/* ── Decorative background blobs ── */}
+      <View style={styles.blob1} />
+      <View style={styles.blob2} />
+
+      {/* ── Hero section ── */}
+      <View style={[styles.hero, { paddingTop: topPad + 20 }]}>
+        <View style={styles.logoRing}>
           <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
         </View>
         <Text style={styles.appName}>Gastsmarts</Text>
         <Text style={styles.tagline}>Fuel Station Management System</Text>
+
+        {/* Trust indicators */}
+        <View style={styles.trustRow}>
+          <View style={styles.trustChip}>
+            <Ionicons name="shield-checkmark" size={11} color="rgba(255,255,255,0.7)" />
+            <Text style={styles.trustTxt}>Secure</Text>
+          </View>
+          <View style={styles.trustDot} />
+          <View style={styles.trustChip}>
+            <Ionicons name="flash" size={11} color="rgba(255,255,255,0.7)" />
+            <Text style={styles.trustTxt}>Real-time</Text>
+          </View>
+          <View style={styles.trustDot} />
+          <View style={styles.trustChip}>
+            <Ionicons name="cloud-done" size={11} color="rgba(255,255,255,0.7)" />
+            <Text style={styles.trustTxt}>Cloud-synced</Text>
+          </View>
+        </View>
       </View>
 
+      {/* ── Login card ── */}
       <ScrollView
         style={[styles.card, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingBottom: botPad + 24 }}
+        contentContainerStyle={{ paddingBottom: botPad + 28 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.cardTitle, { color: colors.text }]}>Sign In</Text>
+        <View style={styles.cardHandle} />
+
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Welcome back</Text>
         <Text style={[styles.cardSubtitle, { color: colors.textMuted }]}>
-          Enter your credentials to access the system
+          Sign in to continue to your dashboard
         </Text>
 
         {/* ── Biometric quick-sign-in ── */}
         {bioAvailable && bioCreds ? (
           <TouchableOpacity
-            style={[styles.bioBtn, { borderColor: '#1a6e3c40', backgroundColor: '#1a6e3c12' }]}
+            style={[styles.bioBtn, { borderColor: colors.primary + '40', backgroundColor: colors.primary + '0E' }]}
             onPress={handleBiometric}
             disabled={bioLoading}
             activeOpacity={0.8}
           >
-            <View style={[styles.bioIconWrap, { backgroundColor: '#1a6e3c' }]}>
-              <Ionicons name={bioIcon as any} size={26} color="#fff" />
+            <View style={[styles.bioIconWrap, { backgroundColor: colors.primary }]}>
+              <Ionicons name={bioIcon as any} size={24} color="#fff" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.bioTitle, { color: colors.text }]}>
                 {bioLoading ? 'Authenticating…' : `Sign in with ${bioLabel}`}
               </Text>
-              <Text style={[styles.bioSub, { color: colors.textMuted }]}>
-                {bioCreds.username}
-              </Text>
+              <Text style={[styles.bioSub, { color: colors.textMuted }]}>{bioCreds.username}</Text>
             </View>
             {!bioLoading && <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />}
           </TouchableOpacity>
@@ -201,12 +212,15 @@ export default function LoginScreen() {
           </View>
         ) : null}
 
-        {/* Username */}
-        <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+        {/* ── Username ── */}
+        <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username</Text>
+        <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.inputBorder }]}>
+          <View style={[styles.inputIcon, { backgroundColor: colors.border }]}>
+            <Ionicons name="person-outline" size={16} color={colors.textMuted} />
+          </View>
           <TextInput
             style={[styles.input, { color: colors.text }]}
-            placeholder="Username"
+            placeholder="Enter your username"
             placeholderTextColor={colors.textSubtle}
             autoCapitalize="none"
             autoCorrect={false}
@@ -217,13 +231,16 @@ export default function LoginScreen() {
           />
         </View>
 
-        {/* Password */}
-        <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
+        {/* ── Password ── */}
+        <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Password</Text>
+        <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.inputBorder }]}>
+          <View style={[styles.inputIcon, { backgroundColor: colors.border }]}>
+            <Ionicons name="lock-closed-outline" size={16} color={colors.textMuted} />
+          </View>
           <TextInput
             ref={pwRef}
             style={[styles.input, { color: colors.text }]}
-            placeholder="Password"
+            placeholder="Enter your password"
             placeholderTextColor={colors.textSubtle}
             secureTextEntry={!showPw}
             autoCapitalize="none"
@@ -238,56 +255,95 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Login button */}
+        {/* ── Sign-in button ── */}
         <TouchableOpacity
           onPress={handleLogin}
           disabled={loading}
           activeOpacity={0.85}
-          style={[styles.loginBtn, { backgroundColor: '#1a6e3c', opacity: loading ? 0.7 : 1 }]}
+          style={[styles.loginBtn, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
         >
           {loading
             ? <Text style={styles.loginBtnText}>Signing in…</Text>
             : <>
                 <Text style={styles.loginBtnText}>Sign In</Text>
-                <Ionicons name="arrow-forward" size={18} color="#fff" />
+                <View style={styles.loginBtnArrow}>
+                  <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+                </View>
               </>
           }
         </TouchableOpacity>
 
-        {/* Biometric hint for first-time users */}
         {!bioAvailable && Platform.OS !== 'web' ? (
           <Text style={[styles.bioHint, { color: colors.textSubtle }]}>
             Sign in once with your password to enable {Platform.OS === 'ios' ? 'Face ID / Touch ID' : 'fingerprint'} for future logins.
           </Text>
         ) : null}
-
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:     { flex: 1 },
-  header:        { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 28 },
-  logoWrap:      { width: 80, height: 80, borderRadius: 20, overflow: 'hidden', marginBottom: 14, borderWidth: 2, borderColor: 'rgba(255,255,255,0.15)' },
-  logo:          { width: 80, height: 80 },
-  appName:       { fontSize: 28, fontWeight: '700', color: '#fff', letterSpacing: -0.5 },
-  tagline:       { fontSize: 13, color: 'rgba(255,255,255,0.55)', marginTop: 4, letterSpacing: 0.3 },
-  card:          { flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 28, paddingHorizontal: 22 },
-  cardTitle:     { fontSize: 22, fontWeight: '700', marginBottom: 4 },
-  cardSubtitle:  { fontSize: 13, marginBottom: 24 },
+  root:         { flex: 1 },
 
-  bioBtn:        { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 16, borderWidth: 1.5, padding: 14, marginBottom: 8 },
-  bioIconWrap:   { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  bioTitle:      { fontSize: 15, fontWeight: '700' },
-  bioSub:        { fontSize: 12, marginTop: 2 },
-  dividerRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 16 },
-  dividerLine:   { flex: 1, height: 1 },
-  dividerTxt:    { fontSize: 12, fontWeight: '500' },
+  // ── Decorative blobs ─────────────────────────────────────────
+  blob1: {
+    position: 'absolute', width: 280, height: 280, borderRadius: 140,
+    backgroundColor: '#16813E', opacity: 0.12,
+    top: -80, right: -60,
+  },
+  blob2: {
+    position: 'absolute', width: 180, height: 180, borderRadius: 90,
+    backgroundColor: '#0D5C2E', opacity: 0.20,
+    top: 120, left: -50,
+  },
 
-  inputWrap:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 13, borderRadius: 14, borderWidth: 1.5, marginBottom: 12 },
-  input:         { flex: 1, fontSize: 15 },
-  loginBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 14, marginTop: 6 },
-  loginBtnText:  { color: '#fff', fontSize: 16, fontWeight: '700' },
-  bioHint:       { fontSize: 12, textAlign: 'center', marginTop: 18, lineHeight: 18 },
+  // ── Hero ─────────────────────────────────────────────────────
+  hero:         { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 32 },
+  logoRing: {
+    width: 88, height: 88, borderRadius: 24, overflow: 'hidden',
+    marginBottom: 16,
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.18)',
+    shadowColor: '#22C55E', shadowOpacity: 0.4, shadowRadius: 20,
+    elevation: 12,
+  },
+  logo:         { width: 88, height: 88 },
+  appName:      { fontSize: 30, fontWeight: '800', color: '#fff', letterSpacing: -0.8 },
+  tagline:      { fontSize: 13, color: 'rgba(255,255,255,0.50)', marginTop: 4, letterSpacing: 0.4 },
+
+  trustRow:     { flexDirection: 'row', alignItems: 'center', marginTop: 16, gap: 8 },
+  trustChip:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  trustTxt:     { fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: '500' },
+  trustDot:     { width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.25)' },
+
+  // ── Card ─────────────────────────────────────────────────────
+  card:         { flex: 1, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24 },
+  cardHandle:   { width: 40, height: 4, borderRadius: 2, backgroundColor: '#DDE5E0', alignSelf: 'center', marginTop: 12, marginBottom: 24 },
+  cardTitle:    { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, marginBottom: 4 },
+  cardSubtitle: { fontSize: 13, marginBottom: 28 },
+
+  // ── Biometric ────────────────────────────────────────────────
+  bioBtn:       { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 16, borderWidth: 1.5, padding: 14, marginBottom: 8 },
+  bioIconWrap:  { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  bioTitle:     { fontSize: 15, fontWeight: '700' },
+  bioSub:       { fontSize: 12, marginTop: 2 },
+  dividerRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 16 },
+  dividerLine:  { flex: 1, height: 1 },
+  dividerTxt:   { fontSize: 12, fontWeight: '500' },
+
+  // ── Inputs ───────────────────────────────────────────────────
+  fieldLabel:   { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 7 },
+  inputWrap:    { flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 14, paddingVertical: 3, borderRadius: 14, borderWidth: 1.5, marginBottom: 18, overflow: 'hidden' },
+  inputIcon:    { width: 44, height: 48, alignItems: 'center', justifyContent: 'center' },
+  input:        { flex: 1, fontSize: 15, height: 48 },
+
+  // ── Button ───────────────────────────────────────────────────
+  loginBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingVertical: 16, borderRadius: 16, marginTop: 4,
+  },
+  loginBtnText:  { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 0.2 },
+  loginBtnArrow: { width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
+
+  bioHint:      { fontSize: 12, textAlign: 'center', marginTop: 20, lineHeight: 18 },
 });
