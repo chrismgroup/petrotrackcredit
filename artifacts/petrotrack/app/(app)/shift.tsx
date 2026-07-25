@@ -109,9 +109,11 @@ export default function ShiftReportScreen() {
   const getOpeningMeter = useCallback((pumpId: string) => {
     // Admin-locked value always wins
     if (pumpLockedMeters[pumpId] !== undefined) return pumpLockedMeters[pumpId];
+    // Only use reports that have passed manager review (pending_accountant or approved).
+    // pending_manager and returned reports have not been validated yet and must not roll over.
     const sorted = [...pumpDailyReports]
-      .filter(r => r.pumpId === pumpId)
-      .sort((a, b) => b.date.localeCompare(a.date));
+      .filter(r => r.pumpId === pumpId && (r.status === 'approved' || r.status === 'pending_accountant'))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.submittedAt.localeCompare(a.submittedAt));
     if (sorted.length > 0) return sorted[0].closingMeter;
     return pumpInitialMeters[pumpId] ?? 0;
   }, [pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
