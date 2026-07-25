@@ -7,7 +7,7 @@ import {
 
 import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { Expense, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
+import { Budget, Expense, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const EXPENSE_CATS = [
@@ -23,12 +23,12 @@ const ST_MAP: Record<string, { label: string; color: string; bg: string; icon: s
   rejected:     { label: 'Rejected',        color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle' },
 };
 
-type FormState = { cat: string; desc: string; amt: string; ref: string };
-function blankForm(): FormState { return { cat: EXPENSE_CATS[0], desc: '', amt: '', ref: '' }; }
-function expToForm(e: Expense): FormState { return { cat: e.cat, desc: e.desc, amt: String(e.amt), ref: e.ref ?? '' }; }
+type FormState = { cat: string; desc: string; amt: string; ref: string; budgetId: number };
+function blankForm(): FormState { return { cat: EXPENSE_CATS[0], desc: '', amt: '', ref: '', budgetId: 0 }; }
+function expToForm(e: Expense): FormState { return { cat: e.cat, desc: e.desc, amt: String(e.amt), ref: e.ref ?? '', budgetId: e.budgetId }; }
 
-type FormSheetProps = { f: FormState; setF: React.Dispatch<React.SetStateAction<FormState>>; roleColor: string };
-function FormSheet({ f, setF, roleColor }: FormSheetProps) {
+type FormSheetProps = { f: FormState; setF: React.Dispatch<React.SetStateAction<FormState>>; roleColor: string; approvedBudgets: Budget[] };
+function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
   const colors = useColors();
   return (
     <>
@@ -41,6 +41,21 @@ function FormSheet({ f, setF, roleColor }: FormSheetProps) {
           </TouchableOpacity>
         ))}
       </View>
+      <Text style={[styles.fieldLabel, { color: colors.text }]}>Charge to Budget *</Text>
+      {approvedBudgets.length === 0 ? (
+        <View style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, justifyContent: 'center' }]}>
+          <Text style={{ color: colors.textSubtle, fontSize: 13 }}>No approved budgets available</Text>
+        </View>
+      ) : (
+        <View style={styles.catGrid}>
+          {approvedBudgets.map(b => (
+            <TouchableOpacity key={b.id} onPress={() => setF(p => ({ ...p, budgetId: b.id }))}
+              style={[styles.catChip, { backgroundColor: f.budgetId === b.id ? roleColor : colors.surface, borderColor: f.budgetId === b.id ? roleColor : colors.border }]}>
+              <Text style={[styles.catChipText, { color: f.budgetId === b.id ? '#fff' : colors.textMuted }]}>{b.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
       <Text style={[styles.fieldLabel, { color: colors.text }]}>Description *</Text>
       <TextInput
         style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
@@ -66,7 +81,7 @@ function FormSheet({ f, setF, roleColor }: FormSheetProps) {
 
 export default function ExpensesScreen() {
   const {
-    role, userName, expenses, sales,
+    role, userName, expenses, sales, budgets,
     addExpense, updateExpense, deleteExpense,
     forwardExpenseToMD, approveExpense, rejectExpense,
   } = useApp();
@@ -76,6 +91,8 @@ export default function ExpensesScreen() {
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const isAcc = role === 'acc' || role === 'admin';
   const isMD  = role === 'md'  || role === 'admin';
+
+  const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
 
   const [tab, setTab]               = useState(0);
   const [showForm, setShowForm]     = useState(false);
@@ -112,17 +129,25 @@ export default function ExpensesScreen() {
 
   const pendingCount = isAcc ? pendingForAcc.length : isMD ? pendingForMD.length : 0;
 
-  function openCreate() { setEditTarget(null); setForm(blankForm()); setShowForm(true); }
+  function openCreate() {
+    setEditTarget(null);
+    setForm({ ...blankForm(), budgetId: approvedBudgets[0]?.id ?? 0 });
+    setShowForm(true);
+  }
   function openEdit(e: Expense) { setEditTarget(e); setForm(expToForm(e)); setShowForm(true); }
 
   function handleSave() {
     const amount = parseFloat(form.amt.replace(/,/g, ''));
     if (!form.desc.trim()) { Alert.alert('Error', 'Please enter a description.'); return; }
     if (!amount || amount <= 0) { Alert.alert('Error', 'Please enter a valid amount.'); return; }
+    if (!editTarget && (!form.budgetId || !approvedBudgets.find(b => b.id === form.budgetId))) {
+      Alert.alert('No Budget Selected', 'Please select an approved budget to charge this expense to.');
+      return;
+    }
     if (editTarget) {
       updateExpense(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, ref: form.ref.trim() || undefined });
     } else {
-      addExpense({ cat: form.cat, desc: form.desc.trim(), amt: amount, by: role || 'mgr', byName: userName, ref: form.ref.trim() || undefined, budgetId: 2 });
+      addExpense({ cat: form.cat, desc: form.desc.trim(), amt: amount, by: role || 'mgr', byName: userName, ref: form.ref.trim() || undefined, budgetId: form.budgetId });
     }
     setShowForm(false);
   }
@@ -338,7 +363,7 @@ export default function ExpensesScreen() {
             <Text style={[styles.sheetTitle, { color: colors.text }]}>
               {editTarget ? 'Edit Expense' : 'New Expense'}
             </Text>
-            <FormSheet f={form} setF={setForm} roleColor={roleColor} />
+            <FormSheet f={form} setF={setForm} roleColor={roleColor} approvedBudgets={approvedBudgets} />
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
               <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, { flex: 2, backgroundColor: roleColor }]}>
                 <Ionicons name={editTarget ? 'checkmark' : 'send'} size={16} color="#fff" />
