@@ -94,7 +94,7 @@ export default function ExpensesScreen() {
   const pendingAmt  = expenses.filter(e => e.status === 'pending').reduce((s, e) => s + e.amt, 0);
   const approvedAmt = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + e.amt, 0);
 
-  const pendingForAcc = expenses.filter(e => e.status === 'pending');
+  const pendingForAcc = expenses.filter(e => e.status === 'pending' || e.status === 'rejected');
   const pendingForMD  = expenses.filter(e => e.status === 'acc_forwarded');
   const myExpenses    = expenses.filter(e => e.by === role || e.byName === userName);
 
@@ -145,7 +145,7 @@ export default function ExpensesScreen() {
     isMgr && (e.status === 'pending' || e.status === 'rejected') && (e.by === role || e.byName === userName);
   const accCanEdit    = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
   const accCanDelete  = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
-  const accCanForward = (e: Expense) => isAcc && e.status === 'pending';
+  const accCanForward = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
   const mdCanAct = (e: Expense) => isMD && e.status === 'acc_forwarded';
 
   return (
