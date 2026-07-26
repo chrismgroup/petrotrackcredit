@@ -142,6 +142,7 @@ export default function BudgetScreen() {
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const isAcc = role === 'acc' || role === 'admin';
   const isMD  = role === 'md'  || role === 'admin';
+  const isCeo = role === 'ceo';
 
   const [tab, setTab] = useState<string>(isMgr ? 'mine' : 'pending');
 
@@ -167,7 +168,8 @@ export default function BudgetScreen() {
   );
 
   const displayList: Budget[] =
-    isMD  ? (tab === 'pending' ? pendingForMD  : budgets)
+    isCeo ? budgets
+    : isMD  ? (tab === 'pending' ? pendingForMD  : budgets)
     : isAcc ? (tab === 'pending' ? pendingForAcc : budgets)
     : myBudgets;
 
@@ -175,7 +177,7 @@ export default function BudgetScreen() {
   const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
   const totalApproved   = approvedBudgets.reduce((s, b) => s + b.total, 0);
   const totalSpentAll   = approvedBudgets.reduce((s, b) => s + calcPerf(b, expenses, branchMap).totalSpent, 0);
-  const showSummary     = (isMD || isAcc) && approvedBudgets.length > 0 && tab !== 'pending';
+  const showSummary     = (isMD || isAcc || isCeo) && approvedBudgets.length > 0 && tab !== 'pending';
 
   function openCreate() {
     setEditTarget(null);
@@ -266,7 +268,12 @@ export default function BudgetScreen() {
     { key: 'pending', label: 'For Approval', count: pendingForMD.length },
     { key: 'all',     label: 'All Budgets' },
   ];
-  const tabs = isMD ? TABS_MD : isAcc ? TABS_ACC : TABS_MGR;
+  const TABS_CEO = [
+    { key: 'all',     label: 'All Budgets' },
+    { key: 'pending', label: 'Pending', count: pendingForAcc.length + pendingForMD.length },
+    { key: 'approved', label: 'Approved', count: approvedBudgets.length },
+  ];
+  const tabs = isCeo ? TABS_CEO : isMD ? TABS_MD : isAcc ? TABS_ACC : TABS_MGR;
 
   /* Detail-modal performance (computed once when selected changes) */
   // mgr only sees their own branch's expenses
@@ -345,6 +352,7 @@ export default function BudgetScreen() {
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>
               {isMgr ? 'No budgets yet. Tap + to create one.'
                 : isAcc ? 'No budgets submitted for review yet.'
+                : isCeo ? 'No budgets on record yet.'
                 : 'No budgets awaiting your approval yet.'}
             </Text>
           </View>
