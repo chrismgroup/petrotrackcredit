@@ -107,6 +107,8 @@ export default function OperationsScreen() {
   const pmsSales   = todaySales.filter(s => s.pump.includes('PMS'));
   const agoSales   = todaySales.filter(s => s.pump.includes('AGO'));
   const dkpSales   = todaySales.filter(s => s.pump.includes('DPK'));
+  const lpgSales   = todaySales.filter(s => s.pump.includes('LPG'));
+  const lubeSales  = todaySales.filter(s => s.pump.includes('Lube Oil'));
 
   // ── Maintenance state ────────────────────────────────────────────────────
   const canMaint = isMgr || isAtt || role === 'csm' || role === 'admin';
@@ -546,13 +548,15 @@ export default function OperationsScreen() {
 
           <View style={styles.prodRowSales}>
             {[
-              { label: 'PMS', L: pmsSales.reduce((s, e) => s + e.L, 0), color: colors.primary },
-              { label: 'AGO', L: agoSales.reduce((s, e) => s + e.L, 0), color: colors.blue   },
-              { label: 'DPK', L: dkpSales.reduce((s, e) => s + e.L, 0), color: colors.amber  },
+              { label: 'PMS',     L: pmsSales.reduce((s, e) => s + e.L, 0),  unit: 'L',  color: colors.primary },
+              { label: 'AGO',     L: agoSales.reduce((s, e) => s + e.L, 0),  unit: 'L',  color: colors.blue   },
+              { label: 'DPK',     L: dkpSales.reduce((s, e) => s + e.L, 0),  unit: 'L',  color: colors.amber  },
+              { label: 'LPG',     L: lpgSales.reduce((s, e) => s + e.L, 0),  unit: 'kg', color: colors.teal   },
+              { label: 'Lube Oil',L: lubeSales.reduce((s, e) => s + e.L, 0), unit: 'L',  color: colors.purple },
             ].map(p => (
               <View key={p.label} style={[styles.prodCardSales, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
                 <Text style={[styles.prodLabelSales, { color: p.color }]}>{p.label}</Text>
-                <Text style={[styles.prodLSales, { color: colors.text }]}>{p.L.toLocaleString()}L</Text>
+                <Text style={[styles.prodLSales, { color: colors.text }]}>{p.L.toLocaleString()}{p.unit}</Text>
               </View>
             ))}
           </View>
