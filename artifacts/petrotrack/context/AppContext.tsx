@@ -791,12 +791,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
       if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(s.financialEntry as FinancialEntry);
-      // Lift the startup write-gate: server state is now applied, safe to accept user writes.
+      // Lift the startup write-gate ONLY on success: server state is now applied, safe to accept user writes.
+      // If syncFromServer fails (no network, 500, etc.), the gate stays DOWN so the app's empty defaults
+      // cannot overwrite whatever real data is on the server. The next poll (3 s) will retry.
       initialSyncDoneRef.current = true;
     } catch {
-      // silently ignore — network errors must not break the UI
-      // Still lift the gate on error so the app remains functional offline.
-      initialSyncDoneRef.current = true;
+      // silently ignore — network errors must not break the UI.
+      // CRITICAL: DO NOT lift the gate on error. If we do, the empty default state in useState([])
+      // will be PUT to the server by the syncSlice effects, wiping all real data permanently.
+      // The gate stays closed; the next 3-second poll will retry syncFromServer.
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
