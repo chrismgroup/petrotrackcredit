@@ -7,14 +7,16 @@ import { ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 export default function AccountsScreen() {
-  const { role, prices, tanks, sales, branches, expenses, companyInfo, pumpDailyReports } = useApp();
+  const { role, branchId, prices, tanks, sales, branches, expenses, companyInfo, pumpDailyReports } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
 
-  const branchRev = (branchId: string) =>
-    pumpDailyReports.filter(r => r.status === 'approved' && r.branchId === branchId)
+  const isGlobal = role === 'md' || role === 'ceo' || role === 'admin';
+  const visibleBranches = isGlobal ? branches : branches.filter(b => !branchId || !b.id || b.id === branchId);
+  const branchRev = (bid: string) =>
+    pumpDailyReports.filter(r => r.status === 'approved' && r.branchId === bid)
       .reduce((s, r) => s + r.grossAmount, 0);
-  const totalRevenue  = branches.reduce((s, b) => s + branchRev(b.id), 0);
+  const totalRevenue  = visibleBranches.reduce((s, b) => s + branchRev(b.id), 0);
   const totalExpenses = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + e.amt, 0);
   const grossProfit   = totalRevenue - totalExpenses;
 
@@ -22,6 +24,8 @@ export default function AccountsScreen() {
   const pmsRev     = sales.filter(s => s.pump.includes('PMS')).reduce((sum, s) => sum + s.L * s.price, 0);
   const agoRev     = sales.filter(s => s.pump.includes('AGO')).reduce((sum, s) => sum + s.L * s.price, 0);
   const dkpRev     = sales.filter(s => s.pump.includes('DPK')).reduce((sum, s) => sum + s.L * s.price, 0);
+  const lpgRev     = sales.filter(s => s.pump.includes('LPG')).reduce((sum, s) => sum + s.L * s.price, 0);
+  const lubeRev    = sales.filter(s => s.pump.includes('Lube Oil')).reduce((sum, s) => sum + s.L * s.price, 0);
 
   // Tax computations
   const vatRate    = parseFloat(companyInfo.vatRate  || '7.5') / 100;
@@ -118,14 +122,16 @@ export default function AccountsScreen() {
           <Text style={[styles.todaySub, { color: colors.textMuted }]}>Today's total sales</Text>
           <View style={styles.prodBreakdown}>
             {[
-              { label: 'PMS', amount: pmsRev, color: colors.primary, price: prices.PMS },
-              { label: 'AGO', amount: agoRev, color: colors.blue,    price: prices.AGO },
-              { label: 'DPK', amount: dkpRev, color: colors.amber,   price: prices.DPK },
-            ].map(p => (
+              { label: 'PMS',      amount: pmsRev,  color: colors.primary, price: prices.PMS,      unit: '/L' },
+              { label: 'AGO',      amount: agoRev,  color: colors.blue,    price: prices.AGO,      unit: '/L' },
+              { label: 'DPK',      amount: dkpRev,  color: colors.amber,   price: prices.DPK,      unit: '/L' },
+              { label: 'LPG',      amount: lpgRev,  color: colors.teal,    price: prices.LPG,      unit: '/kg' },
+              { label: 'Lube Oil', amount: lubeRev, color: colors.purple,  price: prices['Lube Oil'], unit: '/L' },
+            ].filter(p => p.amount > 0 || p.price > 0).map(p => (
               <View key={p.label} style={[styles.prodItem, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
                 <Text style={[styles.prodLabel, { color: p.color }]}>{p.label}</Text>
                 <Text style={[styles.prodAmt,   { color: colors.text }]}>{fmt(p.amount)}</Text>
-                <Text style={[styles.prodPrice,  { color: colors.textMuted }]}>₦{p.price}/L</Text>
+                <Text style={[styles.prodPrice,  { color: colors.textMuted }]}>₦{p.price}{p.unit}</Text>
               </View>
             ))}
           </View>
@@ -133,7 +139,7 @@ export default function AccountsScreen() {
 
         {/* Branch revenue */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Branches Revenue</Text>
-        {branches.map(b => (
+        {visibleBranches.map(b => (
           <View key={b.id} style={[styles.branchRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.branchIcon, { backgroundColor: roleColor + '18' }]}>
               <Ionicons name="business" size={16} color={roleColor} />

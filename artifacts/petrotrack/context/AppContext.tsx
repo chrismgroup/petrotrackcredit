@@ -11,7 +11,7 @@ export interface Tank {
   cap: number; dip: number; op: number; rv: number; sl: number; branchId?: string;
 }
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; branchId?: string; }
-export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG'; active: boolean; branchId?: string; }
+export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil'; active: boolean; branchId?: string; }
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
 export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
@@ -39,12 +39,12 @@ export interface NavItem { id: string; icon: string; label: string; }
 export interface UserInfo { name: string; color: string; initials: string; role: string; online: boolean; }
 export interface MgrPermissions {
   canDip: boolean; canSales: boolean; canExpenses: boolean;
-  canMaintenance: boolean; canBudget: boolean;
+  canMaintenance: boolean; canBudget: boolean; canChat: boolean;
   canPetrolTanks: boolean; canLpgTanks: boolean;
 }
 export const DEFAULT_MGR_PERMS: MgrPermissions = {
   canDip: true, canSales: true, canExpenses: true,
-  canMaintenance: true, canBudget: true,
+  canMaintenance: true, canBudget: true, canChat: true,
   canPetrolTanks: true, canLpgTanks: true,
 };
 

@@ -91,6 +91,7 @@ export default function ExpensesScreen() {
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const isAcc = role === 'acc' || role === 'admin';
   const isMD  = role === 'md'  || role === 'admin';
+  const isCeo = role === 'ceo';
 
   const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
 
@@ -119,15 +120,20 @@ export default function ExpensesScreen() {
   const TABS_MGR = ['My Expenses', 'All'];
   const TABS_ACC = ['For Review', 'All'];
   const TABS_MD  = ['For Approval', 'Approved', 'All'];
-  const currentTabs = isMD ? TABS_MD : isAcc ? TABS_ACC : TABS_MGR;
+  const TABS_CEO = ['Pending', 'Approved', 'All'];
+  const currentTabs = isCeo ? TABS_CEO : isMD ? TABS_MD : isAcc ? TABS_ACC : TABS_MGR;
 
-  const displayedExpenses = isMD
+  const displayedExpenses = isCeo
+    ? (tab === 0 ? expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded')
+      : tab === 1 ? expenses.filter(e => e.status === 'approved') : expenses)
+    : isMD
     ? (tab === 0 ? pendingForMD : tab === 1 ? expenses.filter(e => e.status === 'approved') : expenses)
     : isAcc
     ? (tab === 0 ? pendingForAcc : expenses)
     : (tab === 0 ? myExpenses : expenses);
 
-  const pendingCount = isAcc ? pendingForAcc.length : isMD ? pendingForMD.length : 0;
+  const pendingCount = isCeo ? expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded').length
+    : isAcc ? pendingForAcc.length : isMD ? pendingForMD.length : 0;
 
   function openCreate() {
     setEditTarget(null);

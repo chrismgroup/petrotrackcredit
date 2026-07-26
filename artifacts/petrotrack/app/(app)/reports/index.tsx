@@ -159,7 +159,7 @@ export default function ReportsScreen() {
   const netSalesFigure = shiftGross - mgrExpScaled;
 
   const shiftProdSales = useMemo(() =>
-    (['PMS','AGO','DPK','LPG'] as const).map(prod => {
+    (['PMS','AGO','DPK','LPG','Lube Oil'] as const).map(prod => {
       const color = PROD_COLORS[prod] || rc;
       const reps = fPumpReports.filter((r: any) => r.product === prod);
       const L    = reps.reduce((s: number, r: any) => s + r.liters, 0);
