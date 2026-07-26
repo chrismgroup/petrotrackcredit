@@ -14,7 +14,7 @@ export const ALL_REPORT_TYPES: ReportType[] = [
 export const PERIODS: Period[] = ['Daily','Weekly','Monthly','Quarterly','Yearly'];
 export const SCALE: Record<Period, number> = { Daily:1, Weekly:7, Monthly:30, Quarterly:90, Yearly:365 };
 export const PROD_COLORS: Record<string, string> = {
-  PMS:'#1a6e3c', AGO:'#185FA5', DPK:'#BA7517', LPG:'#633806',
+  PMS:'#1a6e3c', AGO:'#185FA5', DPK:'#BA7517', LPG:'#633806', 'Lube Oil':'#5c3d11',
 };
 
 export const REPORT_META: Record<ReportType, { label: string; icon: string; desc: string; dept: string; color: string }> = {

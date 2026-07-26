@@ -84,7 +84,8 @@ export default function PricesScreen() {
     updatePrice(setProd, val, undefined, setReason.trim() || undefined);
     setSetProd(null);
     setSetReason('');
-    Alert.alert('Price updated', `${setProd} price set to ₦${val.toLocaleString()}/L`);
+    const unit = PROD_META[setProd || 'PMS']?.unit ?? '/L';
+    Alert.alert('Price updated', `${setProd} price set to ₦${val.toLocaleString()}${unit}`);
   }
 
   /* ── Propose sheet (other roles) ── */
@@ -131,7 +132,7 @@ export default function PricesScreen() {
   function handleApprove(p: PriceProposal) {
     Alert.alert(
       'Approve price change?',
-      `${p.prod}: ₦${p.currentPrice.toLocaleString()} → ₦${p.proposedPrice.toLocaleString()}/L\nProposed by ${p.proposedBy}`,
+      `${p.prod}: ₦${p.currentPrice.toLocaleString()} → ₦${p.proposedPrice.toLocaleString()}${PROD_META[p.prod]?.unit ?? '/L'}\nProposed by ${p.proposedBy}`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Approve', style: 'default', onPress: () => approvePriceProposal(p.id) },
@@ -368,7 +369,7 @@ export default function PricesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Set {setProd} Price</Text>
               <Text style={[s.sheetSub, { color: colors.textMuted }]}>
-                Current: {setProd ? (((prices as any)[setProd] ?? 0) > 0 ? `₦${((prices as any)[setProd]).toLocaleString()}/L` : 'Not set') : '—'}
+                Current: {setProd ? (((prices as any)[setProd] ?? 0) > 0 ? `₦${((prices as any)[setProd]).toLocaleString()}${PROD_META[setProd]?.unit ?? '/L'}` : 'Not set') : '—'}
               </Text>
             </View>
           </View>
@@ -379,7 +380,7 @@ export default function PricesScreen() {
               <View style={{ flexDirection: 'row', gap: 16 }}>
                 <View style={{ flex: 1, alignItems: 'center' }}>
                   <Text style={[s.contextLabel, { color: colors.textMuted }]}>Last Cost Price</Text>
-                  <Text style={[s.contextVal, { color: colors.text }]}>{'₦'}{lastCostPrice(setProd)!.toLocaleString()}{'/L'}</Text>
+                  <Text style={[s.contextVal, { color: colors.text }]}>{'₦'}{lastCostPrice(setProd)!.toLocaleString()}{PROD_META[setProd]?.unit ?? '/L'}</Text>
                 </View>
                 {(prices as any)[setProd] > 0 ? (
                   <>
@@ -470,11 +471,11 @@ export default function PricesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Propose {proposeProd} Price</Text>
               <Text style={[s.sheetSub, { color: colors.textMuted }]}>
-                Current: {proposeProd ? (((prices as any)[proposeProd] ?? 0) > 0 ? `₦${((prices as any)[proposeProd]).toLocaleString()}/L` : 'Not set') : '—'} · Requires approval
+                Current: {proposeProd ? (((prices as any)[proposeProd] ?? 0) > 0 ? `₦${((prices as any)[proposeProd]).toLocaleString()}${PROD_META[proposeProd]?.unit ?? '/L'}` : 'Not set') : '—'} · Requires approval
               </Text>
             </View>
           </View>
-          <Text style={[s.inputLabel, { color: colors.textMuted }]}>Proposed Price per Litre (₦)</Text>
+          <Text style={[s.inputLabel, { color: colors.textMuted }]}>Proposed Price{PROD_META[proposeProd || 'PMS']?.unit.replace('/', ' per ').replace('L', 'Litre').replace('kg', 'Kilogram') ?? ' per Litre'} (₦)</Text>
           <TextInput
             style={[s.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
             keyboardType="decimal-pad"
@@ -517,11 +518,11 @@ export default function PricesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Adjust {updateTarget?.prod} Price</Text>
               <Text style={[s.sheetSub, { color: colors.textMuted }]}>
-                Proposed: ₦{updateTarget?.proposedPrice.toLocaleString()}/L · Set your price to approve
+                Proposed: ₦{updateTarget?.proposedPrice.toLocaleString()}{PROD_META[updateTarget?.prod || 'PMS']?.unit ?? '/L'} · Set your price to approve
               </Text>
             </View>
           </View>
-          <Text style={[s.inputLabel, { color: colors.textMuted }]}>Approved Price per Litre (₦)</Text>
+          <Text style={[s.inputLabel, { color: colors.textMuted }]}>Approved Price{PROD_META[updateTarget?.prod || 'PMS']?.unit.replace('/', ' per ').replace('L', 'Litre').replace('kg', 'Kilogram') ?? ' per Litre'} (₦)</Text>
           <TextInput
             style={[s.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
             keyboardType="decimal-pad"
@@ -556,7 +557,7 @@ export default function PricesScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Reject Proposal</Text>
-              <Text style={[s.sheetSub, { color: colors.textMuted }]}>{rejectTarget?.prod} · ₦{rejectTarget?.proposedPrice.toLocaleString()}/L by {rejectTarget?.proposedBy}</Text>
+              <Text style={[s.sheetSub, { color: colors.textMuted }]}>{rejectTarget?.prod} · ₦{rejectTarget?.proposedPrice.toLocaleString()}{PROD_META[rejectTarget?.prod || 'PMS']?.unit ?? '/L'} by {rejectTarget?.proposedBy}</Text>
             </View>
           </View>
           <Text style={[s.inputLabel, { color: colors.textMuted }]}>Reason (optional)</Text>

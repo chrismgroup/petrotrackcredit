@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { BLANK_COMPANY_INFO, DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
+import { BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'access' | 'system';
@@ -1007,7 +1007,7 @@ export default function SystemSettingsScreen() {
           )}
 
           {/* ── MANAGERS ── */}
-          {activeTab === 'managers' && (
+          {activeTab === 'staff' && (
             <>
               <View style={[styles.banner, { backgroundColor: '#3a1f00' }]}>
                 <Ionicons name="construct" size={22} color={ROLE_COLORS.mgr} />
@@ -1049,7 +1049,7 @@ export default function SystemSettingsScreen() {
                         </View>
                         <Switch
                           value={perms[key]}
-                          onValueChange={v => isAdmin && updateMgrPerms(bid, { [key]: v })}
+                          onValueChange={v => { if (isAdmin) updateMgrPerms(bid, { [key]: v }); }}
                           thumbColor={perms[key] ? ROLE_COLORS.mgr : '#aaa'}
                           trackColor={{ false: colors.border, true: ROLE_COLORS.mgr + '55' }}
                           disabled={!isAdmin}
@@ -1106,7 +1106,7 @@ export default function SystemSettingsScreen() {
                             <Text style={[styles.permLabel, { color: enabled ? colors.text : colors.textMuted }]}>{label}</Text>
                             <Switch
                               value={enabled}
-                              onValueChange={v => isAdmin && updateRoleAccess(r, id, v)}
+                              onValueChange={v => { if (isAdmin) updateRoleAccess(r, id, v); }}
                               thumbColor={enabled ? rc : '#aaa'}
                               trackColor={{ false: colors.border, true: rc + '55' }}
                               disabled={!isAdmin}
@@ -1183,7 +1183,7 @@ export default function SystemSettingsScreen() {
                               </View>
                               <Switch
                                 value={enabled}
-                                onValueChange={v => isAdmin && updateUserAccess(member.id, id, v)}
+                                onValueChange={v => { if (isAdmin) updateUserAccess(member.id, id, v); }}
                                 thumbColor={enabled ? rc : '#aaa'}
                                 trackColor={{ false: colors.border, true: rc + '55' }}
                                 disabled={!isAdmin}

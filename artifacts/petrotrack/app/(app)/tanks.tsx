@@ -114,7 +114,7 @@ export default function TanksScreen() {
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
 
     const analysis = computeDipAnalysis(rd);
-    addDip({ dt: new Date().toISOString(), by: userName, rd, lpg, obs });
+    addDip({ dt: new Date().toISOString(), by: userName, rd, lpg, obs, status: 'pending' });
     setReadings({}); setLpgReadings({}); setObs('');
 
     if (analysis.length > 0) {
