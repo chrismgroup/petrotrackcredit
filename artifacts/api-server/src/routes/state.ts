@@ -13,6 +13,7 @@ const ALLOWED_KEYS = new Set([
   "hrHandbooks", "hrRecommendations", "complianceDocs", "priceProposals",
   "legalMatters", "corpProjects", "meetingMinutes",
   "broadcasts", "callLog", "pumpDailyReports", "pumpInitialMeters",
+  "pumpLockedMeters", "inventoryLog", "financialEntry",
 ]);
 
 // Keys that modify access control, credentials, or HR/legal/financial records.
