@@ -133,7 +133,7 @@ router.put("/users/:id", async (req, res): Promise<void> => {
   try {
     const [row] = await db
       .update(staffUsersTable)
-      .set(updates)
+      .set({ ...updates })
       .where(eq(staffUsersTable.id, id))
       .returning();
 
