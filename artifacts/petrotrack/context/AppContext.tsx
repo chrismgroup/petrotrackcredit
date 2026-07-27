@@ -483,6 +483,7 @@ interface AppContextType {
   rejectDip: (id: number) => void;
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
   updateDelivery: (id: number, updates: Partial<Omit<Delivery, 'id'>>) => void;
+  accRecallDelivery: (id: number) => void;
   deleteDelivery: (id: number) => void;
   submitDeliveryForApproval: (id: number) => void;
   accForwardToMd: (id: number, costPrice: number, accNote: string) => void;
@@ -1271,6 +1272,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ts: nowTime(), read: false,
       }],
     }));
+  }, [userName, deliveries]);
+
+  const accRecallDelivery = useCallback((id: number) => {
+    const d = deliveries.find(d => d.id === id);
+    if (!d) return;
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_acc' as const } : rec));
+    setAudit(a => [{ id: genId(), action: 'Delivery recalled from MD', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L`, ts: nowTs() }, ...a]);
   }, [userName, deliveries]);
 
   const approveDelivery = useCallback((id: number, sellingPrice: number, mdNote?: string) => {
@@ -2159,7 +2167,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
-      addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery, addMaintenance, updateMaintenance, deleteMaintenance, addSales, updateSales, deleteSales,
+      addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, updateMaintenance, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence,
       pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport, updatePumpReport,

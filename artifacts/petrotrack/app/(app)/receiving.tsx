@@ -183,7 +183,7 @@ export default function ReceivingScreen() {
     pumpDailyReports,
     deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
-    submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery,
+    submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
@@ -538,6 +538,8 @@ export default function ReceivingScreen() {
     isMgr && (d.approvalStatus === 'draft' || !d.approvalStatus);
   const canAccSet = (d: Delivery) =>
     isAcc && (d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending');
+  const canAccRecall = (d: Delivery) =>
+    isAcc && d.approvalStatus === 'pending_md' && d.accBy === userName;
   const canMdAct = (d: Delivery) =>
     isMd && d.approvalStatus === 'pending_md';
   const isLocked = (d: Delivery) =>
@@ -984,6 +986,16 @@ export default function ReceivingScreen() {
                 <TouchableOpacity onPress={() => openAccModal(d)} style={[styles.fullBtn, { backgroundColor: '#185FA5' }]}>
                   <Ionicons name="pricetag-outline" size={14} color="#fff" />
                   <Text style={styles.fullBtnText}>Set Cost Price & Forward to MD</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {canAccRecall(d) ? (
+                <TouchableOpacity
+                  onPress={() => { accRecallDelivery(d.id); openAccModal(d); }}
+                  style={[styles.fullBtn, { backgroundColor: '#BA7517' }]}
+                >
+                  <Ionicons name="return-down-back-outline" size={14} color="#fff" />
+                  <Text style={styles.fullBtnText}>Recall & Edit Cost Price</Text>
                 </TouchableOpacity>
               ) : null}
 
