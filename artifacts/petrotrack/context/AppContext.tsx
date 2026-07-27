@@ -16,6 +16,7 @@ export interface DipRecord { id: number; dt: string; by: string; rd: Record<stri
 export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
+export interface MarketCompetitor { id: string; name: string; location: string; pms: string; ago: string; dpk: string; lpg: string; updatedBy: string; updatedAt: string; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
@@ -427,6 +428,10 @@ interface AppContextType {
   prices: Prices; priceHistory: PriceChange[]; tanks: Tank[]; lpgTanks: LPGTank[]; pumps: Pump[];
   dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
   sales: SalesEntry[]; staff: Staff[]; branches: Branch[];
+  marketCompetitors: MarketCompetitor[];
+  addMarketCompetitor: (competitor: Omit<MarketCompetitor, 'id'>) => void;
+  updateMarketCompetitor: (id: string, updates: Partial<Omit<MarketCompetitor, 'id'>>) => void;
+  deleteMarketCompetitor: (id: string) => void;
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
   financialEntry: FinancialEntry;
   updateFinancialEntry: (updates: Partial<Omit<FinancialEntry, 'updatedBy' | 'updatedAt'>>) => void;
@@ -608,6 +613,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [deliveries, setDeliveries] = useState<Delivery[]>(INIT_RECS);
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>(INIT_MAINT);
   const [sales, setSales] = useState<SalesEntry[]>(INIT_SALES);
+  const [marketCompetitors, setMarketCompetitors] = useState<MarketCompetitor[]>([]);
   const [staff, setStaff] = useState<Staff[]>(INIT_STAFF);
   const [branches, setBranches] = useState<Branch[]>(INIT_BRANCHES);
   const [docs] = useState<ComplianceDoc[]>(INIT_DOCS);
@@ -638,6 +644,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
   const [loaded, setLoaded] = useState(false);
+  const [stateSyncReadyTick, setStateSyncReadyTick] = useState(0);
   useEffect(() => {
     const KEYS = [
       'auth', 'companyInfo', 'tanks', 'lpgTanks', 'pumps', 'staff', 'branches',
@@ -647,6 +654,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
+      'marketCompetitors',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -703,6 +711,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.meetingMinutes)    setMeetingMinutes(s.meetingMinutes);
       if (s.broadcasts)        setBroadcasts(s.broadcasts);
       if (s.callLog)           setCallLog(s.callLog);
+      if (s.marketCompetitors) setMarketCompetitors(s.marketCompetitors);
       if (s.financialEntry)    setFinancialEntry(s.financialEntry);
       setLoaded(true);
     });
@@ -803,6 +812,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!p.has('corpProjects'))      setCorpProjects(safeArray<CorpProject>(s.corpProjects));
       if (!p.has('broadcasts'))        setBroadcasts(safeArray<Broadcast>(s.broadcasts));
       if (!p.has('callLog'))           setCallLog(safeArray<CallRecord>(s.callLog));
+      if (!p.has('marketCompetitors')) setMarketCompetitors(safeArray<MarketCompetitor>(s.marketCompetitors));
       if (!p.has('meetingMinutes'))    setMeetingMinutes(safeArray<MeetingMinutes>(s.meetingMinutes));
       if (!p.has('pumpDailyReports'))  setPumpDailyReports(safeArray<PumpDailyReport>(s.pumpDailyReports));
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
@@ -812,6 +822,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // If syncFromServer fails (no network, 500, etc.), the gate stays DOWN so the app's empty defaults
       // cannot overwrite whatever real data is on the server. The next poll (3 s) will retry.
       initialSyncDoneRef.current = true;
+      // Trigger deferred writes for records created while the app was still
+      // unauthenticated and therefore blocked by the startup write gate.
+      setStateSyncReadyTick(t => t + 1);
     } catch {
       // silently ignore — network errors must not break the UI.
       // CRITICAL: DO NOT lift the gate on error. If we do, the empty default state in useState([])
@@ -823,9 +836,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   /* ── Initial server sync once AsyncStorage has loaded ── */
   useEffect(() => {
-    if (loaded) syncFromServer();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded]);
+    if (loaded && isServerAuthenticated) syncFromServer();
+  }, [loaded, isServerAuthenticated, syncFromServer]);
 
   /* ── persistence: save each state slice to AsyncStorage + API when it changes ── */
   function syncSlice(key: string, value: unknown) {
@@ -859,6 +871,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('messages',          messages); },          [messages, loaded]);
   useEffect(() => { if (loaded) syncSlice('broadcasts',        broadcasts); },        [broadcasts, loaded]);
   useEffect(() => { if (loaded) syncSlice('callLog',           callLog); },           [callLog, loaded]);
+  useEffect(() => { if (loaded) syncSlice('marketCompetitors', marketCompetitors); }, [marketCompetitors, loaded]);
   useEffect(() => { if (loaded) syncSlice('tasks',             tasks); },             [tasks, loaded]);
   useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
   useEffect(() => { if (loaded) syncSlice('inventoryLog',     inventoryLog); },    [inventoryLog, loaded]);
@@ -872,6 +885,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('corpProjects',      corpProjects); },      [corpProjects, loaded]);
   useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpDailyReports', pumpDailyReports); },  [pumpDailyReports, loaded]);
+  // If a report was submitted before the JWT-backed initial sync completed,
+  // its local value may not change during syncFromServer (safeArray preserves
+  // it when the server is empty), so the normal dependency effect above will
+  // not run. Flush it once the authenticated sync has completed.
+  useEffect(() => {
+    if (loaded && stateSyncReadyTick > 0) syncSlice('pumpDailyReports', pumpDailyReports);
+  }, [loaded, stateSyncReadyTick, pumpDailyReports]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
@@ -881,9 +901,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // so a pump attendant's shift report appears on every permitted screen within ~3 seconds.
   const lastVersionRef = useRef<string>('');
   useEffect(() => {
-    if (!role || !loaded) return;
+    if (!role || !loaded || !isServerAuthenticated) return;
 
+    let stopped = false;
+    let checking = false;
     const check = async () => {
+      if (checking || stopped) return;
+      checking = true;
       try {
         const result = await versionApi.get();
         if (result?.version && result.version !== lastVersionRef.current) {
@@ -892,23 +916,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         // silently ignore transient network errors
+      } finally {
+        checking = false;
       }
     };
 
     // Fire immediately on login/app-open so new data appears within ~300 ms,
     // not after the first 3-second interval tick.
-    check();
+    void check();
 
-    // Poll every 3 seconds
-    const id = setInterval(check, 3_000);
+    // Schedule the next check only after the previous one has finished so
+    // slow full-sync requests cannot overlap and reorder state updates.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      if (!stopped) timer = setTimeout(async () => { await check(); schedule(); }, 3_000);
+    };
+    schedule();
 
     // Also re-sync the moment the user brings the app to the foreground
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') check();
+      if (state === 'active') void check();
     });
 
-    return () => { clearInterval(id); sub.remove(); };
-  }, [role, loaded, syncFromServer]);
+    return () => { stopped = true; if (timer) clearTimeout(timer); sub.remove(); };
+  }, [role, loaded, isServerAuthenticated, syncFromServer]);
 
   const DRAFT_APPROVAL: CorpApproval = { status: 'draft' };
 
@@ -988,7 +1019,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setBranchId(bid ?? null); setStaffId(sid ?? null);
     setIsServerAuthenticated(true);
     AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null }));
-  }, []);
+    // The provider may have mounted before authentication, causing its initial
+    // state sync to receive 401. Refresh again now that apiLogin has saved the
+    // JWT so role-specific dashboards don't remain on empty local defaults.
+    void syncFromServer();
+  }, [syncFromServer]);
 
   const logout = useCallback(() => {
     setRole(null); setUserName(''); setBranchId(null); setStaffId(null);
@@ -2139,6 +2174,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCallLog(prev => [{ ...r, id: genId(), ts: nowTs() }, ...prev]);
   }, []);
 
+  const addMarketCompetitor = useCallback((competitor: Omit<MarketCompetitor, 'id'>) => {
+    setMarketCompetitors(prev => [{ ...competitor, id: String(genId()) }, ...prev]);
+  }, []);
+
+  const updateMarketCompetitor = useCallback((id: string, updates: Partial<Omit<MarketCompetitor, 'id'>>) => {
+    setMarketCompetitors(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+  }, []);
+
+  const deleteMarketCompetitor = useCallback((id: string) => {
+    setMarketCompetitors(prev => prev.filter(item => item.id !== id));
+  }, []);
+
   const updateFinancialEntry = useCallback((updates: Partial<Omit<FinancialEntry, 'updatedBy' | 'updatedAt'>>) => {
     setFinancialEntry(prev => ({ ...prev, ...updates, updatedBy: userName, updatedAt: nowTs() }));
   }, [userName]);
@@ -2160,8 +2207,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       role, userName, branchId, staffId, isServerAuthenticated, navItems, mgrPerms,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
-      maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts, callLog,
-      addBroadcast, addCallRecord,
+       maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts, callLog,
+       marketCompetitors, addMarketCompetitor, updateMarketCompetitor, deleteMarketCompetitor,
+       addBroadcast, addCallRecord,
       audit, departments, companyFiles, deliveryEvidences,
       priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,

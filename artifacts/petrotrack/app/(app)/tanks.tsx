@@ -71,7 +71,10 @@ export default function TanksScreen() {
   const isMD = role === 'md';
   const isAdmin = role === 'admin';
   const pendingDips = dips.filter(d => d.status === 'pending');
-  const hasPendingDip = canEdit && dips.some(d => d.by === userName && d.status === 'pending');
+  // Pending dips are independent submissions. Do not block a manager from
+  // recording a new reading because an earlier reading is still awaiting MD;
+  // MD can review multiple pending records and the server remains the source
+  // of truth for their statuses.
 
   const perms = role === 'mgr' ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
@@ -377,20 +380,10 @@ export default function TanksScreen() {
 
         {canEdit && (
           <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
-            {hasPendingDip ? (
-              <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517', marginBottom: 0 }]}>
-                <Ionicons name="time-outline" size={16} color="#BA7517" />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.pendingText, { color: '#BA7517' }]}>Dip record pending MD approval.</Text>
-                  <Text style={[styles.pendingText, { color: '#BA7517', fontSize: 11, marginTop: 2 }]}>Check "Log &amp; Delivery" tab for status. Ask an admin to reset if MD is unresponsive.</Text>
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor, marginBottom: 0 }]} onPress={handleDipSubmit} activeOpacity={0.85}>
-                <Ionicons name="send" size={18} color="#fff" />
-                <Text style={styles.submitBtnText}>Submit Dip to MD</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor, marginBottom: 0 }]} onPress={handleDipSubmit} activeOpacity={0.85}>
+              <Ionicons name="send" size={18} color="#fff" />
+              <Text style={styles.submitBtnText}>Submit Dip to MD</Text>
+            </TouchableOpacity>
           </View>
         )}
         </View>

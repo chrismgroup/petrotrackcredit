@@ -1,13 +1,12 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { Prices, ROLE_COLORS, Role, useApp } from '@/context/AppContext';
+import { ROLE_COLORS, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -33,8 +32,6 @@ interface Competitor {
   updatedBy: string;
   updatedAt: string;
 }
-
-const STORAGE_KEY = 'marketCompetitors';
 
 function parseNum(s: string): number {
   return parseFloat(s.replace(/,/g, '')) || 0;
@@ -262,13 +259,15 @@ function FieldBlock({
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function MarketingScreen() {
-  const { role, userName, prices, addBroadcast } = useApp();
+  const {
+    role, userName, prices, addBroadcast,
+    marketCompetitors, addMarketCompetitor, updateMarketCompetitor, deleteMarketCompetitor,
+  } = useApp();
   const colors   = useColors();
   const roleColor = ROLE_COLORS[role || 'mktg'] || colors.primary;
 
   const [prodTab,      setProdTab]      = useState<Product>('PMS');
-  const [competitors,  setCompetitors]  = useState<Competitor[]>([]);
-  const [loaded,       setLoaded]       = useState(false);
+  const competitors = marketCompetitors as Competitor[];
 
   /* form state */
   const [showForm,  setShowForm]  = useState(false);
@@ -285,20 +284,6 @@ export default function MarketingScreen() {
   const isAdmin = role === 'admin';
   const canEdit      = isCSM || isMktg || isAdmin;
   const canBroadcast = isCSM || isMktg || isAdmin;
-
-  /* load / save competitors */
-  useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then(val => {
-      if (val) {
-        try { setCompetitors(JSON.parse(val)); } catch { /* ignore */ }
-      }
-      setLoaded(true);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (loaded) AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(competitors));
-  }, [competitors, loaded]);
 
   const ourPrice: number = (prices as unknown as Record<string, number>)[prodTab] || 0;
 
@@ -321,11 +306,7 @@ export default function MarketingScreen() {
     if (!fName.trim()) { Alert.alert('Required', 'Station name is required.'); return; }
     const now = new Date().toISOString();
     if (editingId) {
-      setCompetitors(prev => prev.map(c =>
-        c.id === editingId
-          ? { ...c, name: fName.trim(), location: fLoc.trim(), pms: fPms, ago: fAgo, dpk: fDpk, lpg: fLpg, updatedBy: userName || 'CSM', updatedAt: now }
-          : c
-      ));
+      updateMarketCompetitor(editingId, { name: fName.trim(), location: fLoc.trim(), pms: fPms, ago: fAgo, dpk: fDpk, lpg: fLpg, updatedBy: userName || 'CSM', updatedAt: now });
     } else {
       const nc: Competitor = {
         id: String(Date.now()),
@@ -333,7 +314,7 @@ export default function MarketingScreen() {
         pms: fPms, ago: fAgo, dpk: fDpk, lpg: fLpg,
         updatedBy: userName || 'CSM', updatedAt: now,
       };
-      setCompetitors(prev => [nc, ...prev]);
+      addMarketCompetitor(nc);
     }
     setShowForm(false);
   }
@@ -341,7 +322,7 @@ export default function MarketingScreen() {
   function handleDelete(id: string) {
     Alert.alert('Remove Station', 'Remove this competitor from the list?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => setCompetitors(prev => prev.filter(c => c.id !== id)) },
+       { text: 'Remove', style: 'destructive', onPress: () => deleteMarketCompetitor(id) },
     ]);
   }
 

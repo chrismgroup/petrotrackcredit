@@ -11,7 +11,7 @@ router.get("/version", async (_req, res): Promise<void> => {
     .select({ latest: sql<string>`MAX(updated_at)` })
     .from(appStateTable);
   const [userRow] = await db
-    .select({ latest: sql<string>`MAX(GREATEST(created_at, COALESCE(approved_at, created_at)))` })
+    .select({ latest: sql<string>`MAX(GREATEST(created_at, COALESCE(approved_at, created_at), COALESCE(md_approved_at, created_at)))` })
     .from(staffUsersTable);
 
   const stateTs = stateRow?.latest ? new Date(stateRow.latest).getTime() : 0;
