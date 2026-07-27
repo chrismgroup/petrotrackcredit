@@ -1264,9 +1264,9 @@ export default function SystemSettingsScreen() {
                         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#C0392B', paddingVertical: 13, borderRadius: 12 }}
                         activeOpacity={0.85}
                         onPress={() => {
-                          const runReset = () => {
-                            resetOperationalData();
-                            Alert.alert('Done', 'All operational data has been cleared. The app is ready for live use.');
+                          const runReset = async () => {
+                            await resetOperationalData();
+                            Alert.alert('Done', 'All operational data has been cleared. The app is ready for live use. Pump opening meters were preserved from the latest shift reports.');
                           };
                           const confirmTyped = () => {
                             if (typeof Alert.prompt === 'function') {

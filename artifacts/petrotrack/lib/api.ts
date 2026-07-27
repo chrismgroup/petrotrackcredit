@@ -149,6 +149,7 @@ export const stateApi = {
   getAll: () => get<Record<string, unknown>>('/state'),
   get: <T>(key: string) => get<T>(`/state/${key}`),
   put: (key: string, data: unknown) => put(`/state/${key}`, data),
+  resetOperational: () => post<{ ok: boolean; seedMeters?: Record<string, number> }>('/state/reset-operational', {}),
 };
 
 export const versionApi = {

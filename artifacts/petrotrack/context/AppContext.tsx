@@ -444,7 +444,7 @@ interface AppContextType {
   setPumpInitialMeter: (pumpId: string, meter: number) => void;
   lockPumpMeter: (pumpId: string, meter: number) => void;
   unlockPumpMeter: (pumpId: string) => void;
-  resetOperationalData: () => void;
+  resetOperationalData: () => Promise<void>;
   submitPumpReport: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => void;
   mgrForwardPumpReport: (id: number, mgrNote: string) => void;
   accApprovePumpReport: (report: PumpDailyReport, accNote: string) => void;
@@ -1774,7 +1774,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Pump opening meter unlocked', user: userName, detail: `Pump ${pumpId}: opening meter released to auto-carry`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const resetOperationalData = useCallback(() => {
+  const resetOperationalData = useCallback(async () => {
+    // Compute seed meters locally BEFORE we clear anything, using the same logic as the
+    // shift report screen: locked meter wins, then most recent approved/pending_accountant
+    // report closing meter, then the existing pumpInitialMeters value.
+    const localSeedMeters: Record<string, number> = {};
+    for (const pump of pumps) {
+      if (!pump?.id) continue;
+      const pumpId = pump.id;
+      if (pumpLockedMeters[pumpId] !== undefined) {
+        localSeedMeters[pumpId] = Number(pumpLockedMeters[pumpId]);
+        continue;
+      }
+      const sorted = [...pumpDailyReports]
+        .filter(r => r.pumpId === pumpId && (r.status === 'approved' || r.status === 'pending_accountant'))
+        .sort((a, b) => b.date.localeCompare(a.date) || b.submittedAt.localeCompare(a.submittedAt));
+      if (sorted.length > 0) {
+        localSeedMeters[pumpId] = Number(sorted[0].closingMeter);
+        continue;
+      }
+      if (pumpInitialMeters[pumpId] !== undefined) {
+        localSeedMeters[pumpId] = Number(pumpInitialMeters[pumpId]);
+      }
+    }
+
+    // Ask the server to clear the authoritative server copy and compute its own seed meters.
+    // If the server has no shift reports, we still have the locally computed seed meters.
+    await stateApi.resetOperational();
+
+    // Clear local operational data so the device mirrors the freshly reset server state.
     setSales([]);
     setExpenses([]);
     setBudgets([]);
@@ -1799,9 +1827,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPumpLockedMeters({});
     setPriceHistory([]);
     setFinancialEntry(INIT_FINANCIAL_ENTRY);
+    // Apply the preserved pump seed meters so the next shift reports start from the last known readings.
+    setPumpInitialMeters(localSeedMeters);
     // Audit must be written AFTER the arrays are cleared, not before, so it survives the reset.
-    setAudit(a => [{ id: genId(), action: 'Operational data reset', user: userName, detail: 'All operational data cleared via System Settings', ts: nowTs() }, ...a]);
-  }, [userName]);
+    setAudit(a => [{ id: genId(), action: 'Operational data reset', user: userName, detail: `All operational data cleared via System Settings; pump seed meters preserved for ${Object.keys(localSeedMeters).length} pump(s).`, ts: nowTs() }, ...a]);
+  }, [userName, pumps, pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
 
   const submitPumpReport = useCallback((r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
     setPumpDailyReports(rs => [...rs, { ...r, id: genId(), status: 'pending_manager', submittedAt: nowTs() }]);
