@@ -188,7 +188,7 @@ export default function SystemSettingsScreen() {
     updateTank, updateLpgTank, updatePump, updateStaff,
     deleteTank, deleteLpgTank, deletePump, deleteStaff,
     userAccounts, companyInfo, updateCompanyInfo,
-    departments, assignStaffDept, setPumpInitialMeter, resetOperationalData,
+    departments, assignStaffDept, setPumpInitialMeter, resetOperationalData, pumpInitialMeters,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -218,7 +218,7 @@ export default function SystemSettingsScreen() {
   /* ── edit state (existing items) ── */
   const [tankEdits, setTankEdits] = useState<Record<string, { name: string; cap: string; dip: string; prod: Tank['prod']; branchId: string }>>({});
   const [lpgEdits,  setLpgEdits]  = useState<Record<string, { name: string; cap: string; branchId: string }>>({});
-  const [pumpEdits, setPumpEdits] = useState<Record<string, { name: string; prod: Pump['prod']; active: boolean; branchId: string }>>({});
+  const [pumpEdits, setPumpEdits] = useState<Record<string, { name: string; prod: Pump['prod']; active: boolean; branchId: string; openingMeter: string }>>({});
   const [staffEdits,setStaffEdits]= useState<Record<number, { name: string; email: string }>>({});
 
   /* ── new-item forms ── */
@@ -246,9 +246,9 @@ export default function SystemSettingsScreen() {
   }, [lpgTanks]);
   useEffect(() => {
     const pe: typeof pumpEdits = {};
-    for (const p of pumps) pe[p.id] = { name: p.name, prod: p.prod, active: p.active, branchId: p.branchId ?? '' };
+    for (const p of pumps) pe[p.id] = { name: p.name, prod: p.prod, active: p.active, branchId: p.branchId ?? '', openingMeter: String(pumpInitialMeters[p.id] ?? '') };
     setPumpEdits(pe);
-  }, [pumps]);
+  }, [pumps, pumpInitialMeters]);
   useEffect(() => {
     const se: typeof staffEdits = {};
     for (const m of staff) se[m.id] = { name: m.name, email: m.email };
@@ -276,8 +276,12 @@ export default function SystemSettingsScreen() {
     for (const [id, e] of Object.entries(pumpEdits)) {
       if (!e.name.trim()) { Alert.alert('Error', `Pump ${id} name cannot be empty.`); return; }
       updatePump(id, { name: e.name.trim(), prod: e.prod, active: e.active, branchId: e.branchId || undefined });
+      const om = parseFloat(e.openingMeter.replace(/,/g, ''));
+      if (!isNaN(om) && om >= 0) {
+        setPumpInitialMeter(id, om);
+      }
     }
-    Alert.alert('Saved', `${pumps.length} pump configuration(s) updated.`);
+    Alert.alert('Saved', `${pumps.length} pump configuration(s) updated. Opening meter readings seeded.`);
   }
 
   function saveStaff() {
@@ -804,6 +808,7 @@ export default function SystemSettingsScreen() {
                     </View>
                     <FieldInput colors={colors} editable={isAdmin} label="Pump Name" value={e.name} onChangeText={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, name: v } }))} placeholder="e.g. Forecourt Pump A" />
                     <ProdPicker isAdmin={isAdmin} colors={colors} value={e.prod} onChange={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, prod: v } }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
+                    <FieldInput colors={colors} editable={isAdmin} label="Opening Meter Reading (L)" value={e.openingMeter} onChangeText={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, openingMeter: v } }))} placeholder="e.g. 12500" keyboardType="decimal-pad" />
                     {branches.length > 0 && (
                       <View style={{ marginBottom: 4 }}>
                         <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
