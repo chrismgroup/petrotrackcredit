@@ -451,6 +451,7 @@ interface AppContextType {
   accRejectPumpReport: (id: number, rejectionReason: string) => void;
   mgrResubmitPumpReport: (id: number, mgrNote: string) => void;
   deletePumpReport: (id: number) => void;
+  updatePumpReport: (id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => void;
   updatePrice: (prod: string, price: number, by?: string, reason?: string) => void;
   priceProposals: PriceProposal[];
   addPriceProposal: (prod: string, proposedPrice: number) => void;
@@ -471,6 +472,8 @@ interface AppContextType {
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
   addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
   addDip: (dip: Omit<DipRecord, 'id'>) => void;
+  updateDip: (id: number, updates: Partial<Omit<DipRecord, 'id'>>) => void;
+  deleteDip: (id: number) => void;
   approveDip: (id: number) => void;
   rejectDip: (id: number) => void;
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
@@ -481,7 +484,11 @@ interface AppContextType {
   approveDelivery: (id: number, sellingPrice: number, mdNote?: string) => void;
   rejectDelivery: (id: number, note?: string) => void;
   addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
+  updateMaintenance: (id: number, updates: Partial<Pick<MaintenanceItem, 'title' | 'pri' | 'st' | 'cost'>>) => void;
+  deleteMaintenance: (id: number) => void;
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
+  updateSales: (id: number, updates: Partial<Pick<SalesEntry, 'pump' | 'L' | 'price' | 'pos' | 'dt'>>) => void;
+  deleteSales: (id: number) => void;
   sendMessage: (toName: string, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => void;
   addSystemNotification: (from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => void;
   markRead: (peerName: string) => void;
@@ -1189,6 +1196,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Dip rejected', user: userName, detail: `Dip record #${id} rejected.`, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const updateDip = useCallback((id: number, updates: Partial<Omit<DipRecord, 'id'>>) => {
+    setDips(ds => ds.map(d => d.id === id ? { ...d, ...updates } : d));
+    setAudit(a => [{ id: genId(), action: 'Dip record updated', user: userName, detail: `Dip #${id} edited`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteDip = useCallback((id: number) => {
+    setDips(ds => ds.filter(d => d.id !== id));
+    setInventoryLog(log => log.filter(e => e.dipId !== id));
+    setAudit(a => [{ id: genId(), action: 'Dip record deleted', user: userName, detail: `Dip #${id} deleted`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const addDelivery = useCallback((rec: Omit<Delivery, 'id'>) => {
     setDeliveries(d => [{ ...rec, id: genId(), branchId: rec.branchId ?? branchId ?? undefined }, ...d]);
     setAudit(a => [{ id: genId(), action: 'Delivery recorded', user: userName, detail: `${rec.prod} — ${rec.rec}L from ${rec.sup}`, ts: nowTs() }, ...a]);
@@ -1290,10 +1308,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Maintenance request', user: userName, detail: item.title, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const updateMaintenance = useCallback((id: number, updates: Partial<Pick<MaintenanceItem, 'title' | 'pri' | 'st' | 'cost'>>) => {
+    setMaintenance(m => m.map(item => item.id === id ? { ...item, ...updates } : item));
+    setAudit(a => [{ id: genId(), action: 'Maintenance request updated', user: userName, detail: `Maintenance #${id} edited`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteMaintenance = useCallback((id: number) => {
+    setMaintenance(m => m.filter(item => item.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Maintenance request deleted', user: userName, detail: `Maintenance #${id} deleted`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
   const addSales = useCallback((entry: Omit<SalesEntry, 'id'>) => {
     setSales(s => [...s, { ...entry, id: genId(), branchId: entry.branchId ?? branchId ?? undefined }]);
     setAudit(a => [{ id: genId(), action: 'Sales entry', user: userName, detail: `${entry.pump} — ${entry.L}L`, ts: nowTs() }, ...a]);
   }, [userName, branchId]);
+
+  const updateSales = useCallback((id: number, updates: Partial<Pick<SalesEntry, 'pump' | 'L' | 'price' | 'pos' | 'dt'>>) => {
+    setSales(s => s.map(e => e.id === id ? { ...e, ...updates } : e));
+    setAudit(a => [{ id: genId(), action: 'Sales entry updated', user: userName, detail: `Sales #${id} edited`, ts: nowTs() }, ...a]);
+  }, [userName]);
+
+  const deleteSales = useCallback((id: number) => {
+    setSales(s => s.filter(e => e.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Sales entry deleted', user: userName, detail: `Sales #${id} deleted`, ts: nowTs() }, ...a]);
+  }, [userName]);
 
   const sendMessage = useCallback((toName: string, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => {
     if (!userName) return;
@@ -1881,8 +1919,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const deletePumpReport = useCallback((id: number) => {
-    setPumpDailyReports(rs => rs.filter(r => r.id !== id || r.status === 'approved'));
-    setAudit(a => [{ id: genId(), action: 'Pump report deleted', user: userName, detail: `Report #${id} deleted by attendant`, ts: nowTs() }, ...a]);
+    setPumpDailyReports(rs => rs.filter(r => r.id !== id));
+    setSales(s => s.filter(e => e.shiftReportId !== id));
+    setTanks(ts => {
+      const report = pumpDailyReports.find(r => r.id === id);
+      if (!report || report.status !== 'approved') return ts;
+      const matching = ts.filter(t => t.prod === report.product && (!report.branchId || !t.branchId || t.branchId === report.branchId));
+      if (matching.length === 0) return ts;
+      const share = report.liters / matching.length;
+      const ids = new Set(matching.map(t => t.id));
+      return ts.map(t => ids.has(t.id) ? { ...t, sl: Math.max(0, t.sl - share) } : t);
+    });
+    setAudit(a => [{ id: genId(), action: 'Pump report deleted', user: userName, detail: `Report #${id} deleted`, ts: nowTs() }, ...a]);
+  }, [userName, pumpDailyReports]);
+
+  const updatePumpReport = useCallback((id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => {
+    setPumpDailyReports(rs => rs.map(r => {
+      if (r.id !== id) return r;
+      const next = { ...r, ...updates } as PumpDailyReport;
+      // Recalculate derived values when meter or price values change.
+      const liters = next.closingMeter > next.openingMeter ? parseFloat((next.closingMeter - next.openingMeter).toFixed(4)) : 0;
+      const grossAmount = liters * next.unitPrice;
+      const totalCollected = next.posAmount + next.cashAmount + next.transferAmount;
+      const variance = totalCollected + next.creditAmount - grossAmount;
+      return { ...next, liters, grossAmount, totalCollected, variance };
+    }));
+    setAudit(a => [{ id: genId(), action: 'Pump report updated', user: userName, detail: `Report #${id} edited`, ts: nowTs() }, ...a]);
   }, [userName]);
 
   const addHREmployee = useCallback((e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => {
@@ -2074,10 +2136,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
-      addDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery, addMaintenance, addSales,
+      addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, approveDelivery, rejectDelivery, addMaintenance, updateMaintenance, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence,
       pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
-      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport,
+      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport, updatePumpReport,
       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,

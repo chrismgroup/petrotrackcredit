@@ -18,7 +18,7 @@ const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', 
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, sales, addDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms, sendMessage, inventoryLog } = useApp();
+  const { role, tanks, lpgTanks, dips, deliveries, sales, addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms, sendMessage, inventoryLog } = useApp();
 
   async function pickCameraEvidence(delivId: number) {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -62,6 +62,10 @@ export default function TanksScreen() {
   const [obs, setObs] = useState('');
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
   const [delForm, setDelForm] = useState({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
+  const [editingDipId, setEditingDipId] = useState<number | null>(null);
+  const [editDipReadings, setEditDipReadings] = useState<Record<string, string>>({});
+  const [editDipLpg, setEditDipLpg] = useState<Record<string, string>>({});
+  const [editDipObs, setEditDipObs] = useState('');
 
   const canEdit = role === 'mgr';
   const isMD = role === 'md';
@@ -152,6 +156,37 @@ export default function TanksScreen() {
   function stockPct(t: { op: number; sl: number; rv: number; cap: number }) {
     const stock = t.op + t.rv - t.sl;
     return Math.round((stock / t.cap) * 100);
+  }
+
+  function startEditDip(dip: typeof dips[0]) {
+    setEditingDipId(dip.id);
+    setEditDipReadings(Object.fromEntries(Object.entries(dip.rd).map(([k, v]) => [k, String(v)])));
+    setEditDipLpg(Object.fromEntries(Object.entries(dip.lpg).map(([k, v]) => [k, String(v)])));
+    setEditDipObs(dip.obs ?? '');
+  }
+  function cancelEditDip() {
+    setEditingDipId(null);
+    setEditDipReadings({});
+    setEditDipLpg({});
+    setEditDipObs('');
+  }
+  function saveEditDip(dipId: number) {
+    const rd: Record<string, number> = {};
+    const lpg: Record<string, number> = {};
+    for (const [k, v] of Object.entries(editDipReadings)) { const n = parseFloat(v); if (!isNaN(n)) rd[k] = n; }
+    for (const [k, v] of Object.entries(editDipLpg)) { const n = parseFloat(v); if (!isNaN(n)) lpg[k] = n; }
+    updateDip(dipId, { rd, lpg, obs: editDipObs.trim() });
+    cancelEditDip();
+  }
+  function handleDeleteDip(dip: typeof dips[0]) {
+    Alert.alert(
+      'Delete Dip Record?',
+      `Recorded by ${dip.by} on ${fmtDateTime(dip.dt)}. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteDip(dip.id) },
+      ]
+    );
   }
 
   return (
@@ -306,7 +341,8 @@ export default function TanksScreen() {
               ))}
               {[
                 { key: 'sup', label: 'Supplier Name' }, { key: 'wb', label: 'Waybill Number' },
-                { key: 'ord', label: 'Ordered Qty (L)' }, { key: 'rec', label: 'Received Qty (L)' },
+                { key: 'ord', label: delForm.prod === 'LPG' ? 'Ordered Qty (kg)' : 'Ordered Qty (L)' },
+                { key: 'rec', label: delForm.prod === 'LPG' ? 'Received Qty (kg)' : 'Received Qty (L)' },
                 { key: 'notes', label: 'Notes' },
               ].map(f => (
                 <TextInput
@@ -412,6 +448,68 @@ export default function TanksScreen() {
                     {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
                   </Text>
                 )}
+                {(canEdit || isAdmin || isMD) && (
+                  <View style={[styles.mdActions, { marginTop: 8 }]}>
+                    <TouchableOpacity
+                      style={[styles.rejectBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]}
+                      onPress={() => startEditDip(dip)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="create-outline" size={15} color={roleColor} />
+                      <Text style={[styles.mdActionText, { color: roleColor }]}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.rejectBtn, { borderColor: '#A32D2D', backgroundColor: '#FCEBEB' }]}
+                      onPress={() => handleDeleteDip(dip)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="trash-outline" size={15} color="#A32D2D" />
+                      <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {editingDipId === dip.id && (
+                  <View style={[styles.dipCard, { backgroundColor: colors.background, borderColor: colors.border, marginTop: 8 }]}>
+                    <Text style={[styles.formSection, { color: colors.text, marginBottom: 6 }]}>Edit Readings</Text>
+                    {visibleTanks.map(t => (
+                      <View key={t.id} style={{ marginBottom: 6 }}>
+                        <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>{t.name} ({t.prod})</Text>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.inputBorder, color: colors.text }]}
+                          placeholder="Current level in litres" placeholderTextColor={colors.textSubtle}
+                          keyboardType="numeric"
+                          value={editDipReadings[t.id] ?? ''}
+                          onChangeText={v => setEditDipReadings(r => ({ ...r, [t.id]: v }))}
+                        />
+                      </View>
+                    ))}
+                    {visibleLpgTanks.map(l => (
+                      <View key={l.id} style={{ marginBottom: 6 }}>
+                        <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>{l.name} (LPG)</Text>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.inputBorder, color: colors.text }]}
+                          placeholder="Current level in kg" placeholderTextColor={colors.textSubtle}
+                          keyboardType="numeric"
+                          value={editDipLpg[l.id] ?? ''}
+                          onChangeText={v => setEditDipLpg(r => ({ ...r, [l.id]: v }))}
+                        />
+                      </View>
+                    ))}
+                    <TextInput
+                      style={[styles.obsInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                      placeholder="Observations" placeholderTextColor={colors.textSubtle}
+                      multiline numberOfLines={2} value={editDipObs} onChangeText={setEditDipObs}
+                    />
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={() => saveEditDip(dip.id)} activeOpacity={0.85}>
+                        <Text style={styles.submitBtnText}>Save</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={cancelEditDip}>
+                        <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
                 {isMD && isPending && (
                   <View style={styles.mdActions}>
                     <TouchableOpacity
@@ -480,9 +578,9 @@ export default function TanksScreen() {
                   </View>
                 </View>
                 <View style={styles.deliveryStats}>
-                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Ordered: <Text style={{ color: colors.text, fontWeight: '600' }}>{rec.ord.toLocaleString()}L</Text></Text>
-                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Received: <Text style={{ color: roleColor, fontWeight: '700' }}>{rec.rec.toLocaleString()}L</Text></Text>
-                  {rec.ord !== rec.rec && <Text style={{ color: STATUS_COLORS[rec.st], fontSize: 12 }}>Diff: {(rec.rec - rec.ord).toLocaleString()}L</Text>}
+                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Ordered: <Text style={{ color: colors.text, fontWeight: '600' }}>{rec.ord.toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text></Text>
+                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Received: <Text style={{ color: roleColor, fontWeight: '700' }}>{rec.rec.toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text></Text>
+                  {rec.ord !== rec.rec && <Text style={{ color: STATUS_COLORS[rec.st], fontSize: 12 }}>Diff: {(rec.rec - rec.ord).toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text>}
                 </View>
                 {rec.notes ? <Text style={[styles.dipObs, { color: colors.textMuted }]}>{rec.notes}</Text> : null}
 
