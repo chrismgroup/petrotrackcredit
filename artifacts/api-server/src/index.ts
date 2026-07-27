@@ -1,9 +1,11 @@
 import { createHash, randomBytes } from "crypto";
 import { eq, sql } from "drizzle-orm";
+import cron from "node-cron";
 
 import { db, appStateTable, staffUsersTable } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { createBackup } from "./lib/backup";
 
 const rawPort = process.env["PORT"];
 
@@ -189,5 +191,16 @@ seedAndMigrateUsers().then(() => {
       process.exit(1);
     }
     logger.info({ port }, "Server listening");
+
+    // Automatic app-state backup every 12 hours.
+    // Runs at 00:00 and 12:00 UTC. Keeps the last 14 backups (7 days).
+    cron.schedule("0 0,12 * * *", async () => {
+      try {
+        await createBackup();
+      } catch (backupErr) {
+        logger.error({ err: backupErr }, "Scheduled app-state backup failed");
+      }
+    });
+    logger.info("Scheduled app-state backups every 12 hours");
   });
 });

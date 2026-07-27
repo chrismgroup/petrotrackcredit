@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
 import { db, appStateTable, staffUsersTable } from "@workspace/db";
+import { createBackup, listBackups, restoreBackup } from "../lib/backup";
 
 const router: IRouter = Router();
 
@@ -42,49 +43,12 @@ router.get("/state", async (_req, res): Promise<void> => {
   res.json(result);
 });
 
-router.get("/state/:key", async (req, res): Promise<void> => {
-  const key = Array.isArray(req.params.key) ? req.params.key[0] : req.params.key;
-  if (!ALLOWED_KEYS.has(key)) {
-    res.status(400).json({ error: "Unknown state key" });
-    return;
-  }
-  const [row] = await db.select().from(appStateTable).where(eq(appStateTable.key, key));
-  if (!row) {
-    res.json(null);
-    return;
-  }
-  res.json(row.data);
-});
-
-router.put("/state/:key", async (req, res): Promise<void> => {
-  const key = Array.isArray(req.params.key) ? req.params.key[0] : req.params.key;
-  if (!ALLOWED_KEYS.has(key)) {
-    res.status(400).json({ error: "Unknown state key" });
-    return;
-  }
-
-  // Sensitive keys require admin role
-  if (ADMIN_WRITE_KEYS.has(key) && req.auth?.role !== "admin") {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-
-  const data = req.body;
-  if (data === undefined || data === null) {
-    res.status(400).json({ error: "Body required" });
-    return;
-  }
-  await db
-    .insert(appStateTable)
-    .values({ key, data })
-    .onConflictDoUpdate({ target: appStateTable.key, set: { data, updatedAt: new Date() } });
-  res.json({ ok: true });
-});
-
 /**
  * Admin-only: seed pump meters from the most recent shift reports, then clear all
  * operational data. This is the safe production reset path that preserves the
  * current pump opening meters while wiping test transactions.
+ *
+ * Must be defined BEFORE /state/:key so it is not swallowed by the generic route.
  */
 router.post("/state/reset-operational", async (req, res): Promise<void> => {
   if (req.auth?.role !== "admin") {
@@ -192,6 +156,96 @@ router.post("/state/reset-operational", async (req, res): Promise<void> => {
   });
 
   res.json({ ok: true, seedMeters });
+});
+
+/* ── Backup routes (admin-only) ─────────────────────────────────────────── */
+
+router.post("/state/backup", async (req, res): Promise<void> => {
+  if (req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  try {
+    const meta = await createBackup();
+    res.json({ ok: true, backup: meta });
+  } catch (err) {
+    req.log.error({ err }, "Manual backup failed");
+    res.status(500).json({ error: "Backup failed" });
+  }
+});
+
+router.get("/state/backups", async (req, res): Promise<void> => {
+  if (req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  try {
+    const backups = await listBackups();
+    res.json({ backups });
+  } catch (err) {
+    req.log.error({ err }, "List backups failed");
+    res.status(500).json({ error: "Failed to list backups" });
+  }
+});
+
+router.post("/state/restore", async (req, res): Promise<void> => {
+  if (req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { objectName } = req.body ?? {};
+  if (typeof objectName !== "string" || !objectName) {
+    res.status(400).json({ error: "objectName is required" });
+    return;
+  }
+  try {
+    const { keysRestored } = await restoreBackup(objectName);
+    res.json({ ok: true, keysRestored });
+  } catch (err) {
+    req.log.error({ err }, "Restore failed");
+    res.status(500).json({ error: "Restore failed" });
+  }
+});
+
+/* ── Generic per-key state routes (must come AFTER the specific /state/* routes) ── */
+
+router.get("/state/:key", async (req, res): Promise<void> => {
+  const key = Array.isArray(req.params.key) ? req.params.key[0] : req.params.key;
+  if (!ALLOWED_KEYS.has(key)) {
+    res.status(400).json({ error: "Unknown state key" });
+    return;
+  }
+  const [row] = await db.select().from(appStateTable).where(eq(appStateTable.key, key));
+  if (!row) {
+    res.json(null);
+    return;
+  }
+  res.json(row.data);
+});
+
+router.put("/state/:key", async (req, res): Promise<void> => {
+  const key = Array.isArray(req.params.key) ? req.params.key[0] : req.params.key;
+  if (!ALLOWED_KEYS.has(key)) {
+    res.status(400).json({ error: "Unknown state key" });
+    return;
+  }
+
+  // Sensitive keys require admin role
+  if (ADMIN_WRITE_KEYS.has(key) && req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const data = req.body;
+  if (data === undefined || data === null) {
+    res.status(400).json({ error: "Body required" });
+    return;
+  }
+  await db
+    .insert(appStateTable)
+    .values({ key, data })
+    .onConflictDoUpdate({ target: appStateTable.key, set: { data, updatedAt: new Date() } });
+  res.json({ ok: true });
 });
 
 export default router;
