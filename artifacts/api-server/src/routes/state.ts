@@ -25,6 +25,14 @@ const ADMIN_WRITE_KEYS = new Set([
   "companyInfo", "departments", "branches",
 ]);
 
+const OPERATIONAL_KEYS = [
+  "expenses", "budgets", "sales", "dips", "deliveries", "maintenance",
+  "inventoryLog", "pumpDailyReports", "financialEntry", "messages",
+  "tasks", "kpis", "companyFiles", "deliveryEvidences", "hrEmployees",
+  "hrHandbooks", "hrRecommendations", "priceProposals", "legalMatters",
+  "corpProjects", "meetingMinutes", "broadcasts", "callLog", "priceHistory",
+];
+
 router.get("/state", async (_req, res): Promise<void> => {
   const rows = await db.select().from(appStateTable);
   const result: Record<string, unknown> = {};
@@ -71,6 +79,119 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     .values({ key, data })
     .onConflictDoUpdate({ target: appStateTable.key, set: { data, updatedAt: new Date() } });
   res.json({ ok: true });
+});
+
+/**
+ * Admin-only: seed pump meters from the most recent shift reports, then clear all
+ * operational data. This is the safe production reset path that preserves the
+ * current pump opening meters while wiping test transactions.
+ */
+router.post("/state/reset-operational", async (req, res): Promise<void> => {
+  if (req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const rows = await db
+    .select()
+    .from(appStateTable)
+    .where(sql`${appStateTable.key} IN (${[
+      "pumpDailyReports",
+      "pumpInitialMeters",
+      "pumpLockedMeters",
+      "pumps",
+      "audit",
+    ]})`);
+
+  const state = Object.fromEntries(rows.map((r) => [r.key, r.data]));
+
+  const pumpDailyReports = Array.isArray(state.pumpDailyReports) ? state.pumpDailyReports : [];
+  const pumpInitialMeters =
+    state.pumpInitialMeters && typeof state.pumpInitialMeters === "object"
+      ? (state.pumpInitialMeters as Record<string, number>)
+      : {};
+  const pumpLockedMeters =
+    state.pumpLockedMeters && typeof state.pumpLockedMeters === "object"
+      ? (state.pumpLockedMeters as Record<string, number>)
+      : {};
+  const pumps = Array.isArray(state.pumps) ? state.pumps : [];
+  const audit = Array.isArray(state.audit) ? state.audit : [];
+
+  const seedMeters: Record<string, number> = {};
+  for (const pump of pumps) {
+    if (!pump?.id) continue;
+    const pumpId = pump.id as string;
+    if (pumpLockedMeters[pumpId] !== undefined) {
+      seedMeters[pumpId] = Number(pumpLockedMeters[pumpId]);
+      continue;
+    }
+    const sorted = [...pumpDailyReports]
+      .filter(
+        (r: any) =>
+          r.pumpId === pumpId &&
+          (r.status === "approved" || r.status === "pending_accountant"),
+      )
+      .sort(
+        (a: any, b: any) =>
+          b.date.localeCompare(a.date) ||
+          b.submittedAt.localeCompare(a.submittedAt),
+      );
+    if (sorted.length > 0) {
+      seedMeters[pumpId] = Number(sorted[0].closingMeter);
+      continue;
+    }
+    if (pumpInitialMeters[pumpId] !== undefined) {
+      seedMeters[pumpId] = Number(pumpInitialMeters[pumpId]);
+    }
+  }
+
+  const auditEntry = {
+    id: Math.floor(Math.random() * 1_000_000_000),
+    action: "Operational data seeded and reset",
+    user: req.auth.username,
+    detail: `Preserved pump opening meters from ${pumpDailyReports.length} shift reports; cleared operational data for real-life entry.`,
+    ts: new Date().toISOString(),
+  };
+  const newAudit = [auditEntry, ...audit];
+
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(appStateTable)
+      .values({ key: "pumpInitialMeters", data: seedMeters })
+      .onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: seedMeters, updatedAt: new Date() },
+      });
+
+    await tx
+      .insert(appStateTable)
+      .values({ key: "pumpLockedMeters", data: {} })
+      .onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: {}, updatedAt: new Date() },
+      });
+
+    for (const key of OPERATIONAL_KEYS) {
+      const emptyValue = key === "messages" ? {} : [];
+      await tx
+        .insert(appStateTable)
+        .values({ key, data: emptyValue })
+        .onConflictDoUpdate({
+          target: appStateTable.key,
+          set: { data: emptyValue, updatedAt: new Date() },
+        });
+    }
+
+    await tx
+      .insert(appStateTable)
+      .values({ key: "audit", data: newAudit })
+      .onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: newAudit, updatedAt: new Date() },
+      });
+  });
+
+  res.json({ ok: true, seedMeters });
 });
 
 export default router;
