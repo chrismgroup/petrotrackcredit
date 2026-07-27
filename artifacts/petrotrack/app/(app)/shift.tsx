@@ -85,7 +85,7 @@ export default function ShiftReportScreen() {
     pumpDailyReports, pumpInitialMeters, pumpLockedMeters,
     submitPumpReport, mgrForwardPumpReport,
     accApprovePumpReport, accRejectPumpReport,
-    mgrResubmitPumpReport, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, deletePumpReport,
+    mgrResubmitPumpReport, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, deletePumpReport, updatePumpReport,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
@@ -187,14 +187,66 @@ export default function ShiftReportScreen() {
   const [viewing, setViewing] = useState<PumpDailyReport | null>(null);
   const [reviewNote, setReviewNote] = useState('');
   const [rejectReason, setRejectReason] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editClose, setEditClose] = useState('');
+  const [editPos, setEditPos] = useState('');
+  const [editCash, setEditCash] = useState('');
+  const [editXfer, setEditXfer] = useState('');
+  const [editCredit, setEditCredit] = useState('');
+  const [editNote, setEditNote] = useState('');
 
-  function openReport(r: PumpDailyReport) { setViewing(r); setReviewNote(''); setRejectReason(''); }
-  function closeModal() { setViewing(null); setReviewNote(''); setRejectReason(''); }
+  function openReport(r: PumpDailyReport) {
+    setViewing(r);
+    setReviewNote('');
+    setRejectReason('');
+    setIsEditing(false);
+    setEditClose(String(r.closingMeter));
+    setEditPos(String(r.posAmount));
+    setEditCash(String(r.cashAmount));
+    setEditXfer(String(r.transferAmount));
+    setEditCredit(String(r.creditAmount));
+    setEditNote(r.note ?? '');
+  }
+  function closeModal() {
+    setViewing(null);
+    setReviewNote('');
+    setRejectReason('');
+    setIsEditing(false);
+  }
+
+  function startEdit() { setIsEditing(true); }
+  function cancelEdit() {
+    if (!viewing) return;
+    setEditClose(String(viewing.closingMeter));
+    setEditPos(String(viewing.posAmount));
+    setEditCash(String(viewing.cashAmount));
+    setEditXfer(String(viewing.transferAmount));
+    setEditCredit(String(viewing.creditAmount));
+    setEditNote(viewing.note ?? '');
+    setIsEditing(false);
+  }
+
+  function handleSaveEdit() {
+    if (!viewing) return;
+    const closeVal = parseFloat(editClose.replace(/,/g, '')) || 0;
+    if (closeVal <= viewing.openingMeter) { Alert.alert('Invalid', 'Closing meter must be greater than opening meter.'); return; }
+    updatePumpReport(viewing.id, {
+      closingMeter: closeVal,
+      posAmount: parseFloat(editPos.replace(/,/g, '')) || 0,
+      cashAmount: parseFloat(editCash.replace(/,/g, '')) || 0,
+      transferAmount: parseFloat(editXfer.replace(/,/g, '')) || 0,
+      creditAmount: parseFloat(editCredit.replace(/,/g, '')) || 0,
+      note: editNote.trim(),
+    });
+    setIsEditing(false);
+    Alert.alert('Updated', 'Shift report has been updated.');
+  }
 
   function handleDelete() {
     if (!viewing) return;
-    if (viewing.status === 'approved') { Alert.alert('Locked', 'Approved reports cannot be deleted.'); return; }
-    if (viewing.status === 'pending_accountant') { Alert.alert('In Review', 'This report is with the accountant and cannot be deleted.'); return; }
+    const canDeleteApproved = isAdmin || isMd;
+    if (viewing.status === 'approved' && !canDeleteApproved) { Alert.alert('Locked', 'Approved reports cannot be deleted.'); return; }
+    if (viewing.status === 'pending_accountant' && !isAdmin && !isMd) { Alert.alert('In Review', 'This report is with the accountant and cannot be deleted.'); return; }
     Alert.alert(
       'Delete Report',
       `Delete the shift report for ${viewing.pumpName} on ${fmtDate(viewing.date)}? This cannot be undone.`,
@@ -971,10 +1023,23 @@ export default function ShiftReportScreen() {
                 <Text style={[c.modalTitle, { color: colors.text }]}>{viewing.pumpName}</Text>
                 <Text style={[c.cardSub, { color: colors.textMuted }]}>{viewing.product} · {fmtDate(viewing.date)}</Text>
               </View>
-              {isAtt && viewing.submittedBy === userName &&
-                (viewing.status === 'pending_manager' || viewing.status === 'returned') && (
-                <TouchableOpacity onPress={handleDelete} style={{ marginRight: 4 }}>
+              {((isAtt && viewing.submittedBy === userName &&
+                (viewing.status === 'pending_manager' || viewing.status === 'returned')) ||
+                isAdmin || isMd || isCeo) && !isEditing && (
+                <TouchableOpacity onPress={startEdit} style={{ marginRight: 10 }}>
+                  <Ionicons name="create-outline" size={22} color={roleColor} />
+                </TouchableOpacity>
+              )}
+              {((isAtt && viewing.submittedBy === userName &&
+                (viewing.status === 'pending_manager' || viewing.status === 'returned')) ||
+                isAdmin || isMd) && !isEditing && (
+                <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10 }}>
                   <Ionicons name="trash-outline" size={22} color="#E74C3C" />
+                </TouchableOpacity>
+              )}
+              {isEditing && (
+                <TouchableOpacity onPress={cancelEdit} style={{ marginRight: 10 }}>
+                  <Ionicons name="close-outline" size={22} color={colors.textMuted} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={closeModal}>
@@ -997,18 +1062,49 @@ export default function ShiftReportScreen() {
             {/* Meter & volume */}
             <Text style={[c.sectionLabel, { color: colors.text, marginTop: 16 }]}>Meter Readings</Text>
             <Field label="Opening Meter" value={`${fmtL(viewing.openingMeter)} L`} colors={colors} />
-            <Field label="Closing Meter" value={`${fmtL(viewing.closingMeter)} L`} colors={colors} />
+            {isEditing ? (
+              <>
+                <Text style={[c.inputLabel, { color: colors.textMuted, marginTop: 8 }]}>Closing Meter (L)</Text>
+                <TextInput
+                  style={[c.textInput, { backgroundColor: colors.surface, borderColor: colors.inputBorder ?? colors.border, color: colors.text }]}
+                  placeholder="Closing meter" placeholderTextColor={colors.textSubtle}
+                  keyboardType="decimal-pad" value={editClose} onChangeText={setEditClose}
+                />
+              </>
+            ) : (
+              <Field label="Closing Meter" value={`${fmtL(viewing.closingMeter)} L`} colors={colors} />
+            )}
             <Field label="Litres Sold" value={`${fmtL(viewing.liters)} L`} colors={colors} />
             <Field label="Unit Price" value={`₦${viewing.unitPrice.toLocaleString()}/L`} colors={colors} />
             <Field label="Gross Amount" value={fmt(viewing.grossAmount)} colors={colors} />
 
             {/* Payment */}
             <Text style={[c.sectionLabel, { color: colors.text, marginTop: 12 }]}>Payment Breakdown</Text>
-            <Field label="POS" value={fmt(viewing.posAmount)} colors={colors} />
-            <Field label="Cash" value={fmt(viewing.cashAmount)} colors={colors} />
-            <Field label="Bank Transfer" value={fmt(viewing.transferAmount)} colors={colors} />
-            {(viewing.creditAmount ?? 0) > 0 && (
-              <Field label="Credit to Customer" value={fmt(viewing.creditAmount ?? 0)} colors={colors} accent="#A85E1A" />
+            {isEditing ? (
+              <>
+                {[
+                  { label: 'POS', value: editPos, setter: setEditPos },
+                  { label: 'Cash', value: editCash, setter: setEditCash },
+                  { label: 'Bank Transfer', value: editXfer, setter: setEditXfer },
+                  { label: 'Credit to Customer', value: editCredit, setter: setEditCredit },
+                ].map(f => (
+                  <View key={f.label} style={{ marginBottom: 8 }}>
+                    <Text style={[c.inputLabel, { color: colors.textMuted }]}>{f.label}</Text>
+                    <TextInput
+                      style={[c.textInput, { backgroundColor: colors.surface, borderColor: colors.inputBorder ?? colors.border, color: colors.text, marginBottom: 0 }]}
+                      placeholder="0" placeholderTextColor={colors.textSubtle}
+                      keyboardType="decimal-pad" value={f.value} onChangeText={f.setter}
+                    />
+                  </View>
+                ))}
+              </>
+            ) : (
+              <>
+                <Field label="POS" value={fmt(viewing.posAmount)} colors={colors} />
+                <Field label="Cash" value={fmt(viewing.cashAmount)} colors={colors} />
+                <Field label="Bank Transfer" value={fmt(viewing.transferAmount)} colors={colors} />
+                <Field label="Credit to Customer" value={fmt(viewing.creditAmount ?? 0)} colors={colors} accent="#A85E1A" />
+              </>
             )}
             <Field label="Total Collected" value={fmt(viewing.totalCollected)} colors={colors} />
             {(() => {
@@ -1024,6 +1120,24 @@ export default function ShiftReportScreen() {
                 </View>
               );
             })()}
+
+            {isEditing && (
+              <>
+                <Text style={[c.inputLabel, { color: colors.textMuted, marginTop: 8 }]}>Notes</Text>
+                <TextInput
+                  style={[c.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder="Any remarks…" placeholderTextColor={colors.textSubtle}
+                  multiline numberOfLines={3} value={editNote} onChangeText={setEditNote}
+                />
+                <TouchableOpacity onPress={handleSaveEdit} style={[c.submitBtn, { backgroundColor: roleColor }]}>
+                  <Ionicons name="save-outline" size={16} color="#fff" />
+                  <Text style={c.submitBtnTxt}>Save Changes</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={cancelEdit} style={[c.submitBtn, { backgroundColor: colors.textSubtle }]}>
+                  <Text style={c.submitBtnTxt}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            )}
 
             {/* Workflow trail */}
             <Text style={[c.sectionLabel, { color: colors.text, marginTop: 12 }]}>Submission Trail</Text>

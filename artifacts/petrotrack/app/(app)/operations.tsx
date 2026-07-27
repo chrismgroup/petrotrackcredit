@@ -45,7 +45,8 @@ export default function OperationsScreen() {
     addDip, approveDip, rejectDip,
     prices,
     sales, pumpDailyReports,
-    maintenance, addMaintenance,
+    maintenance, addMaintenance, updateMaintenance, deleteMaintenance,
+    updateSales, deleteSales,
   } = useApp();
 
   const colors    = useColors();
@@ -114,6 +115,10 @@ export default function OperationsScreen() {
   const canMaint = isMgr || isAtt || role === 'csm' || role === 'admin';
   const [showMaintForm, setShowMaintForm] = useState(false);
   const [maintForm, setMaintForm]         = useState({ title: '', pri: 'Urgent' as 'Urgent' | 'Medium' | 'Low' });
+  const [editingMaintId, setEditingMaintId] = useState<number | null>(null);
+  const [editMaintTitle, setEditMaintTitle] = useState('');
+  const [editMaintPri, setEditMaintPri]     = useState<'Urgent' | 'Medium' | 'Low'>('Urgent');
+  const [editMaintCost, setEditMaintCost]   = useState('');
   const openItems = maintenance.filter(m => m.st === 'Open');
   const doneItems = maintenance.filter(m => m.st === 'Done');
 
@@ -123,6 +128,62 @@ export default function OperationsScreen() {
     setMaintForm({ title: '', pri: 'Urgent' });
     setShowMaintForm(false);
     Alert.alert('Submitted', 'Maintenance request logged.');
+  }
+  function startEditMaint(m: typeof maintenance[0]) {
+    setEditingMaintId(m.id);
+    setEditMaintTitle(m.title);
+    setEditMaintPri(m.pri);
+    setEditMaintCost(m.cost !== undefined ? String(m.cost) : '');
+  }
+  function cancelEditMaint() {
+    setEditingMaintId(null);
+    setEditMaintTitle('');
+    setEditMaintPri('Urgent');
+    setEditMaintCost('');
+  }
+  function saveEditMaint(id: number) {
+    if (!editMaintTitle.trim()) { Alert.alert('Required', 'Please enter a description.'); return; }
+    const cost = parseFloat(editMaintCost.replace(/,/g, ''));
+    updateMaintenance(id, { title: editMaintTitle.trim(), pri: editMaintPri, cost: isNaN(cost) ? undefined : cost });
+    cancelEditMaint();
+  }
+  function handleDeleteMaint(m: typeof maintenance[0]) {
+    Alert.alert('Delete Maintenance?', `Remove "${m.title}"? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteMaintenance(m.id) },
+    ]);
+  }
+
+  // ── Sales editing state ───────────────────────────────────────────────────
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
+  const [editSaleL, setEditSaleL]         = useState('');
+  const [editSalePrice, setEditSalePrice]   = useState('');
+  const [editSalePos, setEditSalePos]     = useState('');
+  function startEditSale(s: typeof sales[0]) {
+    setEditingSaleId(s.id);
+    setEditSaleL(String(s.L));
+    setEditSalePrice(String(s.price));
+    setEditSalePos(String(s.pos ?? 0));
+  }
+  function cancelEditSale() {
+    setEditingSaleId(null);
+    setEditSaleL('');
+    setEditSalePrice('');
+    setEditSalePos('');
+  }
+  function saveEditSale(id: number) {
+    const L = parseFloat(editSaleL.replace(/,/g, ''));
+    const price = parseFloat(editSalePrice.replace(/,/g, ''));
+    const pos = parseFloat(editSalePos.replace(/,/g, ''));
+    if (isNaN(L) || L <= 0 || isNaN(price) || price <= 0) { Alert.alert('Invalid', 'Enter valid quantity and price.'); return; }
+    updateSales(id, { L, price, pos: isNaN(pos) ? 0 : pos });
+    cancelEditSale();
+  }
+  function handleDeleteSale(s: typeof sales[0]) {
+    Alert.alert('Delete Sale?', `Remove ${s.pump} · ${s.L.toLocaleString()}L? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteSales(s.id) },
+    ]);
   }
 
   return (
@@ -683,18 +744,66 @@ export default function OperationsScreen() {
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Open Items</Text>
               {openItems.map(m => (
                 <View key={m.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Text style={[styles.logDate, { color: colors.text, flex: 1 }]}>{m.title}</Text>
-                    <View style={[styles.priBadge, { backgroundColor: PRI_COLORS[m.pri].bg }]}>
-                      <Text style={[styles.priText, { color: PRI_COLORS[m.pri].fg }]}>{m.pri}</Text>
-                    </View>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}>
-                    <Ionicons name="person-outline" size={12} color={colors.textMuted} />
-                    <Text style={[styles.logBy, { color: colors.textMuted }]}>by {m.by}</Text>
-                    <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-                    <Text style={[styles.logBy, { color: colors.textMuted }]}>{fmtDate(m.date)}</Text>
-                  </View>
+                  {editingMaintId === m.id ? (
+                    <>
+                      <Text style={[styles.formSectionTitle, { color: colors.text }]}>Edit Maintenance</Text>
+                      <TextInput
+                        style={[styles.obsInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                        value={editMaintTitle} onChangeText={setEditMaintTitle}
+                        multiline numberOfLines={2} textAlignVertical="top"
+                      />
+                      <Text style={[styles.subLabel, { color: colors.textMuted }]}>Priority</Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {(['Urgent', 'Medium', 'Low'] as const).map(p => (
+                          <TouchableOpacity key={p} onPress={() => setEditMaintPri(p)}
+                            style={[styles.prodBtn, { flex: 1, justifyContent: 'center', backgroundColor: editMaintPri === p ? PRI_COLORS[p].fg : colors.background, borderColor: editMaintPri === p ? PRI_COLORS[p].fg : colors.border }]}>
+                            <Text style={{ color: editMaintPri === p ? '#fff' : colors.textMuted, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{p}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <Text style={[styles.subLabel, { color: colors.textMuted, marginTop: 8 }]}>Cost (₦)</Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                        value={editMaintCost} onChangeText={setEditMaintCost}
+                        keyboardType="decimal-pad" placeholder="Optional"
+                      />
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                        <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={() => saveEditMaint(m.id)} activeOpacity={0.85}>
+                          <Text style={styles.submitBtnText}>Save</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={cancelEditMaint}>
+                          <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <Text style={[styles.logDate, { color: colors.text, flex: 1 }]}>{m.title}</Text>
+                        <View style={[styles.priBadge, { backgroundColor: PRI_COLORS[m.pri].bg }]}>
+                          <Text style={[styles.priText, { color: PRI_COLORS[m.pri].fg }]}>{m.pri}</Text>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                        <Ionicons name="person-outline" size={12} color={colors.textMuted} />
+                        <Text style={[styles.logBy, { color: colors.textMuted }]}>by {m.by}</Text>
+                        <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
+                        <Text style={[styles.logBy, { color: colors.textMuted }]}>{fmtDate(m.date)}</Text>
+                      </View>
+                      {(canMaint || isAdmin || isMD) && (
+                        <View style={[styles.mdActions, { marginTop: 8 }]}>
+                          <TouchableOpacity style={[styles.rejectBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]} onPress={() => startEditMaint(m)} activeOpacity={0.85}>
+                            <Ionicons name="create-outline" size={15} color={roleColor} />
+                            <Text style={[styles.mdActionText, { color: roleColor }]}>Edit</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[styles.rejectBtn, { borderColor: '#A32D2D', backgroundColor: '#FCEBEB' }]} onPress={() => handleDeleteMaint(m)} activeOpacity={0.85}>
+                            <Ionicons name="trash-outline" size={15} color="#A32D2D" />
+                            <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Delete</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </>
+                  )}
                 </View>
               ))}
             </>

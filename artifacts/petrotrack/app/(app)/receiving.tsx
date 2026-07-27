@@ -44,6 +44,7 @@ type MgrFormState = {
 };
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
+function unitForProd(p: string) { return p === 'LPG' ? 'kg' : 'L'; }
 function blankMgrForm(): MgrFormState {
   return { prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '', dt: todayIso() };
 }
@@ -102,13 +103,13 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <TextInput
           style={[styles.input, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-          placeholder="Qty ordered (L)" placeholderTextColor={colors.textSubtle}
+          placeholder={`Qty ordered (${unitForProd(f.prod)})`} placeholderTextColor={colors.textSubtle}
           keyboardType="numeric" value={f.ord}
           onChangeText={v => setF(prev => ({ ...prev, ord: v }))}
         />
         <TextInput
           style={[styles.input, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-          placeholder="Qty received (L)" placeholderTextColor={colors.textSubtle}
+          placeholder={`Qty received (${unitForProd(f.prod)})`} placeholderTextColor={colors.textSubtle}
           keyboardType="numeric" value={f.rec}
           onChangeText={v => setF(prev => ({ ...prev, rec: v }))}
         />
@@ -124,9 +125,12 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
           <View style={[styles.mismatchBox, { backgroundColor: short ? '#FAEEDA' : '#FCEBEB', borderColor: short ? '#BA7517' : '#791F1F' }]}>
             <Ionicons name={short ? 'warning-outline' : 'alert-circle-outline'} size={15} color={short ? '#BA7517' : '#791F1F'} />
             <Text style={[styles.mismatchText, { color: short ? '#BA7517' : '#791F1F' }]}>
-              {short
-                ? `Shortage of ${Math.abs(diff).toLocaleString()} L — received less than ordered`
-                : `Overage of ${diff.toLocaleString()} L — received more than ordered`}
+              {(() => {
+                const u = unitForProd(f.prod);
+                return short
+                  ? `Shortage of ${Math.abs(diff).toLocaleString()} ${u} — received less than ordered`
+                  : `Overage of ${diff.toLocaleString()} ${u} — received more than ordered`;
+              })()}
             </Text>
           </View>
         );
@@ -433,7 +437,7 @@ export default function ReceivingScreen() {
   function handleDelete(d: Delivery) {
     Alert.alert(
       'Delete Delivery?',
-      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}L\n\nThis cannot be undone.`,
+      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}${unitForProd(d.prod)}\n\nThis cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => deleteDelivery(d.id) },
@@ -443,14 +447,15 @@ export default function ReceivingScreen() {
 
   function handleSubmitToAcc(d: Delivery) {
     const mismatch = d.rec !== d.ord;
+    const u = unitForProd(d.prod);
     const mismatchLine = mismatch
       ? `\n\n⚠️ ${d.rec < d.ord
-          ? `Shortage: received ${(d.ord - d.rec).toLocaleString()} L less than ordered`
-          : `Overage: received ${(d.rec - d.ord).toLocaleString()} L more than ordered`}`
+          ? `Shortage: received ${(d.ord - d.rec).toLocaleString()} ${u} less than ordered`
+          : `Overage: received ${(d.rec - d.ord).toLocaleString()} ${u} more than ordered`}`
       : '';
     Alert.alert(
       mismatch ? '⚠️ Quantity Mismatch — Forward Anyway?' : 'Forward to Accountant?',
-      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup}${mismatchLine}\n\nAccountant will set the cost price and forward to MD for approval.`,
+      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}${u} from ${d.sup}${mismatchLine}\n\nAccountant will set the cost price and forward to MD for approval.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: mismatch ? 'Forward Anyway' : 'Forward', style: mismatch ? 'destructive' : 'default', onPress: () => submitDeliveryForApproval(d.id) },
@@ -467,10 +472,10 @@ export default function ReceivingScreen() {
   function handleAccForward() {
     if (!accTarget) return;
     const cost = parseFloat(accCostPrice);
-    if (!cost || cost <= 0) { Alert.alert('Required', 'Enter a valid cost price per litre.'); return; }
+    if (!cost || cost <= 0) { Alert.alert('Required', `Enter a valid cost price per ${unitForProd(accTarget.prod)}.`); return; }
     Alert.alert(
       'Forward to MD for Approval?',
-      `${accTarget.prod} ${accTarget.rec.toLocaleString()}L · Cost ₦${cost.toLocaleString()}/L\n\nMD will approve or return this record.`,
+      `${accTarget.prod} ${accTarget.rec.toLocaleString()}${unitForProd(accTarget.prod)} · Cost ₦${cost.toLocaleString()}/${unitForProd(accTarget.prod)}\n\nMD will approve or return this record.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -500,10 +505,10 @@ export default function ReceivingScreen() {
   function handleMdApprove() {
     if (!mdTarget) return;
     const sell = parseFloat(mdSellingPrice);
-    if (!sell || sell <= 0) { Alert.alert('Required', 'Enter a valid selling price per litre before approving.'); return; }
+    if (!sell || sell <= 0) { Alert.alert('Required', `Enter a valid selling price per ${unitForProd(mdTarget.prod)} before approving.`); return; }
     Alert.alert(
       'Approve & Lock Record?',
-      `${mdTarget.prod} ${mdTarget.rec.toLocaleString()}L from ${mdTarget.sup}\nWB: ${mdTarget.wb}\nCost: ₦${mdTarget.costPrice?.toLocaleString()}/L · Sell: ₦${sell.toLocaleString()}/L\n\nThis record will be permanently locked and the selling price will be updated system-wide.`,
+      `${mdTarget.prod} ${mdTarget.rec.toLocaleString()}${unitForProd(mdTarget.prod)} from ${mdTarget.sup}\nWB: ${mdTarget.wb}\nCost: ₦${mdTarget.costPrice?.toLocaleString()}/${unitForProd(mdTarget.prod)} · Sell: ₦${sell.toLocaleString()}/${unitForProd(mdTarget.prod)}\n\nThis record will be permanently locked and the selling price will be updated system-wide.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -571,7 +576,7 @@ export default function ReceivingScreen() {
                       <Text style={[styles.accPendingProd, { color: pc }]}>{d.prod}</Text>
                     </View>
                     <Text style={[styles.accPendingMeta, { color: '#185FA5' }]}>
-                      {d.rec.toLocaleString()}{' L  ·  WB: '}{d.wb}
+                      {d.rec.toLocaleString()}{unitForProd(d.prod)}{'  ·  WB: '}{d.wb}
                     </Text>
                     <Text style={[styles.accPendingDate, { color: '#185FA5' }]}>{fmtDate(d.dt)}</Text>
                   </View>
@@ -675,7 +680,7 @@ export default function ReceivingScreen() {
                             {inv.tanks.map(t => (
                               <View key={t.id} style={styles.tankRow}>
                                 <Text style={[styles.tankName, { color: colors.textMuted }]} numberOfLines={1}>{t.name}</Text>
-                                <Text style={[styles.tankStock, { color: colors.text }]}>{t.stock.toLocaleString()}{' L'}</Text>
+                                <Text style={[styles.tankStock, { color: colors.text }]}>{t.stock.toLocaleString()}{' '}{inv.unit}</Text>
                                 {t.dipDt
                                   ? <Text style={[styles.tankDipDt, { color: colors.textSubtle }]}>{fmtDate(t.dipDt)}</Text>
                                   : <Text style={[styles.tankDipDt, { color: '#BA7517' }]}>No dip</Text>}
@@ -800,8 +805,8 @@ export default function ReceivingScreen() {
                   <Text style={[styles.delivSup, { color: colors.textMuted }]}>{d.sup}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                     <Text style={[styles.delivQty, { color: colors.textMuted }]}>
-                      {'Ordered: '}{d.ord.toLocaleString()}{' L · Received: '}
-                      <Text style={{ fontWeight: '700', color: colors.text }}>{d.rec.toLocaleString()}{' L'}</Text>
+                      {'Ordered: '}{d.ord.toLocaleString()}{`${unitForProd(d.prod)} · Received: `}
+                      <Text style={{ fontWeight: '700', color: colors.text }}>{d.rec.toLocaleString()}{unitForProd(d.prod)}</Text>
                     </Text>
                     {d.rec !== d.ord ? (
                       <View style={[styles.mismatchBadge, {
@@ -814,8 +819,8 @@ export default function ReceivingScreen() {
                         />
                         <Text style={[styles.mismatchBadgeText, { color: d.rec < d.ord ? '#BA7517' : '#791F1F' }]}>
                           {d.rec < d.ord
-                            ? `Short ${(d.ord - d.rec).toLocaleString()} L`
-                            : `+${(d.rec - d.ord).toLocaleString()} L over`}
+                            ? `Short ${(d.ord - d.rec).toLocaleString()} ${unitForProd(d.prod)}`
+                            : `+${(d.rec - d.ord).toLocaleString()} ${unitForProd(d.prod)} over`}
                         </Text>
                       </View>
                     ) : null}
@@ -830,14 +835,14 @@ export default function ReceivingScreen() {
               {hasCost ? (
                 <View style={[styles.costRow, { backgroundColor: '#0F6E5608', borderColor: '#0F6E5620' }]}>
                   <View style={styles.costItem}>
-                    <Text style={[styles.costLabel, { color: colors.textMuted }]}>Cost/L</Text>
+                    <Text style={[styles.costLabel, { color: colors.textMuted }]}>Cost/{unitForProd(d.prod)}</Text>
                     <Text style={[styles.costVal, { color: colors.text }]}>{'₦'}{d.costPrice!.toLocaleString()}</Text>
                   </View>
                   {sellPrice > 0 ? (
                     <>
                       <View style={styles.costDivider} />
                       <View style={styles.costItem}>
-                        <Text style={[styles.costLabel, { color: colors.textMuted }]}>Sell/L</Text>
+                        <Text style={[styles.costLabel, { color: colors.textMuted }]}>Sell/{unitForProd(d.prod)}</Text>
                         <Text style={[styles.costVal, { color: pc }]}>{'₦'}{sellPrice.toLocaleString()}</Text>
                       </View>
                     </>
@@ -1071,7 +1076,7 @@ export default function ReceivingScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Set Cost Price</Text>
               <Text style={[styles.editSub, { color: colors.textMuted }]}>
-                {accTarget?.prod}{' · '}{accTarget?.rec.toLocaleString()}{' L · WB: '}{accTarget?.wb}
+                {accTarget?.prod}{' · '}{accTarget?.rec.toLocaleString()}{accTarget ? unitForProd(accTarget.prod) : 'L'}{' · WB: '}{accTarget?.wb}
               </Text>
             </View>
           </View>
@@ -1083,9 +1088,9 @@ export default function ReceivingScreen() {
             </Text>
             <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
               {'Received: '}
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget?.rec.toLocaleString()}{' L'}</Text>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget?.rec.toLocaleString()}{accTarget ? unitForProd(accTarget.prod) : 'L'}</Text>
               {'  ·  Ordered: '}
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget?.ord.toLocaleString()}{' L'}</Text>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget?.ord.toLocaleString()}{accTarget ? unitForProd(accTarget.prod) : 'L'}</Text>
             </Text>
             <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
               {'Date: '}
@@ -1096,7 +1101,7 @@ export default function ReceivingScreen() {
           <View style={[styles.costPriceBox, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
               <Ionicons name="pricetag-outline" size={15} color="#185FA5" />
-              <Text style={[styles.costPriceLabel, { color: '#185FA5' }]}>Cost Price (₦ per litre) *</Text>
+              <Text style={[styles.costPriceLabel, { color: '#185FA5' }]}>Cost Price (₦ per {accTarget ? unitForProd(accTarget.prod) : 'L'}) *</Text>
             </View>
             <TextInput
               style={[styles.input, { backgroundColor: colors.background, borderColor: '#185FA550', color: colors.text, marginBottom: 0, fontSize: 18, fontWeight: '700' }]}
@@ -1116,7 +1121,7 @@ export default function ReceivingScreen() {
                 </Text>
                 {(prices as any)[accTarget.prod] > 0 ? (
                   <Text style={[styles.costHint, { color: colors.textMuted }]}>
-                    {'Sell: ₦'}{((prices as any)[accTarget.prod]).toLocaleString()}{'/L  ·  Margin: '}
+                    {'Sell: ₦'}{((prices as any)[accTarget.prod]).toLocaleString()}{`/${accTarget ? unitForProd(accTarget.prod) : 'L'}  ·  Margin: `}
                     <Text style={{ fontWeight: '700', color: ((prices as any)[accTarget.prod] - parseFloat(accCostPrice)) >= 0 ? '#27500A' : '#791F1F' }}>
                       {Math.round((((prices as any)[accTarget.prod] - parseFloat(accCostPrice)) / (prices as any)[accTarget.prod]) * 100)}{'%'}
                     </Text>
@@ -1158,7 +1163,7 @@ export default function ReceivingScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Set Selling Price & Approve</Text>
               <Text style={[styles.editSub, { color: colors.textMuted }]}>
-                {mdTarget?.prod}{' · '}{mdTarget?.rec.toLocaleString()}{' L · WB: '}{mdTarget?.wb}
+                {mdTarget?.prod}{' · '}{mdTarget?.rec.toLocaleString()}{mdTarget ? unitForProd(mdTarget.prod) : 'L'}{' · WB: '}{mdTarget?.wb}
               </Text>
             </View>
           </View>
@@ -1170,9 +1175,9 @@ export default function ReceivingScreen() {
             </Text>
             <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
               {'Received: '}
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{mdTarget?.rec.toLocaleString()}{' L'}</Text>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{mdTarget?.rec.toLocaleString()}{mdTarget ? unitForProd(mdTarget.prod) : 'L'}</Text>
               {'  ·  Cost Price: '}
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{'₦'}{mdTarget?.costPrice?.toLocaleString()}{'/L'}</Text>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{'₦'}{mdTarget?.costPrice?.toLocaleString()}{mdTarget ? `/${unitForProd(mdTarget.prod)}` : '/L'}</Text>
             </Text>
             {mdTarget?.accNote ? (
               <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
@@ -1185,7 +1190,7 @@ export default function ReceivingScreen() {
           <View style={[styles.costPriceBox, { backgroundColor: '#EAF3DE', borderColor: '#27500A' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
               <Ionicons name="cash-outline" size={15} color="#27500A" />
-              <Text style={[styles.costPriceLabel, { color: '#27500A' }]}>Selling Price (₦ per litre) *</Text>
+              <Text style={[styles.costPriceLabel, { color: '#27500A' }]}>Selling Price (₦ per {mdTarget ? unitForProd(mdTarget.prod) : 'L'}) *</Text>
             </View>
             <TextInput
               style={[styles.input, { backgroundColor: colors.background, borderColor: '#27500A50', color: colors.text, marginBottom: 0, fontSize: 18, fontWeight: '700' }]}
@@ -1207,7 +1212,7 @@ export default function ReceivingScreen() {
                   {'Margin: '}
                   <Text style={{ fontWeight: '700', color: (parseFloat(mdSellingPrice) - mdTarget.costPrice) >= 0 ? '#27500A' : '#791F1F' }}>
                     {Math.round(((parseFloat(mdSellingPrice) - mdTarget.costPrice) / parseFloat(mdSellingPrice)) * 100)}{'%'}
-                    {'  ·  ₦'}{(parseFloat(mdSellingPrice) - mdTarget.costPrice).toLocaleString()}{'/L profit'}
+                    {'  ·  ₦'}{(parseFloat(mdSellingPrice) - mdTarget.costPrice).toLocaleString()}{`/${mdTarget ? unitForProd(mdTarget.prod) : 'L'} profit`}
                   </Text>
                 </Text>
               </View>
