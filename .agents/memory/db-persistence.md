@@ -29,6 +29,14 @@ description: How app state is persisted to PostgreSQL via the API server
 2. stateApi.getAll() (after `loaded=true`, overrides with server data)
 3. On any state change: syncSlice(key, value) writes to both AsyncStorage + API
 
+## Sync safety rule
+`syncFromServer` must never overwrite a non-empty local array with an empty server array. An accidental "Reset for Production" (or any empty `app_state` key) would otherwise wipe data on every device that opens the app.
+- Implementation: `safeArray<T>(server)` returns a functional setter that compares `prev.length` before applying the server value.
+- Applies to all operational array slices: `sales`, `dips`, `deliveries`, `maintenance`, `pumpDailyReports`, `inventoryLog`, `tasks`, `kpis`, `companyFiles`, `deliveryEvidences`, `hrEmployees`, `hrHandbooks`, `hrRecommendations`, `priceProposals`, `legalMatters`, `corpProjects`, `broadcasts`, `callLog`, `meetingMinutes`.
+
+## Reset for Production guard
+The reset button in System Settings clears all operational data and immediately syncs empty arrays to the server. A typed confirmation (`RESET`) is required so it cannot be triggered by two accidental taps.
+
 ## Adding a new state slice
 1. Add key to ALLOWED_KEYS in state.ts
 2. Add to KEYS array in AppContext mount effect
