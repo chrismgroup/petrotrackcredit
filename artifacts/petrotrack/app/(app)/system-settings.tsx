@@ -1263,35 +1263,59 @@ export default function SystemSettingsScreen() {
                       <TouchableOpacity
                         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#C0392B', paddingVertical: 13, borderRadius: 12 }}
                         activeOpacity={0.85}
-                        onPress={() =>
+                        onPress={() => {
+                          const runReset = () => {
+                            resetOperationalData();
+                            Alert.alert('Done', 'All operational data has been cleared. The app is ready for live use.');
+                          };
+                          const confirmTyped = () => {
+                            if (typeof Alert.prompt === 'function') {
+                              Alert.prompt(
+                                'Type RESET to confirm',
+                                'Enter RESET below to permanently erase all operational data. This action is audited.',
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  {
+                                    text: 'Erase Data',
+                                    style: 'destructive',
+                                    onPress: (value?: string) => {
+                                      if (value?.trim().toUpperCase() !== 'RESET') {
+                                        Alert.alert('Cancelled', 'You did not type RESET exactly. No data was erased.');
+                                        return;
+                                      }
+                                      runReset();
+                                    },
+                                  },
+                                ],
+                                'plain-text',
+                                '',
+                                'RESET'
+                              );
+                            } else {
+                              // Web fallback: Alert.prompt is not available on web.
+                              Alert.alert(
+                                'Final confirmation',
+                                'This is the last step. All operational data will be permanently erased. This cannot be undone.',
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  { text: 'Erase Everything', style: 'destructive', onPress: runReset },
+                                ]
+                              );
+                            }
+                          };
                           Alert.alert(
                             'Reset for Production?',
-                            'This will permanently delete all test data (shift reports, sales, expenses, deliveries, messages, HR records, etc.).\n\nAdmin settings, pumps, staff, prices and user accounts will NOT be touched.\n\nThis cannot be undone.',
+                            'This will permanently delete all operational data (shift reports, sales, expenses, deliveries, messages, HR records, etc.).\n\nAdmin settings, pumps, staff, prices and user accounts will NOT be touched.\n\nThis cannot be undone.',
                             [
                               { text: 'Cancel', style: 'cancel' },
                               {
-                                text: 'Yes, Reset',
+                                text: 'I understand — continue',
                                 style: 'destructive',
-                                onPress: () =>
-                                  Alert.alert(
-                                    'Are you absolutely sure?',
-                                    'Tap CONFIRM to erase all operational data and prepare the app for live use.',
-                                    [
-                                      { text: 'Cancel', style: 'cancel' },
-                                      {
-                                        text: 'CONFIRM — Erase Test Data',
-                                        style: 'destructive',
-                                        onPress: () => {
-                                          resetOperationalData();
-                                          Alert.alert('Done', 'All test data has been cleared. The app is ready for live use.');
-                                        },
-                                      },
-                                    ]
-                                  ),
+                                onPress: confirmTyped,
                               },
                             ]
-                          )
-                        }
+                          );
+                        }}
                       >
                         <Ionicons name="refresh-circle-outline" size={18} color="#fff" />
                         <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Reset for Production</Text>

@@ -736,12 +736,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.mgrPerms && !p.has('mgrPerms'))                   setMgrPerms(s.mgrPerms as Record<string, MgrPermissions>);
       if (s.roleAccess && !p.has('roleAccess'))               setRoleAccess(s.roleAccess as Record<string, Record<string, boolean>>);
       if (s.userAccess && !p.has('userAccess'))               setUserAccess(s.userAccess as Record<number, Record<string, boolean>>);
+      // Safety rule: never overwrite a non-empty local array with an empty server array.
+      // This prevents a single accidental reset (or an empty server key) from wiping data
+      // on every device that opens the app. The functional setter reads the latest local
+      // state, so it never uses stale closure values from the initial render.
+      const safeArray = <T,>(server: unknown) => (prev: T[]) => {
+        const arr = Array.isArray(server) ? (server as T[]) : null;
+        if (!arr) return prev;
+        if (arr.length === 0 && prev.length > 0) return prev; // protect against empty wipe
+        return arr;
+      };
       if (s.expenses && !p.has('expenses'))                   setExpenses(s.expenses as Expense[]);
       if (s.budgets && !p.has('budgets'))                     setBudgets(s.budgets as Budget[]);
-      if (s.sales && !p.has('sales'))                         setSales(s.sales as SalesEntry[]);
-      if (s.dips && !p.has('dips'))                           setDips(s.dips as DipRecord[]);
-      if (s.deliveries && !p.has('deliveries'))               setDeliveries(s.deliveries as Delivery[]);
-      if (s.maintenance && !p.has('maintenance'))             setMaintenance(s.maintenance as MaintenanceItem[]);
+      if (!p.has('sales'))           setSales(safeArray<SalesEntry>(s.sales));
+      if (!p.has('dips'))            setDips(safeArray<DipRecord>(s.dips));
+      if (!p.has('deliveries'))      setDeliveries(safeArray<Delivery>(s.deliveries));
+      if (!p.has('maintenance'))     setMaintenance(safeArray<MaintenanceItem>(s.maintenance));
       if (Array.isArray(s.audit) && !p.has('audit'))          setAudit(s.audit as AuditEntry[]);
       // Messages: merge with local so read-flags are preserved
       if (s.messages && typeof s.messages === 'object' && !Array.isArray(s.messages)) {
@@ -767,27 +777,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return changed ? merged : prev;
         });
       }
-      if (Array.isArray(s.inventoryLog) && !p.has('inventoryLog'))       setInventoryLog(s.inventoryLog as InventoryLogEntry[]);
-      if (s.tasks && !p.has('tasks'))                                     setTasks(s.tasks as Task[]);
-      if (s.kpis && !p.has('kpis'))                                       setKpis(s.kpis as KPI[]);
-      if (s.companyFiles && !p.has('companyFiles'))                       setCompanyFiles(s.companyFiles as CompanyFile[]);
-      if (s.deliveryEvidences && !p.has('deliveryEvidences'))             setDeliveryEvidences(s.deliveryEvidences as DeliveryEvidence[]);
-      if (s.hrEmployees && !p.has('hrEmployees'))                         setHrEmployees(s.hrEmployees as HREmployee[]);
-      if (s.hrHandbooks && !p.has('hrHandbooks'))                         setHrHandbooks(s.hrHandbooks as HREmployeeDoc[]);
-      if (s.hrRecommendations && !p.has('hrRecommendations'))             setHrRecommendations(s.hrRecommendations as HRRecommendation[]);
-      if (s.priceProposals && !p.has('priceProposals'))                   setPriceProposals(s.priceProposals as PriceProposal[]);
-      if (s.legalMatters && !p.has('legalMatters'))                       setLegalMatters(s.legalMatters as LegalMatter[]);
-      if (s.corpProjects && !p.has('corpProjects'))                       setCorpProjects(s.corpProjects as CorpProject[]);
-      if (Array.isArray(s.broadcasts) && !p.has('broadcasts')) {
-        setBroadcasts(prev =>
-          prev.length === (s.broadcasts as Broadcast[]).length &&
-          prev.every((b, i) => b.id === (s.broadcasts as Broadcast[])[i]?.id)
-            ? prev : (s.broadcasts as Broadcast[])
-        );
-      }
-      if (Array.isArray(s.callLog) && !p.has('callLog'))                  setCallLog(s.callLog as CallRecord[]);
-      if (s.meetingMinutes && !p.has('meetingMinutes'))                   setMeetingMinutes(s.meetingMinutes as MeetingMinutes[]);
-      if (Array.isArray(s.pumpDailyReports) && !p.has('pumpDailyReports')) setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
+      if (!p.has('inventoryLog'))      setInventoryLog(safeArray<InventoryLogEntry>(s.inventoryLog));
+      if (!p.has('tasks'))             setTasks(safeArray<Task>(s.tasks));
+      if (!p.has('kpis'))              setKpis(safeArray<KPI>(s.kpis));
+      if (!p.has('companyFiles'))      setCompanyFiles(safeArray<CompanyFile>(s.companyFiles));
+      if (!p.has('deliveryEvidences')) setDeliveryEvidences(safeArray<DeliveryEvidence>(s.deliveryEvidences));
+      if (!p.has('hrEmployees'))       setHrEmployees(safeArray<HREmployee>(s.hrEmployees));
+      if (!p.has('hrHandbooks'))       setHrHandbooks(safeArray<HREmployeeDoc>(s.hrHandbooks));
+      if (!p.has('hrRecommendations')) setHrRecommendations(safeArray<HRRecommendation>(s.hrRecommendations));
+      if (!p.has('priceProposals'))    setPriceProposals(safeArray<PriceProposal>(s.priceProposals));
+      if (!p.has('legalMatters'))      setLegalMatters(safeArray<LegalMatter>(s.legalMatters));
+      if (!p.has('corpProjects'))      setCorpProjects(safeArray<CorpProject>(s.corpProjects));
+      if (!p.has('broadcasts'))        setBroadcasts(safeArray<Broadcast>(s.broadcasts));
+      if (!p.has('callLog'))           setCallLog(safeArray<CallRecord>(s.callLog));
+      if (!p.has('meetingMinutes'))    setMeetingMinutes(safeArray<MeetingMinutes>(s.meetingMinutes));
+      if (!p.has('pumpDailyReports'))  setPumpDailyReports(safeArray<PumpDailyReport>(s.pumpDailyReports));
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
       if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(s.financialEntry as FinancialEntry);
@@ -1777,7 +1781,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setDips([]);
     setDeliveries([]);
     setMaintenance([]);
-    setAudit([]);
     setMessages({});
     setTasks([]);
     setKpis([]);
@@ -1796,7 +1799,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPumpLockedMeters({});
     setPriceHistory([]);
     setFinancialEntry(INIT_FINANCIAL_ENTRY);
-  }, []);
+    // Audit must be written AFTER the arrays are cleared, not before, so it survives the reset.
+    setAudit(a => [{ id: genId(), action: 'Operational data reset', user: userName, detail: 'All operational data cleared via System Settings', ts: nowTs() }, ...a]);
+  }, [userName]);
 
   const submitPumpReport = useCallback((r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
     setPumpDailyReports(rs => [...rs, { ...r, id: genId(), status: 'pending_manager', submittedAt: nowTs() }]);
