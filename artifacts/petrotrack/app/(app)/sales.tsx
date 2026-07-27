@@ -26,7 +26,7 @@ const SHIFT_STATUS_ICON: Record<string, string> = {
 };
 
 export default function SalesScreen() {
-  const { role, branchId, sales, pumpDailyReports } = useApp();
+  const { role, branchId, sales, pumpDailyReports, pumps } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
 
@@ -41,18 +41,23 @@ export default function SalesScreen() {
   const totalCash  = totalAmt - totalPOS;
 
   const PROD_DEF = [
-    { key: 'PMS',      color: '#185FA5', unit: 'L' },
-    { key: 'AGO',      color: '#BA7517', unit: 'L' },
-    { key: 'DPK',      color: '#6B4F9E', unit: 'L' },
-    { key: 'LPG',      color: '#1a6e3c', unit: 'kg' },
-    { key: 'Lube Oil', color: '#A32D2D', unit: 'L' },
+    { key: 'PMS',             color: '#185FA5', unit: 'L', label: 'PMS' },
+    { key: 'AGO',             color: '#BA7517', unit: 'L', label: 'AGO' },
+    { key: 'DPK',             color: '#6B4F9E', unit: 'L', label: 'DPK' },
+    { key: 'LPG_Single',      color: '#1a6e3c', unit: 'kg', label: 'LPG Single Buyers' },
+    { key: 'LPG_Distributor', color: '#0B4D3E', unit: 'kg', label: 'LPG Distributors' },
+    { key: 'Lube Oil',        color: '#A32D2D', unit: 'L', label: 'Lube Oil' },
   ] as const;
 
-  const prodBreakdown = PROD_DEF.map(({ key, color, unit }) => {
-    const entries = todaySales.filter(s => s.pump.includes(key));
+  const prodBreakdown = PROD_DEF.map(({ key, color, unit, label }) => {
+    const entries = todaySales.filter(s => {
+      if (key === 'LPG_Single')      return s.pump.includes('LPG') && s.lpgCategory === 'single';
+      if (key === 'LPG_Distributor') return s.pump.includes('LPG') && s.lpgCategory === 'distributor';
+      return s.pump.includes(key);
+    });
     const vol = entries.reduce((s, e) => s + e.L, 0);
     const rev = entries.reduce((s, e) => s + e.L * e.price, 0);
-    return { key, color, unit, vol, rev };
+    return { key, color, unit, label: label ?? key, vol, rev };
   });
 
   const sortedReports = [...pumpDailyReports]
@@ -69,7 +74,7 @@ export default function SalesScreen() {
             <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Today's Revenue</Text>
           </View>
           <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.metricValue, { color: colors.text }]}>{totalL.toLocaleString()} L</Text>
+            <Text style={[styles.metricValue, { color: colors.text }]}>{totalL.toLocaleString()} L/kg</Text>
             <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Volume Sold</Text>
           </View>
           <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -115,7 +120,7 @@ export default function SalesScreen() {
           {prodBreakdown.map(p => (
             <View key={p.key} style={[styles.prodCard, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
               <View style={[styles.prodDot, { backgroundColor: p.color }]} />
-              <Text style={[styles.prodLabel, { color: p.color }]}>{p.key}</Text>
+              <Text style={[styles.prodLabel, { color: p.color }]}>{p.label}</Text>
               <Text style={[styles.prodRev, { color: colors.text }]}>{fmt(p.rev)}</Text>
               <Text style={[styles.prodVol, { color: colors.textMuted }]}>{p.vol.toLocaleString()} {p.unit}</Text>
             </View>
