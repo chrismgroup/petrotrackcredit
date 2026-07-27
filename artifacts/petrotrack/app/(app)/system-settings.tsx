@@ -42,7 +42,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 const BLANK_TANK  = { name: '', cap: '', dip: '', prod: 'PMS' as Tank['prod'], branchId: '' };
 const BLANK_LPG   = { name: '', cap: '', branchId: '' };
-const BLANK_PUMP  = { name: '', prod: 'PMS' as Pump['prod'], active: true, branchId: '', openingMeter: '' };
+const BLANK_PUMP  = { name: '', prod: 'PMS' as Pump['prod'], active: true, branchId: '', openingMeter: '', lpgCategory: '' as 'single' | 'distributor' | '' };
 const BLANK_STAFF = { name: '', email: '', role: 'att' as typeof ROLE_OPTS[number], sal: '', username: '', password: '', branchId: '' };
 
 function autoUsername(name: string): string {
@@ -218,7 +218,7 @@ export default function SystemSettingsScreen() {
   /* ── edit state (existing items) ── */
   const [tankEdits, setTankEdits] = useState<Record<string, { name: string; cap: string; dip: string; prod: Tank['prod']; branchId: string }>>({});
   const [lpgEdits,  setLpgEdits]  = useState<Record<string, { name: string; cap: string; branchId: string }>>({});
-  const [pumpEdits, setPumpEdits] = useState<Record<string, { name: string; prod: Pump['prod']; active: boolean; branchId: string; openingMeter: string }>>({});
+  const [pumpEdits, setPumpEdits] = useState<Record<string, { name: string; prod: Pump['prod']; active: boolean; branchId: string; openingMeter: string; lpgCategory: 'single' | 'distributor' | '' }>>({});
   const [staffEdits,setStaffEdits]= useState<Record<number, { name: string; email: string }>>({});
 
   /* ── new-item forms ── */
@@ -246,7 +246,7 @@ export default function SystemSettingsScreen() {
   }, [lpgTanks]);
   useEffect(() => {
     const pe: typeof pumpEdits = {};
-    for (const p of pumps) pe[p.id] = { name: p.name, prod: p.prod, active: p.active, branchId: p.branchId ?? '', openingMeter: String(pumpInitialMeters[p.id] ?? '') };
+    for (const p of pumps) pe[p.id] = { name: p.name, prod: p.prod, active: p.active, branchId: p.branchId ?? '', openingMeter: String(pumpInitialMeters[p.id] ?? ''), lpgCategory: p.lpgCategory ?? '' };
     setPumpEdits(pe);
   }, [pumps, pumpInitialMeters]);
   useEffect(() => {
@@ -275,7 +275,8 @@ export default function SystemSettingsScreen() {
   function savePumps() {
     for (const [id, e] of Object.entries(pumpEdits)) {
       if (!e.name.trim()) { Alert.alert('Error', `Pump ${id} name cannot be empty.`); return; }
-      updatePump(id, { name: e.name.trim(), prod: e.prod, active: e.active, branchId: e.branchId || undefined });
+      if (e.prod === 'LPG' && !e.lpgCategory) { Alert.alert('Error', `Pump ${id} is LPG — select Single Buyer or Distributor category.`); return; }
+      updatePump(id, { name: e.name.trim(), prod: e.prod, active: e.active, branchId: e.branchId || undefined, lpgCategory: e.prod === 'LPG' && e.lpgCategory ? e.lpgCategory : undefined });
       const om = parseFloat(e.openingMeter.replace(/,/g, ''));
       if (!isNaN(om) && om >= 0) {
         setPumpInitialMeter(id, om);
@@ -315,7 +316,8 @@ export default function SystemSettingsScreen() {
 
   function createPump() {
     if (!newPump.name.trim()) { Alert.alert('Error', 'Pump name is required.'); return; }
-    const pump = addPump({ name: newPump.name.trim(), prod: newPump.prod, active: newPump.active, branchId: newPump.branchId || undefined });
+    if (newPump.prod === 'LPG' && !newPump.lpgCategory) { Alert.alert('Error', 'Select Single Buyer or Distributor for this LPG pump.'); return; }
+    const pump = addPump({ name: newPump.name.trim(), prod: newPump.prod, active: newPump.active, branchId: newPump.branchId || undefined, lpgCategory: newPump.prod === 'LPG' && newPump.lpgCategory ? newPump.lpgCategory : undefined });
     const om = parseFloat(newPump.openingMeter.replace(/,/g, ''));
     if (!isNaN(om) && om >= 0) setPumpInitialMeter(pump.id, om);
     setNewPump(BLANK_PUMP);
@@ -807,8 +809,21 @@ export default function SystemSettingsScreen() {
                       )}
                     </View>
                     <FieldInput colors={colors} editable={isAdmin} label="Pump Name" value={e.name} onChangeText={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, name: v } }))} placeholder="e.g. Forecourt Pump A" />
-                    <ProdPicker isAdmin={isAdmin} colors={colors} value={e.prod} onChange={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, prod: v } }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
-                    <FieldInput colors={colors} editable={isAdmin} label="Opening Meter Reading (L)" value={e.openingMeter} onChangeText={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, openingMeter: v } }))} placeholder="e.g. 12500" keyboardType="decimal-pad" />
+                    <ProdPicker isAdmin={isAdmin} colors={colors} value={e.prod} onChange={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, prod: v, lpgCategory: v === 'LPG' ? e.lpgCategory : '' } }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
+                    {e.prod === 'LPG' && (
+                      <View style={{ marginBottom: 10 }}>
+                        <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>LPG Category *</Text>
+                        <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                          {(['single', 'distributor'] as const).map(c => (
+                            <TouchableOpacity key={c} onPress={() => isAdmin && setPumpEdits(p => ({ ...p, [pump.id]: { ...e, lpgCategory: c } }))}
+                              style={[styles.roleChip, { borderColor: e.lpgCategory === c ? roleColor : colors.border, backgroundColor: e.lpgCategory === c ? roleColor + '18' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
+                              <Text style={[styles.roleChipText, { color: e.lpgCategory === c ? roleColor : colors.textMuted }]}>{c === 'single' ? 'Single Buyer' : 'Distributor'}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                    <FieldInput colors={colors} editable={isAdmin} label={`Opening Meter Reading (${e.prod === 'LPG' ? 'kg' : 'L'})`} value={e.openingMeter} onChangeText={v => setPumpEdits(p => ({ ...p, [pump.id]: { ...e, openingMeter: v } }))} placeholder="e.g. 12500" keyboardType="decimal-pad" />
                     {branches.length > 0 && (
                       <View style={{ marginBottom: 4 }}>
                         <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
@@ -844,7 +859,20 @@ export default function SystemSettingsScreen() {
                     </TouchableOpacity>
                   </View>
                   <FieldInput colors={colors} label="Pump Name *" value={newPump.name} onChangeText={v => setNewPump(n => ({ ...n, name: v }))} placeholder="e.g. Pump #6 PMS" />
-                  <ProdPicker isAdmin={isAdmin} colors={colors} value={newPump.prod} onChange={v => setNewPump(n => ({ ...n, prod: v }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
+                  <ProdPicker isAdmin={isAdmin} colors={colors} value={newPump.prod} onChange={v => setNewPump(n => ({ ...n, prod: v, lpgCategory: v === 'LPG' ? '' : '' }))} opts={['PMS', 'AGO', 'DPK', 'LPG']} />
+                  {newPump.prod === 'LPG' && (
+                    <View style={{ marginBottom: 10 }}>
+                      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>LPG Category *</Text>
+                      <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                        {(['single', 'distributor'] as const).map(c => (
+                          <TouchableOpacity key={c} onPress={() => setNewPump(n => ({ ...n, lpgCategory: c }))}
+                            style={[styles.roleChip, { borderColor: newPump.lpgCategory === c ? roleColor : colors.border, backgroundColor: newPump.lpgCategory === c ? roleColor + '18' : colors.surface }]}>
+                            <Text style={[styles.roleChipText, { color: newPump.lpgCategory === c ? roleColor : colors.textMuted }]}>{c === 'single' ? 'Single Buyer' : 'Distributor'}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
                   <View style={{ marginBottom: 10 }}>
                     <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment *</Text>
                     {branches.length === 0

@@ -223,9 +223,10 @@ export default function ReportsScreen() {
 
   const prodSales = ['PMS','AGO','DPK','LPG'].map(prod => {
     const color = PROD_COLORS[prod] || rc;
-    const L = fSales.filter((sale: any) => sale.pump.includes(prod)).reduce((sum: number, e: any) => sum + e.L, 0);
-    const price = (prices as any)[prod] ?? 0;
-    return { prod, color, L, price, scaledL: Math.round(L), scaledRev: Math.round(L * price) };
+    const entries = fSales.filter((sale: any) => sale.pump.includes(prod));
+    const L = entries.reduce((sum: number, e: any) => sum + e.L, 0);
+    const rev = entries.reduce((sum: number, e: any) => sum + e.L * e.price, 0);
+    return { prod, color, L, scaledL: Math.round(L), scaledRev: Math.round(rev) };
   }).filter(p => p.L > 0);
 
   const branchBD = useMemo(() => {

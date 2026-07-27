@@ -10,14 +10,15 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { PriceProposal, Prices, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const PRODUCTS: (keyof Prices)[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
+const PRODUCTS: (keyof Prices)[] = ['PMS', 'AGO', 'DPK', 'LPG_Single', 'LPG_Distributor', 'Lube Oil'];
 
-const PROD_META: Record<string, { color: string; icon: string; unit: string }> = {
-  PMS:        { color: '#1a6e3c', icon: 'flame',       unit: '/L' },
-  AGO:        { color: '#185FA5', icon: 'car',         unit: '/L' },
-  DPK:        { color: '#BA7517', icon: 'bulb-outline',unit: '/L' },
-  LPG:        { color: '#0F6E56', icon: 'thermometer', unit: '/kg' },
-  'Lube Oil': { color: '#5c3d11', icon: 'settings',    unit: '/L' },
+const PROD_META: Record<string, { color: string; icon: string; unit: string; label: string }> = {
+  PMS:             { color: '#1a6e3c', icon: 'flame',       unit: '/L', label: 'PMS' },
+  AGO:             { color: '#185FA5', icon: 'car',         unit: '/L', label: 'AGO' },
+  DPK:             { color: '#BA7517', icon: 'bulb-outline',unit: '/L', label: 'DPK' },
+  LPG_Single:      { color: '#0F6E56', icon: 'thermometer', unit: '/kg', label: 'LPG (Single Buyers)' },
+  LPG_Distributor: { color: '#0B4D3E', icon: 'thermometer', unit: '/kg', label: 'LPG (Distributors)' },
+  'Lube Oil':      { color: '#5c3d11', icon: 'settings',    unit: '/L', label: 'Lube Oil' },
 };
 
 const STATUS_CFG = {
@@ -185,7 +186,7 @@ export default function PricesScreen() {
                 <Ionicons name={meta.icon as any} size={20} color={meta.color} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[s.prodName, { color: colors.text }]}>{prod}</Text>
+                <Text style={[s.prodName, { color: colors.text }]}>{meta.label}</Text>
                 <Text style={[s.prodUnit, { color: colors.textSubtle }]}>{meta.unit}</Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 4 }}>

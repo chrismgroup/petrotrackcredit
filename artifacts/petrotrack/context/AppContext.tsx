@@ -11,11 +11,11 @@ export interface Tank {
   cap: number; dip: number; op: number; rv: number; sl: number; branchId?: string;
 }
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; branchId?: string; }
-export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil'; active: boolean; branchId?: string; }
+export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil'; active: boolean; branchId?: string; lpgCategory?: 'single' | 'distributor'; }
 export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
 export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
-export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; }
+export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
@@ -81,7 +81,12 @@ export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
 };
 export interface Department { id: string; name: string; icon: string; col: { bg: string; fg: string }; roles: string[]; sys: boolean; }
-export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; 'Lube Oil': number; }
+export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; LPG_Single: number; LPG_Distributor: number; 'Lube Oil': number; }
+export type FuelProduct = keyof Prices;
+export const lpgPriceKey = (cat?: 'single' | 'distributor'): keyof Prices => cat === 'distributor' ? 'LPG_Distributor' : 'LPG_Single';
+export const unitForProd = (p: string) => p === 'LPG' ? 'kg' : 'L';
+export const getPriceForPump = (pump: Pump, prices: Prices): number =>
+  pump.prod === 'LPG' ? (prices[lpgPriceKey(pump.lpgCategory)] ?? prices.LPG) : (prices as any)[pump.prod] ?? 0;
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; reason?: string; }
 export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; }
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
@@ -463,7 +468,7 @@ interface AppContextType {
   addPump: (p: Omit<Pump, 'id'>) => Pump;
   updateTank: (id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip' | 'branchId'>>) => void;
   updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap' | 'branchId'>>) => void;
-  updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId'>>) => void;
+  updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId' | 'lpgCategory'>>) => void;
   updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept'>>) => void;
   addExpense: (exp: Omit<Expense, 'id' | 'dt' | 'status'>) => void;
   updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref'>>) => void;
@@ -593,7 +598,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [mgrPerms, setMgrPerms] = useState<Record<string, MgrPermissions>>(INIT_MGR_PERMS);
   const [roleAccess, setRoleAccess] = useState<Record<string, Record<string, boolean>>>(defaultRoleAccess);
   const [userAccess, setUserAccess] = useState<Record<number, Record<string, boolean>>>({});
-  const [prices, setPrices] = useState<Prices>({ PMS: 0, AGO: 0, DPK: 0, LPG: 0, 'Lube Oil': 0 });
+  const [prices, setPrices] = useState<Prices>({ PMS: 0, AGO: 0, DPK: 0, LPG: 0, LPG_Single: 0, LPG_Distributor: 0, 'Lube Oil': 0 });
   const [priceHistory, setPriceHistory] = useState<PriceChange[]>(INIT_PRICE_HISTORY);
   const [tanks, setTanks] = useState<Tank[]>(INIT_TANKS);
   const [lpgTanks, setLpgTanks] = useState<LPGTank[]>(INIT_LPG);
@@ -1001,7 +1006,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const actor = by ?? userName;
     setPrices(p => ({ ...p, [prod]: price }));
     setPriceHistory(h => [{ id: genId(), prod, oldPrice, newPrice: price, by: actor, dt: nowTs(), reason }, ...h]);
-    setAudit(a => [{ id: genId(), action: 'Price update', user: actor, detail: `${prod}: ₦${oldPrice} → ₦${price}/L${reason ? ' — ' + reason : ''}`, ts: nowTs() }, ...a]);
+    const unit = prod === 'LPG' || prod.startsWith('LPG') ? 'kg' : 'L';
+    setAudit(a => [{ id: genId(), action: 'Price update', user: actor, detail: `${prod}: ₦${oldPrice} → ₦${price}/${unit}${reason ? ' — ' + reason : ''}`, ts: nowTs() }, ...a]);
   }, [userName, prices]);
 
   const addPriceProposal = useCallback((prod: string, proposedPrice: number) => {
@@ -1010,7 +1016,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       { id: genId(), prod, currentPrice, proposedPrice, proposedBy: userName, proposedAt: nowTs(), status: 'pending' },
       ...ps,
     ]);
-    setAudit(a => [{ id: genId(), action: 'Price proposal submitted', user: userName, detail: `${prod}: ₦${currentPrice} → ₦${proposedPrice}/L (awaiting CEO approval)`, ts: nowTs() }, ...a]);
+    const unit = prod === 'LPG' || prod.startsWith('LPG') ? 'kg' : 'L';
+    setAudit(a => [{ id: genId(), action: 'Price proposal submitted', user: userName, detail: `${prod}: ₦${currentPrice} → ₦${proposedPrice}/${unit} (awaiting CEO approval)`, ts: nowTs() }, ...a]);
   }, [userName, prices]);
 
   const approvePriceProposal = useCallback((id: number) => {
@@ -1025,8 +1032,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...m,
       [msgKey]: [...(m[msgKey] || []), {
         id: genId(), from: 'ceo' as Role, to: 'md' as Role, type: 'alert' as const,
-        body: `Price approved: ${proposal.prod} is now ₦${proposal.proposedPrice.toLocaleString()}/L`,
-        alrt: { title: 'Price Change Approved', pri: 'Low', detail: `${proposal.prod}: ₦${proposal.currentPrice.toLocaleString()} → ₦${proposal.proposedPrice.toLocaleString()}/L (effective immediately)` },
+        body: `Price approved: ${proposal.prod} is now ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)}`,
+        alrt: { title: 'Price Change Approved', pri: 'Low', detail: `${proposal.prod}: ₦${proposal.currentPrice.toLocaleString()} → ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (effective immediately)` },
         ts: nowTime(), read: false,
       }],
     }));
@@ -1039,14 +1046,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPriceProposals(ps => ps.map(p =>
       p.id === id ? { ...p, proposedPrice: updatedPrice, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
     ));
-    setAudit(a => [{ id: genId(), action: 'Price proposal updated & approved', user: userName, detail: `${proposal.prod}: ₦${proposal.proposedPrice.toLocaleString()} → ₦${updatedPrice.toLocaleString()}/L (CEO updated price)`, ts: nowTs() }, ...a]);
+    setAudit(a => [{ id: genId(), action: 'Price proposal updated & approved', user: userName, detail: `${proposal.prod}: ₦${proposal.proposedPrice.toLocaleString()} → ₦${updatedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (CEO updated price)`, ts: nowTs() }, ...a]);
     const msgKey = chatKey('ceo', 'md');
     setMessages(m => ({
       ...m,
       [msgKey]: [...(m[msgKey] || []), {
         id: genId(), from: 'ceo' as Role, to: 'md' as Role, type: 'alert' as const,
-        body: `Price updated & approved: ${proposal.prod} is now ₦${updatedPrice.toLocaleString()}/L (CEO adjusted from your ₦${proposal.proposedPrice.toLocaleString()}/L)`,
-        alrt: { title: 'Price Updated & Approved', pri: 'Low', detail: `${proposal.prod}: You proposed ₦${proposal.proposedPrice.toLocaleString()}/L, CEO set it to ₦${updatedPrice.toLocaleString()}/L (effective immediately)` },
+        body: `Price updated & approved: ${proposal.prod} is now ₦${updatedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (CEO adjusted from your ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)})`,
+        alrt: { title: 'Price Updated & Approved', pri: 'Low', detail: `${proposal.prod}: You proposed ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)}, CEO set it to ₦${updatedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (effective immediately)` },
         ts: nowTime(), read: false,
       }],
     }));
@@ -1104,8 +1111,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'LPG tank configuration updated', user: userName, detail: `LPG Tank ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updatePump = useCallback((id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId'>>) => {
-    setPumps(p => p.map(pump => pump.id === id ? { ...pump, ...updates } : pump));
+  const updatePump = useCallback((id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId' | 'lpgCategory'>>) => {
+    setPumps(p => p.map(pump => {
+      if (pump.id !== id) return pump;
+      const next = { ...pump, ...updates };
+      // Clear category when pump is no longer LPG
+      if (next.prod !== 'LPG') next.lpgCategory = undefined;
+      return next;
+    }));
     setAudit(a => [{ id: genId(), action: 'Pump configuration updated', user: userName, detail: `Pump ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
@@ -1273,14 +1286,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     // Update global selling price for this product
     updatePrice(d.prod, sellingPrice, userName);
-    setAudit(a => [{ id: genId(), action: 'Delivery MD-approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L · Cost ₦${d.costPrice}/L · Sell ₦${sellingPrice}/L · permanently locked`, ts: nowTs() }, ...a]);
+    // For LPG, seed both category prices if they are unset so pumps have a price until admin sets specific ones
+    if (d.prod === 'LPG') {
+      setPrices(p => ({ ...p, LPG_Single: p.LPG_Single || sellingPrice, LPG_Distributor: p.LPG_Distributor || sellingPrice }));
+    }
+    const unit = unitForProd(d.prod);
+    setAudit(a => [{ id: genId(), action: 'Delivery MD-approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}${unit} · Cost ₦${d.costPrice}/${unit} · Sell ₦${sellingPrice}/${unit} · permanently locked`, ts: nowTs() }, ...a]);
     const msgKey = chatKey('md', 'acc');
     setMessages(m => ({
       ...m,
       [msgKey]: [...(m[msgKey] || []), {
         id: genId(), from: 'md' as Role, to: 'acc' as Role, type: 'alert' as const,
-        body: `Delivery approved by MD: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb}). Selling price set to ₦${sellingPrice.toLocaleString()}/L. Record locked.`,
-        alrt: { title: 'Delivery MD Approved — Price Updated', pri: 'Low', detail: `WB: ${d.wb} · ${d.prod} · ${d.rec.toLocaleString()}L · Sell ₦${sellingPrice.toLocaleString()}/L` },
+        body: `Delivery approved by MD: ${d.prod} ${d.rec.toLocaleString()}${unit} from ${d.sup} (WB: ${d.wb}). Selling price set to ₦${sellingPrice.toLocaleString()}/${unit}. Record locked.`,
+        alrt: { title: 'Delivery MD Approved — Price Updated', pri: 'Low', detail: `WB: ${d.wb} · ${d.prod} · ${d.rec.toLocaleString()}${unit} · Sell ₦${sellingPrice.toLocaleString()}/${unit}` },
         ts: nowTime(), read: false,
       }],
     }));
@@ -1320,7 +1338,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addSales = useCallback((entry: Omit<SalesEntry, 'id'>) => {
     setSales(s => [...s, { ...entry, id: genId(), branchId: entry.branchId ?? branchId ?? undefined }]);
-    setAudit(a => [{ id: genId(), action: 'Sales entry', user: userName, detail: `${entry.pump} — ${entry.L}L`, ts: nowTs() }, ...a]);
+    const unit = entry.lpgCategory || entry.pump.includes('LPG') ? 'kg' : 'L';
+    setAudit(a => [{ id: genId(), action: 'Sales entry', user: userName, detail: `${entry.pump} — ${entry.L}${unit}`, ts: nowTs() }, ...a]);
   }, [userName, branchId]);
 
   const updateSales = useCallback((id: number, updates: Partial<Pick<SalesEntry, 'pump' | 'L' | 'price' | 'pos' | 'dt'>>) => {
@@ -1888,6 +1907,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const accApprovePumpReport = useCallback((report: PumpDailyReport, accNote: string) => {
     const id = report.id;
+    const pump = pumps.find(p => p.id === report.pumpId);
     setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'approved', accNote, accBy: userName, accAt: nowTs() } : r));
     setSales(s => {
       if (s.some(e => e.shiftReportId === id)) return s;
@@ -1895,6 +1915,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: genId(),
         shiftReportId: id,
         pump: `${report.pumpName} (${report.product})`,
+        pumpId: report.pumpId,
+        lpgCategory: report.product === 'LPG' ? pump?.lpgCategory ?? 'single' : undefined,
         by: report.submittedBy,
         L: report.liters,
         price: report.unitPrice,
@@ -1910,8 +1932,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const ids = new Set(matching.map(t => t.id));
       return ts.map(t => ids.has(t.id) ? { ...t, sl: t.sl + share } : t);
     });
-    setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} — ${report.pumpName} · ${report.liters}L · sales record auto-created`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const unit = report.product === 'LPG' ? 'kg' : 'L';
+    setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} — ${report.pumpName} · ${report.liters}${unit} · sales record auto-created`, ts: nowTs() }, ...a]);
+  }, [userName, pumps]);
 
   const accRejectPumpReport = useCallback((id: number, rejectionReason: string) => {
     setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'returned', rejectionReason, accBy: userName, accAt: nowTs() } : r));
