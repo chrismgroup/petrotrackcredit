@@ -5,7 +5,7 @@ import {
   TextInput, TouchableOpacity, View,
 } from 'react-native';
 
-import { fmt, fmtDateTime, useApp, type BankLoan } from '@/context/AppContext';
+import { fmt, fmtDateTime, getCurrentTankStock, useApp, type BankLoan } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PROD_COLOR: Record<string, string> = {
@@ -152,7 +152,7 @@ function EditModal({
 ═══════════════════════════════════════ */
 export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const {
-    role, tanks, lpgTanks, deliveries, branches, pumpDailyReports,
+    role, tanks, lpgTanks, dips, deliveries, branches, pumpDailyReports,
     expenses, financialEntry, updateFinancialEntry,
   } = useApp();
   const colors = useColors();
@@ -180,12 +180,12 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const stockItems: StockItem[] = [];
 
   for (const t of tanks) {
-    const stock = Math.max(0, t.op + t.rv - t.sl);
+    const stock = getCurrentTankStock(t, dips);
     const cost  = costPerProd[t.prod] ?? 0;
     stockItems.push({ prod: t.prod, stock, cost, value: stock * cost, branchId: t.branchId ?? 'HQ' });
   }
   for (const lt of lpgTanks) {
-    const stock = Math.max(0, lt.op + lt.rv - lt.sl);
+    const stock = getCurrentTankStock(lt, dips, 'lpg');
     const cost  = costPerProd['LPG'] ?? 0;
     stockItems.push({ prod: 'LPG', stock, cost, value: stock * cost, branchId: lt.branchId ?? 'HQ' });
   }

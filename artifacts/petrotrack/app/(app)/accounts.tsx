@@ -11,7 +11,7 @@ export default function AccountsScreen() {
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
 
-  const isGlobal = role === 'md' || role === 'ceo' || role === 'admin';
+  const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'admin';
   const visibleBranches = isGlobal ? branches : branches.filter(b => !branchId || !b.id || b.id === branchId);
   const branchRev = (bid: string) =>
     pumpDailyReports.filter(r => r.status === 'approved' && r.branchId === bid)

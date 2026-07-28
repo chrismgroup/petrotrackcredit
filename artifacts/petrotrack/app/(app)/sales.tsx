@@ -30,7 +30,7 @@ export default function SalesScreen() {
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
 
-  const isGlobal   = role === 'md' || role === 'ceo' || role === 'acc';
+  const isGlobal   = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm';
   const inMyBranch = (bId?: string) => isGlobal || !branchId || !bId || bId === branchId;
 
   const today      = new Date().toISOString().slice(0, 10);

@@ -88,6 +88,13 @@ export function Header({ title, rightAction }: Props) {
           <View style={styles.actions}>
             {rightAction}
             <TouchableOpacity
+              style={[styles.homeBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
+              onPress={() => router.replace('/(app)/home' as never)}
+              accessibilityLabel="Go to Overview"
+            >
+              <Ionicons name="home-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.notifBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
               onPress={() => router.replace('/(app)/messages' as never)}
             >
@@ -232,6 +239,7 @@ const styles = StyleSheet.create({
   roleBadge:    { color: 'rgba(255,255,255,0.65)', fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600' },
   title:        { color: '#fff', fontSize: 23, fontWeight: '800', letterSpacing: -0.5 },
   actions:      { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  homeBtn:      { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   notifBtn: {
     width: 38, height: 38, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center', position: 'relative',

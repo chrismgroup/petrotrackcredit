@@ -6,7 +6,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp,
+  DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -75,8 +75,9 @@ export default function OperationsScreen() {
 
   const perms           = isMgr ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
-  const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : isMD ? tanks : tanks.filter(inMyBranch);
-  const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : isMD ? lpgTanks : lpgTanks.filter(inMyBranch);
+  const canSeeAllTanks = role === 'admin' || role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'mktg';
+  const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : canSeeAllTanks ? tanks : tanks.filter(inMyBranch);
+  const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : canSeeAllTanks ? lpgTanks : lpgTanks.filter(inMyBranch);
   const canDip          = isMgr;
   const hasPendingDip   = canDip && dips.some(d => d.by === userName && d.status === 'pending');
 
@@ -91,8 +92,8 @@ export default function OperationsScreen() {
   }
 
 
-  function stockPct(t: { op: number; sl: number; rv: number; cap: number }) {
-    return Math.round(((t.op + t.rv - t.sl) / t.cap) * 100);
+  function stockPct(t: { id: string; op: number; sl: number; rv: number; cap: number }) {
+    return Math.round((getCurrentTankStock(t, dips) / t.cap) * 100);
   }
 
   // ── Sales metrics (from approved shift reports via SalesEntry) ───────────
@@ -258,7 +259,7 @@ export default function OperationsScreen() {
                         <Text style={[styles.prodBadgeText, { color: roleColor }]}>{t.prod}</Text>
                       </View>
                     </View>
-                    <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Cap: {t.cap.toLocaleString()}L · Stock: {(t.op - t.sl).toLocaleString()}L</Text>
+                    <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Cap: {t.cap.toLocaleString()}L · Stock: {getCurrentTankStock(t, dips).toLocaleString()}L</Text>
                     <TextInput
                       style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
                       placeholder={`Reading in mm (max ${t.dip}mm)`}
@@ -492,7 +493,7 @@ export default function OperationsScreen() {
               )}
               {visibleTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>}
               {visibleTanks.map(t => {
-                const stock = t.op + t.rv - t.sl;
+                const stock = getCurrentTankStock(t, dips);
                 const pct   = stockPct(t);
                 const barCol = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary;
                 return (
@@ -528,7 +529,7 @@ export default function OperationsScreen() {
               })}
               {visibleLpgTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>LPG Tanks</Text>}
               {visibleLpgTanks.map(l => {
-                const stock  = l.op + l.rv - l.sl;
+                const stock  = getCurrentTankStock(l, dips, 'lpg');
                 const pct    = Math.max(0, Math.min(100, Math.round((stock / l.cap) * 100)));
                 const barCol = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.teal;
                 return (

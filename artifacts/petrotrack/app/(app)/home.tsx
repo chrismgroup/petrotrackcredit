@@ -8,7 +8,7 @@ import { PriceTicker } from '@/components/PriceTicker';
 import { SalesForecastCard } from '@/components/SalesForecastCard';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  ROLE_COLORS, UINFO, fmt, fmtDateTime, useApp, type Budget, type Expense,
+  getCurrentTankStock, ROLE_COLORS, UINFO, fmt, fmtDateTime, useApp, type Budget, type Expense,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -47,7 +47,7 @@ export default function HomeScreen() {
   const openMaint = maintenance.filter(m => m.st === 'Open');
   const pendingExp = expenses.filter(e => e.status === 'pending');
   const monthKey = new Date().toISOString().slice(0, 7);
-  const isGlobal = role === 'md' || role === 'ceo';
+  const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'mktg';
   const totalRev = pumpDailyReports
     .filter(r => r.status === 'approved' && r.date.startsWith(monthKey) && (isGlobal || !branchId || !r.branchId || r.branchId === branchId))
     .reduce((s, r) => s + r.grossAmount, 0);
@@ -63,12 +63,12 @@ export default function HomeScreen() {
   };
   const prodStockMap: Record<string, { total: number; count: number }> = {};
   for (const t of myTanks) {
-    const stock = Math.max(0, t.op + t.rv - t.sl);
+    const stock = getCurrentTankStock(t, dips);
     prodStockMap[t.prod] = prodStockMap[t.prod]
       ? { total: prodStockMap[t.prod].total + stock, count: prodStockMap[t.prod].count + 1 }
       : { total: stock, count: 1 };
   }
-  const lpgStock = myLpgTanks.reduce((s, t) => s + Math.max(0, t.op + t.rv - t.sl), 0);
+  const lpgStock = myLpgTanks.reduce((s, t) => s + getCurrentTankStock(t, dips, 'lpg'), 0);
   if (myLpgTanks.length > 0) prodStockMap['LPG'] = { total: lpgStock, count: myLpgTanks.length };
   const fuelRows = [
     ...PROD_ORDER.filter(p => prodStockMap[p]),
