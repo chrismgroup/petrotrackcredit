@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import React from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ROLE_COLORS, SCREEN_ROUTES, useApp } from '@/context/AppContext';
@@ -42,6 +42,11 @@ export function TabBar() {
       backgroundColor: colors.surface,
       shadowColor: '#000',
     }]}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
       {navItems.map(item => {
         const active = isActive(item.id);
         return (
@@ -62,20 +67,21 @@ export function TabBar() {
           </TouchableOpacity>
         );
       })}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
     paddingTop: 6,
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.06,
     shadowRadius: 10,
     elevation: 8,
   },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 2, gap: 2 },
+  scrollContent: { flexDirection: 'row', paddingHorizontal: 6 },
+  tab: { width: 72, alignItems: 'center', paddingVertical: 2, gap: 2 },
   iconPill: {
     width: 44, height: 30, borderRadius: 15,
     alignItems: 'center', justifyContent: 'center',

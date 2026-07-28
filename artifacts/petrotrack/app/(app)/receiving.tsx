@@ -210,19 +210,18 @@ export default function ReceivingScreen() {
   const [mdSellingPrice, setMdSellingPrice] = useState('');
 
   /* ── branch + role scoping ─────────────────────────────────────────────
-     - admin / ceo / md / mktg / acc : see all deliveries (approval chain)
-     - csm                           : branch-scoped
+     - admin / ceo / md / mktg / acc / csm : see all deliveries and branch inventory
      - mgr                      : only their own submissions, branch-scoped
   ── */
-  const isGlobalViewer = role === 'admin' || role === 'ceo' || role === 'md' || role === 'mktg' || role === 'acc';
+  const isGlobalViewer = role === 'admin' || role === 'ceo' || role === 'md' || role === 'mktg' || role === 'acc' || role === 'csm';
   const sortedDeliveries = [...deliveries]
     .filter(d => {
       if (isGlobalViewer) return true;
       // branch-scope first
       const inBranch = !branchId || !d.branchId || d.branchId === branchId;
       if (!inBranch) return false;
-      // mgr/csm see only their own submissions
-      if (role === 'mgr' || role === 'csm') return d.receivedBy === userName;
+      // station managers see only their own submissions
+      if (role === 'mgr') return d.receivedBy === userName;
       return true; // acc and others see all branch deliveries
     })
     .sort((a, b) => b.id - a.id);
@@ -231,8 +230,9 @@ export default function ReceivingScreen() {
   const pendingMdCount  = sortedDeliveries.filter(d => d.approvalStatus === 'pending_md').length;
 
   // Branch-scoped tanks (used for evidence uploads and branch-user inventory)
-  const myTanks    = tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
-  const myLpgTanks = lpgTanks.filter(l => !branchId || !l.branchId || l.branchId === branchId);
+  const canSeeAllTanks = role === 'admin' || role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'mktg';
+  const myTanks    = canSeeAllTanks ? tanks : tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
+  const myLpgTanks = canSeeAllTanks ? lpgTanks : lpgTanks.filter(l => !branchId || !l.branchId || l.branchId === branchId);
 
   // ── Dip-based inventory ─────────────────────────────────────────────────────
   // Inventory = latest approved dip reading per tank, summed per product per branch.

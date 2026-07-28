@@ -38,6 +38,37 @@ export interface FinancialEntry {
 }
 export interface NavItem { id: string; icon: string; label: string; }
 export interface UserInfo { name: string; color: string; initials: string; role: string; online: boolean; }
+
+/**
+ * Returns the current physical stock for a tank.
+ *
+ * Tank balances are normally maintained as opening + receipts - sales. An
+ * approved dip is the physical source of truth when that balance has not yet
+ * been materialized (all three balance fields are zero), which prevents
+ * dashboards from showing zero while the tank inventory screen shows stock.
+ */
+export function getCurrentTankStock(
+  tank: Pick<Tank | LPGTank, 'op' | 'rv' | 'sl' | 'id'>,
+  dips: DipRecord[],
+  productKind: 'petrol' | 'lpg' = 'petrol',
+): number {
+  const balance = Math.max(0, tank.op + tank.rv - tank.sl);
+  if (balance > 0) return balance;
+
+  const latestDip = dips
+    .filter(d => d.status === 'approved')
+    .filter(d => productKind === 'lpg' ? d.lpg[tank.id] !== undefined : d.rd[tank.id] !== undefined)
+    .sort((a, b) => {
+      const aTime = new Date(a.approvedDt ?? a.dt).getTime();
+      const bTime = new Date(b.approvedDt ?? b.dt).getTime();
+      return bTime - aTime;
+    })[0];
+
+  const reading = productKind === 'lpg'
+    ? latestDip?.lpg[tank.id]
+    : latestDip?.rd[tank.id];
+  return reading === undefined ? balance : Math.max(0, reading);
+}
 export interface MgrPermissions {
   canDip: boolean; canSales: boolean; canExpenses: boolean;
   canMaintenance: boolean; canBudget: boolean; canChat: boolean;
@@ -299,6 +330,10 @@ export const ROLE_FULL_NAV: Record<string, NavItem[]> = {
   mgr: FULL_NAV_CATALOG,
   att: FULL_NAV_CATALOG,
 };
+
+// These roles receive the complete operational overview. This intentionally
+// excludes admin-only system management panels (users, settings, audit).
+export const GLOBAL_OVERVIEW_ROLES = new Set(['ceo', 'md', 'acc', 'csm']);
 
 // Every module starts enabled for every role — admin restricts from here
 function defaultRoleAccess(): Record<string, Record<string, boolean>> {
@@ -2192,6 +2227,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const navItems: NavItem[] = role === 'admin'
     ? baseNav
+    : GLOBAL_OVERVIEW_ROLES.has(role ?? '')
+    ? FULL_NAV_CATALOG
     : baseNav.filter(item => {
         // Per-user override takes priority over role default
         if (staffId !== null) {

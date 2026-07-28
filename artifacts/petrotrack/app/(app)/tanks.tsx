@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const TABS = ['Dip Form', 'Log & Delivery', 'Inventory', 'History'];
@@ -78,8 +78,9 @@ export default function TanksScreen() {
 
   const perms = role === 'mgr' ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
-  const visibleTanks    = role === 'mgr' && !perms.canPetrolTanks ? [] : tanks.filter(inMyBranch);
-  const visibleLpgTanks = role === 'mgr' && !perms.canLpgTanks   ? [] : lpgTanks.filter(inMyBranch);
+  const canSeeAllTanks = role === 'admin' || role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'mktg';
+  const visibleTanks    = role === 'mgr' && !perms.canPetrolTanks ? [] : canSeeAllTanks ? tanks : tanks.filter(inMyBranch);
+  const visibleLpgTanks = role === 'mgr' && !perms.canLpgTanks   ? [] : canSeeAllTanks ? lpgTanks : lpgTanks.filter(inMyBranch);
 
   function computeDipAnalysis(rdMap: Record<string, number>) {
     const expectedByProd: Record<string, number> = {};
@@ -156,8 +157,8 @@ export default function TanksScreen() {
     Alert.alert('Delivery Recorded', 'Delivery entry saved.');
   }
 
-  function stockPct(t: { op: number; sl: number; rv: number; cap: number }) {
-    const stock = t.op + t.rv - t.sl;
+  function stockPct(t: { id: string; op: number; sl: number; rv: number; cap: number }) {
+    const stock = getCurrentTankStock(t, dips);
     return Math.round((stock / t.cap) * 100);
   }
 

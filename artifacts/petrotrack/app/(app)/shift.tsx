@@ -96,12 +96,14 @@ export default function ShiftReportScreen() {
   const isAdmin = role === 'admin';
   const isMd    = role === 'md';
   const isCeo   = role === 'ceo';
-  const canView = isAtt || isMgr || isAcc || isAdmin || isMd || isCeo;
+  const isCsm   = role === 'csm';
+  const canView = isAtt || isMgr || isAcc || isAdmin || isMd || isCeo || isCsm;
+  const isGlobalOverview = isAcc || isAdmin || isMd || isCeo || isCsm;
 
   const today = new Date().toISOString().slice(0, 10);
   const activePumps = pumps.filter(p => {
     if (!p.active) return false;
-    if (!branchId || !p.branchId) return true;   // admin or legacy pump — show all
+    if (isGlobalOverview || !branchId || !p.branchId) return true;   // global overview or legacy pump — show all
     return p.branchId === branchId;               // attendant/mgr — branch-scoped
   });
 
@@ -341,19 +343,19 @@ export default function ShiftReportScreen() {
 
   /* ── filtered lists ── */
   const myReports = useMemo(() =>
-    [...pumpDailyReports]
-      .filter(r => inMyBranch(r) && (r.submittedBy === userName || r.branchId === branchId))
+     [...pumpDailyReports]
+       .filter(r => (isGlobalOverview || inMyBranch(r)) && (isGlobalOverview || r.submittedBy === userName || r.branchId === branchId))
       .sort((a, b) => b.date.localeCompare(a.date)),
-    [pumpDailyReports, userName, branchId]
+    [pumpDailyReports, userName, branchId, isGlobalOverview]
   );
 
   const pendingMgr = useMemo(() =>
-    pumpDailyReports.filter(r => r.status === 'pending_manager' && inMyBranch(r))
+    pumpDailyReports.filter(r => r.status === 'pending_manager' && (isGlobalOverview || inMyBranch(r)))
       .sort((a, b) => b.date.localeCompare(a.date)),
-    [pumpDailyReports, branchId]
+    [pumpDailyReports, branchId, isGlobalOverview]
   );
   const returnedMgr = useMemo(() =>
-    pumpDailyReports.filter(r => r.status === 'returned' && inMyBranch(r))
+    pumpDailyReports.filter(r => r.status === 'returned' && (isGlobalOverview || inMyBranch(r)))
       .sort((a, b) => b.date.localeCompare(a.date)),
     [pumpDailyReports, branchId]
   );
@@ -363,9 +365,9 @@ export default function ShiftReportScreen() {
     [pumpDailyReports]
   );
   const pendingAccMgr = useMemo(() =>
-    pumpDailyReports.filter(r => r.status === 'pending_accountant' && inMyBranch(r))
+    pumpDailyReports.filter(r => r.status === 'pending_accountant' && (isGlobalOverview || inMyBranch(r)))
       .sort((a, b) => b.date.localeCompare(a.date)),
-    [pumpDailyReports, branchId]
+    [pumpDailyReports, branchId, isGlobalOverview]
   );
   const approvedAll = useMemo(() =>
     pumpDailyReports.filter(r => r.status === 'approved')

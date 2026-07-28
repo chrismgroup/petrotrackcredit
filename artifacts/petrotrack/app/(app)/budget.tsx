@@ -168,7 +168,7 @@ export default function BudgetScreen() {
   );
 
   const displayList: Budget[] =
-    isCeo ? budgets
+    isCeo || role === 'csm' ? budgets
     : isMD  ? (tab === 'pending' ? pendingForMD  : budgets)
     : isAcc ? (tab === 'pending' ? pendingForAcc : budgets)
     : myBudgets;
@@ -177,7 +177,7 @@ export default function BudgetScreen() {
   const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
   const totalApproved   = approvedBudgets.reduce((s, b) => s + b.total, 0);
   const totalSpentAll   = approvedBudgets.reduce((s, b) => s + calcPerf(b, expenses, branchMap).totalSpent, 0);
-  const showSummary     = (isMD || isAcc || isCeo) && approvedBudgets.length > 0 && tab !== 'pending';
+  const showSummary     = (isMD || isAcc || isCeo || role === 'csm') && approvedBudgets.length > 0 && tab !== 'pending';
 
   function openCreate() {
     setEditTarget(null);
