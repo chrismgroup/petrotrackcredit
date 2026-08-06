@@ -26,6 +26,10 @@ app.use(
   }),
 );
 app.use(cors());
+// Default 100kb was too small for /state writes: older app builds can send a
+// large audit trail. Keep the small default everywhere else so unauthenticated
+// endpoints (e.g. /auth/login) can't be forced to parse huge bodies.
+app.use("/api/state", express.json({ limit: "5mb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
