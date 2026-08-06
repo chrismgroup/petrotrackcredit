@@ -236,10 +236,15 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     return;
   }
 
-  const data = req.body;
+  let data = req.body;
   if (data === undefined || data === null) {
     res.status(400).json({ error: "Body required" });
     return;
+  }
+  // Server-side cap: keep only the newest audit entries (entries are prepended),
+  // so older app builds without the client-side cap can't grow the log unbounded.
+  if (key === "audit" && Array.isArray(data) && data.length > 500) {
+    data = data.slice(0, 500);
   }
   await db
     .insert(appStateTable)
