@@ -13,7 +13,7 @@
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "gastsmart.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "petrotrack.replit.app"
       }
     }
   },

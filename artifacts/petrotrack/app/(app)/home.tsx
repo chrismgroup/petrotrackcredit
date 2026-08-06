@@ -1,466 +1,885 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
-import { FinancialStatusCard } from '@/components/FinancialStatusCard';
-import { PriceTicker } from '@/components/PriceTicker';
-import { SalesForecastCard } from '@/components/SalesForecastCard';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  getCurrentTankStock, ROLE_COLORS, UINFO, fmt, fmtDateTime, useApp, type Budget, type Expense,
+  getCurrentTankStock,
+  ROLE_LABELS,
+  SCREEN_ROUTES,
+  unitForProd,
+  useApp,
+  type Message,
+  type PumpDailyReport,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const OVER_C  = '#791F1F';
-const OVER_BG = '#FCEBEB';
-const SAFE_C  = '#27500A';
-const SAFE_BG = '#EAF3DE';
-const WARN_C  = '#BA7517';
-const WARN_BG = '#FAEEDA';
+// ─── helpers ───────────────────────────────────────────────────────────────
 
-function budgetSummary(budgets: Budget[], expenses: Expense[], filterByUser?: string) {
-  const all        = filterByUser ? budgets.filter(b => b.byName === filterByUser || b.by === filterByUser) : budgets;
-  const approved   = all.filter(b => b.status === 'fully_approved');
-  const totalBudget = approved.reduce((s, b) => s + b.total, 0);
-  const totalSpent  = approved.reduce((s, b) =>
-    s + expenses.filter(e => e.budgetId === b.id && e.status === 'approved').reduce((x, e) => x + e.amt, 0), 0);
-  const pct         = totalBudget > 0 ? totalSpent / totalBudget : 0;
-  const isOver      = totalSpent > totalBudget;
-  const isWarn      = !isOver && pct >= 0.8;
-  const pendingAcc  = budgets.filter(b => b.status === 'submitted').length;
-  const pendingMD   = budgets.filter(b => b.status === 'acc_forwarded').length;
-  return { all, approved, totalBudget, totalSpent, pct, isOver, isWarn, pendingAcc, pendingMD };
+function fmtK(n: number): string {
+  if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `₦${(n / 1_000).toFixed(0)}K`;
+  return `₦${n.toLocaleString()}`;
 }
 
+function relTime(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function dayGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+// ─── sub-components ────────────────────────────────────────────────────────
+
+interface SectionProps {
+  label: string;
+  route?: string;
+  children: React.ReactNode;
+  colors: ReturnType<typeof useColors>;
+}
+
+function Section({ label, route, children, colors }: SectionProps) {
+  const router = useRouter();
+  return (
+    <View style={s.section}>
+      <View style={s.sectionHead}>
+        <Text style={[s.sectionLabel, { color: colors.textMuted }]}>{label}</Text>
+        {route ? (
+          <TouchableOpacity onPress={() => router.push(route as never)} activeOpacity={0.7}>
+            <Text style={[s.sectionMore, { color: colors.primary }]}>See all</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+interface KpiTileProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  sub?: string;
+  accent: string;
+  colors: ReturnType<typeof useColors>;
+  onPress?: () => void;
+}
+
+function KpiTile({ icon, label, value, sub, accent, colors, onPress }: KpiTileProps) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={onPress ? 0.78 : 1}
+      style={[s.kpiTile, { backgroundColor: colors.surface, borderColor: colors.border }]}
+    >
+      <View style={[s.kpiIconWrap, { backgroundColor: accent + '18' }]}>
+        <Ionicons name={icon} size={18} color={accent} />
+      </View>
+      <Text style={[s.kpiValue, { color: colors.text }]} numberOfLines={1}>{value}</Text>
+      <Text style={[s.kpiLabel, { color: colors.textMuted }]} numberOfLines={1}>{label}</Text>
+      {sub ? <Text style={[s.kpiSub, { color: sub.startsWith('+') ? colors.success : colors.textSubtle }]}>{sub}</Text> : null}
+    </TouchableOpacity>
+  );
+}
+
+interface ApprovalRowProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  accent: string;
+  title: string;
+  meta: string;
+  count?: number;
+  onPress: () => void;
+  colors: ReturnType<typeof useColors>;
+}
+
+function ApprovalRow({ icon, accent, title, meta, count, onPress, colors }: ApprovalRowProps) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.78} style={[s.approvalRow, { borderBottomColor: colors.border }]}>
+      <View style={[s.approvalIcon, { backgroundColor: accent + '18' }]}>
+        <Ionicons name={icon} size={16} color={accent} />
+      </View>
+      <View style={s.approvalBody}>
+        <Text style={[s.approvalTitle, { color: colors.text }]}>{title}</Text>
+        <Text style={[s.approvalMeta, { color: colors.textMuted }]}>{meta}</Text>
+      </View>
+      <View style={s.approvalRight}>
+        {count !== undefined && count > 0 ? (
+          <View style={[s.countBadge, { backgroundColor: accent }]}>
+            <Text style={s.countBadgeText}>{count}</Text>
+          </View>
+        ) : null}
+        <Ionicons name="chevron-forward" size={15} color={colors.textSubtle} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+interface MsgRowProps {
+  msg: Message;
+  from: string;
+  colors: ReturnType<typeof useColors>;
+  onPress: () => void;
+}
+
+function MsgRow({ msg, from, colors, onPress }: MsgRowProps) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.78} style={[s.msgRow, { borderBottomColor: colors.border }]}>
+      <View style={[s.msgAvatar, { backgroundColor: colors.primary + '22' }]}>
+        <Text style={[s.msgAvatarText, { color: colors.primary }]}>
+          {from.slice(0, 2).toUpperCase()}
+        </Text>
+      </View>
+      <View style={s.msgBody}>
+        <View style={s.msgTopLine}>
+          <Text style={[s.msgFrom, { color: colors.text }]} numberOfLines={1}>{from}</Text>
+          <Text style={[s.msgTime, { color: colors.textSubtle }]}>{relTime(msg.ts)}</Text>
+        </View>
+        <Text style={[s.msgPreview, { color: colors.textMuted }]} numberOfLines={1}>{msg.body}</Text>
+      </View>
+      <View style={[s.unreadDot, { backgroundColor: colors.primary }]} />
+    </TouchableOpacity>
+  );
+}
+
+interface BranchBarProps {
+  name: string;
+  rev: number;
+  maxRev: number;
+  st: string;
+  colors: ReturnType<typeof useColors>;
+  onPress: () => void;
+}
+
+function BranchBar({ name, rev, maxRev, st, colors, onPress }: BranchBarProps) {
+  const pct = maxRev > 0 ? (rev / maxRev) * 100 : 0;
+  const stColor = st === 'Active' ? colors.success : st === 'Suspended' ? colors.error : colors.warning;
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.78} style={s.branchRow}>
+      <View style={s.branchLeft}>
+        <Text style={[s.branchName, { color: colors.text }]} numberOfLines={1}>{name}</Text>
+        <View style={[s.branchTrack, { backgroundColor: colors.border }]}>
+          <View style={[s.branchFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: colors.primary }]} />
+        </View>
+      </View>
+      <View style={s.branchRight}>
+        <Text style={[s.branchRev, { color: colors.text }]}>{fmtK(rev)}</Text>
+        <View style={[s.statusPip, { backgroundColor: stColor + '22' }]}>
+          <View style={[s.statusPipDot, { backgroundColor: stColor }]} />
+          <Text style={[s.statusPipText, { color: stColor }]}>{st}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+interface FinancialCellProps {
+  label: string;
+  value: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accent: string;
+  colors: ReturnType<typeof useColors>;
+}
+
+function FinancialCell({ label, value, icon, accent, colors }: FinancialCellProps) {
+  return (
+    <View style={[s.finCell, { borderColor: colors.border }]}>
+      <Ionicons name={icon} size={14} color={accent} style={{ marginBottom: 6 }} />
+      <Text style={[s.finValue, { color: colors.text }]} numberOfLines={1}>{value}</Text>
+      <Text style={[s.finLabel, { color: colors.textMuted }]}>{label}</Text>
+    </View>
+  );
+}
+
+// ─── main screen ───────────────────────────────────────────────────────────
+
 export default function HomeScreen() {
-  const { role, branchId, userName, tanks, lpgTanks, maintenance, expenses, budgets, audit, branches, staff, departments, dips, unreadCount, companyInfo, pumpDailyReports } = useApp();
+  const {
+    role, userName, branchId, branches,
+    tanks, lpgTanks, dips,
+    deliveries, maintenance, expenses, budgets,
+    financialEntry, priceProposals,
+    pumpDailyReports, userAccounts, messages,
+    unreadCount, approveDip, approveExpense,
+    approveDelivery, approvePriceProposal,
+  } = useApp();
+
   const colors = useColors();
   const router = useRouter();
 
+  const [noteModal, setNoteModal] = useState(false);
+  const [noteText, setNoteText] = useState('');
+
   if (!role) return null;
 
-  const today = new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long' });
-  const roleColor = ROLE_COLORS[role] || colors.primary;
-  const info = UINFO[role];
+  const isApprover = role === 'md' || role === 'admin' || role === 'ceo';
+  const greeting = dayGreeting();
+  const dayStamp = new Date().toLocaleDateString('en-NG', {
+    weekday: 'long', day: 'numeric', month: 'long',
+  });
 
-  const openMaint = maintenance.filter(m => m.st === 'Open');
-  const pendingExp = expenses.filter(e => e.status === 'pending');
-  const monthKey = new Date().toISOString().slice(0, 7);
-  const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'mktg';
-  const totalRev = pumpDailyReports
-    .filter(r => r.status === 'approved' && r.date.startsWith(monthKey) && (isGlobal || !branchId || !r.branchId || r.branchId === branchId))
-    .reduce((s, r) => s + r.grossAmount, 0);
+  // ── KPIs ──────────────────────────────────────────────────────────────
+  const totalRevenue = useMemo(() => branches.reduce((s, b) => s + b.rev, 0), [branches]);
+
+  const totalPetrolStock = useMemo(
+    () => tanks.filter(t => !branchId || t.branchId === branchId)
+      .reduce((s, t) => s + getCurrentTankStock(t, dips), 0),
+    [tanks, dips, branchId],
+  );
+  const totalLpgStock = useMemo(
+    () => lpgTanks.filter(t => !branchId || t.branchId === branchId)
+      .reduce((s, t) => s + getCurrentTankStock(t, dips, 'lpg'), 0),
+    [lpgTanks, dips, branchId],
+  );
+
   const activeBranches = branches.filter(b => b.st === 'Active').length;
-  const myTanks = isGlobal ? tanks : tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
-  const myLpgTanks = isGlobal ? lpgTanks : lpgTanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
 
-  // Per-product stock totals
-  const PROD_ORDER = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
-  const PROD_COLORS: Record<string, string> = {
-    PMS: colors.primary, AGO: colors.blue, DPK: '#BA7517',
-    LPG: colors.teal, 'Lube Oil': colors.purple,
-  };
-  const prodStockMap: Record<string, { total: number; count: number }> = {};
-  for (const t of myTanks) {
-    const stock = getCurrentTankStock(t, dips);
-    prodStockMap[t.prod] = prodStockMap[t.prod]
-      ? { total: prodStockMap[t.prod].total + stock, count: prodStockMap[t.prod].count + 1 }
-      : { total: stock, count: 1 };
-  }
-  const lpgStock = myLpgTanks.reduce((s, t) => s + getCurrentTankStock(t, dips, 'lpg'), 0);
-  if (myLpgTanks.length > 0) prodStockMap['LPG'] = { total: lpgStock, count: myLpgTanks.length };
-  const fuelRows = [
-    ...PROD_ORDER.filter(p => prodStockMap[p]),
-    ...Object.keys(prodStockMap).filter(p => !(PROD_ORDER as readonly string[]).includes(p)),
-  ].map(p => ({ prod: p, ...prodStockMap[p] }));
+  // ── Approval items ────────────────────────────────────────────────────
+  const pendingDips = dips.filter(d => d.status === 'pending');
+  const pendingDeliveries = deliveries.filter(d =>
+    d.approvalStatus === 'pending' || d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending_md',
+  );
+  const pendingExpenses = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded');
+  const pendingPriceProps = priceProposals.filter(p => p.status === 'pending');
+  const pendingPumpReports = pumpDailyReports.filter(r =>
+    r.status === 'pending_manager' || r.status === 'pending_accountant',
+  );
+  const pendingBudgets = budgets.filter(b =>
+    b.status === 'submitted' || b.status === 'forwarded',
+  );
+  const pendingAccounts = userAccounts.filter(a =>
+    a.status === 'pending' || a.status === 'pending_md' || a.status === 'pending_admin',
+  );
+
+  const totalApprovals =
+    pendingDips.length + pendingDeliveries.length + pendingExpenses.length +
+    pendingPriceProps.length + pendingPumpReports.length + pendingBudgets.length +
+    pendingAccounts.length;
+
+  // ── Unread messages ───────────────────────────────────────────────────
   const unread = unreadCount();
+  const unreadMessages = useMemo(() => {
+    const all: { key: string; msg: Message }[] = [];
+    for (const [key, thread] of Object.entries(messages)) {
+      const peer = key.split('-').find(p => p !== role) ?? key;
+      const unreadInThread = (thread as Message[]).filter(m => m.to === role && !m.read);
+      for (const msg of unreadInThread) all.push({ key: peer, msg });
+    }
+    return all
+      .sort((a, b) => new Date(b.msg.ts).getTime() - new Date(a.msg.ts).getTime())
+      .slice(0, 5);
+  }, [messages, role]);
 
-  function expDaysLeft(exp: string) {
-    const d = (new Date(exp).getTime() - Date.now()) / 86400000;
-    return Math.ceil(d);
-  }
+  // ── Maintenance ────────────────────────────────────────────────────────
+  const urgentMaintenance = maintenance.filter(m => m.st === 'Open' && m.pri === 'Urgent');
+  const openMaintenance = maintenance.filter(m => m.st === 'Open');
 
-  if (role === 'admin') {
-    const sysStats = [
-      { label: 'Total Staff', value: String(staff.length), icon: 'people', color: colors.primary },
-      { label: 'Branches', value: String(branches.length), icon: 'business', color: colors.blue },
-      { label: 'Departments', value: String(departments.length), icon: 'grid', color: colors.purple },
-      { label: 'System Status', value: 'Live', icon: 'radio', color: '#27500A' },
-    ];
-    return (
-      <ScreenLayout title="System Admin">
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <View style={[styles.adminBanner, { backgroundColor: '#0a2318' }]}>
-            <Ionicons name="shield-checkmark" size={32} color="#4CAF50" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.adminBannerTitle}>{companyInfo.name || 'Administrator Portal'}</Text>
-              <Text style={styles.adminBannerSub}>
-                {companyInfo.name
-                  ? (companyInfo.rcNumber ? `RC: ${companyInfo.rcNumber}` : 'Full system access')
-                  : 'Gastsmarts — Full system access'}
-              </Text>
-            </View>
-          </View>
-          {!companyInfo.name && (
-            <TouchableOpacity
-              onPress={() => router.push('/(app)/system-settings')}
-              activeOpacity={0.85}
-              style={[styles.setupPrompt, { backgroundColor: '#BA751718', borderColor: '#BA751744' }]}
-            >
-              <Ionicons name="alert-circle-outline" size={18} color="#BA7517" />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: '#BA7517', fontSize: 13, fontWeight: '700' }}>Company info not set up</Text>
-                <Text style={{ color: '#BA7517', fontSize: 11, marginTop: 1 }}>Tap to fill in your company name, address, tax IDs and more.</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color="#BA7517" />
-            </TouchableOpacity>
-          )}
-          <View style={styles.statsGrid}>
-            {sysStats.map(stat => (
-              <View key={stat.label} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[styles.statIcon, { backgroundColor: stat.color + '18' }]}>
-                  <Ionicons name={stat.icon as any} size={22} color={stat.color} />
-                </View>
-                <Text style={[styles.statValue, { color: colors.text }]}>{stat.value}</Text>
-                <Text style={[styles.statLabel, { color: colors.textMuted }]}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
-          <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Audit Log</Text>
-            {(Array.isArray(audit) ? audit : []).slice(0, 5).map(a => (
-              <View key={a.id} style={styles.auditRow}>
-                <View style={[styles.auditDot, { backgroundColor: roleColor }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.auditAction, { color: colors.text }]}>{a.action}</Text>
-                  <Text style={[styles.auditDetail, { color: colors.textMuted }]} numberOfLines={1}>{a.detail}</Text>
-                </View>
-                <Text style={[styles.auditTime, { color: colors.textSubtle }]}>{fmtDateTime(a.ts)}</Text>
-              </View>
-            ))}
-          </View>
-        </ScrollView>
-      </ScreenLayout>
-    );
-  }
+  // ── Budget ────────────────────────────────────────────────────────────
+  const currentBudget = useMemo<Budget | undefined>(() => {
+    const now = new Date();
+    return budgets.find(b => b.month === now.getMonth() + 1 && b.year === now.getFullYear()) ?? budgets[budgets.length - 1];
+  }, [budgets]);
 
-  const metrics = [
-    { label: 'Monthly Revenue', value: fmt(totalRev), icon: 'trending-up', col: colors.primary, sub: 'All branches' },
-    { label: 'Open Maintenance', value: String(openMaint.length), icon: 'build', col: openMaint.length > 0 ? colors.warning : colors.success, sub: openMaint.length > 0 ? `${openMaint.filter(m => m.pri === 'Urgent').length} urgent` : 'All clear' },
-    { label: 'Unread Messages', value: String(unread), icon: 'chatbubbles', col: unread > 0 ? colors.coral : colors.primary, sub: unread > 0 ? 'Tap to view' : 'All read' },
-  ];
+  const budgetSpent = useMemo(() =>
+    expenses
+      .filter(e => currentBudget && e.budgetId === currentBudget.id && e.status === 'approved')
+      .reduce((s, e) => s + e.amt, 0),
+    [expenses, currentBudget],
+  );
 
-  const lastDip = dips[0];
-
-  /* Budget summary — which roles see it and how */
-  const isBudgetViewer = role === 'acc' || role === 'md' || role === 'ceo' || role === 'csm' || role === 'mktg';
-  const isMgrRole      = role === 'csm' || role === 'mktg';
-  const budgetSumm     = isBudgetViewer
-    ? budgetSummary(budgets, expenses, isMgrRole ? userName : undefined)
-    : null;
-  const budgetPending  = budgetSumm
-    ? (role === 'acc' ? budgetSumm.pendingAcc : role === 'md' ? budgetSumm.pendingMD : 0)
+  const budgetPct = currentBudget && currentBudget.total > 0
+    ? Math.min(100, Math.round((budgetSpent / currentBudget.total) * 100))
     : 0;
 
-  const showTicker = role === 'ceo' || role === 'md' || role === 'mgr' || role === 'mktg' || role === 'csm';
+  const budgetColor = budgetPct >= 90 ? colors.error : budgetPct >= 70 ? colors.warning : colors.success;
+
+  // ── Branch sort by rev ────────────────────────────────────────────────
+  const sortedBranches = useMemo(
+    () => [...branches].sort((a, b) => b.rev - a.rev),
+    [branches],
+  );
+  const maxBranchRev = sortedBranches[0]?.rev ?? 1;
 
   return (
-    <ScreenLayout title="Overview" subHeader={showTicker ? <PriceTicker /> : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={[styles.greeting, { backgroundColor: roleColor + '18', borderColor: roleColor + '33' }]}>
-          <View>
-            <Text style={[styles.greetingTop, { color: colors.textMuted }]}>
-              {companyInfo.name ? `${companyInfo.name} · ` : ''}{today}
-            </Text>
-            <Text style={[styles.greetingName, { color: colors.text }]}>Good day, {(userName || info?.name || '').split(' ')[0]} 👋</Text>
+    <ScreenLayout title="Home">
+      <ScrollView
+        contentContainerStyle={s.scroll}
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[]}
+      >
+        {/* ── Hero ────────────────────────────────────────────────── */}
+        <View style={[s.hero, { backgroundColor: colors.primaryDark }]}>
+          <View style={s.heroRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.heroEyebrow}>PETROTRACK COMMAND</Text>
+              <Text style={s.heroGreeting}>{greeting},</Text>
+              <Text style={s.heroName}>{userName || ROLE_LABELS[role] || role}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => router.push(SCREEN_ROUTES.messages as never)}
+              style={s.heroNotif}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="notifications-outline" size={20} color="#F0FFF4" />
+              {unread > 0 ? (
+                <View style={[s.notifBadge, { backgroundColor: colors.amber }]}>
+                  <Text style={s.notifBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
           </View>
-          <View style={[styles.greetingBadge, { backgroundColor: roleColor }]}>
-            <Text style={styles.greetingBadgeText}>
-              {userName
-                ? userName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
-                : info?.initials}
-            </Text>
+
+          <Text style={s.heroDate}>{dayStamp}</Text>
+
+          {/* summary pills */}
+          <View style={s.heroPills}>
+            {urgentMaintenance.length > 0 ? (
+              <TouchableOpacity
+                onPress={() => router.push(SCREEN_ROUTES.maint as never)}
+                style={[s.heroPill, { backgroundColor: colors.error + '28', borderColor: colors.error + '55' }]}
+                activeOpacity={0.8}
+              >
+                <View style={[s.heroPillDot, { backgroundColor: colors.error }]} />
+                <Text style={[s.heroPillText, { color: '#FFD4D4' }]}>{urgentMaintenance.length} urgent alert{urgentMaintenance.length > 1 ? 's' : ''}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {totalApprovals > 0 ? (
+              <View style={[s.heroPill, { backgroundColor: colors.amber + '28', borderColor: colors.amber + '55' }]}>
+                <View style={[s.heroPillDot, { backgroundColor: colors.amber }]} />
+                <Text style={[s.heroPillText, { color: '#FFE5A0' }]}>{totalApprovals} awaiting approval</Text>
+              </View>
+            ) : (
+              <View style={[s.heroPill, { backgroundColor: colors.success + '22', borderColor: colors.success + '44' }]}>
+                <View style={[s.heroPillDot, { backgroundColor: '#6EE89B' }]} />
+                <Text style={[s.heroPillText, { color: '#B6F5C8' }]}>All clear — no pending actions</Text>
+              </View>
+            )}
           </View>
         </View>
 
-        <View style={styles.metricsGrid}>
-          {metrics.map(m => (
-            <TouchableOpacity key={m.label} style={[styles.metricCard, { backgroundColor: colors.card, borderColor: colors.border }]} activeOpacity={0.85}>
-              <View style={[styles.metricIcon, { backgroundColor: m.col + '18' }]}>
-                <Ionicons name={m.icon as any} size={20} color={m.col} />
+        {/* ── KPI Grid ────────────────────────────────────────────── */}
+        <View style={s.kpiGrid}>
+          <KpiTile
+            icon="cash-outline"
+            label="Total Revenue"
+            value={fmtK(totalRevenue)}
+            accent={colors.primary}
+            colors={colors}
+            onPress={() => router.push(SCREEN_ROUTES.acct as never)}
+          />
+          <KpiTile
+            icon="business-outline"
+            label="Cash in Bank"
+            value={fmtK(financialEntry.cashInBank)}
+            accent={colors.blue}
+            colors={colors}
+            onPress={() => router.push(SCREEN_ROUTES.acct as never)}
+          />
+          <KpiTile
+            icon="water-outline"
+            label="Fuel Stock"
+            value={`${(totalPetrolStock / 1000).toFixed(1)}kL`}
+            sub={`+ ${totalLpgStock.toLocaleString()} kg LPG`}
+            accent={colors.teal}
+            colors={colors}
+            onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=inventory` as never)}
+          />
+          <KpiTile
+            icon="storefront-outline"
+            label="Active Branches"
+            value={`${activeBranches}`}
+            sub={`of ${branches.length} total`}
+            accent={colors.purple}
+            colors={colors}
+            onPress={() => router.push(SCREEN_ROUTES.branches as never)}
+          />
+        </View>
+
+        {/* ── Approvals Inbox ─────────────────────────────────────── */}
+        <Section label="APPROVALS & ACTIONS" colors={colors}>
+          <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {totalApprovals === 0 ? (
+              <View style={s.emptyState}>
+                <Ionicons name="checkmark-circle-outline" size={32} color={colors.success} />
+                <Text style={[s.emptyText, { color: colors.textMuted }]}>No pending approvals</Text>
               </View>
-              <Text style={[styles.metricValue, { color: colors.text }]}>{m.value}</Text>
-              <Text style={[styles.metricLabel, { color: colors.textMuted }]}>{m.label}</Text>
-              <Text style={[styles.metricSub, { color: m.col }]}>{m.sub}</Text>
+            ) : null}
+
+            {pendingDips.length > 0 ? (
+              <ApprovalRow
+                icon="water-outline"
+                accent={colors.amber}
+                title="Tank Dip Readings"
+                meta={`${pendingDips.length} reading${pendingDips.length > 1 ? 's' : ''} awaiting approval`}
+                count={pendingDips.length}
+                onPress={() => router.push(SCREEN_ROUTES.ops as never)}
+                colors={colors}
+              />
+            ) : null}
+
+            {pendingDeliveries.length > 0 ? (
+              <ApprovalRow
+                icon="cube-outline"
+                accent={colors.blue}
+                title="Product Deliveries"
+                meta={`${pendingDeliveries.length} delivery receipt${pendingDeliveries.length > 1 ? 's' : ''} pending review`}
+                count={pendingDeliveries.length}
+                onPress={() => router.push(SCREEN_ROUTES.recv as never)}
+                colors={colors}
+              />
+            ) : null}
+
+            {pendingExpenses.length > 0 ? (
+              <ApprovalRow
+                icon="receipt-outline"
+                accent={colors.teal}
+                title="Expense Claims"
+                meta={`${pendingExpenses.length} claim${pendingExpenses.length > 1 ? 's' : ''} waiting for decision`}
+                count={pendingExpenses.length}
+                onPress={() => router.push(SCREEN_ROUTES.exp as never)}
+                colors={colors}
+              />
+            ) : null}
+
+            {pendingPriceProps.length > 0 ? (
+              <ApprovalRow
+                icon="pricetag-outline"
+                accent={colors.purple}
+                title="Price Proposals"
+                meta={`${pendingPriceProps.length} fuel price change${pendingPriceProps.length > 1 ? 's' : ''} to review`}
+                count={pendingPriceProps.length}
+                onPress={() => router.push(SCREEN_ROUTES.prices as never)}
+                colors={colors}
+              />
+            ) : null}
+
+            {pendingPumpReports.length > 0 ? (
+              <ApprovalRow
+                icon="speedometer-outline"
+                accent={colors.coral}
+                title="Pump Daily Reports"
+                meta={`${pendingPumpReports.length} shift report${pendingPumpReports.length > 1 ? 's' : ''} pending approval`}
+                count={pendingPumpReports.length}
+                onPress={() => router.push(SCREEN_ROUTES.shift as never)}
+                colors={colors}
+              />
+            ) : null}
+
+            {pendingBudgets.length > 0 ? (
+              <ApprovalRow
+                icon="wallet-outline"
+                accent={colors.brown}
+                title="Budget Submissions"
+                meta={`${pendingBudgets.length} budget${pendingBudgets.length > 1 ? 's' : ''} awaiting sign-off`}
+                count={pendingBudgets.length}
+                onPress={() => router.push(SCREEN_ROUTES.budget as never)}
+                colors={colors}
+              />
+            ) : null}
+
+            {pendingAccounts.length > 0 ? (
+              <ApprovalRow
+                icon="person-add-outline"
+                accent={colors.primary}
+                title="Staff Enrolments"
+                meta={`${pendingAccounts.length} new account${pendingAccounts.length > 1 ? 's' : ''} awaiting activation`}
+                count={pendingAccounts.length}
+                onPress={() => router.push(SCREEN_ROUTES.hr as never)}
+                colors={colors}
+              />
+            ) : null}
+
+            {urgentMaintenance.length > 0 ? (
+              <ApprovalRow
+                icon="warning-outline"
+                accent={colors.error}
+                title="Urgent Maintenance"
+                meta={urgentMaintenance.slice(0, 2).map(m => m.title).join(' · ')}
+                count={urgentMaintenance.length}
+                onPress={() => router.push(SCREEN_ROUTES.maint as never)}
+                colors={colors}
+              />
+            ) : null}
+          </View>
+        </Section>
+
+        {/* ── Financial Status ─────────────────────────────────────── */}
+        <Section label="FINANCIAL STATUS" route={SCREEN_ROUTES.acct} colors={colors}>
+          <View style={s.finGrid}>
+            <FinancialCell
+              label="Cash in Bank"
+              value={fmtK(financialEntry.cashInBank)}
+              icon="business-outline"
+              accent={colors.blue}
+              colors={colors}
+            />
+            <FinancialCell
+              label="Cash in Hand"
+              value={fmtK(financialEntry.cashInHand)}
+              icon="hand-left-outline"
+              accent={colors.primary}
+              colors={colors}
+            />
+            <FinancialCell
+              label="POS Receipts"
+              value={fmtK(financialEntry.posValue)}
+              icon="card-outline"
+              accent={colors.teal}
+              colors={colors}
+            />
+            <FinancialCell
+              label="Debtors"
+              value={fmtK(financialEntry.debtsFromCustomers)}
+              icon="people-outline"
+              accent={colors.amber}
+              colors={colors}
+            />
+            <FinancialCell
+              label="Liabilities"
+              value={fmtK(financialEntry.liabilities)}
+              icon="trending-down-outline"
+              accent={colors.coral}
+              colors={colors}
+            />
+            <FinancialCell
+              label="In Transit"
+              value={fmtK(financialEntry.goodsOnTransit)}
+              icon="car-outline"
+              accent={colors.purple}
+              colors={colors}
+            />
+          </View>
+        </Section>
+
+        {/* ── Budget Status ────────────────────────────────────────── */}
+        <Section label="BUDGET STATUS" route={SCREEN_ROUTES.budget} colors={colors}>
+          <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {currentBudget ? (
+              <>
+                <View style={s.budgetHead}>
+                  <View>
+                    <Text style={[s.budgetLabel, { color: colors.text }]}>{currentBudget.label}</Text>
+                    <Text style={[s.budgetSub, { color: colors.textMuted }]}>
+                      {currentBudget.status} · by {currentBudget.byName}
+                    </Text>
+                  </View>
+                  <View style={[s.budgetStatus, { backgroundColor: budgetColor + '18', borderColor: budgetColor + '44' }]}>
+                    <Text style={[s.budgetStatusText, { color: budgetColor }]}>
+                      {budgetPct}% used
+                    </Text>
+                  </View>
+                </View>
+                <View style={[s.budgetTrack, { backgroundColor: colors.border }]}>
+                  <View style={[s.budgetFill, { width: `${budgetPct}%`, backgroundColor: budgetColor }]} />
+                </View>
+                <View style={s.budgetFooter}>
+                  <Text style={[s.budgetFooterText, { color: colors.textMuted }]}>
+                    Spent: {fmtK(budgetSpent)}
+                  </Text>
+                  <Text style={[s.budgetFooterText, { color: colors.textMuted }]}>
+                    Total: {fmtK(currentBudget.total)}
+                  </Text>
+                </View>
+
+                {/* Per-category bars */}
+                {currentBudget.items.length > 0 ? (
+                  <View style={[s.budgetItems, { borderTopColor: colors.border }]}>
+                    {currentBudget.items.slice(0, 5).map((item, i) => (
+                      <View key={i} style={s.budgetItem}>
+                        <Text style={[s.budgetItemCat, { color: colors.textMuted }]} numberOfLines={1}>{item.cat}</Text>
+                        <View style={[s.budgetItemTrack, { backgroundColor: colors.border }]}>
+                          <View style={[s.budgetItemFill, {
+                            width: currentBudget.total > 0 ? `${Math.min(100, Math.round((item.amt / currentBudget.total) * 100))}%` : '0%',
+                            backgroundColor: colors.primary + 'AA',
+                          }]} />
+                        </View>
+                        <Text style={[s.budgetItemAmt, { color: colors.text }]}>{fmtK(item.amt)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </>
+            ) : (
+              <View style={s.emptyState}>
+                <Ionicons name="wallet-outline" size={28} color={colors.textSubtle} />
+                <Text style={[s.emptyText, { color: colors.textMuted }]}>No budget for this period</Text>
+              </View>
+            )}
+          </View>
+        </Section>
+
+        {/* ── Branch Performance ───────────────────────────────────── */}
+        <Section label="BRANCH PERFORMANCE" route={SCREEN_ROUTES.branches} colors={colors}>
+          <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {branches.length === 0 ? (
+              <View style={s.emptyState}>
+                <Ionicons name="business-outline" size={28} color={colors.textSubtle} />
+                <Text style={[s.emptyText, { color: colors.textMuted }]}>No branches configured</Text>
+              </View>
+            ) : (
+              sortedBranches.map(branch => (
+                <BranchBar
+                  key={branch.id}
+                  name={branch.name}
+                  rev={branch.rev}
+                  maxRev={maxBranchRev}
+                  st={branch.st}
+                  colors={colors}
+                  onPress={() => router.push(SCREEN_ROUTES.branches as never)}
+                />
+              ))
+            )}
+          </View>
+        </Section>
+
+        {/* ── Unread Messages ──────────────────────────────────────── */}
+        <Section label="UNREAD MESSAGES" route={SCREEN_ROUTES.messages} colors={colors}>
+          <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {unreadMessages.length === 0 ? (
+              <View style={s.emptyState}>
+                <Ionicons name="chatbubble-ellipses-outline" size={28} color={colors.textSubtle} />
+                <Text style={[s.emptyText, { color: colors.textMuted }]}>No unread messages</Text>
+              </View>
+            ) : (
+              unreadMessages.map(({ key, msg }) => (
+                <MsgRow
+                  key={msg.id}
+                  msg={msg}
+                  from={key.replace(/_/g, ' ')}
+                  colors={colors}
+                  onPress={() => router.push(SCREEN_ROUTES.messages as never)}
+                />
+              ))
+            )}
+          </View>
+        </Section>
+
+        {/* ── Reports Awaiting Approval ────────────────────────────── */}
+        <Section label="REPORTS PENDING REVIEW" route={SCREEN_ROUTES.exprpt} colors={colors}>
+          <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {pendingPumpReports.length === 0 && pendingDeliveries.length === 0 ? (
+              <View style={s.emptyState}>
+                <Ionicons name="documents-outline" size={28} color={colors.textSubtle} />
+                <Text style={[s.emptyText, { color: colors.textMuted }]}>All reports reviewed</Text>
+              </View>
+            ) : null}
+
+            {pendingPumpReports.slice(0, 5).map(r => (
+              <ApprovalRow
+                key={r.id}
+                icon="speedometer-outline"
+                accent={colors.coral}
+                title={`${r.pumpName} · ${r.date}`}
+                meta={`${r.submittedByName} · ${fmtK(r.grossAmount)} gross · ${r.status.replace(/_/g, ' ')}`}
+                onPress={() => router.push(SCREEN_ROUTES.shift as never)}
+                colors={colors}
+              />
+            ))}
+
+            {pendingDeliveries.slice(0, 3).map(d => (
+              <ApprovalRow
+                key={d.id}
+                icon="cube-outline"
+                accent={colors.blue}
+                title={`${d.prod} delivery · ${d.sup}`}
+                meta={`${d.rec.toLocaleString()}${unitForProd(d.prod)} · ${d.approvalStatus?.replace(/_/g, ' ') ?? 'pending'}`}
+                onPress={() => router.push(SCREEN_ROUTES.recv as never)}
+                colors={colors}
+              />
+            ))}
+          </View>
+        </Section>
+
+        {/* ── Quick Actions ────────────────────────────────────────── */}
+        <View style={s.quickActions}>
+          {[
+            { icon: 'water-outline' as const, label: 'Tank Dipping', route: SCREEN_ROUTES.ops, accent: colors.teal },
+            { icon: 'bar-chart-outline' as const, label: 'Sales', route: SCREEN_ROUTES.sales, accent: colors.primary },
+            { icon: 'receipt-outline' as const, label: 'Expenses', route: SCREEN_ROUTES.exp, accent: colors.amber },
+            { icon: 'analytics-outline' as const, label: 'Reports', route: SCREEN_ROUTES.exprpt, accent: colors.purple },
+          ].map(({ icon, label, route, accent }) => (
+            <TouchableOpacity
+              key={label}
+              onPress={() => router.push(route as never)}
+              activeOpacity={0.78}
+              style={[s.quickAction, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <View style={[s.quickActionIcon, { backgroundColor: accent + '18' }]}>
+                <Ionicons name={icon} size={20} color={accent} />
+              </View>
+              <Text style={[s.quickActionLabel, { color: colors.textMuted }]}>{label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 12 }]}>
-          <View style={styles.fuelStockHeader}>
-            <View style={[styles.metricIcon, { backgroundColor: colors.blue + '18', marginBottom: 0 }]}>
-              <Ionicons name="water" size={18} color={colors.blue} />
-            </View>
-            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0, flex: 1 }]}>Fuel Stock</Text>
-            <Text style={[styles.metricSub, { color: colors.textMuted }]}>{myTanks.length + myLpgTanks.length} tanks</Text>
-          </View>
-          {fuelRows.length === 0 ? (
-            <Text style={[styles.fuelStockEmpty, { color: colors.textMuted }]}>No tanks configured yet</Text>
-          ) : (
-            <View style={styles.fuelStockGrid}>
-              {fuelRows.map(row => {
-                const col = PROD_COLORS[row.prod] || colors.primary;
-                return (
-                  <View key={row.prod} style={[styles.fuelStockItem, { backgroundColor: col + '12', borderColor: col + '33' }]}>
-                    <View style={[styles.fuelStockDot, { backgroundColor: col }]} />
-                    <Text style={[styles.fuelStockProd, { color: colors.text }]}>{row.prod}</Text>
-                    <Text style={[styles.fuelStockVal, { color: col }]}>{row.total.toLocaleString()} L</Text>
-                    <Text style={[styles.fuelStockCount, { color: colors.textMuted }]}>{row.count} {row.count === 1 ? 'tank' : 'tanks'}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
-
-        {lastDip && (
-          <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Last Tank Dip</Text>
-            <Text style={[styles.dipMeta, { color: colors.textMuted }]}>{fmtDateTime(lastDip.dt)} by {lastDip.by}</Text>
-            <View style={styles.dipGrid}>
-              {Object.entries(lastDip.rd).map(([tid, litres]) => {
-                const tank = myTanks.find(t => t.id === tid);
-                if (!tank) return null;
-                const pct = tank.cap > 0 ? Math.round((Number(litres) / tank.cap) * 100) : 0;
-                return (
-                  <View key={tid} style={[styles.dipItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <Text style={[styles.dipTankName, { color: colors.text }]}>{tank.name}</Text>
-                    <Text style={[styles.dipReading, { color: roleColor }]}>{Number(litres).toLocaleString()}L</Text>
-                    <View style={[styles.progressBg, { backgroundColor: colors.border }]}>
-                      <View style={[styles.progressBar, { width: `${Math.min(pct, 100)}%` as any, backgroundColor: pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary }]} />
-                    </View>
-                    <Text style={[styles.dipPct, { color: colors.textMuted }]}>{pct}%</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {openMaint.length > 0 && (
-          <View style={[styles.alertCard, { backgroundColor: colors.warningBg, borderColor: colors.warningBorder }]}>
-            <Ionicons name="warning" size={18} color={colors.warning} />
-            <Text style={[styles.alertText, { color: colors.warning }]}>
-              {openMaint.length} open maintenance {openMaint.length === 1 ? 'item' : 'items'} — {openMaint.filter(m => m.pri === 'Urgent').length} urgent
-            </Text>
-          </View>
-        )}
-
-        {pendingExp.length > 0 && (role === 'acc' || role === 'ceo' || role === 'md') && (
-          <View style={[styles.alertCard, { backgroundColor: colors.infoBg, borderColor: colors.border }]}>
-            <Ionicons name="receipt" size={18} color={colors.info} />
-            <Text style={[styles.alertText, { color: colors.info }]}>
-              {pendingExp.length} expense{pendingExp.length > 1 ? 's' : ''} awaiting approval ({fmt(pendingExp.reduce((s, e) => s + e.amt, 0))})
-            </Text>
-          </View>
-        )}
-
-        {/* ── Financial status card ── */}
-        {isBudgetViewer && (
-          <FinancialStatusCard roleColor={roleColor} />
-        )}
-
-        {/* ── Budget summary card ── */}
-        {isBudgetViewer && budgetSumm ? (
-          <TouchableOpacity
-            onPress={() => router.push('/(app)/budget')}
-            activeOpacity={0.88}
-            style={[styles.budgetCard, {
-              backgroundColor: colors.surface,
-              borderColor: budgetSumm.approved.length > 0 && budgetSumm.isOver
-                ? OVER_C + '55'
-                : budgetSumm.approved.length > 0 && budgetSumm.isWarn
-                ? WARN_C + '55'
-                : SAFE_C + '44',
-            }]}
-          >
-            {/* Header row */}
-            <View style={styles.budgetCardHeader}>
-              <View style={[styles.budgetCardIcon, { backgroundColor: SAFE_BG }]}>
-                <Ionicons name="wallet" size={18} color={SAFE_C} />
-              </View>
-              <Text style={[styles.budgetCardTitle, { color: colors.text }]}>
-                {isMgrRole ? 'My Budget Summary' : 'Budget Overview'}
-              </Text>
-              {budgetPending > 0 ? (
-                <View style={[styles.budgetPendingBadge, { backgroundColor: role === 'acc' ? '#0C447C' : '#BA7517' }]}>
-                  <Text style={styles.budgetPendingText}>{budgetPending} pending</Text>
-                </View>
-              ) : null}
-              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-            </View>
-
-            {budgetSumm.approved.length > 0 ? (
-              <>
-                {/* Approved amount + spend */}
-                <View style={styles.budgetMetricRow}>
-                  <View style={styles.budgetMetric}>
-                    <Text style={[styles.budgetMetricLabel, { color: colors.textMuted }]}>Approved</Text>
-                    <Text style={[styles.budgetMetricAmt, { color: SAFE_C }]}>{fmt(budgetSumm.totalBudget)}</Text>
-                  </View>
-                  <View style={[styles.budgetDivider, { backgroundColor: colors.border }]} />
-                  <View style={styles.budgetMetric}>
-                    <Text style={[styles.budgetMetricLabel, { color: colors.textMuted }]}>Spent</Text>
-                    <Text style={[styles.budgetMetricAmt, {
-                      color: budgetSumm.isOver ? OVER_C : budgetSumm.isWarn ? WARN_C : SAFE_C,
-                    }]}>{fmt(budgetSumm.totalSpent)}</Text>
-                  </View>
-                  <View style={[styles.budgetDivider, { backgroundColor: colors.border }]} />
-                  <View style={styles.budgetMetric}>
-                    <Text style={[styles.budgetMetricLabel, { color: colors.textMuted }]}>Remaining</Text>
-                    <Text style={[styles.budgetMetricAmt, {
-                      color: budgetSumm.isOver ? OVER_C : SAFE_C,
-                    }]}>{fmt(Math.abs(budgetSumm.totalBudget - budgetSumm.totalSpent))}</Text>
-                  </View>
-                </View>
-
-                {/* Progress bar */}
-                <View style={styles.budgetBarTrack}>
-                  <View style={[styles.budgetBarFill, {
-                    width: `${Math.min(budgetSumm.pct, 1) * 100}%` as any,
-                    backgroundColor: budgetSumm.isOver ? OVER_C : budgetSumm.isWarn ? WARN_C : SAFE_C,
-                  }]} />
-                </View>
-
-                {/* Footer */}
-                <View style={styles.budgetFooterRow}>
-                  <View style={[styles.budgetStatusPill, {
-                    backgroundColor: budgetSumm.isOver ? OVER_BG : budgetSumm.isWarn ? WARN_BG : SAFE_BG,
-                  }]}>
-                    <Ionicons
-                      name={budgetSumm.isOver ? 'alert-circle' : budgetSumm.isWarn ? 'warning' : 'checkmark-circle'}
-                      size={11}
-                      color={budgetSumm.isOver ? OVER_C : budgetSumm.isWarn ? WARN_C : SAFE_C}
-                    />
-                    <Text style={[styles.budgetStatusText, {
-                      color: budgetSumm.isOver ? OVER_C : budgetSumm.isWarn ? WARN_C : SAFE_C,
-                    }]}>
-                      {budgetSumm.isOver
-                        ? `Over budget by ${fmt(budgetSumm.totalSpent - budgetSumm.totalBudget)}`
-                        : budgetSumm.isWarn
-                        ? `${Math.round(budgetSumm.pct * 100)}% utilised — near limit`
-                        : `${Math.round(budgetSumm.pct * 100)}% utilised`}
-                    </Text>
-                  </View>
-                  <Text style={[styles.budgetFooterNote, { color: colors.textMuted }]}>
-                    {budgetSumm.approved.length} approved budget{budgetSumm.approved.length !== 1 ? 's' : ''}
-                  </Text>
-                </View>
-              </>
-            ) : (
-              /* No approved budgets yet */
-              <View style={styles.budgetEmptyRow}>
-                {isMgrRole ? (
-                  <>
-                    {/* Show draft/submitted counts for mgr roles */}
-                    {(['draft','submitted','acc_forwarded','rejected'] as const).map(st => {
-                      const count = budgetSumm.all.filter(b => b.status === st).length;
-                      if (!count) return null;
-                      const label = st === 'draft' ? 'Draft' : st === 'submitted' ? 'With Accountant' : st === 'acc_forwarded' ? 'With MD' : 'Rejected';
-                      const col   = st === 'draft' ? colors.textMuted : st === 'submitted' ? '#0C447C' : st === 'acc_forwarded' ? WARN_C : OVER_C;
-                      return (
-                        <View key={st} style={[styles.budgetStatusChip, { borderColor: col + '55', backgroundColor: col + '12' }]}>
-                          <Text style={[styles.budgetStatusChipText, { color: col }]}>{count} {label}</Text>
-                        </View>
-                      );
-                    })}
-                    {budgetSumm.all.length === 0 ? (
-                      <Text style={[styles.budgetEmptyText, { color: colors.textMuted }]}>No budgets submitted yet</Text>
-                    ) : null}
-                  </>
-                ) : (
-                  <Text style={[styles.budgetEmptyText, { color: colors.textMuted }]}>No approved budgets yet</Text>
-                )}
-              </View>
-            )}
-          </TouchableOpacity>
-        ) : null}
-
-        <View style={{ height: 16 }} />
+        <View style={{ height: 32 }} />
       </ScrollView>
     </ScreenLayout>
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 },
-  greeting: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 14, borderWidth: 1, marginBottom: 16 },
-  greetingTop: { fontSize: 12, marginBottom: 2 },
-  greetingName: { fontSize: 18, fontWeight: '700' },
-  greetingBadge: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  greetingBadgeText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  metricCard: { width: '47.5%', padding: 14, borderRadius: 14, borderWidth: 1, gap: 4 },
-  metricIcon: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  metricValue: { fontSize: 20, fontWeight: '700' },
-  metricLabel: { fontSize: 12 },
-  metricSub: { fontSize: 11, fontWeight: '600' },
-  section: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 12 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
-  auditRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
-  auditDot: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
-  auditAction: { fontSize: 13, fontWeight: '600' },
-  auditDetail: { fontSize: 11, marginTop: 1 },
-  auditTime: { fontSize: 10 },
-  dipMeta: { fontSize: 11, marginBottom: 10 },
-  dipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  dipItem: { width: '47.5%', padding: 10, borderRadius: 10, borderWidth: 1, gap: 3 },
-  dipTankName: { fontSize: 11, fontWeight: '600' },
-  dipReading: { fontSize: 16, fontWeight: '700' },
-  progressBg: { height: 4, borderRadius: 2, overflow: 'hidden' },
-  progressBar: { height: 4, borderRadius: 2 },
-  dipPct: { fontSize: 10 },
-  alertCard: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
-  alertText: { flex: 1, fontSize: 13, fontWeight: '500' },
-  fuelStockHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  fuelStockEmpty: { fontSize: 12, fontStyle: 'italic', paddingTop: 4 },
-  fuelStockGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  fuelStockItem: { width: '47.5%', padding: 10, borderRadius: 10, borderWidth: 1, gap: 3 },
-  fuelStockDot: { width: 8, height: 8, borderRadius: 4, marginBottom: 2 },
-  fuelStockProd: { fontSize: 13, fontWeight: '700' },
-  fuelStockVal: { fontSize: 17, fontWeight: '800' },
-  fuelStockCount: { fontSize: 10 },
-  adminBanner: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 14, marginBottom: 10 },
-  setupPrompt: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 12 },
-  adminBannerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  adminBannerSub: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 2 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  statCard: { width: '47.5%', padding: 14, borderRadius: 14, borderWidth: 1, alignItems: 'center', gap: 6 },
-  statIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  statValue: { fontSize: 22, fontWeight: '700' },
-  statLabel: { fontSize: 12, textAlign: 'center' },
+// ─── styles ────────────────────────────────────────────────────────────────
 
-  /* Budget summary card */
-  budgetCard:          { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 10, gap: 10 },
-  budgetCardHeader:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  budgetCardIcon:      { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  budgetCardTitle:     { flex: 1, fontSize: 14, fontWeight: '700' },
-  budgetPendingBadge:  { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  budgetPendingText:   { color: '#fff', fontSize: 11, fontWeight: '700' },
-  budgetMetricRow:     { flexDirection: 'row', alignItems: 'center' },
-  budgetMetric:        { flex: 1, alignItems: 'center', gap: 2 },
-  budgetDivider:       { width: 1, height: 36, marginHorizontal: 4 },
-  budgetMetricLabel:   { fontSize: 10, fontWeight: '600' },
-  budgetMetricAmt:     { fontSize: 15, fontWeight: '800' },
-  budgetBarTrack:      { height: 7, borderRadius: 4, backgroundColor: '#E0E0E0', overflow: 'hidden' },
-  budgetBarFill:       { height: 7, borderRadius: 4 },
-  budgetFooterRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  budgetStatusPill:    { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  budgetStatusText:    { fontSize: 11, fontWeight: '700' },
-  budgetFooterNote:    { fontSize: 10 },
-  budgetEmptyRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' },
-  budgetEmptyText:     { fontSize: 12 },
-  budgetStatusChip:    { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
-  budgetStatusChipText:{ fontSize: 11, fontWeight: '600' },
+const s = StyleSheet.create({
+  scroll: { paddingBottom: 32 },
+
+  // hero
+  hero: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 22 },
+  heroRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  heroEyebrow: { color: '#7CB89A', fontSize: 9, fontWeight: '800', letterSpacing: 1.6, marginBottom: 6 },
+  heroGreeting: { color: '#C8DED0', fontSize: 13, fontWeight: '400' },
+  heroName: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
+  heroDate: { color: '#9BBBA3', fontSize: 11, marginTop: 14 },
+  heroNotif: {
+    width: 42, height: 42, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.09)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: 4,
+  },
+  notifBadge: {
+    position: 'absolute', top: 7, right: 7,
+    minWidth: 16, height: 16, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  notifBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  heroPills: { flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' },
+  heroPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 99, borderWidth: 1,
+  },
+  heroPillDot: { width: 6, height: 6, borderRadius: 3 },
+  heroPillText: { fontSize: 11, fontWeight: '600' },
+
+  // kpi grid
+  kpiGrid: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: 14, gap: 10, marginTop: 16,
+  },
+  kpiTile: {
+    width: '47.5%', borderRadius: 16, borderWidth: 1,
+    padding: 14,
+    shadowColor: '#0A4824', shadowOpacity: 0.05, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }, elevation: 1,
+  },
+  kpiIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  kpiValue: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
+  kpiLabel: { fontSize: 10, fontWeight: '600', marginTop: 3 },
+  kpiSub: { fontSize: 9, marginTop: 4 },
+
+  // sections
+  section: { marginTop: 24, paddingHorizontal: 16 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  sectionLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1.4 },
+  sectionMore: { fontSize: 11, fontWeight: '700' },
+
+  // card wrapper
+  card: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+
+  // approval rows
+  approvalRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 14, paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  approvalIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  approvalBody: { flex: 1, minWidth: 0 },
+  approvalTitle: { fontSize: 12, fontWeight: '700' },
+  approvalMeta: { fontSize: 10, marginTop: 2 },
+  approvalRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countBadge: {
+    minWidth: 20, height: 20, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5,
+  },
+  countBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+
+  // messages
+  msgRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  msgAvatar: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  msgAvatarText: { fontSize: 12, fontWeight: '800' },
+  msgBody: { flex: 1, minWidth: 0 },
+  msgTopLine: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  msgFrom: { fontSize: 12, fontWeight: '700', flex: 1 },
+  msgTime: { fontSize: 9, fontWeight: '600' },
+  msgPreview: { fontSize: 11, marginTop: 2 },
+  unreadDot: { width: 8, height: 8, borderRadius: 4 },
+
+  // branch bars
+  branchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  branchLeft: { flex: 1, gap: 5 },
+  branchName: { fontSize: 12, fontWeight: '700' },
+  branchTrack: { height: 5, borderRadius: 4, overflow: 'hidden' },
+  branchFill: { height: '100%', borderRadius: 4 },
+  branchRight: { alignItems: 'flex-end', gap: 4 },
+  branchRev: { fontSize: 13, fontWeight: '800' },
+  statusPip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 99 },
+  statusPipDot: { width: 5, height: 5, borderRadius: 3 },
+  statusPipText: { fontSize: 9, fontWeight: '700' },
+
+  // financial grid
+  finGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  finCell: {
+    width: '31%', borderRadius: 14, borderWidth: 1,
+    padding: 12, alignItems: 'flex-start',
+  },
+  finValue: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  finLabel: { fontSize: 9, fontWeight: '600', marginTop: 3 },
+
+  // budget
+  budgetHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 14 },
+  budgetLabel: { fontSize: 13, fontWeight: '800' },
+  budgetSub: { fontSize: 10, marginTop: 3 },
+  budgetStatus: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 99, borderWidth: 1 },
+  budgetStatusText: { fontSize: 11, fontWeight: '700' },
+  budgetTrack: { height: 7, borderRadius: 5, overflow: 'hidden', marginHorizontal: 14, marginTop: 12 },
+  budgetFill: { height: '100%', borderRadius: 5 },
+  budgetFooter: { flexDirection: 'row', justifyContent: 'space-between', marginHorizontal: 14, marginTop: 8 },
+  budgetFooterText: { fontSize: 10 },
+  budgetItems: { marginTop: 12, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, paddingHorizontal: 14, paddingBottom: 14, gap: 8 },
+  budgetItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  budgetItemCat: { fontSize: 10, width: 80 },
+  budgetItemTrack: { flex: 1, height: 4, borderRadius: 3, overflow: 'hidden' },
+  budgetItemFill: { height: '100%', borderRadius: 3 },
+  budgetItemAmt: { fontSize: 10, fontWeight: '700', width: 52, textAlign: 'right' },
+
+  // quick actions
+  quickActions: {
+    flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginTop: 24,
+  },
+  quickAction: {
+    flex: 1, alignItems: 'center', paddingVertical: 14,
+    borderRadius: 14, borderWidth: 1, gap: 8,
+  },
+  quickActionIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  quickActionLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 0.3 },
+
+  // empty
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 28, gap: 8 },
+  emptyText: { fontSize: 12 },
 });

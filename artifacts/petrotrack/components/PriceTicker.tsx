@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { useApp } from '@/context/AppContext';
 
@@ -12,6 +13,7 @@ const PRODS = [
 
 export function PriceTicker() {
   const { prices } = useApp();
+  const router = useRouter();
   const [active, setActive] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -35,12 +37,12 @@ export function PriceTicker() {
         {PRODS.map((p, i) => {
           const val = (prices as any)[p.key];
           return (
-            <View key={p.key} style={styles.priceItem}>
+            <TouchableOpacity key={p.key} onPress={() => router.push('/(app)/prices' as never)} activeOpacity={0.8} style={styles.priceItem}>
               <Text style={[styles.prodKey, { color: '#8ab8a0' }]}>{p.key}</Text>
               <Text style={[styles.prodVal, { color: val > 0 ? p.color : '#4a7a5a' }]}>
                 {val > 0 ? `₦${val.toLocaleString()}` : '—'}
               </Text>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>

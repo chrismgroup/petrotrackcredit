@@ -105,7 +105,11 @@ export function Header({ title, rightAction }: Props) {
                 </View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.avatar, { backgroundColor: 'rgba(255,255,255,0.20)' }]} onPress={() => setShowMenu(true)}>
+            <TouchableOpacity
+              style={[styles.avatar, { backgroundColor: 'rgba(255,255,255,0.20)' }]}
+              onPress={() => router.replace('/(app)/profile' as never)}
+              accessibilityLabel="Open My Profile"
+            >
               <Text style={styles.avatarText}>{userInitials}</Text>
             </TouchableOpacity>
           </View>

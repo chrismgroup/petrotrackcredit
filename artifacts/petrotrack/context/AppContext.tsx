@@ -124,6 +124,7 @@ export interface Message { id: number; from: string; to: string; type: 'txt' | '
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
 export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; duration?: string; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
+export interface ShiftHandoverNote { id: number; body: string; by: string; ts: string; branchId?: string; }
 export interface InventoryLogEntry {
   id: number;
   dipId: number;
@@ -357,6 +358,9 @@ export const SCREEN_ROUTES: Record<string, string> = {
   hr: '/(app)/hr',
   prices: '/(app)/prices',
   comms: '/(app)/comms',
+  jobs: '/(app)/jobs',
+  messages: '/(app)/messages',
+  profile: '/(app)/profile',
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
@@ -481,6 +485,8 @@ interface AppContextType {
   addBroadcast: (b: Omit<Broadcast, 'id' | 'ts'>) => void;
   addCallRecord: (r: Omit<CallRecord, 'id' | 'ts'>) => void;
   audit: AuditEntry[]; departments: Department[];
+  handoverNotes: ShiftHandoverNote[];
+  addShiftHandoverNote: (body: string) => void;
   companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[];
   pumpDailyReports: PumpDailyReport[];
   pumpInitialMeters: Record<string, number>;
@@ -656,6 +662,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [budgets, setBudgets] = useState<Budget[]>(INIT_BUDGETS);
   const [messages, setMessages] = useState<Record<string, Message[]>>(INIT_MSGS);
   const [audit, setAudit] = useState<AuditEntry[]>(INIT_AUDIT);
+  const [handoverNotes, setHandoverNotes] = useState<ShiftHandoverNote[]>([]);
   const [departments, setDepartments] = useState<Department[]>(INIT_DEPTS);
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>(INIT_USER_ACCOUNTS);
   const [companyFiles, setCompanyFiles] = useState<CompanyFile[]>(INIT_COMPANY_FILES);
@@ -685,7 +692,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'auth', 'companyInfo', 'tanks', 'lpgTanks', 'pumps', 'staff', 'branches',
       'departments', 'userAccounts', 'prices', 'priceHistory', 'mgrPerms',
       'roleAccess', 'userAccess', 'expenses', 'budgets', 'sales', 'dips',
-      'deliveries', 'maintenance', 'audit', 'messages', 'tasks', 'kpis',
+      'deliveries', 'maintenance', 'audit', 'handoverNotes', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
@@ -732,6 +739,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.deliveries)        setDeliveries(s.deliveries);
       if (s.maintenance)       setMaintenance(s.maintenance);
       if (s.audit)             setAudit(s.audit);
+      if (s.handoverNotes)    setHandoverNotes(s.handoverNotes);
       if (s.messages)          setMessages(s.messages);
       if (s.tasks)             setTasks(s.tasks);
       if (s.kpis)              setKpis(s.kpis);
@@ -810,6 +818,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!p.has('deliveries'))      setDeliveries(safeArray<Delivery>(s.deliveries));
       if (!p.has('maintenance'))     setMaintenance(safeArray<MaintenanceItem>(s.maintenance));
       if (Array.isArray(s.audit) && !p.has('audit'))          setAudit(s.audit as AuditEntry[]);
+      if (Array.isArray(s.handoverNotes) && !p.has('handoverNotes')) setHandoverNotes(s.handoverNotes as ShiftHandoverNote[]);
       // Messages: merge with local so read-flags are preserved
       if (s.messages && typeof s.messages === 'object' && !Array.isArray(s.messages)) {
         const serverMsgs = s.messages as Record<string, Message[]>;
@@ -903,6 +912,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('deliveries',        deliveries); },        [deliveries, loaded]);
   useEffect(() => { if (loaded) syncSlice('maintenance',       maintenance); },       [maintenance, loaded]);
   useEffect(() => { if (loaded) syncSlice('audit',             audit); },             [audit, loaded]);
+  useEffect(() => { if (loaded) syncSlice('handoverNotes',    handoverNotes); },       [handoverNotes, loaded]);
   useEffect(() => { if (loaded) syncSlice('messages',          messages); },          [messages, loaded]);
   useEffect(() => { if (loaded) syncSlice('broadcasts',        broadcasts); },        [broadcasts, loaded]);
   useEffect(() => { if (loaded) syncSlice('callLog',           callLog); },           [callLog, loaded]);
@@ -1232,6 +1242,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           });
         }
       }
+      for (const tank of lpgTanks) {
+        const lvl = rec.lpg[tank.id];
+        if (lvl !== undefined) {
+          const expected = tank.op + tank.rv - tank.sl;
+          const actual = lvl;
+          logEntries.push({
+            id: genId(),
+            dipId: id,
+            dt: nowTs(),
+            approvedBy: userName ?? 'admin',
+            tankId: tank.id,
+            tankName: tank.name,
+            product: 'LPG',
+            opening: tank.op,
+            received: tank.rv,
+            sold: tank.sl,
+            expected,
+            actual,
+            discrepancy: actual - expected,
+            branchId: tank.branchId,
+          });
+        }
+      }
 
       setTanks(ts => ts.map(tank => {
         const lvl = rec.rd[tank.id];
@@ -1250,7 +1283,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         for (const entry of logEntries) {
           if (Math.abs(entry.discrepancy) > 50) {
             const dir = entry.discrepancy < 0 ? 'Shortage' : 'Overage';
-            const detail = `${entry.tankName} (${entry.product}): Expected ${entry.expected.toLocaleString()}L · Actual ${entry.actual.toLocaleString()}L · ${dir}: ${Math.abs(entry.discrepancy).toLocaleString()}L`;
+             const unit = unitForProd(entry.product);
+             const detail = `${entry.tankName} (${entry.product}): Expected ${entry.expected.toLocaleString()}${unit} · Actual ${entry.actual.toLocaleString()}${unit} · ${dir}: ${Math.abs(entry.discrepancy).toLocaleString()}${unit}`;
             for (const toRole of notifRoles) {
               const msgKey = chatKey('admin', toRole);
               setMessages(m => ({
@@ -1273,7 +1307,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     setDips(d => d.map(r => r.id === id ? { ...r, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : r));
     setAudit(a => [{ id: genId(), action: 'Dip approved', user: userName, detail: `Dip record #${id} approved.`, ts: nowTs() }, ...a]);
-  }, [userName, dips, tanks]);
+  }, [userName, dips, tanks, lpgTanks]);
 
   const rejectDip = useCallback((id: number) => {
     setDips(d => d.map(rec => rec.id === id ? { ...rec, status: 'rejected', approvedBy: userName, approvedDt: nowTs() } : rec));
@@ -1732,7 +1766,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const empIdVal = activated?.empId;
       setStaff(prev => {
         if (prev.some(s => s.name === empName)) return prev;
-        return [...prev, { id: genId(), name: empName, role, sal: 0, st: 'Active', email: `${username}@gastsmarts.com`, dept }];
+        return [...prev, { id: genId(), name: empName, role, sal: 0, st: 'Active', email: `${username}@petrotrack.com`, dept }];
       });
       setHrEmployees(prev => {
         if (prev.some(e => e.name === empName)) return prev;
@@ -1740,7 +1774,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const hEmpId  = empIdVal ?? ('PTNG-' + String(serial).padStart(4, '0'));
         return [...prev, {
           id: genId(), empId: hEmpId, serial, name: empName, role,
-          dept: dept ?? '', phone, email: `${username}@gastsmarts.com`,
+          dept: dept ?? '', phone, email: `${username}@petrotrack.com`,
           address: '', dob: '', joinDate: nowTs(), nextOfKin: '',
           status: 'active' as const, docs: [], uploads: [],
           onboarding: { status: 'draft' as OnboardingStatus }, letters: [],
@@ -1826,6 +1860,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addAudit = useCallback((entry: Omit<AuditEntry, 'id' | 'ts'>) => {
     setAudit(a => [{ ...entry, id: genId(), ts: nowTs() }, ...a]);
   }, []);
+
+  const addShiftHandoverNote = useCallback((body: string) => {
+    const trimmed = body.trim();
+    if (!trimmed) return;
+    const note: ShiftHandoverNote = { id: genId(), body: trimmed, by: userName, ts: nowTs(), branchId: branchId ?? undefined };
+    setHandoverNotes(notes => [note, ...notes]);
+    setAudit(a => [{ id: genId(), action: 'Shift handover note added', user: userName, detail: trimmed, ts: nowTs() }, ...a]);
+  }, [branchId, userName]);
 
   const addTask = useCallback((t: Omit<Task, 'id' | 'createdAt'>) => {
     setTasks(ts => [...ts, { ...t, id: genId(), createdAt: nowTs() }]);
@@ -2245,6 +2287,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
        maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts, callLog,
+       handoverNotes, addShiftHandoverNote,
        marketCompetitors, addMarketCompetitor, updateMarketCompetitor, deleteMarketCompetitor,
        addBroadcast, addCallRecord,
       audit, departments, companyFiles, deliveryEvidences,

@@ -7,15 +7,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ROLE_COLORS, SCREEN_ROUTES, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const PATH_MAP: Record<string, string> = {
-  home: 'home', users: 'users', depts: 'departments', audit: 'audit',
-  settings: 'system-settings', ops: 'operations', tanks: 'tanks', acct: 'accounts',
-  corp: 'corporate', branches: 'branches', maint: 'maintenance', sales: 'sales',
-  budget: 'budget', exp: 'expenses', exprpt: 'reports', mktg: 'marketing', shift: 'shift',
-};
+const PRIMARY_TABS = [
+  { id: 'home', label: 'Home', icon: 'home', route: SCREEN_ROUTES.home },
+  { id: 'jobs', label: 'My Jobs', icon: 'briefcase', route: SCREEN_ROUTES.jobs },
+  { id: 'messages', label: 'My Messages', icon: 'chatbubbles', route: SCREEN_ROUTES.messages },
+  { id: 'profile', label: 'My Profile', icon: 'person', route: SCREEN_ROUTES.profile },
+] as const;
+
+const JOB_PATHS = [
+  'jobs', 'operations', 'maintenance', 'tanks', 'receiving', 'sales', 'shift',
+  'accounts', 'expenses', 'budget', 'reports', 'pump-report', 'tasks', 'users',
+  'departments', 'branches', 'corporate', 'marketing', 'prices', 'audit',
+  'system-settings', 'hr',
+];
 
 export function TabBar() {
-  const { role, navItems } = useApp();
+  const { role } = useApp();
   const colors = useColors();
   const router = useRouter();
   const pathname = usePathname();
@@ -25,13 +32,14 @@ export function TabBar() {
   const roleColor = ROLE_COLORS[role] || colors.primary;
 
   function isActive(id: string): boolean {
-    const seg = PATH_MAP[id] || id;
-    return pathname.includes(seg);
+    if (id === 'home') return pathname.includes('/home');
+    if (id === 'messages') return pathname.includes('/messages') || pathname.includes('/comms');
+    if (id === 'profile') return pathname.includes('/profile');
+    return JOB_PATHS.some(path => pathname.includes(`/${path}`));
   }
 
-  function navigate(id: string) {
-    const route = SCREEN_ROUTES[id];
-    if (route) router.replace(route as never);
+  function navigate(route: string) {
+    router.replace(route as never);
   }
 
   const bottomPad = Platform.OS === 'web' ? 30 : insets.bottom;
@@ -47,10 +55,10 @@ export function TabBar() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-      {navItems.map(item => {
+      {PRIMARY_TABS.map(item => {
         const active = isActive(item.id);
         return (
-          <TouchableOpacity key={item.id} style={styles.tab} onPress={() => navigate(item.id)} activeOpacity={0.7}>
+          <TouchableOpacity key={item.id} style={styles.tab} onPress={() => navigate(item.route)} activeOpacity={0.7}>
             <View style={[styles.iconPill, active && { backgroundColor: roleColor + '1A' }]}>
               <Ionicons
                 name={(active ? item.icon : `${item.icon}-outline`) as any}
@@ -81,7 +89,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   scrollContent: { flexDirection: 'row', paddingHorizontal: 6 },
-  tab: { width: 72, alignItems: 'center', paddingVertical: 2, gap: 2 },
+  tab: { flex: 1, minWidth: 82, alignItems: 'center', paddingVertical: 2, gap: 2 },
   iconPill: {
     width: 44, height: 30, borderRadius: 15,
     alignItems: 'center', justifyContent: 'center',

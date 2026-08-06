@@ -1,6 +1,6 @@
 kind = "mobile"
 previewPath = "/"
-title = "Gastsmarts"
+title = "Petrotrack"
 version = "1.0.0"
 id = "artifacts/petrotrack"
 router = "expo-domain"

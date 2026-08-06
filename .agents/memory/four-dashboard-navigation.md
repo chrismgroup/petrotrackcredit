@@ -1,0 +1,10 @@
+---
+name: Four-dashboard navigation
+description: The Petrotrack mobile app uses four primary destinations with operational modules grouped beneath My Jobs.
+---
+
+The primary navigation is intentionally limited to Home, My Jobs, My Messages, and My Profile. Home is the shift-handoff workspace and overview surface; displayed operational values should link to their underlying source screens for deeper scrutiny. Home handover notes are shared state, not device-only drafts. My Jobs is the work hub and groups Operations, Sales, Finance, Reports, and supporting business modules. Inventory and Maintenance are separate Operations destinations; Inventory should not embed a duplicate maintenance workflow. Tank Dipping owns Dip Form, Awaiting Approval, and approved-dipping History; Inventory owns current-stock and inventory analysis. Sales has one dedicated dashboard under My Jobs and should not be duplicated in Operations or Home. Existing module routes remain focused detail screens reached from My Jobs.
+
+**Why:** Users asked for one simple workspace instead of a long panel-by-panel navigation list, while the approved shift-handoff design makes readiness, exceptions, and context the first things an operator needs at shift change.
+
+**How to apply:** Add new operational work as a My Jobs section/card or a focused detail route; keep Home checkpoints derived from synchronized dips, deliveries, maintenance, and messages; save handover notes through shared app state; make Home metrics, alerts, summaries, and audit items tappable to their source; keep Tank Dipping focused on readings, approval status, and dipping history; keep Inventory focused on current stock and inventory analysis; keep Maintenance focused on maintenance requests; and keep Sales metrics/shift reporting in the dedicated Sales route. Do not add another primary bottom-tab destination unless the information architecture is explicitly revisited.

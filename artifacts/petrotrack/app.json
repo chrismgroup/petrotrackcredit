@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Gastsmarts",
-    "slug": "gastsmarts",
+    "name": "Petrotrack",
+    "slug": "petrotrack",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "gastsmarts",
+    "scheme": "petrotrack",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,11 +15,11 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.gastsmarts.app",
+      "bundleIdentifier": "com.petrotrack.app",
       "buildNumber": "17",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSFaceIDUsageDescription": "Gastsmarts uses Face ID to let you sign in quickly and securely."
+        "NSFaceIDUsageDescription": "Petrotrack uses Face ID to let you sign in quickly and securely."
       }
     },
     "android": {
@@ -33,7 +33,7 @@
       [
         "expo-router",
         {
-          "origin": "https://gastsmart.replit.app/"
+          "origin": "https://petrotrack.replit.app/"
         }
       ],
       "expo-font",
