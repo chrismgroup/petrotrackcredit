@@ -737,14 +737,14 @@ export default function BudgetScreen() {
             </View>
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Month</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+              <View style={styles.chipRow}>
                 {MONTHS.map((m, i) => (
                   <TouchableOpacity key={m} onPress={() => setFormMonth(i)}
                     style={[styles.chip, { backgroundColor: i === formMonth ? roleColor : colors.surface, borderColor: i === formMonth ? roleColor : colors.border }]}>
                     <Text style={[styles.chipText, { color: i === formMonth ? '#fff' : colors.text }]}>{m.slice(0, 3)}</Text>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+              </View>
               <Text style={[styles.fieldLabel, { color: colors.text, marginTop: 12 }]}>Year</Text>
               <View style={styles.yearRow}>
                 {YEARS.map(y => (
@@ -895,8 +895,8 @@ const styles = StyleSheet.create({
 
   /* Form */
   fieldLabel:        { fontSize: 13, fontWeight: '600', marginBottom: 6 },
-  chipRow:           { marginBottom: 6 },
-  chip:              { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, marginRight: 6 },
+  chipRow:           { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
+  chip:              { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
   chipText:          { fontSize: 12, fontWeight: '600' },
   yearRow:           { flexDirection: 'row', gap: 8, marginBottom: 14 },
   itemsHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 8 },

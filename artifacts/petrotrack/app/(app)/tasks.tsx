@@ -279,7 +279,7 @@ export default function TasksScreen() {
       counts[c] = taskList.filter(t => t.cadence === c).length;
     }
     return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterRow}>
+      <View style={styles.filterRow}>
         {CADENCE_FILTERS.map(f => {
           const active = cadenceFilter === f.id;
           const cm = f.id !== 'all' ? CADENCE_META[f.id as TaskCadence] : null;
@@ -303,7 +303,7 @@ export default function TasksScreen() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
     );
   }
 
@@ -357,7 +357,7 @@ export default function TasksScreen() {
       ) : undefined}
     >
       {/* Main tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll} contentContainerStyle={styles.tabRow}>
+      <View style={styles.tabRow}>
         {tabs.map(t => (
           <TouchableOpacity
             key={t.id}
@@ -369,7 +369,7 @@ export default function TasksScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
       {/* Cadence filter (tasks tabs only) */}
       {tab !== 'kpis' && renderCadenceFilter()}
@@ -590,12 +590,10 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
-  tabScroll: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e5e5e3' },
-  tabRow: { paddingHorizontal: 16, flexDirection: 'row', gap: 4 },
+  tabRow: { paddingHorizontal: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e5e5e3' },
   tabBtn: { paddingHorizontal: 12, paddingVertical: 10 },
   tabLabel: { fontSize: 13 },
-  filterScroll: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e5e5e3' },
-  filterRow: { paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', gap: 6 },
+  filterRow: { paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e5e5e3' },
   filterPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
   filterPillText: { fontSize: 12, fontWeight: '600' },
   filterCount: { fontSize: 11, fontWeight: '700' },

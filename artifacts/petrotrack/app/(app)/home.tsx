@@ -16,6 +16,7 @@ import {
   SCREEN_ROUTES,
   unitForProd,
   useApp,
+  type Budget,
   type Message,
   type PumpDailyReport,
 } from '@/context/AppContext';
@@ -632,7 +633,7 @@ export default function HomeScreen() {
                 {/* Per-category bars */}
                 {currentBudget.items.length > 0 ? (
                   <View style={[s.budgetItems, { borderTopColor: colors.border }]}>
-                    {currentBudget.items.slice(0, 5).map((item, i) => (
+                    {currentBudget.items.slice(0, 5).map((item: { cat: string; amt: number }, i: number) => (
                       <View key={i} style={s.budgetItem}>
                         <Text style={[s.budgetItemCat, { color: colors.textMuted }]} numberOfLines={1}>{item.cat}</Text>
                         <View style={[s.budgetItemTrack, { backgroundColor: colors.border }]}>

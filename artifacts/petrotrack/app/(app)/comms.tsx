@@ -704,27 +704,25 @@ export default function CommsScreen() {
               </View>
 
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Send To</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {AUDIENCE_OPTS.map(opt => (
-                    <TouchableOpacity
-                      key={opt.value}
-                      onPress={() => setBAudience(opt.value)}
-                      style={[
-                        styles.audienceChip,
-                        {
-                          backgroundColor: bAudience === opt.value ? roleColor : colors.background,
-                          borderColor:     bAudience === opt.value ? roleColor : colors.border,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.audienceChipText, { color: bAudience === opt.value ? '#fff' : colors.textMuted }]}>
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                {AUDIENCE_OPTS.map(opt => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    onPress={() => setBAudience(opt.value)}
+                    style={[
+                      styles.audienceChip,
+                      {
+                        backgroundColor: bAudience === opt.value ? roleColor : colors.background,
+                        borderColor:     bAudience === opt.value ? roleColor : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.audienceChipText, { color: bAudience === opt.value ? '#fff' : colors.textMuted }]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Subject</Text>
               <TextInput

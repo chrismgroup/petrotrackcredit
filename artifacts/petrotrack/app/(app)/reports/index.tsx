@@ -429,8 +429,8 @@ export default function ReportsScreen() {
 
       {/* ── Compact top bar: Period + Branch ── */}
       <View style={[s.topBar, { borderBottomColor: colors.border }]}>
-        {/* Period chips */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6, paddingRight: 8 }}>
+        {/* Period chips — wrap so all stay visible */}
+        <View style={s.chipWrap}>
           {PERIODS.map(p => {
             const active = period === p;
             return (
@@ -440,10 +440,10 @@ export default function ReportsScreen() {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
         {/* Branch chips — hidden for att and mgr (locked to their branch) */}
         {!isBranchLocked && safeBranches.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 5, paddingRight: 4 }}>
+          <View style={s.chipWrap}>
             {([{ id: null, name: 'All' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
               const active = selBranch === b.id;
               return (
@@ -454,7 +454,7 @@ export default function ReportsScreen() {
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
         )}
       </View>
 
@@ -965,8 +965,9 @@ function ProdSaleRow({ p, colors }: { p: any; colors: any }) {
 const s = StyleSheet.create({
   /* ── Top bar ── */
   topBar:         { paddingHorizontal: 14, paddingVertical: 8, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth },
-  periodChip:     { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
-  periodChipTxt:  { fontSize: 12, fontWeight: '600' },
+  chipWrap:       { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  periodChip:     { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 16, borderWidth: 1 },
+  periodChipTxt:  { fontSize: 11, fontWeight: '600' },
   branchChip:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1 },
   branchChipTxt:  { fontSize: 11, fontWeight: '500' },
 

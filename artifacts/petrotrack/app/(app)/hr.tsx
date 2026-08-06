@@ -1335,21 +1335,19 @@ export default function HRScreen() {
           </View>
 
           <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>System Role *</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-            <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 4 }}>
-              {ROLE_OPTS.map(r => (
-                <TouchableOpacity key={r} onPress={() => setARole(r)}
-                  style={[styles.chip, {
-                    backgroundColor: r === aRole ? ROLE_COLORS[r] + '22' : colors.surface,
-                    borderColor: r === aRole ? ROLE_COLORS[r] : colors.border,
-                  }]}>
-                  <Text style={[styles.chipText, { color: r === aRole ? ROLE_COLORS[r] : colors.textMuted }]}>
-                    {ROLE_LABELS[r] ?? r}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4, marginBottom: 10 }}>
+            {ROLE_OPTS.map(r => (
+              <TouchableOpacity key={r} onPress={() => setARole(r)}
+                style={[styles.chip, {
+                  backgroundColor: r === aRole ? ROLE_COLORS[r] + '22' : colors.surface,
+                  borderColor: r === aRole ? ROLE_COLORS[r] : colors.border,
+                }]}>
+                <Text style={[styles.chipText, { color: r === aRole ? ROLE_COLORS[r] : colors.textMuted }]}>
+                  {ROLE_LABELS[r] ?? r}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username *</Text>
           <TextInput value={aUsername} onChangeText={setAUsername}
@@ -1368,19 +1366,17 @@ export default function HRScreen() {
           </View>
 
           <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch *</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-            <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 4 }}>
-              {branches.map(b => (
-                <TouchableOpacity key={b.id} onPress={() => setABranch(b.id)}
-                  style={[styles.chip, {
-                    backgroundColor: b.id === aBranch ? '#1a6e3c22' : colors.surface,
-                    borderColor: b.id === aBranch ? '#1a6e3c' : colors.border,
-                  }]}>
-                  <Text style={[styles.chipText, { color: b.id === aBranch ? '#1a6e3c' : colors.textMuted }]}>{b.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4, marginBottom: 12 }}>
+            {branches.map(b => (
+              <TouchableOpacity key={b.id} onPress={() => setABranch(b.id)}
+                style={[styles.chip, {
+                  backgroundColor: b.id === aBranch ? '#1a6e3c22' : colors.surface,
+                  borderColor: b.id === aBranch ? '#1a6e3c' : colors.border,
+                }]}>
+                <Text style={[styles.chipText, { color: b.id === aBranch ? '#1a6e3c' : colors.textMuted }]}>{b.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <TouchableOpacity onPress={handleConfirmApprove} disabled={isApproving}
             style={[styles.submitBtn, { backgroundColor: isApproving ? '#555' : '#1a6e3c' }]}>

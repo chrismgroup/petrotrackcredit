@@ -374,6 +374,7 @@ export function fmtDateTime(dt: string) {
   try { const d = new Date(dt); return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }); } catch { return dt; }
 }
 function genId() { return Date.now() + Math.floor(Math.random() * 10000); }
+const MAX_AUDIT_ENTRIES = 500; // cap audit trail so sync payloads stay small
 function nowTs() { return new Date().toISOString(); }
 function generateEmpId(existing: UserAccount[]): string {
   const now = new Date();
@@ -911,7 +912,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('dips',              dips); },              [dips, loaded]);
   useEffect(() => { if (loaded) syncSlice('deliveries',        deliveries); },        [deliveries, loaded]);
   useEffect(() => { if (loaded) syncSlice('maintenance',       maintenance); },       [maintenance, loaded]);
-  useEffect(() => { if (loaded) syncSlice('audit',             audit); },             [audit, loaded]);
+  // Audit log is capped to the most recent MAX_AUDIT_ENTRIES to keep payloads small.
+  useEffect(() => {
+    if (audit.length > MAX_AUDIT_ENTRIES) { setAudit(a => a.slice(0, MAX_AUDIT_ENTRIES)); return; }
+    if (loaded) syncSlice('audit', audit);
+  }, [audit, loaded]);
   useEffect(() => { if (loaded) syncSlice('handoverNotes',    handoverNotes); },       [handoverNotes, loaded]);
   useEffect(() => { if (loaded) syncSlice('messages',          messages); },          [messages, loaded]);
   useEffect(() => { if (loaded) syncSlice('broadcasts',        broadcasts); },        [broadcasts, loaded]);

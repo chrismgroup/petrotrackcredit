@@ -376,17 +376,15 @@ export default function CorporateScreen() {
               placeholderTextColor={colors.textMuted}
               style={[sty.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
             <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Type</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-              <View style={sty.typeRow}>
-                {ATT_FILE_TYPES.map(t => (
-                  <TouchableOpacity key={t.key} onPress={() => setAttType(t.key)}
-                    style={[sty.typeBtn, { backgroundColor: t.key === attType ? t.color + '22' : colors.surface, borderColor: t.key === attType ? t.color : colors.border }]}>
-                    <Ionicons name={t.icon as any} size={14} color={t.key === attType ? t.color : colors.textMuted} />
-                    <Text style={[sty.typeBtnTxt, { color: t.key === attType ? t.color : colors.textMuted }]}>{t.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
+            <View style={[sty.typeRow, { marginBottom: 8 }]}>
+              {ATT_FILE_TYPES.map(t => (
+                <TouchableOpacity key={t.key} onPress={() => setAttType(t.key)}
+                  style={[sty.typeBtn, { backgroundColor: t.key === attType ? t.color + '22' : colors.surface, borderColor: t.key === attType ? t.color : colors.border }]}>
+                  <Ionicons name={t.icon as any} size={14} color={t.key === attType ? t.color : colors.textMuted} />
+                  <Text style={[sty.typeBtnTxt, { color: t.key === attType ? t.color : colors.textMuted }]}>{t.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <TouchableOpacity onPress={handleAddAttachment}
               style={[sty.attSubmitBtn, { backgroundColor: roleColor }]}>
               <Ionicons name="cloud-upload" size={14} color="#fff" />
@@ -435,9 +433,7 @@ export default function CorporateScreen() {
     <ScreenLayout title="Corporate Services">
 
       {/* ── Tab bar ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        style={[sty.tabBar, { borderBottomColor: colors.border }]}
-        contentContainerStyle={sty.tabBarContent}>
+      <View style={[sty.tabBar, sty.tabBarContent, { borderBottomColor: colors.border }]}>
         {TABS.map(t => {
           const active = t.key === activeTab;
           return (
@@ -448,7 +444,7 @@ export default function CorporateScreen() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
       {/* ════════════════════════════════════════ COMPLIANCE */}
       {activeTab === 'compliance' && (
@@ -518,20 +514,18 @@ export default function CorporateScreen() {
                 ))}
               </View>
               <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Type</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
-                <View style={sty.typeRow}>
-                  {DOC_FILE_TYPES.map(t => {
-                    const fi = FILE_TYPE_MAP[t];
-                    return (
-                      <TouchableOpacity key={t} onPress={() => setSelType(t)}
-                        style={[sty.typeBtn, { backgroundColor: t === selType ? fi.color + '22' : colors.background, borderColor: t === selType ? fi.color : colors.border }]}>
-                        <Ionicons name={fi.icon as any} size={15} color={t === selType ? fi.color : colors.textMuted} />
-                        <Text style={[sty.typeBtnTxt, { color: t === selType ? fi.color : colors.textMuted }]}>{t.toUpperCase()}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+              <View style={[sty.typeRow, { marginBottom: 4 }]}>
+                {DOC_FILE_TYPES.map(t => {
+                  const fi = FILE_TYPE_MAP[t];
+                  return (
+                    <TouchableOpacity key={t} onPress={() => setSelType(t)}
+                      style={[sty.typeBtn, { backgroundColor: t === selType ? fi.color + '22' : colors.background, borderColor: t === selType ? fi.color : colors.border }]}>
+                      <Ionicons name={fi.icon as any} size={15} color={t === selType ? fi.color : colors.textMuted} />
+                      <Text style={[sty.typeBtnTxt, { color: t === selType ? fi.color : colors.textMuted }]}>{t.toUpperCase()}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Name</Text>
               <TextInput
                 style={[sty.textInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, marginBottom: 12 }]}
@@ -1153,8 +1147,8 @@ const sp = StyleSheet.create({
 
 // ── Main styles ─────────────────────────────────────────────────────────────
 const sty = StyleSheet.create({
-  tabBar:        { borderBottomWidth: StyleSheet.hairlineWidth, flexGrow: 0 },
-  tabBarContent: { flexDirection: 'row' },
+  tabBar:        { borderBottomWidth: StyleSheet.hairlineWidth },
+  tabBarContent: { flexDirection: 'row', flexWrap: 'wrap' },
   tabBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 2 },
   tabLabel:      { fontSize: 12 },
 
@@ -1235,7 +1229,7 @@ const sty = StyleSheet.create({
   attAddBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7, borderWidth: 1 },
   attAddTxt:     { fontSize: 11, fontWeight: '700' },
   attForm:       { borderRadius: 10, borderWidth: 1, padding: 10, gap: 2 },
-  typeRow:       { flexDirection: 'row', gap: 6, paddingVertical: 4 },
+  typeRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingVertical: 4 },
   typeBtn:       { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
   typeBtnTxt:    { fontSize: 10, fontWeight: '700' },
   attSubmitBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 8, marginTop: 6 },
