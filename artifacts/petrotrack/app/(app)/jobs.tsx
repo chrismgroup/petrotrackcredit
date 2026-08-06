@@ -175,9 +175,10 @@ export default function JobsScreen() {
                 if (!enabled) return null;
                 return (
                   <TouchableOpacity key={type} style={[styles.reportCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => openReport(type)} activeOpacity={0.78}>
-                    <View style={[styles.reportIcon, { backgroundColor: meta.color + '18' }]}><Ionicons name={meta.icon as any} size={16} color={meta.color} /></View>
-                    <Text style={[styles.reportLabel, { color: colors.text }]} numberOfLines={1}>{meta.label}</Text>
+                    <View style={[styles.reportIcon, { backgroundColor: meta.color + '18' }]}><Ionicons name={meta.icon as any} size={18} color={meta.color} /></View>
+                    <Text style={[styles.reportLabel, { color: colors.text }]}>{meta.label}</Text>
                     <Text style={[styles.reportDesc, { color: colors.textMuted }]} numberOfLines={2}>{meta.desc}</Text>
+                    <Ionicons name="arrow-forward" size={14} color={meta.color} style={styles.reportArrow} />
                   </TouchableOpacity>
                 );
               })}
@@ -213,9 +214,10 @@ const styles = StyleSheet.create({
   jobCopy: { flex: 1 },
   jobTitle: { fontSize: 14, fontWeight: '700' },
   jobDescription: { fontSize: 11, lineHeight: 16, marginTop: 3 },
-  reportGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  reportCard: { width: '31.5%', borderWidth: 1, borderRadius: 14, padding: 11 },
-  reportIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  reportLabel: { fontSize: 12, fontWeight: '800' },
-  reportDesc: { fontSize: 9, lineHeight: 13, marginTop: 4, color: '#64748B' },
+  reportGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  reportCard: { width: '48.5%', minHeight: 142, borderWidth: 1, borderRadius: 17, padding: 13, position: 'relative' },
+  reportIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  reportLabel: { fontSize: 13, fontWeight: '800', paddingRight: 4 },
+  reportDesc: { fontSize: 10, lineHeight: 14, marginTop: 5, paddingRight: 5 },
+  reportArrow: { position: 'absolute', right: 13, bottom: 13 },
 }) as any;

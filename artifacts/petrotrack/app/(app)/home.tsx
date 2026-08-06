@@ -22,6 +22,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
+import { G, Rect, Svg, Text as SvgText } from 'react-native-svg';
 
 function fmtK(n: number): string {
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(1)}M`;
@@ -207,6 +208,13 @@ function FinancialCell({ label, value, icon, accent, colors }: FinancialCellProp
   );
 }
 
+interface RevenueTrendChartProps {
+  dailyRevenue: { label: string; value: number }[];
+  accent: string;
+  colors: ReturnType<typeof useColors>;
+  onPress: () => void;
+}
+
 // ─── main screen ───────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
@@ -218,6 +226,7 @@ export default function HomeScreen() {
     pumpDailyReports, userAccounts, messages,
     unreadCount, approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
+    sales,
   } = useApp();
 
   const colors = useColors();
@@ -308,6 +317,23 @@ export default function HomeScreen() {
     : 0;
 
   const budgetColor = budgetPct >= 90 ? colors.error : budgetPct >= 70 ? colors.warning : colors.success;
+
+  // ── 7-day revenue trend ───────────────────────────────────────────────
+  const sevenDayRevenue = useMemo(() => {
+    const days: { label: string; value: number }[] = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const iso = d.toISOString().slice(0, 10); // YYYY-MM-DD
+      const dayLabel = d.toLocaleDateString('en-NG', { weekday: 'short' }).slice(0, 2);
+      const rev = sales
+        .filter(entry => entry.dt && entry.dt.startsWith(iso))
+        .reduce((sum, entry) => sum + entry.L * entry.price, 0);
+      days.push({ label: dayLabel, value: rev });
+    }
+    return days;
+  }, [sales]);
 
   // ── Branch sort by rev ────────────────────────────────────────────────
   const sortedBranches = useMemo(
@@ -521,6 +547,12 @@ export default function HomeScreen() {
 
         {/* ── Financial Status ─────────────────────────────────────── */}
         <Section label="FINANCIAL STATUS" route={SCREEN_ROUTES.acct} colors={colors}>
+          <RevenueTrendChart
+            dailyRevenue={sevenDayRevenue}
+            accent={colors.primary}
+            colors={colors}
+            onPress={() => router.push(SCREEN_ROUTES.exprpt as never)}
+          />
           <View style={s.finGrid}>
             <FinancialCell
               label="Cash in Bank"
@@ -842,6 +874,17 @@ const s = StyleSheet.create({
   statusPipDot: { width: 5, height: 5, borderRadius: 3 },
   statusPipText: { fontSize: 9, fontWeight: '700' },
 
+  // revenue trend chart
+  trendWrap: {
+    borderRadius: 16, borderWidth: 1,
+    paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10,
+    marginBottom: 10,
+  },
+  trendHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  trendTitle: { fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
+  trendLink: { fontSize: 10, fontWeight: '700' },
+  trendEmpty: { fontSize: 10, textAlign: 'center', paddingBottom: 4 },
+
   // financial grid
   finGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   finCell: {
@@ -883,3 +926,63 @@ const s = StyleSheet.create({
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 28, gap: 8 },
   emptyText: { fontSize: 12 },
 });
+
+function RevenueTrendChart({ dailyRevenue, accent, colors, onPress }: RevenueTrendChartProps) {
+  const W = 280;
+  const H = 64;
+  const PADDING = { top: 6, bottom: 18, left: 4, right: 4 };
+  const chartW = W - PADDING.left - PADDING.right;
+  const chartH = H - PADDING.top - PADDING.bottom;
+
+  const maxVal = Math.max(...dailyRevenue.map(d => d.value), 1);
+  const n = dailyRevenue.length;
+  const gap = 4;
+  const barW = Math.floor((chartW - gap * (n - 1)) / n);
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.78} style={[s.trendWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={s.trendHeader}>
+        <Text style={[s.trendTitle, { color: colors.textMuted }]}>7-DAY REVENUE TREND</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={[s.trendLink, { color: accent }]}>View reports</Text>
+          <Ionicons name="chevron-forward" size={11} color={accent} />
+        </View>
+      </View>
+      <Svg width={W} height={H} style={{ alignSelf: 'center' }}>
+        <G x={PADDING.left} y={PADDING.top}>
+          {dailyRevenue.map((d, i) => {
+            const barH = maxVal > 0 ? Math.max(2, Math.round((d.value / maxVal) * chartH)) : 2;
+            const x = i * (barW + gap);
+            const y = chartH - barH;
+            const isToday = i === n - 1;
+            return (
+              <G key={i}>
+                <Rect
+                  x={x}
+                  y={y}
+                  width={barW}
+                  height={barH}
+                  rx={3}
+                  fill={isToday ? accent : accent + '55'}
+                />
+                <SvgText
+                  x={x + barW / 2}
+                  y={chartH + 13}
+                  fontSize={8}
+                  fontWeight={isToday ? '700' : '400'}
+                  fill={isToday ? accent : colors.textSubtle}
+                  textAnchor="middle"
+                >
+                  {d.label}
+                </SvgText>
+              </G>
+            );
+          })}
+        </G>
+      </Svg>
+      {maxVal <= 1 ? (
+        <Text style={[s.trendEmpty, { color: colors.textSubtle }]}>No sales data for this period</Text>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
