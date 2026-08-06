@@ -156,6 +156,35 @@ export const versionApi = {
   get: () => get<{ version: string }>('/version'),
 };
 
+export interface AppNotification {
+  id: number;
+  username: string;
+  type: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown> | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export const notificationsApi = {
+  list: () => get<AppNotification[]>('/notifications'),
+  registerToken: (token: string, platform: string) =>
+    post<{ ok: boolean }>('/notifications/tokens', { token, platform }),
+  unregisterToken: () =>
+    post<{ ok: boolean }>('/notifications/tokens/unregister', {}),
+  send: (data: {
+    target: string;
+    branchId?: string;
+    type: string;
+    title: string;
+    body: string;
+    data?: Record<string, unknown>;
+  }) => post<{ ok: boolean; recipients: number }>('/notifications', data),
+  markRead: (id: number) => patchR<{ ok: boolean }>(`/notifications/${id}/read`, {}),
+  markAllRead: () => post<{ ok: boolean }>('/notifications/read-all', {}),
+};
+
 // ─── Staff Users API — dedicated DB table, real-time ─────────────────────────
 
 export interface StaffUserRecord {
@@ -181,6 +210,9 @@ export interface StaffUserRecord {
   approvedAt: string | null;
   mdApprovedBy: string | null;
   mdApprovedAt: string | null;
+  rejectionReason: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
 }
 
 export const usersApi = {
@@ -207,7 +239,7 @@ export const usersApi = {
     employmentDocs?: string[];
   }) => post<StaffUserRecord>('/users', data),
 
-  /** Update credentials, role, or enrollment fields (admin only) */
+  /** Update enrollment fields; HR is limited to rejected records, admin has full access */
   update: (id: number, data: Partial<{
     empName: string;
     empId: string | null;
@@ -227,12 +259,14 @@ export const usersApi = {
     employmentDocs: string[];
   }>) => putR<StaffUserRecord>(`/users/${id}`, data),
 
-  /** Approve / suspend / reject with optional credential assignment (admin only) */
+  /** Manage status transitions; HR may only re-submit rejected records */
   setStatus: (id: number, status: string, extra?: {
     username?: string;
     password?: string;
     role?: string;
     branchId?: string;
+    rejectionReason?: string;
+    rejectedBy?: string;
   }) => patchR<StaffUserRecord>(`/users/${id}/status`, { status, ...extra }),
 
   /** Permanently delete a user account (admin only) */
@@ -254,6 +288,20 @@ export const storageApi = {
       return r.json() as Promise<{ uploadURL: string; objectPath: string }>;
     } catch {
       return null;
+    }
+  },
+  deleteObject: async (objectPath: string): Promise<boolean> => {
+    if (!BASE || !objectPath.startsWith('/objects/')) return false;
+    try {
+      const headers = await authHeaders();
+      const encodedPath = objectPath.slice('/objects/'.length).split('/').map(encodeURIComponent).join('/');
+      const r = await fetch(`${BASE}/storage/objects/${encodedPath}`, {
+        method: 'DELETE',
+        headers,
+      });
+      return r.ok;
+    } catch {
+      return false;
     }
   },
 };

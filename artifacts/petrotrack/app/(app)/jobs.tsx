@@ -43,7 +43,6 @@ const supportItems: JobItem[] = [
   { id: 'marketing', label: 'Marketing', description: 'Monitor market and competitor activity', icon: 'megaphone-outline', route: SCREEN_ROUTES.mktg, accent: '#C2410C' },
   { id: 'people', label: 'People & HR', description: 'Staff, departments and employee records', icon: 'people-outline', route: SCREEN_ROUTES.hr, accent: '#0D6E56' },
   { id: 'branches', label: 'Branches', description: 'Manage stations and branch performance', icon: 'business-outline', route: SCREEN_ROUTES.branches, accent: '#1D4ED8' },
-  { id: 'corporate', label: 'Corporate', description: 'Company files, legal and projects', icon: 'briefcase-outline', route: SCREEN_ROUTES.corp, accent: '#4C1D95' },
   { id: 'audit', label: 'Audit trail', description: 'Review activity across the business', icon: 'shield-checkmark-outline', route: SCREEN_ROUTES.audit, accent: '#64748B' },
   { id: 'settings', label: 'System settings', description: 'Configure Petrotrack controls', icon: 'settings-outline', route: SCREEN_ROUTES.settings, accent: '#475569' },
 ];

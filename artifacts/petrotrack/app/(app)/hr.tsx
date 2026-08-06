@@ -317,10 +317,13 @@ export default function HRScreen() {
           setIsDeleting(true);
           try {
             for (const id of selectedIds) {
-              await deleteUserAccount(id);
+              const removed = await deleteUserAccount(id);
+              if (!removed) throw new Error('One or more enrollments could not be deleted. Check your connection and try again.');
             }
             setSelectedIds(new Set());
             setSelectMode(false);
+          } catch (err: any) {
+            Alert.alert('Delete Failed', err?.message ?? 'Could not delete the selected enrollments.');
           } finally {
             setIsDeleting(false);
           }
@@ -355,7 +358,10 @@ export default function HRScreen() {
   function handleDeleteEnrollment(acc: UserAccount) {
     Alert.alert('Delete Enrollment', `Permanently delete enrollment for ${acc.empName}?\n\nThis cannot be undone.`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteUserAccount(acc.id); }},
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        const removed = await deleteUserAccount(acc.id);
+        if (!removed) Alert.alert('Delete Failed', 'Could not delete this enrollment. Check your connection and try again.');
+      }},
     ]);
   }
 
@@ -375,7 +381,7 @@ export default function HRScreen() {
   async function handleSaveEdit() {
     if (!editingEnrollment) return;
     if (!eEmpName.trim()) { Alert.alert('Required', 'Full name is required.'); return; }
-    await updateEnrollmentData(editingEnrollment.id, {
+    const updated = await updateEnrollmentData(editingEnrollment.id, {
       empName:          eEmpName.trim(),
       jobTitle:         eJobTitle.trim() || undefined,
       dept:             eDept || undefined,
@@ -386,6 +392,10 @@ export default function HRScreen() {
       guarantorPhone:   eGuarantorPhone.trim() || undefined,
       guarantorAddress: eGuarantorAddr.trim() || undefined,
     }, userName || 'Admin');
+    if (!updated) {
+      Alert.alert('Update Failed', 'Could not save enrollment details. Check your connection and try again.');
+      return;
+    }
     setEditingEnrollment(null);
     Alert.alert('Updated', 'Enrollment details updated successfully.');
   }
@@ -406,7 +416,7 @@ export default function HRScreen() {
   async function handleResubmitSave() {
     if (!resubmittingEnrollment) return;
     if (!eEmpName.trim()) { Alert.alert('Required', 'Full name is required.'); return; }
-    await resubmitEnrollment(resubmittingEnrollment.id, {
+    const resubmitted = await resubmitEnrollment(resubmittingEnrollment.id, {
       empName:          eEmpName.trim(),
       jobTitle:         eJobTitle.trim() || undefined,
       dept:             eDept || undefined,
@@ -417,6 +427,10 @@ export default function HRScreen() {
       guarantorPhone:   eGuarantorPhone.trim() || undefined,
       guarantorAddress: eGuarantorAddr.trim() || undefined,
     }, userName || 'HR');
+    if (!resubmitted) {
+      Alert.alert('Re-submit Failed', 'Could not re-submit this enrollment. Check your connection and try again.');
+      return;
+    }
     setResubmittingEnrollment(null);
     Alert.alert('Re-submitted ✓', `${eEmpName.trim()} enrollment has been re-submitted to Admin for review.`);
   }
@@ -750,6 +764,54 @@ export default function HRScreen() {
     );
   }
 
+  function renderRejectedAdminCard(acc: UserAccount) {
+    const deptColor = DEPT_COLORS[acc.dept ?? ''] ?? '#7B1818';
+    return (
+      <View key={acc.id} style={[styles.rejectedCard, { backgroundColor: colors.surface, borderColor: '#E74C3C44' }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <View style={[styles.miniAvatar, { backgroundColor: '#FCEBEB' }]}>
+            <Text style={[styles.miniAvatarText, { color: '#E74C3C' }]}>{initials(acc.empName)}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{acc.empName}</Text>
+            <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>{acc.jobTitle ?? '—'} · {acc.dept ?? '—'}</Text>
+            <Text style={{ fontSize: 11, color: colors.textSubtle, marginTop: 1 }}>{acc.empId ?? 'No company ID'}</Text>
+          </View>
+          <View style={[styles.pill, { backgroundColor: '#FCEBEB' }]}>
+            <Text style={[styles.pillText, { color: '#E74C3C' }]}>Rejected</Text>
+          </View>
+        </View>
+
+        {acc.rejectionReason ? (
+          <View style={[styles.rejectionReasonBox, { backgroundColor: '#FFF0F0', borderColor: '#E74C3C44' }]}>
+            <Ionicons name="alert-circle" size={14} color="#E74C3C" style={{ marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#7B1818', marginBottom: 2 }}>Reason for rejection</Text>
+              <Text style={{ fontSize: 12, color: '#7B1818', lineHeight: 17 }}>{acc.rejectionReason}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        <Text style={{ fontSize: 11, color: colors.textSubtle, marginTop: 4, marginBottom: 8 }}>
+          Rejected by {acc.rejectedBy ?? 'Admin'}{acc.rejectedAt ? ` · ${fmtDateTime(acc.rejectedAt)}` : ''}
+        </Text>
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity onPress={() => openEditModal(acc)}
+            style={[styles.enrollActionBtn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1, justifyContent: 'center' }]}>
+            <Ionicons name="create-outline" size={14} color={colors.text} />
+            <Text style={[styles.enrollActionText, { color: colors.text }]}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleDeleteEnrollment(acc)}
+            style={[styles.enrollActionBtn, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C', borderWidth: 1, flex: 1, justifyContent: 'center' }]}>
+            <Ionicons name="trash-outline" size={14} color="#E74C3C" />
+            <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   function renderEmployeeCard(emp: HREmployee) {
     const deptColor  = DEPT_COLORS[emp.dept] ?? roleColor;
     const isExpanded = expandedId === emp.id;
@@ -953,6 +1015,21 @@ export default function HRScreen() {
             </View>
           ) : (
             pendingEnrollments.map(acc => renderEnrollmentCard(acc))
+          )}
+
+          {rejectedEnrollments.length > 0 && (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E74C3C44', marginTop: 12, marginBottom: 4 }}>
+                <Ionicons name="close-circle" size={15} color="#E74C3C" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#E74C3C', flex: 1 }}>
+                  Rejected Enrollments ({rejectedEnrollments.length})
+                </Text>
+              </View>
+              <Text style={[styles.formHint, { color: colors.textMuted, marginBottom: 8 }]}>
+                Edit rejected forms to correct their details, or delete forms that are no longer needed.
+              </Text>
+              {rejectedEnrollments.map(acc => renderRejectedAdminCard(acc))}
+            </>
           )}
           <View style={{ height: 24 }} />
         </ScrollView>

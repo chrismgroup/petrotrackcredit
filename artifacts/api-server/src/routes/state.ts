@@ -15,6 +15,7 @@ const ALLOWED_KEYS = new Set([
   "legalMatters", "corpProjects", "meetingMinutes",
   "broadcasts", "callLog", "pumpDailyReports", "pumpInitialMeters",
   "pumpLockedMeters", "inventoryLog", "financialEntry", "marketCompetitors",
+  "myFolders", "myFolderFiles",
 ]);
 
 // Keys that modify access control, credentials, or HR/legal/financial records.
@@ -25,6 +26,10 @@ const ADMIN_WRITE_KEYS = new Set([
   "companyFiles", "legalMatters", "meetingMinutes", "corpProjects",
   "companyInfo", "departments", "branches",
 ]);
+
+// Selling prices are operational but affect the whole station network.
+// CEO, MD, admin, and station managers may update them directly.
+const PRICE_WRITE_ROLES = new Set(["admin", "ceo", "md", "mgr"]);
 
 const OPERATIONAL_KEYS = [
   "expenses", "budgets", "sales", "dips", "deliveries", "maintenance",
@@ -233,6 +238,10 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   // Sensitive keys require admin role
   if (ADMIN_WRITE_KEYS.has(key) && req.auth?.role !== "admin") {
     res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if ((key === "prices" || key === "priceHistory") && !PRICE_WRITE_ROLES.has(req.auth?.role ?? "")) {
+    res.status(403).json({ error: "Only Admin, CEO, MD, or station managers may update prices" });
     return;
   }
 

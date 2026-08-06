@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { stateApi, versionApi, usersApi, StaffUserRecord, apiLogin, saveToken, clearToken } from '@/lib/api';
+import { stateApi, versionApi, usersApi, notificationsApi, AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken } from '@/lib/api';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
@@ -121,6 +121,7 @@ export const getPriceForPump = (pump: Pump, prices: Prices): number =>
   pump.prod === 'LPG' ? (prices[lpgPriceKey(pump.lpgCategory)] ?? prices.LPG) : (prices as any)[pump.prod] ?? 0;
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; reason?: string; }
 export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; }
+export type { AppNotification };
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
 export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; duration?: string; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
@@ -156,6 +157,15 @@ export const BLANK_COMPANY_INFO: CompanyInfo = {
   dailyDipRequired: true, autoAuditLogging: true,
 };
 export interface CompanyFile { id: number; name: string; cat: string; by: string; dt: string; size: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'img' | 'mp4' | 'audio' | 'zip' | 'other'; }
+export type MyFolderSection = 'compliance' | 'legal' | 'minutes' | 'projects' | 'correspondences' | 'general';
+export interface MyFolder {
+  id: number; section: MyFolderSection; name: string; createdBy: string; createdAt: string;
+}
+export interface MyFolderFile {
+  id: number; section: MyFolderSection; folderId: number | null; name: string;
+  objectPath?: string; mimeType: string; size: number;
+  uploadedBy: string; uploadedAt: string;
+}
 export type TaskStatus = 'commenced' | 'progressing' | 'completed';
 export type TaskPriority = 'High' | 'Medium' | 'Low';
 export type TaskCadence = 'daily' | 'weekly' | 'monthly' | 'quarterly';
@@ -208,6 +218,7 @@ export interface HREmployee { id: number; empId: string; serial: number; name: s
 export interface CorpAttachment {
   id: number; name: string; fileType: string; size: string;
   uploadedBy: string; uploadedAt: string;
+  objectPath?: string; mimeType?: string;
 }
 export type CorpApprovalStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 export interface CorpApproval {
@@ -247,6 +258,10 @@ export const ROLE_COLORS: Record<string, string> = {
   admin: '#0C1E14', ceo: '#0D5C2E', md: '#4C1D95', mktg: '#B45309',
   csm: '#0D6E56', acc: '#1E3A8A', mgr: '#1D5FA5', att: '#374151',
 };
+
+// Sensitive My Folder sections are limited to approved corporate roles.
+// General Library is visible to all signed-in users.
+export const MY_FOLDER_ALLOWED_ROLES: Role[] = ['admin', 'acc', 'mktg', 'csm', 'md', 'ceo'];
 
 export const TASK_CAN_ASSIGN: Record<string, Role[]> = {
   ceo:   ['md', 'mktg', 'csm', 'acc', 'mgr', 'att'],
@@ -313,7 +328,7 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'exp',      icon: 'receipt',          label: 'Expenses'   },
   { id: 'recv',     icon: 'cube',             label: 'Receiving'  },
   { id: 'shift',    icon: 'speedometer',      label: 'Shift Report' },
-  { id: 'corp',     icon: 'briefcase',        label: 'Corporate'  },
+  { id: 'corp',     icon: 'folder',            label: 'My Folder'  },
   { id: 'comms',    icon: 'chatbubbles',      label: 'Comms'      },
 ];
 
@@ -360,6 +375,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   comms: '/(app)/comms',
   jobs: '/(app)/jobs',
   messages: '/(app)/messages',
+  notifications: '/(app)/notifications',
   profile: '/(app)/profile',
 };
 
@@ -408,6 +424,9 @@ function apiRowToUserAccount(r: StaffUserRecord): UserAccount {
     employmentDocs:   r.employmentDocs   ?? undefined,
     mdApprovedBy:     r.mdApprovedBy     ?? undefined,
     mdApprovedAt:     r.mdApprovedAt     ?? undefined,
+    rejectionReason:  r.rejectionReason  ?? undefined,
+    rejectedBy:       r.rejectedBy       ?? undefined,
+    rejectedAt:       r.rejectedAt       ?? undefined,
   };
 }
 function nowTime() { return new Date().toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }); }
@@ -483,12 +502,21 @@ interface AppContextType {
   approveBudget: (id: number, note: string) => void;
   rejectBudget: (id: number, note: string) => void;
   messages: Record<string, Message[]>; broadcasts: Broadcast[]; callLog: CallRecord[];
+  notifications: AppNotification[];
+  refreshNotifications: () => Promise<void>;
+  markNotificationRead: (id: number) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
   addBroadcast: (b: Omit<Broadcast, 'id' | 'ts'>) => void;
   addCallRecord: (r: Omit<CallRecord, 'id' | 'ts'>) => void;
   audit: AuditEntry[]; departments: Department[];
   handoverNotes: ShiftHandoverNote[];
   addShiftHandoverNote: (body: string) => void;
   companyFiles: CompanyFile[]; deliveryEvidences: DeliveryEvidence[];
+  myFolders: MyFolder[]; myFolderFiles: MyFolderFile[];
+  addMyFolder: (section: MyFolderSection, name: string) => void;
+  addMyFolderFile: (file: Omit<MyFolderFile, 'id' | 'uploadedAt'>) => void;
+  removeMyFolderFile: (id: number) => void;
+  replaceMyFolderFile: (id: number, file: Omit<MyFolderFile, 'id' | 'uploadedAt'>) => void;
   pumpDailyReports: PumpDailyReport[];
   pumpInitialMeters: Record<string, number>;
   pumpLockedMeters: Record<string, number>;
@@ -566,7 +594,7 @@ interface AppContextType {
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
   addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => Promise<void>;
   updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => Promise<void>;
-  updateEnrollmentData: (id: number, data: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => Promise<void>;
+  updateEnrollmentData: (id: number, data: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => Promise<boolean>;
   changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   enrollStaff: (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string, initialStatus?: AccountStatus) => Promise<void>;
   mdApproveEnrollment: (id: number, by: string) => Promise<void>;
@@ -576,8 +604,8 @@ interface AppContextType {
   reactivateUserAccount: (id: number) => Promise<void>;
   rejectUserAccount: (id: number) => Promise<void>;
   rejectEnrollmentWithReason: (id: number, reason: string, by: string) => Promise<void>;
-  resubmitEnrollment: (id: number, updates: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => Promise<void>;
-  deleteUserAccount: (id: number) => Promise<void>;
+  resubmitEnrollment: (id: number, updates: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => Promise<boolean>;
+  deleteUserAccount: (id: number) => Promise<boolean>;
   validateCredentials: (username: string, password: string) => Promise<UserAccount | null>;
   getConversation: (peerName: string) => Message[];
   unreadCount: () => number;
@@ -667,6 +695,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [departments, setDepartments] = useState<Department[]>(INIT_DEPTS);
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>(INIT_USER_ACCOUNTS);
   const [companyFiles, setCompanyFiles] = useState<CompanyFile[]>(INIT_COMPANY_FILES);
+  const [myFolders, setMyFolders] = useState<MyFolder[]>([]);
+  const [myFolderFiles, setMyFolderFiles] = useState<MyFolderFile[]>([]);
   const [deliveryEvidences, setDeliveryEvidences] = useState<DeliveryEvidence[]>(INIT_DELIVERY_EVIDENCE);
   const [tasks, setTasks] = useState<Task[]>(INIT_TASKS);
   const [kpis, setKpis] = useState<KPI[]>(INIT_KPIS);
@@ -684,6 +714,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pumpLockedMeters, setPumpLockedMeters] = useState<Record<string, number>>({});
   const [inventoryLog, setInventoryLog] = useState<InventoryLogEntry[]>(INIT_INVENTORY_LOG);
   const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  const refreshNotifications = useCallback(async () => {
+    if (!isServerAuthenticated) return;
+    const rows = await notificationsApi.list();
+    if (rows) setNotifications(rows);
+  }, [isServerAuthenticated]);
+
+  const markNotificationRead = useCallback(async (id: number) => {
+    setNotifications(prev => prev.map(item => item.id === id ? { ...item, read: true } : item));
+    await notificationsApi.markRead(id);
+  }, []);
+
+  const markAllNotificationsRead = useCallback(async () => {
+    setNotifications(prev => prev.map(item => ({ ...item, read: true })));
+    await notificationsApi.markAllRead();
+  }, []);
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
   const [loaded, setLoaded] = useState(false);
@@ -697,7 +744,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
-      'marketCompetitors',
+      'marketCompetitors', 'myFolders', 'myFolderFiles',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -745,6 +792,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.tasks)             setTasks(s.tasks);
       if (s.kpis)              setKpis(s.kpis);
       if (s.companyFiles)      setCompanyFiles(s.companyFiles);
+      if (s.myFolders)         setMyFolders(s.myFolders);
+      if (s.myFolderFiles)     setMyFolderFiles(s.myFolderFiles);
       if (s.deliveryEvidences) setDeliveryEvidences(s.deliveryEvidences);
       if (s.hrEmployees)       setHrEmployees(s.hrEmployees);
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks);
@@ -848,6 +897,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!p.has('tasks'))             setTasks(safeArray<Task>(s.tasks));
       if (!p.has('kpis'))              setKpis(safeArray<KPI>(s.kpis));
       if (!p.has('companyFiles'))      setCompanyFiles(safeArray<CompanyFile>(s.companyFiles));
+      if (!p.has('myFolders'))         setMyFolders(safeArray<MyFolder>(s.myFolders));
+      if (!p.has('myFolderFiles'))     setMyFolderFiles(safeArray<MyFolderFile>(s.myFolderFiles));
       if (!p.has('deliveryEvidences')) setDeliveryEvidences(safeArray<DeliveryEvidence>(s.deliveryEvidences));
       if (!p.has('hrEmployees'))       setHrEmployees(safeArray<HREmployee>(s.hrEmployees));
       if (!p.has('hrHandbooks'))       setHrHandbooks(safeArray<HREmployeeDoc>(s.hrHandbooks));
@@ -883,6 +934,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loaded && isServerAuthenticated) syncFromServer();
   }, [loaded, isServerAuthenticated, syncFromServer]);
+
+  useEffect(() => {
+    if (!loaded || !isServerAuthenticated) return;
+    void refreshNotifications();
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      if (stopped) return;
+      await refreshNotifications();
+      if (!stopped) timer = setTimeout(poll, 5_000);
+    };
+    timer = setTimeout(poll, 5_000);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [loaded, isServerAuthenticated, refreshNotifications]);
 
   /* ── persistence: save each state slice to AsyncStorage + API when it changes ── */
   function syncSlice(key: string, value: unknown) {
@@ -926,6 +994,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
   useEffect(() => { if (loaded) syncSlice('inventoryLog',     inventoryLog); },    [inventoryLog, loaded]);
   useEffect(() => { if (loaded) syncSlice('companyFiles',      companyFiles); },      [companyFiles, loaded]);
+  useEffect(() => { if (loaded) syncSlice('myFolders',          myFolders); },          [myFolders, loaded]);
+  useEffect(() => { if (loaded) syncSlice('myFolderFiles',     myFolderFiles); },     [myFolderFiles, loaded]);
   useEffect(() => { if (loaded) syncSlice('deliveryEvidences', deliveryEvidences); }, [deliveryEvidences, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrEmployees',       hrEmployees); },       [hrEmployees, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrHandbooks',       hrHandbooks); },       [hrHandbooks, loaded]);
@@ -1078,6 +1148,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     setRole(null); setUserName(''); setBranchId(null); setStaffId(null);
     setIsServerAuthenticated(false);
+    setNotifications([]);
+    void notificationsApi.unregisterToken();
     AsyncStorage.removeItem('auth');
     clearToken();
   }, []);
@@ -1088,13 +1160,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const updatePrice = useCallback((prod: string, price: number, by?: string, reason?: string) => {
+    if (!['admin', 'ceo', 'md', 'mgr'].includes(role ?? '')) return;
     const oldPrice = (prices as any)[prod] ?? 0;
     const actor = by ?? userName;
     setPrices(p => ({ ...p, [prod]: price }));
     setPriceHistory(h => [{ id: genId(), prod, oldPrice, newPrice: price, by: actor, dt: nowTs(), reason }, ...h]);
     const unit = prod === 'LPG' || prod.startsWith('LPG') ? 'kg' : 'L';
     setAudit(a => [{ id: genId(), action: 'Price update', user: actor, detail: `${prod}: ₦${oldPrice} → ₦${price}/${unit}${reason ? ' — ' + reason : ''}`, ts: nowTs() }, ...a]);
-  }, [userName, prices]);
+  }, [userName, prices, role]);
 
   const addPriceProposal = useCallback((prod: string, proposedPrice: number) => {
     const currentPrice = (prices as any)[prod] ?? 0;
@@ -1364,6 +1437,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ts: nowTime(), read: false,
       }],
     }));
+    void notificationsApi.send({
+      target: 'acc',
+      type: 'approval_request',
+      title: 'Delivery Awaiting Cost Entry',
+      body: `${d.prod} delivery from ${d.sup} is ready for accountant review (WB: ${d.wb}).`,
+      data: { route: SCREEN_ROUTES.recv, deliveryId: id },
+    });
   }, [userName, deliveries]);
 
   const accForwardToMd = useCallback((id: number, costPrice: number, accNote: string) => {
@@ -1381,6 +1461,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ts: nowTime(), read: false,
       }],
     }));
+    void notificationsApi.send({
+      target: 'md',
+      type: 'approval_request',
+      title: 'Delivery Awaiting MD Approval',
+      body: `${d.prod} delivery from ${d.sup} is ready for approval (WB: ${d.wb}).`,
+      data: { route: SCREEN_ROUTES.recv, deliveryId: id },
+    });
   }, [userName, deliveries]);
 
   const accRecallDelivery = useCallback((id: number) => {
@@ -1474,6 +1561,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const key = chatKey(userName, toName);
     const newMsg: Message = { ...msg, id: genId(), from: userName, ts: nowTime(), read: false };
     setMessages(m => ({ ...m, [key]: [...(m[key] || []), newMsg] }));
+    void notificationsApi.send({
+      target: toName,
+      type: 'message',
+      title: `New message from ${userName}`,
+      body: msg.body.slice(0, 180),
+      data: { route: SCREEN_ROUTES.messages, sender: userName },
+    });
   }, [userName]);
 
   const markRead = useCallback((peerName: string) => {
@@ -1736,19 +1830,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const mdRejectEnrollment = useCallback(async (id: number, by: string) => {
-    await usersApi.setStatus(id, 'rejected');
+    await usersApi.setStatus(id, 'rejected', { rejectedBy: by });
     setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'rejected' as AccountStatus } : a));
     setAudit(a => [{ id: genId(), action: 'Enrollment rejected by MD', user: by, detail: `Enrollment #${id} rejected`, ts: nowTs() }, ...a]);
   }, []);
 
-  const updateEnrollmentData = useCallback(async (id: number, data: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => {
+  const updateEnrollmentData = useCallback(async (id: number, data: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string): Promise<boolean> => {
     const row = await usersApi.update(id, data);
-    if (row) {
-      setUserAccounts(prev => prev.map(a => a.id === id ? apiRowToUserAccount(row) : a));
-    } else {
-      setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
-    }
+    if (!row) return false;
+    setUserAccounts(prev => prev.map(a => a.id === id ? apiRowToUserAccount(row) : a));
     setAudit(a => [{ id: genId(), action: 'Enrollment data updated', user: by, detail: `Enrollment #${id} details updated by admin`, ts: nowTs() }, ...a]);
+    return true;
   }, []);
 
   const approveUserAccount = useCallback(async (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
@@ -1805,7 +1897,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const rejectEnrollmentWithReason = useCallback(async (id: number, reason: string, by: string) => {
-    await usersApi.setStatus(id, 'rejected');
+    await usersApi.setStatus(id, 'rejected', { rejectionReason: reason, rejectedBy: by });
     setUserAccounts(prev => {
       const acc = prev.find(a => a.id === id);
       const next = prev.map(a => a.id === id
@@ -1829,28 +1921,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const resubmitEnrollment = useCallback(async (id: number, updates: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => {
+  const resubmitEnrollment = useCallback(async (id: number, updates: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string): Promise<boolean> => {
     if (Object.keys(updates).length > 0) {
-      await usersApi.update(id, updates);
+      const updated = await usersApi.update(id, updates);
+      if (!updated) return false;
     }
     const row = await usersApi.setStatus(id, 'pending_admin');
-    if (row) {
-      setUserAccounts(prev => prev.map(a => a.id === id
-        ? { ...apiRowToUserAccount(row), ...updates, status: 'pending_admin' as AccountStatus, rejectionReason: undefined, rejectedBy: undefined, rejectedAt: undefined }
-        : a
-      ));
-    } else {
-      setUserAccounts(prev => prev.map(a => a.id === id
-        ? { ...a, ...updates, status: 'pending_admin' as AccountStatus, rejectionReason: undefined, rejectedBy: undefined, rejectedAt: undefined }
-        : a
-      ));
-    }
+    if (!row) return false;
+    setUserAccounts(prev => prev.map(a => a.id === id
+      ? { ...apiRowToUserAccount(row), ...updates, status: 'pending_admin' as AccountStatus, rejectionReason: undefined, rejectedBy: undefined, rejectedAt: undefined }
+      : a
+    ));
     setAudit(a => [{ id: genId(), action: 'Enrollment resubmitted', user: by, detail: `${updates.empName ?? 'Enrollment'} re-submitted for Admin review`, ts: nowTs() }, ...a]);
+    return true;
   }, []);
 
-  const deleteUserAccount = useCallback(async (id: number) => {
-    await usersApi.remove(id);
+  const deleteUserAccount = useCallback(async (id: number): Promise<boolean> => {
+    const removed = await usersApi.remove(id);
+    if (!removed) return false;
     setUserAccounts(prev => prev.filter(a => a.id !== id));
+    return true;
   }, []);
 
   const validateCredentials = useCallback(async (username: string, password: string): Promise<UserAccount | null> => {
@@ -1936,6 +2026,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'File uploaded', user: userName, detail: `${file.name} (${file.cat})`, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const addMyFolder = useCallback((section: MyFolderSection, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setMyFolders(prev => [
+      ...prev,
+      { id: genId(), section, name: trimmed, createdBy: userName || 'System', createdAt: nowTs() },
+    ]);
+  }, [userName]);
+
+  const addMyFolderFile = useCallback((file: Omit<MyFolderFile, 'id' | 'uploadedAt'>) => {
+    setMyFolderFiles(prev => [...prev, { ...file, id: genId(), uploadedAt: nowTs() }]);
+    setAudit(a => [{
+      id: genId(),
+      action: 'My Folder file uploaded',
+      user: userName,
+      detail: `${file.name} (${file.mimeType})`,
+      ts: nowTs(),
+    }, ...a]);
+  }, [userName]);
+
+  const removeMyFolderFile = useCallback((id: number) => {
+    setMyFolderFiles(prev => prev.filter(file => file.id !== id));
+    setAudit(a => [{
+      id: genId(),
+      action: 'My Folder file deleted',
+      user: userName,
+      detail: `File #${id}`,
+      ts: nowTs(),
+    }, ...a]);
+  }, [userName]);
+
+  const replaceMyFolderFile = useCallback((id: number, file: Omit<MyFolderFile, 'id' | 'uploadedAt'>) => {
+    setMyFolderFiles(prev => prev.map(existing =>
+      existing.id === id ? { ...file, id, uploadedAt: nowTs() } : existing,
+    ));
+    setAudit(a => [{
+      id: genId(),
+      action: 'My Folder file replaced',
+      user: userName,
+      detail: `${file.name} (${file.mimeType})`,
+      ts: nowTs(),
+    }, ...a]);
+  }, [userName]);
+
   const addDeliveryEvidence = useCallback((ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => {
     setDeliveryEvidences(e => [...e, { ...ev, id: genId(), dt: nowTs() }]);
     setAudit(a => [{ id: genId(), action: 'Delivery evidence added', user: userName, detail: `${ev.name} for delivery #${ev.delivId}`, ts: nowTs() }, ...a]);
@@ -2016,19 +2150,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName, pumps, pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
 
   const submitPumpReport = useCallback((r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
-    setPumpDailyReports(rs => [...rs, { ...r, id: genId(), status: 'pending_manager', submittedAt: nowTs() }]);
+    const reportId = genId();
+    setPumpDailyReports(rs => [...rs, { ...r, id: reportId, status: 'pending_manager', submittedAt: nowTs() }]);
     setAudit(a => [{ id: genId(), action: 'Pump report submitted', user: userName, detail: `${r.pumpName} · ${r.liters.toLocaleString()}L · variance: ₦${r.variance.toLocaleString()}`, ts: nowTs() }, ...a]);
+    void notificationsApi.send({
+      target: 'mgr',
+      branchId: r.branchId,
+      type: 'report_attention',
+      title: 'Pump Report Awaiting Review',
+      body: `${r.submittedByName} submitted ${r.pumpName} for manager review.`,
+      data: { route: SCREEN_ROUTES.shift, reportId },
+    });
   }, [userName]);
 
   const mgrForwardPumpReport = useCallback((id: number, mgrNote: string) => {
+    const report = pumpDailyReports.find(r => r.id === id);
     setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs() } : r));
     setAudit(a => [{ id: genId(), action: 'Pump report forwarded to accountant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    if (report) void notificationsApi.send({
+      target: 'acc',
+      type: 'report_attention',
+      title: 'Pump Report Awaiting Accountant Review',
+      body: `${report.submittedByName}'s ${report.pumpName} report was forwarded for approval.`,
+      data: { route: SCREEN_ROUTES.shift, reportId: id },
+    });
+  }, [userName, pumpDailyReports]);
 
   const mgrResubmitPumpReport = useCallback((id: number, mgrNote: string) => {
+    const report = pumpDailyReports.find(r => r.id === id);
     setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs(), rejectionReason: undefined } : r));
     setAudit(a => [{ id: genId(), action: 'Pump report re-submitted to accountant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    if (report) void notificationsApi.send({
+      target: 'acc',
+      type: 'report_attention',
+      title: 'Pump Report Re-submitted',
+      body: `${report.submittedByName}'s ${report.pumpName} report is ready for accountant approval.`,
+      data: { route: SCREEN_ROUTES.shift, reportId: id },
+    });
+  }, [userName, pumpDailyReports]);
 
   const accApprovePumpReport = useCallback((report: PumpDailyReport, accNote: string) => {
     const id = report.id;
@@ -2059,12 +2218,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     const unit = report.product === 'LPG' ? 'kg' : 'L';
     setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} — ${report.pumpName} · ${report.liters}${unit} · sales record auto-created`, ts: nowTs() }, ...a]);
+    void notificationsApi.send({
+      target: report.submittedBy,
+      type: 'report_update',
+      title: 'Pump Report Approved',
+      body: `${report.pumpName} · ${report.date} was approved by the accountant.`,
+      data: { route: SCREEN_ROUTES.shift, reportId: id },
+    });
   }, [userName, pumps]);
 
   const accRejectPumpReport = useCallback((id: number, rejectionReason: string) => {
+    const report = pumpDailyReports.find(r => r.id === id);
     setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'returned', rejectionReason, accBy: userName, accAt: nowTs() } : r));
     setAudit(a => [{ id: genId(), action: 'Pump report rejected', user: userName, detail: `Report #${id} — ${rejectionReason}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    if (report) void notificationsApi.send({
+      target: report.submittedBy,
+      type: 'report_update',
+      title: 'Pump Report Returned',
+      body: `${report.pumpName} was returned for correction: ${rejectionReason}`,
+      data: { route: SCREEN_ROUTES.shift, reportId: id },
+    });
+  }, [userName, pumpDailyReports]);
 
   const deletePumpReport = useCallback((id: number) => {
     setPumpDailyReports(rs => rs.filter(r => r.id !== id));
@@ -2272,18 +2446,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setFinancialEntry(prev => ({ ...prev, ...updates, updatedBy: userName, updatedAt: nowTs() }));
   }, [userName]);
 
+  // General Library is available to every signed-in user; sensitive sections
+  // are gated within the My Folder dashboard itself.
+  const folderVisible = !!role;
+  const filterFolder = (items: NavItem[]) => items.filter(item => item.id !== 'corp' || folderVisible);
   const navItems: NavItem[] = role === 'admin'
-    ? baseNav
+    ? filterFolder(baseNav)
     : GLOBAL_OVERVIEW_ROLES.has(role ?? '')
-    ? FULL_NAV_CATALOG
-    : baseNav.filter(item => {
+    ? filterFolder(FULL_NAV_CATALOG)
+    : filterFolder(baseNav.filter(item => {
         // Per-user override takes priority over role default
         if (staffId !== null) {
           const userLevel = (userAccess[staffId] ?? {})[item.id];
           if (userLevel !== undefined) return userLevel;
         }
         return (roleAccess[role ?? 'att'] ?? {})[item.id] !== false;
-      });
+      }));
 
   return (
     <AppContext.Provider value={{
@@ -2295,16 +2473,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        handoverNotes, addShiftHandoverNote,
        marketCompetitors, addMarketCompetitor, updateMarketCompetitor, deleteMarketCompetitor,
        addBroadcast, addCallRecord,
-      audit, departments, companyFiles, deliveryEvidences,
+      audit, departments, companyFiles, deliveryEvidences, myFolders, myFolderFiles,
       priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, updateMaintenance, deleteMaintenance, addSales, updateSales, deleteSales,
-      addCompanyFile, addDeliveryEvidence,
+      addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
       pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport, updatePumpReport,
-      sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
+       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
+       notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
       addDepartment, updateDepartment, assignStaffDept, deleteDepartment,

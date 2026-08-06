@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppContext';
 const notificationSound = require('../assets/sounds/notification.wav');
 
 export function useNotificationSound() {
-  const { messages } = useApp();
+  const { messages, notifications } = useApp();
   const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   const prevCountRef = useRef(-1);
 
@@ -34,13 +34,18 @@ export function useNotificationSound() {
       ),
     [messages]
   );
+  const unreadNotifications = useMemo(
+    () => notifications.filter(item => !item.read).length,
+    [notifications],
+  );
+  const alertCount = totalUnread + unreadNotifications;
 
   useEffect(() => {
     if (prevCountRef.current === -1) {
-      prevCountRef.current = totalUnread;
+      prevCountRef.current = alertCount;
       return;
     }
-    if (totalUnread > prevCountRef.current && playerRef.current) {
+    if (alertCount > prevCountRef.current && playerRef.current) {
       try {
         playerRef.current.seekTo(0);
         playerRef.current.play();
@@ -48,6 +53,6 @@ export function useNotificationSound() {
         // silently ignore if audio is unavailable
       }
     }
-    prevCountRef.current = totalUnread;
-  }, [totalUnread]);
+    prevCountRef.current = alertCount;
+  }, [alertCount]);
 }
