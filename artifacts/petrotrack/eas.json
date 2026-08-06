@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 20.5.1"
+    "version": ">= 20.5.1",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -13,7 +14,8 @@
     "production": {
       "env": {
         "EXPO_PUBLIC_DOMAIN": "petrotrack.replit.app"
-      }
+      },
+      "autoIncrement": true
     }
   },
   "submit": {
