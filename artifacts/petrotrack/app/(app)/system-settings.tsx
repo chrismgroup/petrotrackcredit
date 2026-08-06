@@ -162,18 +162,16 @@ function RolePicker({ value, onChange, isAdmin, colors, roleColor }: {
   return (
     <View style={{ marginBottom: 4 }}>
       <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Role</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.prodRow}>
-          {ROLE_OPTS.map(r => (
-            <TouchableOpacity key={r} disabled={!isAdmin}
-              onPress={() => onChange(r)}
-              style={[styles.prodChip, { backgroundColor: value === r ? roleColor : colors.background, borderColor: value === r ? roleColor : colors.border }]}
-            >
-              <Text style={[styles.prodChipText, { color: value === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r]}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={styles.prodRow}>
+        {ROLE_OPTS.map(r => (
+          <TouchableOpacity key={r} disabled={!isAdmin}
+            onPress={() => onChange(r)}
+            style={[styles.prodChip, { backgroundColor: value === r ? roleColor : colors.background, borderColor: value === r ? roleColor : colors.border }]}
+          >
+            <Text style={[styles.prodChipText, { color: value === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r]}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     </View>
   );
 }
@@ -362,7 +360,7 @@ export default function SystemSettingsScreen() {
     <ScreenLayout title="System Settings">
         {/* Tab bar */}
         <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScroll}>
+          <View style={styles.tabScroll}>
             {TABS.map(t => (
               <TouchableOpacity key={t.id} onPress={() => setActiveTab(t.id)}
                 style={[styles.tab, { borderBottomColor: t.id === activeTab ? roleColor : 'transparent', borderBottomWidth: 2 }]}
@@ -373,7 +371,7 @@ export default function SystemSettingsScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         </View>
 
         <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -1368,8 +1366,8 @@ export default function SystemSettingsScreen() {
 
 const styles = StyleSheet.create({
   tabBar:        { borderBottomWidth: StyleSheet.hairlineWidth },
-  tabScroll:     { paddingHorizontal: 8, paddingVertical: 2 },
-  tab:           { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 11 },
+  tabScroll:     { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, paddingVertical: 2 },
+  tab:           { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 9 },
   tabLabel:      { fontSize: 12 },
   scroll:        { padding: 16 },
   banner:        { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 14, marginBottom: 16 },

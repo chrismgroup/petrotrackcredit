@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -6,72 +7,55 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp,
+  DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const SHIFT_REPORT_LABEL: Record<string, string> = {
-  pending_manager:    'Pending Manager',
-  pending_accountant: 'Pending Accountant',
-  returned:           'Returned',
-  approved:           'Approved',
-};
-const SHIFT_REPORT_COLOR: Record<string, string> = {
-  pending_manager:    '#BA7517',
-  pending_accountant: '#185FA5',
-  returned:           '#A32D2D',
-  approved:           '#1a6e3c',
-};
-
-const DIP_SUBTABS_MGR  = ['Dip Form', 'Inventory'];
-const DIP_SUBTABS_APPR = ['Approvals', 'Inventory'];
+const DIP_SUBTABS_MGR  = ['Dip Form', 'Awaiting Approval', 'History'];
+const DIP_SUBTABS_APPR = ['Awaiting Approval', 'History'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
 const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 const DIP_STATUS_ICON: Record<string, string>  = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
-const PRI_COLORS: Record<string, { bg: string; fg: string }> = {
-  Urgent: { bg: '#FCEBEB', fg: '#791F1F' },
-  Medium: { bg: '#FAEEDA', fg: '#633806' },
-  Low:    { bg: '#EAF3DE', fg: '#27500A' },
-};
-
-type TopTab = 'dip' | 'sales' | 'maint';
+type TopTab = 'dip';
 
 export default function OperationsScreen() {
   const {
     role, userName, branchId, mgrPerms,
-    tanks, lpgTanks, dips,
+    tanks, lpgTanks, dips, inventoryLog,
     addDip, approveDip, rejectDip,
     prices,
-    sales, pumpDailyReports,
-    maintenance, addMaintenance, updateMaintenance, deleteMaintenance,
-    updateSales, deleteSales,
   } = useApp();
 
   const colors    = useColors();
+  const params    = useLocalSearchParams<{ tab?: string }>();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const isMgr      = role === 'mgr';
   const isMD       = role === 'md';
   const isAdmin    = role === 'admin';
-  const isAtt      = role === 'att';
   const canApprove = isMD || isAdmin;
 
   const topTabs: { key: TopTab; label: string; icon: string }[] = [
-    ...(isMgr || canApprove ? [{ key: 'dip' as TopTab, label: 'Tank Dip', icon: 'water-outline' }] : []),
-    { key: 'sales', label: 'Sales',        icon: 'bar-chart-outline' },
-    { key: 'maint', label: 'Maintenance',  icon: 'build-outline'     },
+    {
+      key: 'dip',
+      label: params.tab === 'inventory' ? 'Inventory' : (isMgr || canApprove ? 'Tank Dip' : 'Inventory'),
+      icon: params.tab === 'inventory' ? 'cube-outline' : (isMgr || canApprove ? 'water-outline' : 'cube-outline'),
+    },
   ];
 
-  const defaultTab: TopTab = (isMgr || canApprove) ? 'dip' : 'sales';
+  const defaultTab: TopTab = 'dip';
   const [topTab, setTopTab] = useState<TopTab>(defaultTab);
 
   // ── Dip state ────────────────────────────────────────────────────────────
   // MD/Admin start on Approvals (content index 1); mgr starts on Dip Form (index 0)
-  const [dipSubTab, setDipSubTab]     = useState(canApprove ? 1 : 0);
+  const [dipSubTab, setDipSubTab]     = useState(
+    params.tab === 'inventory' ? 2 : params.tab === 'dip-history' ? 3 : canApprove ? 1 : 0
+  );
   const [readings, setReadings]       = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'variance'>('all');
 
   const perms           = isMgr ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
@@ -96,99 +80,26 @@ export default function OperationsScreen() {
     return Math.round((getCurrentTankStock(t, dips) / t.cap) * 100);
   }
 
-  // ── Sales metrics (from approved shift reports via SalesEntry) ───────────
-  const today      = new Date().toISOString().slice(0, 10);
-  const todaySales = sales.filter(s =>
-    s.dt.startsWith(today) &&
-    (!isMgr || !branchId || !s.branchId || s.branchId === branchId)
-  );
-  const totalL     = todaySales.reduce((s, e) => s + e.L, 0);
-  const totalAmt   = todaySales.reduce((s, e) => s + e.L * e.price, 0);
-  const totalPOS   = todaySales.reduce((s, e) => s + (e.pos || 0), 0);
-  const totalCash  = totalAmt - totalPOS;
-  const pmsSales   = todaySales.filter(s => s.pump.includes('PMS'));
-  const agoSales   = todaySales.filter(s => s.pump.includes('AGO'));
-  const dkpSales   = todaySales.filter(s => s.pump.includes('DPK'));
-  const lpgSales   = todaySales.filter(s => s.pump.includes('LPG'));
-  const lubeSales  = todaySales.filter(s => s.pump.includes('Lube Oil'));
-
-  // ── Maintenance state ────────────────────────────────────────────────────
-  const canMaint = isMgr || isAtt || role === 'csm' || role === 'admin';
-  const [showMaintForm, setShowMaintForm] = useState(false);
-  const [maintForm, setMaintForm]         = useState({ title: '', pri: 'Urgent' as 'Urgent' | 'Medium' | 'Low' });
-  const [editingMaintId, setEditingMaintId] = useState<number | null>(null);
-  const [editMaintTitle, setEditMaintTitle] = useState('');
-  const [editMaintPri, setEditMaintPri]     = useState<'Urgent' | 'Medium' | 'Low'>('Urgent');
-  const [editMaintCost, setEditMaintCost]   = useState('');
-  const openItems = maintenance.filter(m => m.st === 'Open');
-  const doneItems = maintenance.filter(m => m.st === 'Done');
-
-  function handleMaintSubmit() {
-    if (!maintForm.title.trim()) { Alert.alert('Required', 'Please enter a description.'); return; }
-    addMaintenance({ title: maintForm.title.trim(), pri: maintForm.pri, by: userName, date: new Date().toISOString().slice(0, 10), st: 'Open' });
-    setMaintForm({ title: '', pri: 'Urgent' });
-    setShowMaintForm(false);
-    Alert.alert('Submitted', 'Maintenance request logged.');
-  }
-  function startEditMaint(m: typeof maintenance[0]) {
-    setEditingMaintId(m.id);
-    setEditMaintTitle(m.title);
-    setEditMaintPri(m.pri);
-    setEditMaintCost(m.cost !== undefined ? String(m.cost) : '');
-  }
-  function cancelEditMaint() {
-    setEditingMaintId(null);
-    setEditMaintTitle('');
-    setEditMaintPri('Urgent');
-    setEditMaintCost('');
-  }
-  function saveEditMaint(id: number) {
-    if (!editMaintTitle.trim()) { Alert.alert('Required', 'Please enter a description.'); return; }
-    const cost = parseFloat(editMaintCost.replace(/,/g, ''));
-    updateMaintenance(id, { title: editMaintTitle.trim(), pri: editMaintPri, cost: isNaN(cost) ? undefined : cost });
-    cancelEditMaint();
-  }
-  function handleDeleteMaint(m: typeof maintenance[0]) {
-    Alert.alert('Delete Maintenance?', `Remove "${m.title}"? This cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteMaintenance(m.id) },
-    ]);
-  }
-
-  // ── Sales editing state ───────────────────────────────────────────────────
-  const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
-  const [editSaleL, setEditSaleL]         = useState('');
-  const [editSalePrice, setEditSalePrice]   = useState('');
-  const [editSalePos, setEditSalePos]     = useState('');
-  function startEditSale(s: typeof sales[0]) {
-    setEditingSaleId(s.id);
-    setEditSaleL(String(s.L));
-    setEditSalePrice(String(s.price));
-    setEditSalePos(String(s.pos ?? 0));
-  }
-  function cancelEditSale() {
-    setEditingSaleId(null);
-    setEditSaleL('');
-    setEditSalePrice('');
-    setEditSalePos('');
-  }
-  function saveEditSale(id: number) {
-    const L = parseFloat(editSaleL.replace(/,/g, ''));
-    const price = parseFloat(editSalePrice.replace(/,/g, ''));
-    const pos = parseFloat(editSalePos.replace(/,/g, ''));
-    if (isNaN(L) || L <= 0 || isNaN(price) || price <= 0) { Alert.alert('Invalid', 'Enter valid quantity and price.'); return; }
-    updateSales(id, { L, price, pos: isNaN(pos) ? 0 : pos });
-    cancelEditSale();
-  }
-  function handleDeleteSale(s: typeof sales[0]) {
-    Alert.alert('Delete Sale?', `Remove ${s.pump} · ${s.L.toLocaleString()}L? This cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteSales(s.id) },
-    ]);
-  }
+  const visibleInventoryLog = inventoryLog
+    .filter(entry => !branchId || !entry.branchId || entry.branchId === branchId)
+    .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
+  const filteredInventoryLog = historyFilter === 'variance'
+    ? visibleInventoryLog.filter(entry => Math.abs(entry.discrepancy) > 50)
+    : visibleInventoryLog;
+  const varianceCount = visibleInventoryLog.filter(entry => Math.abs(entry.discrepancy) > 50).length;
+  const petroleumCapacity = visibleTanks.reduce((sum, tank) => sum + tank.cap, 0);
+  const petroleumStock = visibleTanks.reduce((sum, tank) => sum + getCurrentTankStock(tank, dips), 0);
+  const petroleumFill = petroleumCapacity > 0 ? Math.round((petroleumStock / petroleumCapacity) * 100) : 0;
+  const lpgCapacity = visibleLpgTanks.reduce((sum, tank) => sum + tank.cap, 0);
+  const lpgStock = visibleLpgTanks.reduce((sum, tank) => sum + getCurrentTankStock(tank, dips, 'lpg'), 0);
+  const lpgFill = lpgCapacity > 0 ? Math.round((lpgStock / lpgCapacity) * 100) : 0;
+  const pendingDips = dips.filter(dip => dip.status === 'pending');
+  const approvedDips = dips
+    .filter(dip => dip.status === 'approved')
+    .sort((a, b) => new Date(b.approvedDt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.dt).getTime());
 
   return (
-    <ScreenLayout title="Operations">
+    <ScreenLayout title={params.tab === 'inventory' ? 'Inventory' : 'Operations'}>
 
       {/* ── Top-level tab bar ── */}
       <View style={[styles.topTabBar, { borderBottomColor: colors.border }]}>
@@ -207,34 +118,35 @@ export default function OperationsScreen() {
       {topTab === 'dip' && (
         <>
           {(() => {
-            // MD/Admin see [Approvals→1, Inventory→2]; Mgr sees [Dip Form→0, Inventory→2]
-            const pendingCount = dips.filter(d => d.status === 'pending').length;
+            // MD/Admin see the awaiting-approval queue; managers see the Dip Form.
             const dipTabItems = (canApprove ? DIP_SUBTABS_APPR : DIP_SUBTABS_MGR).map(
               (label, vi) => ({
                 label,
-                contentIdx: canApprove ? vi + 1 : (vi === 0 ? 0 : 2),
+                contentIdx: label === 'History' ? 3 : label === 'Awaiting Approval' ? 1 : 0,
               })
             );
             return (
-              <View style={[styles.subTabBar, { borderBottomColor: colors.border }]}>
-                {dipTabItems.map(({ label, contentIdx }) => {
-                  const isActive   = contentIdx === dipSubTab;
-                  const showBadge  = label === 'Approvals' && pendingCount > 0;
-                  return (
-                    <TouchableOpacity key={label} onPress={() => setDipSubTab(contentIdx)}
-                      style={[styles.subTabBtn, { borderBottomColor: isActive ? roleColor : 'transparent' }]}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <Text style={[styles.subTabLabel, { color: isActive ? roleColor : colors.textMuted, fontWeight: isActive ? '700' : '400' }]}>{label}</Text>
-                        {showBadge && (
-                          <View style={[styles.subTabBadge, { backgroundColor: '#BA7517' }]}>
-                            <Text style={styles.subTabBadgeText}>{pendingCount}</Text>
-                          </View>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              params.tab === 'inventory' ? null : (
+                <View style={[styles.subTabBar, { borderBottomColor: colors.border }]}>
+                  {dipTabItems.map(({ label, contentIdx }) => {
+                    const isActive   = contentIdx === dipSubTab;
+                    const showBadge  = label === 'Awaiting Approval' && pendingDips.length > 0;
+                    return (
+                      <TouchableOpacity key={label} onPress={() => setDipSubTab(contentIdx)}
+                        style={[styles.subTabBtn, { borderBottomColor: isActive ? roleColor : 'transparent' }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <Text style={[styles.subTabLabel, { color: isActive ? roleColor : colors.textMuted, fontWeight: isActive ? '700' : '400' }]}>{label}</Text>
+                          {showBadge && (
+                            <View style={[styles.subTabBadge, { backgroundColor: '#BA7517' }]}>
+                              <Text style={styles.subTabBadgeText}>{pendingDips.length}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )
             );
           })()}
 
@@ -336,10 +248,10 @@ export default function OperationsScreen() {
             </ScrollView>
           )}
 
-          {/* ── Approvals (MD / Admin) ── */}
+          {/* ── Awaiting Approval (MD / Admin) ── */}
           {dipSubTab === 1 && (
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-              {dips.filter(d => d.status === 'pending').length === 0 ? (
+              {pendingDips.length === 0 ? (
                 <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
                   <Ionicons name="checkmark-circle-outline" size={16} color={colors.textMuted} />
                   <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No pending dip records. All caught up!</Text>
@@ -349,10 +261,10 @@ export default function OperationsScreen() {
                   <View style={[styles.mdBanner, { backgroundColor: '#BA751712', borderColor: '#BA751744' }]}>
                     <Ionicons name="time-outline" size={16} color="#BA7517" />
                     <Text style={[styles.mdBannerText, { color: '#BA7517' }]}>
-                      {dips.filter(d => d.status === 'pending').length} dip record{dips.filter(d => d.status === 'pending').length > 1 ? 's' : ''} awaiting approval. Approving will update tank inventory.
+                      {pendingDips.length} dip record{pendingDips.length > 1 ? 's' : ''} awaiting approval. Approving will update tank inventory.
                     </Text>
                   </View>
-                  {dips.filter(d => d.status === 'pending').map(dip => (
+                  {pendingDips.map(dip => (
                     <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: '#BA751744', borderWidth: 1.5 }]}>
                       <View style={styles.logHeader}>
                         <View style={{ flex: 1 }}>
@@ -392,92 +304,198 @@ export default function OperationsScreen() {
                       ) : null}
 
                       {/* Action row */}
-                      <View style={styles.mdActions}>
-                        <TouchableOpacity
-                          style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
-                          onPress={() => {
-                            approveDip(dip.id);
-                            Alert.alert('Approved', 'Dip record approved. Tank inventory has been updated.');
-                          }}
-                          activeOpacity={0.85}
-                        >
-                          <Ionicons name="checkmark" size={15} color="#fff" />
-                          <Text style={styles.mdActionText}>Approve &amp; Update Inventory</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.rejectBtn, { borderColor: '#A32D2D' }]}
-                          onPress={() =>
-                            Alert.alert(
-                              isAdmin ? 'Reset Dip Record' : 'Reject Dip Record',
-                              isAdmin
-                                ? `Reject this dip by "${dip.by}" so they can submit a new one?`
-                                : `Reject this dip submission by ${dip.by}?`,
-                              [
-                                { text: 'Cancel', style: 'cancel' },
-                                {
-                                  text: isAdmin ? 'Reset' : 'Reject',
-                                  style: 'destructive',
-                                  onPress: () => {
-                                    rejectDip(dip.id);
-                                    Alert.alert(
-                                      isAdmin ? 'Reset' : 'Rejected',
-                                      isAdmin ? 'Dip reset. Manager can now submit a new reading.' : 'Dip record rejected.'
-                                    );
+                      {canApprove ? (
+                        <View style={styles.mdActions}>
+                          <TouchableOpacity
+                            style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
+                            onPress={() => {
+                              approveDip(dip.id);
+                              Alert.alert('Approved', 'Dip record approved. Tank inventory has been updated.');
+                            }}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="checkmark" size={15} color="#fff" />
+                            <Text style={styles.mdActionText}>Approve &amp; Update Inventory</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.rejectBtn, { borderColor: '#A32D2D' }]}
+                            onPress={() =>
+                              Alert.alert(
+                                isAdmin ? 'Reset Dip Record' : 'Reject Dip Record',
+                                isAdmin
+                                  ? `Reject this dip by "${dip.by}" so they can submit a new one?`
+                                  : `Reject this dip submission by ${dip.by}?`,
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  {
+                                    text: isAdmin ? 'Reset' : 'Reject',
+                                    style: 'destructive',
+                                    onPress: () => {
+                                      rejectDip(dip.id);
+                                      Alert.alert(
+                                        isAdmin ? 'Reset' : 'Rejected',
+                                        isAdmin ? 'Dip reset. Manager can now submit a new reading.' : 'Dip record rejected.'
+                                      );
+                                    },
                                   },
-                                },
-                              ]
-                            )
-                          }
-                          activeOpacity={0.85}
-                        >
-                          <Ionicons name={isAdmin ? 'refresh' : 'close'} size={15} color="#A32D2D" />
-                          <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>{isAdmin ? 'Reset' : 'Reject'}</Text>
-                        </TouchableOpacity>
-                      </View>
+                                ]
+                              )
+                            }
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name={isAdmin ? 'refresh' : 'close'} size={15} color="#A32D2D" />
+                            <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>{isAdmin ? 'Reset' : 'Reject'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517', marginTop: 8, marginBottom: 0 }]}>
+                          <Ionicons name="time-outline" size={15} color="#BA7517" />
+                          <Text style={[styles.pendingText, { color: '#BA7517' }]}>Awaiting MD approval</Text>
+                        </View>
+                      )}
                     </View>
                   ))}
                 </>
               )}
 
-              {/* Show all-time dip history below pending ones */}
-              {dips.filter(d => d.status !== 'pending').length > 0 && (
-                <>
-                  <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Dip History</Text>
-                  {dips.filter(d => d.status !== 'pending').slice(0, 20).map(dip => {
-                    const sc = DIP_STATUS_COLOR[dip.status] || '#888';
-                    return (
-                      <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                        <View style={styles.logHeader}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.logDate, { color: colors.text }]}>{fmtDateTime(dip.dt)}</Text>
-                            <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
-                          </View>
-                          <View style={[styles.dipStatusBadge, { backgroundColor: sc + '18' }]}>
-                            <Ionicons name={DIP_STATUS_ICON[dip.status] as any} size={11} color={sc} />
-                            <Text style={[styles.dipStatusText, { color: sc }]}>{DIP_STATUS_LABEL[dip.status]}</Text>
-                          </View>
-                        </View>
-                        <View style={styles.readingsGrid}>
-                          {Object.entries(dip.rd).map(([tid, litres]) => {
-                            const tank = tanks.find(t => t.id === tid);
-                            return (
-                              <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                                <Text style={[styles.readingLabel, { color: colors.textMuted }]}>{tank?.name ?? tid}</Text>
-                                <Text style={[styles.readingVal, { color: roleColor }]}>{Number(litres).toLocaleString()} L</Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                        {dip.approvedBy && (
-                          <Text style={[styles.approvedByText, { color: colors.textMuted }]}>
-                            {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
-                          </Text>
-                        )}
+              <View style={{ height: 16 }} />
+            </ScrollView>
+          )}
+
+          {/* ── Historical approved dippings ── */}
+          {dipSubTab === 3 && (
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <View style={[styles.inventorySummary, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.inventorySummaryHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.inventorySummaryTitle, { color: colors.text }]}>Current stock snapshot</Text>
+                    <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>Live stock compared with approved tank readings</Text>
+                  </View>
+                  <View style={[styles.inventorySummaryIcon, { backgroundColor: roleColor + '18' }]}>
+                    <Ionicons name="water-outline" size={20} color={roleColor} />
+                  </View>
+                </View>
+                <View style={styles.inventoryMetricGrid}>
+                  <View style={styles.inventoryMetric}>
+                    <Text style={[styles.inventoryMetricValue, { color: colors.text }]}>{petroleumStock.toLocaleString()} L</Text>
+                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Petroleum stock</Text>
+                  </View>
+                  <View style={styles.inventoryMetric}>
+                    <Text style={[styles.inventoryMetricValue, { color: colors.teal }]}>{lpgStock.toLocaleString()} kg</Text>
+                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>LPG stock</Text>
+                  </View>
+                  <View style={styles.inventoryMetric}>
+                    <Text style={[styles.inventoryMetricValue, { color: colors.primary }]}>{petroleumFill}% / {lpgFill}%</Text>
+                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Petroleum / LPG fill</Text>
+                  </View>
+                  <View style={styles.inventoryMetric}>
+                    <Text style={[styles.inventoryMetricValue, { color: colors.text }]}>{approvedDips.length}</Text>
+                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Approved dippings</Text>
+                  </View>
+                </View>
+              </View>
+
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Current tank levels</Text>
+              {visibleTanks.map(tank => {
+                const stock = getCurrentTankStock(tank, dips);
+                const pct = Math.max(0, Math.min(100, Math.round((stock / tank.cap) * 100)));
+                return (
+                  <View key={tank.id} style={[styles.currentLevelRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.historyTankName, { color: colors.text }]}>{tank.name}</Text>
+                      <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{tank.prod} · Capacity {tank.cap.toLocaleString()} L</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[styles.currentLevelValue, { color: colors.primary }]}>{stock.toLocaleString()} L</Text>
+                      <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{pct}% full</Text>
+                    </View>
+                  </View>
+                );
+              })}
+              {visibleLpgTanks.map(tank => {
+                const stock = getCurrentTankStock(tank, dips, 'lpg');
+                const pct = Math.max(0, Math.min(100, Math.round((stock / tank.cap) * 100)));
+                return (
+                  <View key={tank.id} style={[styles.currentLevelRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.historyTankName, { color: colors.text }]}>{tank.name}</Text>
+                      <Text style={[styles.historyMeta, { color: colors.textMuted }]}>LPG · Capacity {tank.cap.toLocaleString()} kg</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[styles.currentLevelValue, { color: colors.teal }]}>{stock.toLocaleString()} kg</Text>
+                      <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{pct}% full</Text>
+                    </View>
+                  </View>
+                );
+              })}
+
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>All approved tank dippings</Text>
+              {approvedDips.length === 0 ? (
+                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Ionicons name="time-outline" size={16} color={colors.textMuted} />
+                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No approved dippings yet. Approved readings will appear here for comparison.</Text>
+                </View>
+              ) : approvedDips.map(dip => {
+                const dipTime = new Date(dip.approvedDt ?? dip.dt).getTime();
+                return (
+                  <View key={dip.id} style={[styles.historyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.historyCardHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.historyTankName, { color: colors.text }]}>Tank Dip #{dip.id}</Text>
+                        <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{fmtDateTime(dip.approvedDt ?? dip.dt)} · Submitted by {dip.by}</Text>
                       </View>
-                    );
-                  })}
-                </>
-              )}
+                      <View style={[styles.historyStatus, { backgroundColor: colors.success + '18' }]}>
+                        <Ionicons name="checkmark-circle-outline" size={12} color={colors.success} />
+                        <Text style={[styles.historyStatusText, { color: colors.success }]}>Approved</Text>
+                      </View>
+                    </View>
+                    <View style={styles.dipHistoryReadingList}>
+                      {Object.entries(dip.rd).map(([tankId, litres]) => {
+                        const tank = tanks.find(item => item.id === tankId);
+                        const previous = approvedDips.find(candidate =>
+                          candidate.id !== dip.id
+                          && new Date(candidate.approvedDt ?? candidate.dt).getTime() < dipTime
+                          && candidate.rd[tankId] !== undefined
+                        );
+                        const change = previous ? Number(litres) - Number(previous.rd[tankId]) : null;
+                        return (
+                          <View key={tankId} style={[styles.dipHistoryReading, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{tank?.name ?? tankId}</Text>
+                              <Text style={[styles.historyReadingValue, { color: roleColor }]}>{Number(litres).toLocaleString()} L</Text>
+                            </View>
+                            <Text style={[styles.historyChange, { color: change === null ? colors.textMuted : change < 0 ? colors.error : colors.success }]}>
+                              {change === null ? 'First reading' : `${change >= 0 ? '+' : ''}${change.toLocaleString()} L vs prior`}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                      {Object.entries(dip.lpg).map(([tankId, kg]) => {
+                        const tank = lpgTanks.find(item => item.id === tankId);
+                        const previous = approvedDips.find(candidate =>
+                          candidate.id !== dip.id
+                          && new Date(candidate.approvedDt ?? candidate.dt).getTime() < dipTime
+                          && candidate.lpg[tankId] !== undefined
+                        );
+                        const change = previous ? Number(kg) - Number(previous.lpg[tankId]) : null;
+                        return (
+                          <View key={tankId} style={[styles.dipHistoryReading, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{tank?.name ?? tankId}</Text>
+                              <Text style={[styles.historyReadingValue, { color: colors.teal }]}>{Number(kg).toLocaleString()} kg</Text>
+                            </View>
+                            <Text style={[styles.historyChange, { color: change === null ? colors.textMuted : change < 0 ? colors.error : colors.success }]}>
+                              {change === null ? 'First reading' : `${change >= 0 ? '+' : ''}${change.toLocaleString()} kg vs prior`}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                    {dip.obs ? <Text style={[styles.historyBreakdown, { color: colors.warning }]}>⚠ {dip.obs}</Text> : null}
+                    <Text style={[styles.historyMeta, { color: colors.textMuted, marginTop: 8 }]}>Approved by {dip.approvedBy ?? '—'}</Text>
+                  </View>
+                );
+              })}
               <View style={{ height: 16 }} />
             </ScrollView>
           )}
@@ -485,6 +503,39 @@ export default function OperationsScreen() {
           {/* Inventory */}
           {dipSubTab === 2 && (
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+              <View style={[styles.inventorySummary, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.inventorySummaryHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.inventorySummaryTitle, { color: colors.text }]}>Current stock overview</Text>
+                    <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>Live balance across your visible tanks</Text>
+                  </View>
+                  <View style={[styles.inventorySummaryIcon, { backgroundColor: colors.primary + '18' }]}>
+                    <Ionicons name="analytics-outline" size={20} color={colors.primary} />
+                  </View>
+                </View>
+                <View style={styles.inventoryMetricGrid}>
+                  <View style={styles.inventoryMetric}>
+                    <Text style={[styles.inventoryMetricValue, { color: colors.text }]}>{petroleumStock.toLocaleString()} L</Text>
+                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Petroleum stock</Text>
+                  </View>
+                  <View style={styles.inventoryMetric}>
+                    <Text style={[styles.inventoryMetricValue, { color: colors.teal }]}>{lpgStock.toLocaleString()} kg</Text>
+                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>LPG stock</Text>
+                  </View>
+                  <View style={styles.inventoryMetric}>
+                    <Text style={[styles.inventoryMetricValue, { color: colors.primary }]}>{petroleumFill}% / {lpgFill}%</Text>
+                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Petroleum / LPG fill</Text>
+                  </View>
+                  <View style={styles.inventoryMetric}>
+                    <Text style={[styles.inventoryMetricValue, { color: varianceCount > 0 ? colors.error : colors.success }]}>{visibleInventoryLog.length} / {varianceCount}</Text>
+                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Checks / flags</Text>
+                  </View>
+                </View>
+                <Text style={[styles.inventoryUnitNote, { color: colors.textMuted }]}>
+                  Petroleum is measured in litres; LPG is measured in kilograms.
+                </Text>
+              </View>
+
               {visibleTanks.length === 0 && visibleLpgTanks.length === 0 && (
                 <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
                   <Ionicons name="cube-outline" size={16} color={colors.textMuted} />
@@ -519,10 +570,6 @@ export default function OperationsScreen() {
                         <Text style={[styles.invStatVal, { color: barCol }]}>{pct}%</Text>
                         <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Fill Level</Text>
                       </View>
-                      <View style={styles.invStat}>
-                        <Text style={[styles.invStatVal, { color: colors.text }]}>{t.sl.toLocaleString()}L</Text>
-                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Today Sales</Text>
-                      </View>
                     </View>
                   </View>
                 );
@@ -552,282 +599,103 @@ export default function OperationsScreen() {
                         <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Fill Level</Text>
                       </View>
                       <View style={styles.invStat}>
-                        <Text style={[styles.invStatVal, { color: colors.text }]}>{Math.round(pct / 100 * l.cap).toLocaleString()} kg</Text>
+                        <Text style={[styles.invStatVal, { color: colors.text }]}>{stock.toLocaleString()} kg</Text>
                         <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Current Stock</Text>
                       </View>
                     </View>
                   </View>
                 );
               })}
+
+              <View style={styles.historyHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 2 }]}>Historical inventory log</Text>
+                  <Text style={[styles.historySubtitle, { color: colors.textMuted }]}>Approved checks compared with expected stock</Text>
+                </View>
+                <View style={[styles.historyToggle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  {(['all', 'variance'] as const).map(filter => (
+                    <TouchableOpacity
+                      key={filter}
+                      onPress={() => setHistoryFilter(filter)}
+                      style={[styles.historyToggleBtn, historyFilter === filter && { backgroundColor: colors.primary }]}
+                    >
+                      <Text style={[styles.historyToggleText, { color: historyFilter === filter ? '#fff' : colors.textMuted }]}>
+                        {filter === 'all' ? 'All' : 'Flags'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {filteredInventoryLog.length === 0 ? (
+                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Ionicons name={historyFilter === 'variance' ? 'checkmark-circle-outline' : 'time-outline'} size={16} color={colors.textMuted} />
+                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>
+                    {historyFilter === 'variance'
+                      ? 'No material stock variances found.'
+                      : 'No approved inventory checks yet. History will appear after a tank dip is approved.'}
+                  </Text>
+                </View>
+              ) : (
+                filteredInventoryLog.slice(0, 50).map(entry => {
+                  const previous = visibleInventoryLog.find(candidate =>
+                    candidate.tankId === entry.tankId
+                    && new Date(candidate.dt).getTime() < new Date(entry.dt).getTime()
+                  );
+                  const unit = unitForProd(entry.product);
+                  const change = previous ? entry.actual - previous.actual : null;
+                  const hasVariance = Math.abs(entry.discrepancy) > 50;
+                  const varianceColor = entry.discrepancy < 0 ? colors.error : entry.discrepancy > 0 ? colors.warning : colors.success;
+                  return (
+                    <View key={entry.id} style={[styles.historyCard, { backgroundColor: colors.surface, borderColor: hasVariance ? varianceColor : colors.border }]}>
+                      <View style={styles.historyCardHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.historyTankName, { color: colors.text }]}>{entry.tankName}</Text>
+                          <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{entry.product} · {fmtDateTime(entry.dt)}</Text>
+                          <Text style={[styles.historyMeta, { color: colors.textMuted }]}>Approved by {entry.approvedBy}</Text>
+                        </View>
+                        <View style={[styles.historyStatus, { backgroundColor: hasVariance ? varianceColor + '18' : colors.success + '18' }]}>
+                          <Ionicons name={hasVariance ? 'warning-outline' : 'checkmark-circle-outline'} size={12} color={hasVariance ? varianceColor : colors.success} />
+                          <Text style={[styles.historyStatusText, { color: hasVariance ? varianceColor : colors.success }]}>
+                            {hasVariance ? (entry.discrepancy < 0 ? 'Shortage' : 'Overage') : 'Matched'}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={[styles.historyGrid, { borderTopColor: colors.border }]}>
+                        <View style={styles.historyCell}>
+                          <Text style={[styles.historyCellLabel, { color: colors.textMuted }]}>Expected</Text>
+                          <Text style={[styles.historyCellValue, { color: colors.text }]}>{entry.expected.toLocaleString()}{unit}</Text>
+                        </View>
+                        <View style={styles.historyCell}>
+                          <Text style={[styles.historyCellLabel, { color: colors.textMuted }]}>Actual</Text>
+                          <Text style={[styles.historyCellValue, { color: colors.text }]}>{entry.actual.toLocaleString()}{unit}</Text>
+                        </View>
+                        <View style={styles.historyCell}>
+                          <Text style={[styles.historyCellLabel, { color: colors.textMuted }]}>Variance</Text>
+                          <Text style={[styles.historyCellValue, { color: varianceColor }]}>
+                            {entry.discrepancy >= 0 ? '+' : ''}{entry.discrepancy.toLocaleString()}{unit}
+                          </Text>
+                        </View>
+                        <View style={styles.historyCell}>
+                          <Text style={[styles.historyCellLabel, { color: colors.textMuted }]}>Vs previous</Text>
+                          <Text style={[styles.historyCellValue, { color: change === null ? colors.textMuted : change < 0 ? colors.error : colors.success }]}>
+                            {change === null ? '—' : `${change >= 0 ? '+' : ''}${change.toLocaleString()}${unit}`}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.historyBreakdown, { color: colors.textMuted }]}>
+                        Opening {entry.opening.toLocaleString()}{unit} · Received +{entry.received.toLocaleString()}{unit} · Sold −{entry.sold.toLocaleString()}{unit}
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
               <View style={{ height: 16 }} />
             </ScrollView>
           )}
         </>
       )}
 
-      {/* ═══════════════════════════════════════════════════════════ SALES ══ */}
-      {topTab === 'sales' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <View style={styles.metricsRow}>
-            <View style={[styles.metricCard, { backgroundColor: roleColor + '12', borderColor: roleColor + '33' }]}>
-              <Text style={[styles.metricValue, { color: roleColor }]}>{fmt(totalAmt)}</Text>
-              <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Today's Revenue</Text>
-            </View>
-            <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.metricValue, { color: colors.text }]}>{totalL.toLocaleString()} L</Text>
-              <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Volume Sold</Text>
-            </View>
-            <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.metricValue, { color: colors.text }]}>{todaySales.length}</Text>
-              <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Entries</Text>
-            </View>
-          </View>
-
-          {totalPOS > 0 && (
-            <View style={[styles.cashPosCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.cashPosTitle, { color: colors.text }]}>Payment Breakdown</Text>
-              <View style={styles.cashPosRow}>
-                <View style={[styles.cashPosItem, { backgroundColor: '#27500A12', borderColor: '#27500A33' }]}>
-                  <Ionicons name="cash-outline" size={16} color="#27500A" />
-                  <Text style={[styles.cashPosValue, { color: '#27500A' }]}>{fmt(totalCash)}</Text>
-                  <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>Cash</Text>
-                </View>
-                <View style={[styles.cashPosItem, { backgroundColor: '#185FA512', borderColor: '#185FA533' }]}>
-                  <Ionicons name="card-outline" size={16} color="#185FA5" />
-                  <Text style={[styles.cashPosValue, { color: '#185FA5' }]}>{fmt(totalPOS)}</Text>
-                  <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>POS / Transfer</Text>
-                </View>
-              </View>
-              <View style={[styles.posBar, { backgroundColor: colors.border }]}>
-                <View style={[styles.posBarCash, { flex: totalCash, backgroundColor: '#27500A' }]} />
-                <View style={[styles.posBarPos, { flex: totalPOS, backgroundColor: '#185FA5' }]} />
-              </View>
-              <Text style={[styles.posBarLabel, { color: colors.textSubtle }]}>
-                Cash {totalAmt > 0 ? Math.round((totalCash / totalAmt) * 100) : 0}% · POS {totalAmt > 0 ? Math.round((totalPOS / totalAmt) * 100) : 0}%
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.prodRowSales}>
-            {[
-              { label: 'PMS',     L: pmsSales.reduce((s, e) => s + e.L, 0),  unit: 'L',  color: colors.primary },
-              { label: 'AGO',     L: agoSales.reduce((s, e) => s + e.L, 0),  unit: 'L',  color: colors.blue   },
-              { label: 'DPK',     L: dkpSales.reduce((s, e) => s + e.L, 0),  unit: 'L',  color: colors.amber  },
-              { label: 'LPG',     L: lpgSales.reduce((s, e) => s + e.L, 0),  unit: 'kg', color: colors.teal   },
-              { label: 'Lube Oil',L: lubeSales.reduce((s, e) => s + e.L, 0), unit: 'L',  color: colors.purple },
-            ].map(p => (
-              <View key={p.label} style={[styles.prodCardSales, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
-                <Text style={[styles.prodLabelSales, { color: p.color }]}>{p.label}</Text>
-                <Text style={[styles.prodLSales, { color: colors.text }]}>{p.L.toLocaleString()}{p.unit}</Text>
-              </View>
-            ))}
-          </View>
-
-          <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>Shift Reports</Text>
-          {[...pumpDailyReports]
-            .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
-            .map(r => {
-              const sc         = SHIFT_REPORT_COLOR[r.status] || '#888';
-              const isApproved = r.status === 'approved';
-              const isReturned = r.status === 'returned';
-              return (
-                <View key={r.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: isApproved ? sc + '55' : colors.border, borderWidth: isApproved ? 1.5 : 1 }]}>
-                  <View style={styles.logHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.logDate, { color: colors.text }]}>{r.pumpName}</Text>
-                      <Text style={[styles.logBy, { color: colors.textMuted }]}>by {r.submittedByName} · {fmtDateTime(r.submittedAt)}</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                      <View style={[styles.shiftStatusBadge, { backgroundColor: sc + '18' }]}>
-                        <Text style={[styles.shiftStatusText, { color: sc }]}>{SHIFT_REPORT_LABEL[r.status]}</Text>
-                      </View>
-                      {isApproved && (
-                        <Text style={[styles.saleAmt, { color: roleColor }]}>{fmt(r.grossAmount)}</Text>
-                      )}
-                    </View>
-                  </View>
-                  {isApproved && (
-                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                      <View style={[styles.posChip, { backgroundColor: '#27500A12', borderColor: '#27500A30' }]}>
-                        <Ionicons name="water-outline" size={11} color="#27500A" />
-                        <Text style={[styles.posChipText, { color: '#27500A' }]}>{r.liters.toLocaleString()}L</Text>
-                      </View>
-                      <View style={[styles.posChip, { backgroundColor: '#185FA512', borderColor: '#185FA530' }]}>
-                        <Ionicons name="cash-outline" size={11} color="#185FA5" />
-                        <Text style={[styles.posChipText, { color: '#185FA5' }]}>Cash {fmt(r.cashAmount)}</Text>
-                      </View>
-                      {r.posAmount > 0 && (
-                        <View style={[styles.posChip, { backgroundColor: '#4527a012', borderColor: '#4527a030' }]}>
-                          <Ionicons name="card-outline" size={11} color="#4527a0" />
-                          <Text style={[styles.posChipText, { color: '#4527a0' }]}>POS {fmt(r.posAmount)}</Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
-                  {isReturned && r.rejectionReason && (
-                    <View style={[{ marginTop: 6, padding: 6, borderRadius: 7, backgroundColor: '#A32D2D0F', borderWidth: 1, borderColor: '#A32D2D33' }]}>
-                      <Text style={[styles.posChipText, { color: '#A32D2D' }]}>⚠ {r.rejectionReason}</Text>
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          }
-          {pumpDailyReports.length === 0 && (
-            <View style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border, alignItems: 'center', padding: 24 }]}>
-              <Text style={[styles.logBy, { color: colors.textMuted }]}>No shift reports yet</Text>
-            </View>
-          )}
-          <View style={{ height: 16 }} />
-        </ScrollView>
-      )}
-
-      {/* ══════════════════════════════════════════════════ MAINTENANCE ══ */}
-      {topTab === 'maint' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-          {canMaint && (
-            <TouchableOpacity onPress={() => setShowMaintForm(v => !v)}
-              style={[styles.addOutlineBtn, { borderColor: roleColor, marginBottom: showMaintForm ? 0 : 12 }]}>
-              <Ionicons name={showMaintForm ? 'close' : 'add'} size={17} color={roleColor} />
-              <Text style={[styles.addOutlineBtnText, { color: roleColor }]}>{showMaintForm ? 'Cancel' : 'New Maintenance Request'}</Text>
-            </TouchableOpacity>
-          )}
-          {showMaintForm && canMaint && (
-            <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 12 }]}>
-              <Text style={[styles.formSectionTitle, { color: colors.text }]}>New Maintenance Request</Text>
-              <TextInput
-                style={[styles.obsInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                placeholder="Describe the issue..."
-                placeholderTextColor={colors.textSubtle}
-                multiline numberOfLines={3}
-                value={maintForm.title}
-                onChangeText={v => setMaintForm(f => ({ ...f, title: v }))}
-                textAlignVertical="top"
-              />
-              <Text style={[styles.subLabel, { color: colors.textMuted }]}>Priority</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {(['Urgent', 'Medium', 'Low'] as const).map(p => (
-                  <TouchableOpacity key={p} onPress={() => setMaintForm(f => ({ ...f, pri: p }))}
-                    style={[styles.prodBtn, { flex: 1, justifyContent: 'center', backgroundColor: maintForm.pri === p ? PRI_COLORS[p].fg : colors.background, borderColor: maintForm.pri === p ? PRI_COLORS[p].fg : colors.border }]}>
-                    <Text style={{ color: maintForm.pri === p ? '#fff' : colors.textMuted, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleMaintSubmit} activeOpacity={0.85}>
-                  <Ionicons name="send" size={16} color="#fff" />
-                  <Text style={styles.submitBtnText}>Submit Request</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={() => setShowMaintForm(false)}>
-                  <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          <View style={styles.metricsRow}>
-            <View style={[styles.metricCard, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}>
-              <Text style={[styles.metricValue, { color: colors.error }]}>{openItems.length}</Text>
-              <Text style={[styles.metricLabel, { color: colors.error }]}>Open</Text>
-            </View>
-            <View style={[styles.metricCard, { backgroundColor: colors.warningBg, borderColor: colors.warningBorder }]}>
-              <Text style={[styles.metricValue, { color: colors.warning }]}>{openItems.filter(m => m.pri === 'Urgent').length}</Text>
-              <Text style={[styles.metricLabel, { color: colors.warning }]}>Urgent</Text>
-            </View>
-            <View style={[styles.metricCard, { backgroundColor: colors.successBg, borderColor: colors.successBorder }]}>
-              <Text style={[styles.metricValue, { color: colors.success }]}>{doneItems.length}</Text>
-              <Text style={[styles.metricLabel, { color: colors.success }]}>Done</Text>
-            </View>
-          </View>
-
-          {openItems.length > 0 && (
-            <>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Open Items</Text>
-              {openItems.map(m => (
-                <View key={m.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  {editingMaintId === m.id ? (
-                    <>
-                      <Text style={[styles.formSectionTitle, { color: colors.text }]}>Edit Maintenance</Text>
-                      <TextInput
-                        style={[styles.obsInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                        value={editMaintTitle} onChangeText={setEditMaintTitle}
-                        multiline numberOfLines={2} textAlignVertical="top"
-                      />
-                      <Text style={[styles.subLabel, { color: colors.textMuted }]}>Priority</Text>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        {(['Urgent', 'Medium', 'Low'] as const).map(p => (
-                          <TouchableOpacity key={p} onPress={() => setEditMaintPri(p)}
-                            style={[styles.prodBtn, { flex: 1, justifyContent: 'center', backgroundColor: editMaintPri === p ? PRI_COLORS[p].fg : colors.background, borderColor: editMaintPri === p ? PRI_COLORS[p].fg : colors.border }]}>
-                            <Text style={{ color: editMaintPri === p ? '#fff' : colors.textMuted, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{p}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                      <Text style={[styles.subLabel, { color: colors.textMuted, marginTop: 8 }]}>Cost (₦)</Text>
-                      <TextInput
-                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                        value={editMaintCost} onChangeText={setEditMaintCost}
-                        keyboardType="decimal-pad" placeholder="Optional"
-                      />
-                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                        <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={() => saveEditMaint(m.id)} activeOpacity={0.85}>
-                          <Text style={styles.submitBtnText}>Save</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={cancelEditMaint}>
-                          <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                  ) : (
-                    <>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <Text style={[styles.logDate, { color: colors.text, flex: 1 }]}>{m.title}</Text>
-                        <View style={[styles.priBadge, { backgroundColor: PRI_COLORS[m.pri].bg }]}>
-                          <Text style={[styles.priText, { color: PRI_COLORS[m.pri].fg }]}>{m.pri}</Text>
-                        </View>
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}>
-                        <Ionicons name="person-outline" size={12} color={colors.textMuted} />
-                        <Text style={[styles.logBy, { color: colors.textMuted }]}>by {m.by}</Text>
-                        <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-                        <Text style={[styles.logBy, { color: colors.textMuted }]}>{fmtDate(m.date)}</Text>
-                      </View>
-                      {(canMaint || isAdmin || isMD) && (
-                        <View style={[styles.mdActions, { marginTop: 8 }]}>
-                          <TouchableOpacity style={[styles.rejectBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]} onPress={() => startEditMaint(m)} activeOpacity={0.85}>
-                            <Ionicons name="create-outline" size={15} color={roleColor} />
-                            <Text style={[styles.mdActionText, { color: roleColor }]}>Edit</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[styles.rejectBtn, { borderColor: '#A32D2D', backgroundColor: '#FCEBEB' }]} onPress={() => handleDeleteMaint(m)} activeOpacity={0.85}>
-                            <Ionicons name="trash-outline" size={15} color="#A32D2D" />
-                            <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Delete</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </>
-                  )}
-                </View>
-              ))}
-            </>
-          )}
-
-          {doneItems.length > 0 && (
-            <>
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>Completed</Text>
-              {doneItems.map(m => (
-                <View key={m.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: 0.75 }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={[styles.logDate, { color: colors.text, flex: 1 }]}>{m.title}</Text>
-                    {m.cost !== undefined && <Text style={[styles.saleAmt, { color: colors.success }]}>₦{m.cost.toLocaleString()}</Text>}
-                  </View>
-                  <Text style={[styles.logBy, { color: colors.textMuted, marginTop: 4 }]}>by {m.by} · {fmtDate(m.date)}</Text>
-                </View>
-              ))}
-            </>
-          )}
-          <View style={{ height: 16 }} />
-        </ScrollView>
-      )}
     </ScreenLayout>
   );
 }
@@ -912,37 +780,37 @@ const styles = StyleSheet.create({
   invStat:      { flex: 1, alignItems: 'center' },
   invStatVal:   { fontSize: 16, fontWeight: '700' },
   invStatLabel: { fontSize: 10, marginTop: 2 },
+  inventorySummary: { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 14 },
+  inventorySummaryHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  inventorySummaryTitle: { fontSize: 15, fontWeight: '700' },
+  inventorySummarySub: { fontSize: 11, marginTop: 2 },
+  inventorySummaryIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  inventoryMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  inventoryMetric: { width: '47%', padding: 10, borderRadius: 10, backgroundColor: 'rgba(127, 127, 127, 0.08)' },
+  inventoryMetricValue: { fontSize: 18, fontWeight: '800' },
+  inventoryMetricLabel: { fontSize: 10, marginTop: 2 },
+  inventoryUnitNote: { fontSize: 10, marginTop: 10 },
+  historyHeader: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8, marginBottom: 10 },
+  historySubtitle: { fontSize: 10 },
+  historyToggle: { flexDirection: 'row', borderRadius: 8, borderWidth: 1, padding: 2 },
+  historyToggleBtn: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6 },
+  historyToggleText: { fontSize: 10, fontWeight: '700' },
+  historyCard: { padding: 12, borderRadius: 12, borderWidth: 1.5, marginBottom: 8 },
+  historyCardHeader: { flexDirection: 'row', alignItems: 'flex-start' },
+  historyTankName: { fontSize: 13, fontWeight: '700' },
+  historyMeta: { fontSize: 10, marginTop: 2 },
+  historyStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 7 },
+  historyStatusText: { fontSize: 10, fontWeight: '700' },
+  historyGrid: { flexDirection: 'row', flexWrap: 'wrap', borderTopWidth: StyleSheet.hairlineWidth, marginTop: 10, paddingTop: 9, gap: 8 },
+  historyCell: { width: '22%' },
+  historyCellLabel: { fontSize: 9 },
+  historyCellValue: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  historyBreakdown: { fontSize: 10, marginTop: 9 },
+  currentLevelRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
+  currentLevelValue: { fontSize: 14, fontWeight: '800' },
+  dipHistoryReadingList: { gap: 6, marginTop: 10 },
+  dipHistoryReading: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 9, borderRadius: 9, borderWidth: 1 },
+  historyReadingValue: { fontSize: 13, fontWeight: '800', marginTop: 2 },
+  historyChange: { fontSize: 10, fontWeight: '700', textAlign: 'right' },
 
-  metricsRow:   { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  metricCard:   { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1 },
-  metricValue:  { fontSize: 15, fontWeight: '700' },
-  metricLabel:  { fontSize: 10, marginTop: 2 },
-  cashPosCard:  { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 12 },
-  cashPosTitle: { fontSize: 13, fontWeight: '700', marginBottom: 10 },
-  cashPosRow:   { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  cashPosItem:  { flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center', gap: 3 },
-  cashPosValue: { fontSize: 16, fontWeight: '700' },
-  cashPosLabel: { fontSize: 10 },
-  posBar:       { height: 6, borderRadius: 3, overflow: 'hidden', flexDirection: 'row', marginBottom: 4 },
-  posBarCash:   { borderRadius: 3 },
-  posBarPos:    { borderRadius: 3 },
-  posBarLabel:  { fontSize: 10, textAlign: 'center' },
-  prodRowSales: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  prodCardSales:{ flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
-  prodLabelSales:{ fontSize: 12, fontWeight: '700' },
-  prodLSales:   { fontSize: 13, fontWeight: '700', marginTop: 2 },
-  calcPreview:  { padding: 12, borderRadius: 10, borderWidth: 1, gap: 6, marginBottom: 4 },
-  calcRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  calcLabel:    { fontSize: 12 },
-  calcValue:    { fontSize: 14, fontWeight: '700' },
-  calcDivider:  { height: StyleSheet.hairlineWidth, marginVertical: 2 },
-  saleAmt:          { fontSize: 15, fontWeight: '700' },
-  saleL:            { fontSize: 11, marginTop: 2 },
-  shiftStatusBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
-  shiftStatusText:  { fontSize: 10, fontWeight: '600' },
-  posChip:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, borderWidth: 1 },
-  posChipText:  { fontSize: 11, fontWeight: '600' },
-
-  priBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  priText:      { fontSize: 11, fontWeight: '700' },
 });

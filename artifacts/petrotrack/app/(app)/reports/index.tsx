@@ -15,6 +15,7 @@ import {
   buildPdf, getPerms, matchesProd, nfmt, periodRange,
   priBg, priColor, stColor,
 } from '@/lib/report-helpers';
+import { useLocalSearchParams } from 'expo-router';
 
 /* ═══════════════════════════════════════════════════════════
    EXPORT — iOS-native share sheet (no print dialog)
@@ -115,7 +116,9 @@ export default function ReportsScreen() {
   const safeProposals   = Array.isArray(priceProposals)   ? priceProposals   : [];
   const safePumpReports = Array.isArray(pumpDailyReports) ? pumpDailyReports : [];
 
-  const defaultType: ReportType = perms.visible[0] ?? 'summary';
+  const params = useLocalSearchParams<{ type?: string }>();
+  const requestedType = params.type as ReportType | undefined;
+  const defaultType: ReportType = requestedType && perms.visible.includes(requestedType) ? requestedType : (perms.visible[0] ?? 'summary');
   // att and mgr are locked to their own branch; other roles can switch branches
   const [selBranch,  setSelBranch]  = useState<string | null>(isBranchLocked ? (branchId ?? null) : null);
   const [reportType, setReportType] = useState<ReportType>(defaultType);
@@ -426,8 +429,8 @@ export default function ReportsScreen() {
 
       {/* ── Compact top bar: Period + Branch ── */}
       <View style={[s.topBar, { borderBottomColor: colors.border }]}>
-        {/* Period chips */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6, paddingRight: 8 }}>
+        {/* Period chips — wrap so all stay visible */}
+        <View style={s.chipWrap}>
           {PERIODS.map(p => {
             const active = period === p;
             return (
@@ -437,10 +440,10 @@ export default function ReportsScreen() {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
         {/* Branch chips — hidden for att and mgr (locked to their branch) */}
         {!isBranchLocked && safeBranches.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 5, paddingRight: 4 }}>
+          <View style={s.chipWrap}>
             {([{ id: null, name: 'All' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
               const active = selBranch === b.id;
               return (
@@ -451,41 +454,31 @@ export default function ReportsScreen() {
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
         )}
       </View>
 
+      {/* ── Report type selector (horizontal chip strip) ── */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        style={[s.typeScroll, { borderBottomColor: colors.border }]}
+        contentContainerStyle={s.typeScrollContent}>
+        {perms.visible.map(rt => {
+          const m = REPORT_META[rt];
+          const active = reportType === rt;
+          return (
+            <TouchableOpacity key={rt} onPress={() => setReportType(rt)} activeOpacity={0.75}
+              style={[s.typeChip, { backgroundColor: active ? m.color : colors.surface, borderColor: active ? m.color : colors.border }]}>
+              <View style={[s.typeChipIcon, { backgroundColor: active ? 'rgba(255,255,255,0.22)' : m.color + '1A' }]}>
+                <Ionicons name={m.icon as any} size={14} color={active ? '#fff' : m.color} />
+              </View>
+              <Text style={[s.typeChipLabel, { color: active ? '#fff' : colors.text }]}>{m.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
       {/* ── Data ── */}
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* ── Report type grid (2 columns) ── */}
-        <View style={s.typeGrid}>
-          {perms.visible.map(rt => {
-            const m = REPORT_META[rt];
-            const active = reportType === rt;
-            return (
-              <TouchableOpacity key={rt} onPress={() => setReportType(rt)}
-                activeOpacity={0.75}
-                style={[s.typeCard, {
-                  backgroundColor: active ? m.color : colors.surface,
-                  borderColor: active ? m.color : colors.border,
-                }]}>
-                <View style={[s.typeIconBox, { backgroundColor: active ? 'rgba(255,255,255,0.2)' : m.color + '18' }]}>
-                  <Ionicons name={m.icon as any} size={18} color={active ? '#fff' : m.color} />
-                </View>
-                <Text style={[s.typeCardLabel, { color: active ? '#fff' : colors.text }]}>{m.label}</Text>
-                <Text style={[s.typeCardDesc, { color: active ? 'rgba(255,255,255,0.75)' : colors.textMuted }]} numberOfLines={2}>
-                  {m.desc}
-                </Text>
-                {active && (
-                  <View style={s.typeActiveCheck}>
-                    <Ionicons name="checkmark-circle" size={14} color="rgba(255,255,255,0.9)" />
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
 
         {/* ── Report header strip (with inline export) ── */}
         <View style={[s.reportStrip, { backgroundColor: meta.color }]}>
@@ -972,18 +965,18 @@ function ProdSaleRow({ p, colors }: { p: any; colors: any }) {
 const s = StyleSheet.create({
   /* ── Top bar ── */
   topBar:         { paddingHorizontal: 14, paddingVertical: 8, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth },
-  periodChip:     { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
-  periodChipTxt:  { fontSize: 12, fontWeight: '600' },
+  chipWrap:       { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  periodChip:     { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 16, borderWidth: 1 },
+  periodChipTxt:  { fontSize: 11, fontWeight: '600' },
   branchChip:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1 },
   branchChipTxt:  { fontSize: 11, fontWeight: '500' },
 
-  /* ── Type card grid ── */
-  typeGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  typeCard:       { width: '48%', padding: 13, borderRadius: 14, borderWidth: 1.5, position: 'relative', minHeight: 100 },
-  typeIconBox:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  typeCardLabel:  { fontSize: 13, fontWeight: '700', marginBottom: 3 },
-  typeCardDesc:   { fontSize: 11, lineHeight: 15 },
-  typeActiveCheck:{ position: 'absolute', top: 10, right: 10 },
+  /* ── Type chip strip ── */
+  typeScroll:       { borderBottomWidth: StyleSheet.hairlineWidth },
+  typeScrollContent:{ flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 10 },
+  typeChip:         { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5 },
+  typeChipIcon:     { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  typeChipLabel:    { fontSize: 12, fontWeight: '700' },
 
   /* ── Report header strip ── */
   scroll:         { padding: 14 },

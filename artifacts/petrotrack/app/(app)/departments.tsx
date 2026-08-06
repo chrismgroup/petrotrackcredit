@@ -69,8 +69,7 @@ function DeptFormModal({
 
               {/* Icon picker */}
               <Text style={[styles.label, { color: colors.textMuted }]}>Icon</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} keyboardShouldPersistTaps="handled">
-                <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                   {ICON_OPTIONS.map(ic => (
                     <TouchableOpacity
                       key={ic}
@@ -83,8 +82,7 @@ function DeptFormModal({
                       <Ionicons name={ic as any} size={20} color={form.icon === ic ? roleColor : colors.textMuted} />
                     </TouchableOpacity>
                   ))}
-                </View>
-              </ScrollView>
+              </View>
 
               {/* Color picker */}
               <Text style={[styles.label, { color: colors.textMuted }]}>Colour</Text>

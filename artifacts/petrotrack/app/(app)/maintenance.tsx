@@ -13,13 +13,18 @@ const PRI_COLORS: Record<string, { bg: string; fg: string }> = {
 };
 
 export default function MaintenanceScreen() {
-  const { role, maintenance, addMaintenance, userName } = useApp();
+  const { role, maintenance, addMaintenance, updateMaintenance, deleteMaintenance, userName } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const canSubmit = role === 'mgr' || role === 'att' || role === 'csm' || role === 'admin';
+  const canManage = canSubmit || role === 'md';
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', pri: 'Urgent' as 'Urgent' | 'Medium' | 'Low' });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editPri, setEditPri] = useState<'Urgent' | 'Medium' | 'Low'>('Urgent');
+  const [editCost, setEditCost] = useState('');
 
   const open = maintenance.filter(m => m.st === 'Open');
   const done = maintenance.filter(m => m.st === 'Done');
@@ -30,6 +35,41 @@ export default function MaintenanceScreen() {
     setForm({ title: '', pri: 'Urgent' });
     setShowForm(false);
     Alert.alert('Submitted', 'Maintenance request logged.');
+  }
+
+  function startEdit(item: typeof maintenance[0]) {
+    setEditingId(item.id);
+    setEditTitle(item.title);
+    setEditPri(item.pri);
+    setEditCost(item.cost !== undefined ? String(item.cost) : '');
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditTitle('');
+    setEditPri('Urgent');
+    setEditCost('');
+  }
+
+  function saveEdit(id: number) {
+    if (!editTitle.trim()) {
+      Alert.alert('Required', 'Please enter a description.');
+      return;
+    }
+    const cost = parseFloat(editCost.replace(/,/g, ''));
+    updateMaintenance(id, {
+      title: editTitle.trim(),
+      pri: editPri,
+      cost: Number.isNaN(cost) ? undefined : cost,
+    });
+    cancelEdit();
+  }
+
+  function handleDelete(item: typeof maintenance[0]) {
+    Alert.alert('Delete Maintenance?', `Remove "${item.title}"? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteMaintenance(item.id) },
+    ]);
   }
 
   return (
@@ -94,18 +134,72 @@ export default function MaintenanceScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Open Items</Text>
             {open.map(m => (
               <View key={m.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.cardHeader}>
-                  <Text style={[styles.cardTitle, { color: colors.text }]}>{m.title}</Text>
-                  <View style={[styles.priBadge, { backgroundColor: PRI_COLORS[m.pri].bg }]}>
-                    <Text style={[styles.priText, { color: PRI_COLORS[m.pri].fg }]}>{m.pri}</Text>
-                  </View>
-                </View>
-                <View style={styles.cardMeta}>
-                  <Ionicons name="person-outline" size={12} color={colors.textMuted} />
-                  <Text style={[styles.metaText, { color: colors.textMuted }]}>by {m.by}</Text>
-                  <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-                  <Text style={[styles.metaText, { color: colors.textMuted }]}>{fmtDate(m.date)}</Text>
-                </View>
+                {editingId === m.id ? (
+                  <>
+                    <Text style={[styles.formTitle, { color: colors.text }]}>Edit Maintenance</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
+                      value={editTitle}
+                      onChangeText={setEditTitle}
+                      multiline
+                      numberOfLines={2}
+                      textAlignVertical="top"
+                    />
+                    <Text style={[styles.formLabel, { color: colors.textMuted }]}>Priority</Text>
+                    <View style={styles.priRow}>
+                      {(['Urgent', 'Medium', 'Low'] as const).map(p => (
+                        <TouchableOpacity key={p} onPress={() => setEditPri(p)}
+                          style={[styles.priBtn, { backgroundColor: editPri === p ? PRI_COLORS[p].fg : colors.background, borderColor: editPri === p ? PRI_COLORS[p].fg : colors.border }]}>
+                          <Text style={{ color: editPri === p ? '#fff' : colors.textMuted, fontSize: 13, fontWeight: '600' }}>{p}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <Text style={[styles.formLabel, { color: colors.textMuted }]}>Cost (₦)</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text, minHeight: 44 }]}
+                      value={editCost}
+                      onChangeText={setEditCost}
+                      keyboardType="decimal-pad"
+                      placeholder="Optional"
+                      placeholderTextColor={colors.textSubtle}
+                    />
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={() => saveEdit(m.id)}>
+                        <Text style={styles.submitBtnText}>Save</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={cancelEdit}>
+                        <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.cardHeader}>
+                      <Text style={[styles.cardTitle, { color: colors.text }]}>{m.title}</Text>
+                      <View style={[styles.priBadge, { backgroundColor: PRI_COLORS[m.pri].bg }]}>
+                        <Text style={[styles.priText, { color: PRI_COLORS[m.pri].fg }]}>{m.pri}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.cardMeta}>
+                      <Ionicons name="person-outline" size={12} color={colors.textMuted} />
+                      <Text style={[styles.metaText, { color: colors.textMuted }]}>by {m.by}</Text>
+                      <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
+                      <Text style={[styles.metaText, { color: colors.textMuted }]}>{fmtDate(m.date)}</Text>
+                    </View>
+                    {canManage && (
+                      <View style={styles.actionRow}>
+                        <TouchableOpacity style={[styles.outlineAction, { borderColor: roleColor, backgroundColor: roleColor + '12' }]} onPress={() => startEdit(m)}>
+                          <Ionicons name="create-outline" size={15} color={roleColor} />
+                          <Text style={[styles.outlineActionText, { color: roleColor }]}>Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.outlineAction, { borderColor: '#A32D2D', backgroundColor: '#FCEBEB' }]} onPress={() => handleDelete(m)}>
+                          <Ionicons name="trash-outline" size={15} color="#A32D2D" />
+                          <Text style={[styles.outlineActionText, { color: '#A32D2D' }]}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                )}
               </View>
             ))}
           </>
@@ -149,6 +243,9 @@ const styles = StyleSheet.create({
   submitBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   cancelBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
   cancelBtnText: { fontSize: 14, fontWeight: '600' },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  outlineAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5 },
+  outlineActionText: { fontSize: 13, fontWeight: '700' },
   summaryRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   summaryCard: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   summaryNum: { fontSize: 24, fontWeight: '700' },

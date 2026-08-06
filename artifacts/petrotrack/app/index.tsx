@@ -13,7 +13,7 @@ import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { type LoginError, apiLogin } from '@/lib/api';
 
-const BIOMETRIC_KEY = 'gastsmarts_biometric_creds';
+const BIOMETRIC_KEY = 'petrotrack_biometric_creds';
 
 async function saveCredentials(username: string, password: string) {
   if (Platform.OS === 'web') return;
@@ -91,7 +91,7 @@ export default function LoginScreen() {
     setBioLoading(true);
     try {
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Sign in to Gastsmarts',
+        promptMessage: 'Sign in to Petrotrack',
         cancelLabel: 'Use password',
         disableDeviceFallback: false,
       });
@@ -147,7 +147,7 @@ export default function LoginScreen() {
         <View style={styles.logoRing}>
           <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
         </View>
-        <Text style={styles.appName}>Gastsmarts</Text>
+        <Text style={styles.appName}>Petrotrack</Text>
         <Text style={styles.tagline}>Fuel Station Management System</Text>
 
         {/* Trust indicators */}

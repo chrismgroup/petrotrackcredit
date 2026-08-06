@@ -3,7 +3,7 @@ name: LPG unit convention
 description: LPG is tracked in kg, not litres; how to keep labels and audit copy consistent across the app.
 ---
 
-**Rule:** In Gastsmarts, LPG tank capacity, dip readings, deliveries, and stock levels are always tracked in **kg**. All other fuel products (PMS, AGO, DPK) are tracked in **litres (L)**.
+**Rule:** In Petrotrack, LPG tank capacity, dip readings, deliveries, and stock levels are always tracked in **kg**. All other fuel products (PMS, AGO, DPK) are tracked in **litres (L)**.
 
 **Why:** The business treats LPG as a gas sold by weight, while liquid fuels are sold by volume. Showing LPG in litres caused the stock numbers to look wrong.
 

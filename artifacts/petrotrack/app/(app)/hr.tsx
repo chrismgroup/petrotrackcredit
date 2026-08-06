@@ -76,13 +76,13 @@ function fmtSize(b?: number) {
 
 function buildAppointmentLetter(emp: HREmployee, grade: string, salary: string, by: string) {
   const today = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' });
-  return `GASTSMARTS LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\n\nAPPOINTMENT LETTER\n\nDear ${emp.name.split(' ')[0]},\n\nWe are pleased to offer you employment with Gastsmarts Limited in the capacity of ${emp.role}, effective ${fmtDate(emp.joinDate)}.\n\nPosition:    ${emp.role}\nDepartment:  ${emp.dept}\nStaff ID:    ${emp.empId}\nGrade Level: ${grade || 'As agreed'}\nAnnual Salary: ₦${salary ? Number(salary.replace(/,/g, '')).toLocaleString() : '—'}\n\nThis appointment is subject to:\n1. Satisfactory completion of all pre-employment documentation.\n2. A probationary period of three (3) months from the date of assumption of duties.\n3. Compliance with the Company's Code of Conduct and all HR policies.\n\nPlease sign and return a copy of this letter to confirm your acceptance.\n\nCongratulations and welcome to Gastsmarts.\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nGastsmarts Limited`;
+  return `PETROTRACK LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\n\nAPPOINTMENT LETTER\n\nDear ${emp.name.split(' ')[0]},\n\nWe are pleased to offer you employment with Petrotrack Limited in the capacity of ${emp.role}, effective ${fmtDate(emp.joinDate)}.\n\nPosition:    ${emp.role}\nDepartment:  ${emp.dept}\nStaff ID:    ${emp.empId}\nGrade Level: ${grade || 'As agreed'}\nAnnual Salary: ₦${salary ? Number(salary.replace(/,/g, '')).toLocaleString() : '—'}\n\nThis appointment is subject to:\n1. Satisfactory completion of all pre-employment documentation.\n2. A probationary period of three (3) months from the date of assumption of duties.\n3. Compliance with the Company's Code of Conduct and all HR policies.\n\nPlease sign and return a copy of this letter to confirm your acceptance.\n\nCongratulations and welcome to Petrotrack.\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nPetrotrack Limited`;
 }
 
 function buildPromotionLetter(emp: HREmployee, newRole: string, effDate: string, newGrade: string, by: string) {
   const today = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' });
   const dateStr = effDate ? fmtDate(effDate) : today;
-  return `GASTSMARTS LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\nStaff ID: ${emp.empId}\nCurrent Position: ${emp.role}\n\nLETTER OF PROMOTION\n\nDear ${emp.name.split(' ')[0]},\n\nOn behalf of Management of Gastsmarts Limited, we are delighted to inform you of your promotion to the position of ${newRole}, effective ${dateStr}.\n\nNew Position: ${newRole}\nDepartment:   ${emp.dept}\nEffective:    ${dateStr}\nNew Grade:    ${newGrade || 'As communicated'}\n\nThis promotion is in recognition of your dedication, hard work, and consistent contribution to the growth of the organisation. We are confident that you will excel in your new role.\n\nApplicable salary and benefits adjustments will be communicated by the Finance department.\n\nCongratulations on this well-deserved achievement!\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nGastsmarts Limited`;
+  return `PETROTRACK LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\nStaff ID: ${emp.empId}\nCurrent Position: ${emp.role}\n\nLETTER OF PROMOTION\n\nDear ${emp.name.split(' ')[0]},\n\nOn behalf of Management of Petrotrack Limited, we are delighted to inform you of your promotion to the position of ${newRole}, effective ${dateStr}.\n\nNew Position: ${newRole}\nDepartment:   ${emp.dept}\nEffective:    ${dateStr}\nNew Grade:    ${newGrade || 'As communicated'}\n\nThis promotion is in recognition of your dedication, hard work, and consistent contribution to the growth of the organisation. We are confident that you will excel in your new role.\n\nApplicable salary and benefits adjustments will be communicated by the Finance department.\n\nCongratulations on this well-deserved achievement!\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nPetrotrack Limited`;
 }
 
 type TabId = 'employees' | 'handbooks' | 'recommendations' | 'approvals';
@@ -1010,7 +1010,7 @@ export default function HRScreen() {
                 { label: 'Phone Number *',   val: newPhone,   set: setNewPhone,   ph: '+234 8XX XXX XXXX',        kb: 'phone-pad' as const },
                 { label: 'Annual Salary ₦',  val: newSalary,  set: setNewSalary,  ph: 'e.g. 1200000',            kb: 'numeric' as const },
                 { label: 'Grade Level',      val: newGrade,   set: setNewGrade,   ph: 'e.g. GL 08',               kb: 'default' as const },
-                { label: 'Email',            val: newEmail,   set: setNewEmail,   ph: 'name@gastsmarts.com',      kb: 'email-address' as const },
+                { label: 'Email',            val: newEmail,   set: setNewEmail,   ph: 'name@petrotrack.com',      kb: 'email-address' as const },
                 { label: 'Date of Birth',    val: newDob,     set: setNewDob,     ph: 'YYYY-MM-DD',               kb: 'default' as const },
                 { label: 'Home Address',     val: newAddr,    set: setNewAddr,    ph: 'Street, City, State',      kb: 'default' as const },
                 { label: 'Next of Kin',      val: newKin,     set: setNewKin,     ph: 'Full name',                kb: 'default' as const },
@@ -1335,21 +1335,19 @@ export default function HRScreen() {
           </View>
 
           <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>System Role *</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-            <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 4 }}>
-              {ROLE_OPTS.map(r => (
-                <TouchableOpacity key={r} onPress={() => setARole(r)}
-                  style={[styles.chip, {
-                    backgroundColor: r === aRole ? ROLE_COLORS[r] + '22' : colors.surface,
-                    borderColor: r === aRole ? ROLE_COLORS[r] : colors.border,
-                  }]}>
-                  <Text style={[styles.chipText, { color: r === aRole ? ROLE_COLORS[r] : colors.textMuted }]}>
-                    {ROLE_LABELS[r] ?? r}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4, marginBottom: 10 }}>
+            {ROLE_OPTS.map(r => (
+              <TouchableOpacity key={r} onPress={() => setARole(r)}
+                style={[styles.chip, {
+                  backgroundColor: r === aRole ? ROLE_COLORS[r] + '22' : colors.surface,
+                  borderColor: r === aRole ? ROLE_COLORS[r] : colors.border,
+                }]}>
+                <Text style={[styles.chipText, { color: r === aRole ? ROLE_COLORS[r] : colors.textMuted }]}>
+                  {ROLE_LABELS[r] ?? r}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username *</Text>
           <TextInput value={aUsername} onChangeText={setAUsername}
@@ -1368,19 +1366,17 @@ export default function HRScreen() {
           </View>
 
           <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch *</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-            <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 4 }}>
-              {branches.map(b => (
-                <TouchableOpacity key={b.id} onPress={() => setABranch(b.id)}
-                  style={[styles.chip, {
-                    backgroundColor: b.id === aBranch ? '#1a6e3c22' : colors.surface,
-                    borderColor: b.id === aBranch ? '#1a6e3c' : colors.border,
-                  }]}>
-                  <Text style={[styles.chipText, { color: b.id === aBranch ? '#1a6e3c' : colors.textMuted }]}>{b.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4, marginBottom: 12 }}>
+            {branches.map(b => (
+              <TouchableOpacity key={b.id} onPress={() => setABranch(b.id)}
+                style={[styles.chip, {
+                  backgroundColor: b.id === aBranch ? '#1a6e3c22' : colors.surface,
+                  borderColor: b.id === aBranch ? '#1a6e3c' : colors.border,
+                }]}>
+                <Text style={[styles.chipText, { color: b.id === aBranch ? '#1a6e3c' : colors.textMuted }]}>{b.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <TouchableOpacity onPress={handleConfirmApprove} disabled={isApproving}
             style={[styles.submitBtn, { backgroundColor: isApproving ? '#555' : '#1a6e3c' }]}>

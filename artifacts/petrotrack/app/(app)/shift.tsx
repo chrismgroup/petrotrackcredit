@@ -438,9 +438,7 @@ export default function ShiftReportScreen() {
     <ScreenLayout title="Shift Report">
 
       {/* Tab bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        style={[c.tabBarWrap, { borderBottomColor: colors.border }]}
-        contentContainerStyle={c.tabBar}>
+      <View style={[c.tabBar, { borderBottomColor: colors.border }]}>
         {visibleTabs.map(t => {
           const active = tab === t.key;
           return (
@@ -457,7 +455,7 @@ export default function ShiftReportScreen() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
       {/* ══ ATTENDANT: DASHBOARD ══ */}
       {tab === 'dashboard' && (
@@ -631,21 +629,19 @@ export default function ShiftReportScreen() {
             <>
               {/* Pump selector */}
               <Text style={[c.sectionLabel, { color: colors.textMuted }]}>Select Pump</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {activePumps.map(p => {
-                    const active = selPump === p.id;
-                    return (
-                      <TouchableOpacity key={p.id} onPress={() => { setSelPump(p.id); setCloseMeter(''); }}
-                        style={[c.pumpChip, { backgroundColor: active ? roleColor : colors.surface, borderColor: active ? roleColor : colors.border }]}>
-                        <Ionicons name="speedometer-outline" size={13} color={active ? '#fff' : colors.textMuted} />
-                        <Text style={[c.pumpChipTxt, { color: active ? '#fff' : colors.textMuted }]}>{p.name}</Text>
-                        <Text style={[c.pumpProd, { color: active ? 'rgba(255,255,255,0.8)' : colors.textSubtle }]}>{p.prod}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                {activePumps.map(p => {
+                  const active = selPump === p.id;
+                  return (
+                    <TouchableOpacity key={p.id} onPress={() => { setSelPump(p.id); setCloseMeter(''); }}
+                      style={[c.pumpChip, { backgroundColor: active ? roleColor : colors.surface, borderColor: active ? roleColor : colors.border }]}>
+                      <Ionicons name="speedometer-outline" size={13} color={active ? '#fff' : colors.textMuted} />
+                      <Text style={[c.pumpChipTxt, { color: active ? '#fff' : colors.textMuted }]}>{p.name}</Text>
+                      <Text style={[c.pumpProd, { color: active ? 'rgba(255,255,255,0.8)' : colors.textSubtle }]}>{p.prod}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
               {todayBlockingReport ? (
                 <View style={[c.alreadyCard, {
@@ -1222,9 +1218,8 @@ export default function ShiftReportScreen() {
 /* ── Styles ───────────────────────────────────────────── */
 const c = StyleSheet.create({
   center:        { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  tabBarWrap:    { borderBottomWidth: StyleSheet.hairlineWidth },
-  tabBar:        { flexDirection: 'row', paddingHorizontal: 14, gap: 4 },
-  tabBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 2.5 },
+  tabBar:        { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 14, gap: 4, borderBottomWidth: StyleSheet.hairlineWidth },
+  tabBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 2.5 },
   tabLabel:      { fontSize: 13 },
   tabBadge:      { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9, minWidth: 18, alignItems: 'center' },
   tabBadgeTxt:   { fontSize: 10, fontWeight: '800', color: '#fff' },

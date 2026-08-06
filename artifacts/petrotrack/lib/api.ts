@@ -4,7 +4,7 @@ function getBase(): string {
   if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
     return `${window.location.origin}/api`;
   }
-  const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? 'gastsmart.replit.app';
+  const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? 'petrotrack.replit.app';
   return `https://${DOMAIN}/api`;
 }
 

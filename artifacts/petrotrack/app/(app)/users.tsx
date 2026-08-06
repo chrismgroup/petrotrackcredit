@@ -856,24 +856,22 @@ export default function UsersScreen() {
                   </View>
 
                   <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Role *</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                    <View style={{ flexDirection: 'row', gap: 6 }}>
-                      {ROLE_OPTS.map(r => {
-                        const rc = ROLE_COLORS[r] || roleColor;
-                        return (
-                          <TouchableOpacity
-                            key={r}
-                            onPress={() => setVaRole(r)}
-                            style={[styles.roleChip, { backgroundColor: vaRole === r ? rc : colors.background, borderColor: vaRole === r ? rc : colors.border }]}
-                          >
-                            <Text style={[styles.roleChipText, { color: vaRole === r ? '#fff' : colors.textMuted }]}>
-                              {ROLE_LABELS[r] ?? r}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </ScrollView>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                    {ROLE_OPTS.map(r => {
+                      const rc = ROLE_COLORS[r] || roleColor;
+                      return (
+                        <TouchableOpacity
+                          key={r}
+                          onPress={() => setVaRole(r)}
+                          style={[styles.roleChip, { backgroundColor: vaRole === r ? rc : colors.background, borderColor: vaRole === r ? rc : colors.border }]}
+                        >
+                          <Text style={[styles.roleChipText, { color: vaRole === r ? '#fff' : colors.textMuted }]}>
+                            {ROLE_LABELS[r] ?? r}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
 
                   <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch * <Text style={{ color: '#c0392b', fontWeight: '400', fontSize: 11 }}>(required)</Text></Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
@@ -970,20 +968,18 @@ export default function UsersScreen() {
           </View>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Role *</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {ROLE_OPTS.map(r => {
-                  const rc = ROLE_COLORS[r] || roleColor;
-                  return (
-                    <TouchableOpacity key={r} onPress={() => setARole(r)}
-                      style={[styles.roleChip, { backgroundColor: aRole === r ? rc : colors.surface, borderColor: aRole === r ? rc : colors.border }]}
-                    >
-                      <Text style={[styles.roleChipText, { color: aRole === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              {ROLE_OPTS.map(r => {
+                const rc = ROLE_COLORS[r] || roleColor;
+                return (
+                  <TouchableOpacity key={r} onPress={() => setARole(r)}
+                    style={[styles.roleChip, { backgroundColor: aRole === r ? rc : colors.surface, borderColor: aRole === r ? rc : colors.border }]}
+                  >
+                    <Text style={[styles.roleChipText, { color: aRole === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch *</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
               {branches.map(b => (
@@ -1038,20 +1034,18 @@ export default function UsersScreen() {
             </View>
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Role</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {ROLE_OPTS.map(r => {
-                    const rc = ROLE_COLORS[r] || roleColor;
-                    return (
-                      <TouchableOpacity key={r} onPress={() => setERole(r)}
-                        style={[styles.roleChip, { backgroundColor: eRole === r ? rc : colors.surface, borderColor: eRole === r ? rc : colors.border }]}
-                      >
-                        <Text style={[styles.roleChipText, { color: eRole === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                {ROLE_OPTS.map(r => {
+                  const rc = ROLE_COLORS[r] || roleColor;
+                  return (
+                    <TouchableOpacity key={r} onPress={() => setERole(r)}
+                      style={[styles.roleChip, { backgroundColor: eRole === r ? rc : colors.surface, borderColor: eRole === r ? rc : colors.border }]}
+                    >
+                      <Text style={[styles.roleChipText, { color: eRole === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                 {branches.map(b => (
@@ -1131,20 +1125,18 @@ export default function UsersScreen() {
               <TextInput style={[styles.input, { color: colors.text }]} value={cEmpName} onChangeText={setCEmpName} placeholder="e.g. Amaka Okafor" placeholderTextColor={colors.textSubtle} />
             </View>
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Role *</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {ROLE_OPTS.map(r => {
-                  const rc = ROLE_COLORS[r] || roleColor;
-                  return (
-                    <TouchableOpacity key={r} onPress={() => setCRole(r)}
-                      style={[styles.roleChip, { backgroundColor: cRole === r ? rc : colors.surface, borderColor: cRole === r ? rc : colors.border }]}
-                    >
-                      <Text style={[styles.roleChipText, { color: cRole === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              {ROLE_OPTS.map(r => {
+                const rc = ROLE_COLORS[r] || roleColor;
+                return (
+                  <TouchableOpacity key={r} onPress={() => setCRole(r)}
+                    style={[styles.roleChip, { backgroundColor: cRole === r ? rc : colors.surface, borderColor: cRole === r ? rc : colors.border }]}
+                  >
+                    <Text style={[styles.roleChipText, { color: cRole === r ? '#fff' : colors.textMuted }]}>{ROLE_LABELS[r] ?? r}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
               {branches.length === 0
