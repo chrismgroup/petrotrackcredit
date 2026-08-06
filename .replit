@@ -25,6 +25,7 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+packages = ["haskellPackages.servant-multipart-client"]
 
 [[ports]]
 localPort = 8080
