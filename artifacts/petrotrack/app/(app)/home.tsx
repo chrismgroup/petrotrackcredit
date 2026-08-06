@@ -224,7 +224,7 @@ export default function HomeScreen() {
     tanks, lpgTanks, dips,
     deliveries, maintenance, expenses, budgets,
     financialEntry, priceProposals,
-    pumpDailyReports, userAccounts, messages,
+    pumpDailyReports, userAccounts, messages, notifications,
     unreadCount, approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
     sales,
@@ -283,7 +283,7 @@ export default function HomeScreen() {
     pendingAccounts.length;
 
   // ── Unread messages ───────────────────────────────────────────────────
-  const unread = unreadCount();
+  const unread = unreadCount() + notifications.filter(item => !item.read).length;
   const unreadMessages = useMemo(() => {
     const all: { key: string; msg: Message }[] = [];
     for (const [key, thread] of Object.entries(messages)) {
@@ -359,7 +359,7 @@ export default function HomeScreen() {
               <Text style={s.heroName}>{userName || ROLE_LABELS[role] || role}</Text>
             </View>
             <TouchableOpacity
-              onPress={() => router.push(SCREEN_ROUTES.messages as never)}
+              onPress={() => router.push(SCREEN_ROUTES.notifications as never)}
               style={s.heroNotif}
               activeOpacity={0.8}
             >

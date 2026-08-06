@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.petrotrack.app",
+      "bundleIdentifier": "app.replit.petrotrack",
       "buildNumber": "51",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -39,14 +39,16 @@
       "expo-font",
       "expo-web-browser",
       "expo-document-picker"
+      ,"expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
       "eas": {
-        "projectId": "abb91eb6-23bc-46ee-a5b6-37315c8b56f6"
+        "projectId": "075f5965-7a4a-41dc-8700-f956b13b942f"
       }
-    }
+    },
+    "owner": "chrismoils-team"
   }
 }

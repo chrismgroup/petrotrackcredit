@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function Header({ title, rightAction }: Props) {
-  const { role, userName, logout, unreadCount, changeOwnPassword } = useApp();
+  const { role, userName, logout, unreadCount, notifications, changeOwnPassword } = useApp();
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -38,7 +38,7 @@ export function Header({ title, rightAction }: Props) {
   const userInitials = userName
     ? userName.trim().split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
     : (info?.initials || 'U');
-  const unread = unreadCount();
+  const unread = unreadCount() + notifications.filter(item => !item.read).length;
   const isAdmin = role === 'admin';
 
   function handleLogout() {
@@ -96,7 +96,7 @@ export function Header({ title, rightAction }: Props) {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.notifBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
-              onPress={() => router.replace('/(app)/messages' as never)}
+              onPress={() => router.replace('/(app)/notifications' as never)}
             >
               <Ionicons name={unread > 0 ? 'notifications' : 'notifications-outline'} size={20} color="#fff" />
               {unread > 0 && (

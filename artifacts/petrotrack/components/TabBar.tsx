@@ -11,6 +11,7 @@ const PRIMARY_TABS = [
   { id: 'home', label: 'Home', icon: 'home', route: SCREEN_ROUTES.home },
   { id: 'jobs', label: 'My Jobs', icon: 'briefcase', route: SCREEN_ROUTES.jobs },
   { id: 'messages', label: 'My Messages', icon: 'chatbubbles', route: SCREEN_ROUTES.messages },
+  { id: 'folder', label: 'My Folder', icon: 'folder', route: SCREEN_ROUTES.corp },
   { id: 'profile', label: 'My Profile', icon: 'person', route: SCREEN_ROUTES.profile },
 ] as const;
 
@@ -30,10 +31,15 @@ export function TabBar() {
 
   if (!role) return null;
   const roleColor = ROLE_COLORS[role] || colors.primary;
+  // My Folder remains a primary destination for every signed-in user because
+  // General Library is public to all users; its sensitive sections are gated
+  // inside the destination.
+  const canOpenFolder = !!role;
 
   function isActive(id: string): boolean {
     if (id === 'home') return pathname.includes('/home');
     if (id === 'messages') return pathname.includes('/messages') || pathname.includes('/comms');
+    if (id === 'folder') return pathname.includes('/corporate');
     if (id === 'profile') return pathname.includes('/profile');
     return JOB_PATHS.some(path => pathname.includes(`/${path}`));
   }
@@ -55,7 +61,7 @@ export function TabBar() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-      {PRIMARY_TABS.map(item => {
+      {PRIMARY_TABS.filter(item => item.id !== 'folder' || canOpenFolder).map(item => {
         const active = isActive(item.id);
         return (
           <TouchableOpacity key={item.id} style={styles.tab} onPress={() => navigate(item.route)} activeOpacity={0.7}>
@@ -89,7 +95,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   scrollContent: { flexDirection: 'row', paddingHorizontal: 6 },
-  tab: { flex: 1, minWidth: 82, alignItems: 'center', paddingVertical: 2, gap: 2 },
+  tab: { flex: 1, minWidth: 68, alignItems: 'center', paddingVertical: 2, gap: 2 },
   iconPill: {
     width: 44, height: 30, borderRadius: 15,
     alignItems: 'center', justifyContent: 'center',

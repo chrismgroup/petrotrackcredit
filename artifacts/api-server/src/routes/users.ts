@@ -92,15 +92,24 @@ router.post("/users", async (req, res): Promise<void> => {
   }
 });
 
-// PUT /users/:id — full update (admin only)
+// PUT /users/:id — full update (admin; HR may correct rejected enrollments)
 router.put("/users/:id", async (req, res): Promise<void> => {
-  if (req.auth?.role !== "admin") {
-    res.status(403).json({ error: "Admin only" });
-    return;
-  }
-
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const callerRole = req.auth?.role;
+  let existingStatus: string | undefined;
+  if (callerRole !== "admin") {
+    const [existing] = await db
+      .select({ status: staffUsersTable.status })
+      .from(staffUsersTable)
+      .where(eq(staffUsersTable.id, id));
+    existingStatus = existing?.status;
+    if (callerRole !== "csm" || existingStatus !== "rejected") {
+      res.status(403).json({ error: "HR may only edit rejected enrollments" });
+      return;
+    }
+  }
 
   const {
     empName, empId, username, password, role, branchId, status, jobTitle, dept,
@@ -109,21 +118,21 @@ router.put("/users/:id", async (req, res): Promise<void> => {
 
   const updates: Record<string, unknown> = {};
   if (empName           !== undefined) updates.empName           = empName;
-  if (empId             !== undefined) updates.empId             = empId;
-  if (username          !== undefined) updates.username          = username;
-  if (password          !== undefined) updates.password          = ensureHashed(password);
-  if (role              !== undefined) updates.role              = role;
-  if (branchId          !== undefined) updates.branchId          = branchId;
-  if (status            !== undefined) updates.status            = status;
-  if (jobTitle          !== undefined) updates.jobTitle          = jobTitle;
-  if (dept              !== undefined) updates.dept              = dept;
-  if (phoneNumber       !== undefined) updates.phoneNumber       = phoneNumber;
+  if (empId             !== undefined && callerRole === "admin") updates.empId = empId;
+  if (username          !== undefined && callerRole === "admin") updates.username = username;
+  if (password          !== undefined && callerRole === "admin") updates.password = ensureHashed(password);
+  if (role              !== undefined && callerRole === "admin") updates.role = role;
+  if (branchId          !== undefined && callerRole === "admin") updates.branchId = branchId;
+  if (status            !== undefined && callerRole === "admin") updates.status = status;
+  if (jobTitle          !== undefined) updates.jobTitle         = jobTitle;
+  if (dept              !== undefined) updates.dept             = dept;
+  if (phoneNumber       !== undefined) updates.phoneNumber      = phoneNumber;
   if (nin               !== undefined) updates.nin               = nin;
-  if (staffAddress      !== undefined) updates.staffAddress      = staffAddress;
-  if (guarantorName     !== undefined) updates.guarantorName     = guarantorName;
-  if (guarantorPhone    !== undefined) updates.guarantorPhone    = guarantorPhone;
-  if (guarantorAddress  !== undefined) updates.guarantorAddress  = guarantorAddress;
-  if (employmentDocs    !== undefined) updates.employmentDocs    = employmentDocs;
+  if (staffAddress      !== undefined) updates.staffAddress     = staffAddress;
+  if (guarantorName     !== undefined) updates.guarantorName    = guarantorName;
+  if (guarantorPhone    !== undefined) updates.guarantorPhone   = guarantorPhone;
+  if (guarantorAddress  !== undefined) updates.guarantorAddress = guarantorAddress;
+  if (employmentDocs    !== undefined) updates.employmentDocs   = employmentDocs;
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No updates provided" });
@@ -153,15 +162,15 @@ router.put("/users/:id", async (req, res): Promise<void> => {
 // MD:    pending_md → pending_admin | rejected
 router.patch("/users/:id/status", async (req, res): Promise<void> => {
   const callerRole = req.auth?.role;
-  if (callerRole !== "admin" && callerRole !== "md") {
-    res.status(403).json({ error: "Admin or MD only" });
+  if (callerRole !== "admin" && callerRole !== "md" && callerRole !== "csm") {
+    res.status(403).json({ error: "Admin, HR or MD only" });
     return;
   }
 
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { status, username, password, role, branchId } = req.body ?? {};
+  const { status, username, password, role, branchId, rejectionReason, rejectedBy } = req.body ?? {};
 
   // Validate MD's allowed transitions
   if (callerRole === "md") {
@@ -180,6 +189,21 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
     }
   }
 
+  if (callerRole === "csm") {
+    if (status !== "pending_admin") {
+      res.status(403).json({ error: "HR may only re-submit rejected enrollments" });
+      return;
+    }
+    const [existing] = await db
+      .select({ status: staffUsersTable.status })
+      .from(staffUsersTable)
+      .where(eq(staffUsersTable.id, id));
+    if (!existing || existing.status !== "rejected") {
+      res.status(400).json({ error: "Only rejected enrollments can be re-submitted by HR" });
+      return;
+    }
+  }
+
   const adminAllowed = ["active", "suspended", "rejected", "pending", "pending_md", "pending_admin"];
   if (callerRole === "admin" && !adminAllowed.includes(status)) {
     res.status(400).json({ error: `status must be one of: ${adminAllowed.join(", ")}` });
@@ -191,6 +215,18 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
   if (status === "pending_admin" && callerRole === "md") {
     updates.mdApprovedBy = req.auth?.username;
     updates.mdApprovedAt = new Date();
+  }
+
+  if (status === "pending_admin" && callerRole === "csm") {
+    updates.rejectionReason = null;
+    updates.rejectedBy = null;
+    updates.rejectedAt = null;
+  }
+
+  if (status === "rejected") {
+    updates.rejectionReason = typeof rejectionReason === "string" ? rejectionReason : null;
+    updates.rejectedBy = typeof rejectedBy === "string" ? rejectedBy : req.auth?.username ?? null;
+    updates.rejectedAt = new Date();
   }
 
   if (status === "active" && callerRole === "admin") {
@@ -220,17 +256,31 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
   }
 });
 
-// DELETE /users/:id (admin only)
+// DELETE /users/:id (admin; HR may remove rejected enrollments)
 router.delete("/users/:id", async (req, res): Promise<void> => {
-  if (req.auth?.role !== "admin") {
-    res.status(403).json({ error: "Admin only" });
-    return;
-  }
-
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  await db.delete(staffUsersTable).where(eq(staffUsersTable.id, id));
+  const callerRole = req.auth?.role;
+  if (callerRole !== "admin") {
+    const [existing] = await db
+      .select({ status: staffUsersTable.status })
+      .from(staffUsersTable)
+      .where(eq(staffUsersTable.id, id));
+    if (callerRole !== "csm" || existing?.status !== "rejected") {
+      res.status(403).json({ error: "HR may only delete rejected enrollments" });
+      return;
+    }
+  }
+
+  const deleted = await db
+    .delete(staffUsersTable)
+    .where(eq(staffUsersTable.id, id))
+    .returning({ id: staffUsersTable.id });
+  if (deleted.length === 0) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
   res.json({ ok: true });
 });
 

@@ -54,11 +54,11 @@ export default function PricesScreen() {
   const rc = ROLE_COLORS[role || 'md'] || colors.primary;
 
   /* Role capabilities */
-  const canSetDirect = role === 'ceo' || role === 'admin' || role === 'md';
+  const canSetDirect = role === 'ceo' || role === 'admin' || role === 'md' || role === 'mgr';
   const canApprove   = role === 'ceo' || role === 'admin';
   const canPropose   = !canSetDirect;
 
-  /* ── Set-price sheet (CEO / MD / admin) ── */
+  /* ── Set-price sheet (CEO / MD / admin / station manager) ── */
   const [setProd,   setSetProd]   = useState<keyof Prices | null>(null);
   const [setDraft,  setSetDraft]  = useState('');
   const [setReason, setSetReason] = useState('');
@@ -193,7 +193,7 @@ export default function PricesScreen() {
                 <Text style={[s.prodPrice, { color: price > 0 ? colors.text : colors.textSubtle }]}>
                   {price > 0 ? `₦${price.toLocaleString()}` : '—'}
                 </Text>
-                {/* CEO / MD / admin: set price directly */}
+                {/* CEO / MD / admin / station manager: set price directly */}
                 {canSetDirect ? (
                   <TouchableOpacity
                     onPress={() => openSet(prod)}
@@ -359,7 +359,7 @@ export default function PricesScreen() {
         <View style={{ height: 32 }} />
       </ScrollView>
 
-      {/* ══ Set Price Sheet (CEO / MD / admin) ══ */}
+      {/* ══ Set Price Sheet (CEO / MD / admin / station manager) ══ */}
       <Sheet visible={setProd !== null} onClose={() => { setSetProd(null); setSetReason(''); }}>
         <ScrollView style={[s.sheet, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={s.sheetHandle} />

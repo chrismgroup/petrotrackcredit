@@ -3,5 +3,10 @@
 - [Notification sound](notification-sound.md) — expo-audio (not expo-av, deprecated in SDK 54); bundled WAV at assets/sounds/notification.wav; hook in hooks/useNotificationSound.ts
 - [LPG unit convention](lpg-unit-convention.md) — LPG tank capacity and delivery quantities are tracked in kg, not litres; use `unitForProd` / `PROD_UNIT` helpers to render labels
 - [Authenticated state sync](authenticated-state-sync.md) — refresh full app state after login because initial unauthenticated sync can leave empty local defaults
-- [Four-dashboard navigation](four-dashboard-navigation.md) — primary app navigation is Home, My Jobs, My Messages, and My Profile; operational modules remain grouped beneath My Jobs
+- [Primary dashboard navigation](four-dashboard-navigation.md) — primary navigation is Home, My Jobs, My Messages, My Folder, and My Profile; operational modules remain grouped beneath My Jobs
 - [Startup health readiness](startup-health-readiness.md) — bind the API and serve health before database seeding or migrations
+- [EAS iOS credentials](eas-ios-credentials.md) — Expo tokens do not replace Apple signing setup for a newly linked EAS project
+- [My Folder shared storage](my-folder-storage.md) — approved My Folder users can create subfolders and upload any file type; metadata syncs through app state and bytes use protected object storage
+- [Rejected enrollment persistence](rejected-enrollment-persistence.md) — rejected status, reviewer, timestamp, and reason are authoritative in the staff-user record
+- [Price permissions](price-permissions.md) — direct selling-price changes are allowed for admin, CEO, MD, and station managers
+- [Push notifications](push-notifications.md) — durable inbox works in previews; native background delivery requires an EAS device build with Expo Notifications

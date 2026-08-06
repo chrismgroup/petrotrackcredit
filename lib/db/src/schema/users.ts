@@ -24,6 +24,9 @@ export const staffUsersTable = pgTable("staff_users", {
   approvedAt:       timestamp("approved_at", { withTimezone: true }),
   mdApprovedBy:     text("md_approved_by"),
   mdApprovedAt:     timestamp("md_approved_at", { withTimezone: true }),
+  rejectionReason:  text("rejection_reason"),
+  rejectedBy:       text("rejected_by"),
+  rejectedAt:       timestamp("rejected_at", { withTimezone: true }),
 });
 
 export type StaffUserRow    = typeof staffUsersTable.$inferSelect;

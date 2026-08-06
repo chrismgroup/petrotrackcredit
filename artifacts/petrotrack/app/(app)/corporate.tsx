@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import React, { useState } from 'react';
 import {
   Alert, Modal, ScrollView, StyleSheet, Text,
@@ -8,9 +10,11 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   CorpApproval, CorpAttachment, CorpProject, CorpRecordType,
-  LegalMatter, MeetingMinutes,
-  ROLE_COLORS, fmtDate, fmtDateTime, useApp,
+  LegalMatter, MeetingMinutes, MyFolder, MyFolderFile, MyFolderSection,
+  MY_FOLDER_ALLOWED_ROLES, ROLE_COLORS, fmtDate, fmtDateTime, useApp,
+  type Role,
 } from '@/context/AppContext';
+import { storageApi } from '@/lib/api';
 import { useColors } from '@/hooks/useColors';
 
 // ── Compliance helpers ──────────────────────────────────────────────────────
@@ -25,8 +29,6 @@ function getDocStatus(days: number) {
 }
 
 // ── File-type helpers ───────────────────────────────────────────────────────
-const FILE_CATS  = ['Policy','HR','Finance','Legal','Operations','Compliance','Contract','Other'];
-const DOC_FILE_TYPES = ['pdf','docx','xlsx','pptx','img','mp4','audio','zip','other'] as const;
 const ATT_FILE_TYPES = [
   { key: 'pdf',   label: 'PDF',   icon: 'document-text', color: '#E74C3C' },
   { key: 'docx',  label: 'DOCX',  icon: 'document',      color: '#2980B9' },
@@ -41,7 +43,263 @@ const ATT_FILE_TYPES = [
 const FILE_TYPE_MAP: Record<string, { icon: string; color: string }> = Object.fromEntries(
   ATT_FILE_TYPES.map(t => [t.key, { icon: t.icon, color: t.color }])
 );
-const FILE_SIZES = ['0.3 MB','0.6 MB','1.1 MB','1.8 MB','2.5 MB','4.2 MB','7.0 MB'];
+
+function attachmentType(fileName: string, mimeType?: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  if (mimeType?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext)) return 'img';
+  if (mimeType?.startsWith('video/') || ['mp4', 'mov', 'avi', 'mkv'].includes(ext)) return 'mp4';
+  if (mimeType?.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'aac'].includes(ext)) return 'audio';
+  if (['pdf'].includes(ext)) return 'pdf';
+  if (['doc', 'docx', 'rtf', 'odt'].includes(ext)) return 'docx';
+  if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) return 'xlsx';
+  if (['ppt', 'pptx', 'odp'].includes(ext)) return 'pptx';
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'zip';
+  return 'other';
+}
+
+function formatAttachmentSize(bytes: number): string {
+  if (!bytes) return 'Size unavailable';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+type Colors = ReturnType<typeof useColors>;
+
+function FolderWorkspacePanel({
+  section, folders, files, roleColor, colors, userName, addFolder, addFile,
+  removeFile, replaceFile, canManage,
+}: {
+  section: MyFolderSection;
+  folders: MyFolder[];
+  files: MyFolderFile[];
+  roleColor: string;
+  colors: Colors;
+  userName: string;
+  addFolder: (section: MyFolderSection, name: string) => void;
+  addFile: (file: Omit<MyFolderFile, 'id' | 'uploadedAt'>) => void;
+  removeFile: (id: number) => void;
+  replaceFile: (id: number, file: Omit<MyFolderFile, 'id' | 'uploadedAt'>) => void;
+  canManage: boolean;
+}) {
+  const [folderName, setFolderName] = useState('');
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const sectionFolders = folders.filter(f => f.section === section);
+  const sectionFiles = files.filter(f => f.section === section && f.folderId === selectedFolderId);
+
+  function createFolder() {
+    const name = folderName.trim();
+    if (!name) {
+      Alert.alert('Required', 'Enter a name for the new folder.');
+      return;
+    }
+    addFolder(section, name);
+    setFolderName('');
+  }
+
+  async function pickAndUploadFile(): Promise<Omit<MyFolderFile, 'id' | 'uploadedAt'> | null> {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return null;
+
+      const file = result.assets[0];
+      setUploading(true);
+      const fileInfo = await FileSystem.getInfoAsync(file.uri);
+      const size = Math.max(1, file.size ?? (fileInfo.exists ? (fileInfo as FileSystem.FileInfo & { size?: number }).size ?? 0 : 0));
+      const mimeType = file.mimeType ?? 'application/octet-stream';
+      const upload = await storageApi.requestUploadUrl(file.name, size, mimeType);
+      if (!upload) throw new Error('No upload URL returned');
+
+      const uploadResult = await FileSystem.uploadAsync(upload.uploadURL, file.uri, {
+        httpMethod: 'PUT',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: { 'Content-Type': mimeType },
+      });
+      if (uploadResult.status < 200 || uploadResult.status >= 300) {
+        throw new Error(`Upload failed: ${uploadResult.status}`);
+      }
+
+      return {
+        section,
+        folderId: selectedFolderId,
+        name: file.name,
+        objectPath: upload.objectPath,
+        mimeType,
+        size,
+        uploadedBy: userName || 'System',
+      };
+    } catch {
+      Alert.alert('Upload failed', 'The file could not be uploaded. Please try again.');
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function uploadNewFile() {
+    const uploaded = await pickAndUploadFile();
+    if (!uploaded) return;
+    addFile(uploaded);
+    Alert.alert('Uploaded', `${uploaded.name} was added to ${selectedFolderId === null ? 'the main folder' : 'the selected folder'}.`);
+  }
+
+  async function replaceExistingFile(existing: MyFolderFile) {
+    const replacement = await pickAndUploadFile();
+    if (!replacement) return;
+
+    if (existing.objectPath && !(await storageApi.deleteObject(existing.objectPath))) {
+      if (replacement.objectPath) await storageApi.deleteObject(replacement.objectPath);
+      throw new Error('The existing document could not be removed');
+    }
+
+    replaceFile(existing.id, replacement);
+    Alert.alert('Replaced', `${existing.name} was replaced with ${replacement.name}.`);
+  }
+
+  function confirmReplace(file: MyFolderFile) {
+    Alert.alert(
+      'Replace document',
+      `Choose a new file to replace "${file.name}". The old document will be removed after the new upload succeeds.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Choose replacement',
+          onPress: () => {
+            void replaceExistingFile(file).catch(() => {
+              Alert.alert('Replace failed', 'The existing document was kept. Please try again.');
+            });
+          },
+        },
+      ],
+    );
+  }
+
+  function confirmDelete(file: MyFolderFile) {
+    Alert.alert(
+      'Delete document',
+      `Remove "${file.name}" from this folder? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              if (file.objectPath && !(await storageApi.deleteObject(file.objectPath))) {
+                Alert.alert('Delete failed', 'The document could not be removed from storage.');
+                return;
+              }
+              removeFile(file.id);
+              Alert.alert('Deleted', `${file.name} was removed.`);
+            })();
+          },
+        },
+      ],
+    );
+  }
+
+  return (
+    <View style={[sty.workspacePanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={sty.workspaceHeader}>
+        <View style={[sty.workspaceIcon, { backgroundColor: roleColor + '18' }]}>
+          <Ionicons name="folder-open-outline" size={19} color={roleColor} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[sty.workspaceTitle, { color: colors.text }]}>Shared folders and files</Text>
+          <Text style={[sty.workspaceSub, { color: colors.textMuted }]}>Create folders and upload any file type.</Text>
+        </View>
+      </View>
+
+      <View style={sty.folderCreateRow}>
+        <TextInput
+          value={folderName}
+          onChangeText={setFolderName}
+          placeholder="New folder name"
+          placeholderTextColor={colors.textSubtle}
+          style={[sty.folderInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+        />
+        <TouchableOpacity onPress={createFolder} style={[sty.folderCreateBtn, { backgroundColor: roleColor }]}>
+          <Ionicons name="add" size={16} color="#fff" />
+          <Text style={sty.folderCreateTxt}>Folder</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={sty.folderChips}>
+        <TouchableOpacity
+          onPress={() => setSelectedFolderId(null)}
+          style={[sty.folderChip, { backgroundColor: selectedFolderId === null ? roleColor + '18' : colors.background, borderColor: selectedFolderId === null ? roleColor : colors.border }]}
+        >
+          <Ionicons name="folder-outline" size={14} color={selectedFolderId === null ? roleColor : colors.textMuted} />
+          <Text style={[sty.folderChipTxt, { color: selectedFolderId === null ? roleColor : colors.textMuted }]}>Main folder</Text>
+        </TouchableOpacity>
+        {sectionFolders.map(folder => (
+          <TouchableOpacity
+            key={folder.id}
+            onPress={() => setSelectedFolderId(folder.id)}
+            style={[sty.folderChip, { backgroundColor: selectedFolderId === folder.id ? roleColor + '18' : colors.background, borderColor: selectedFolderId === folder.id ? roleColor : colors.border }]}
+          >
+            <Ionicons name="folder-outline" size={14} color={selectedFolderId === folder.id ? roleColor : colors.textMuted} />
+            <Text style={[sty.folderChipTxt, { color: selectedFolderId === folder.id ? roleColor : colors.textMuted }]}>{folder.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <TouchableOpacity
+        onPress={() => void uploadNewFile()}
+        disabled={uploading}
+        style={[sty.uploadAnyBtn, { backgroundColor: uploading ? colors.border : roleColor }]}
+      >
+        <Ionicons name={uploading ? 'hourglass-outline' : 'cloud-upload-outline'} size={16} color="#fff" />
+        <Text style={sty.uploadAnyTxt}>{uploading ? 'Uploading…' : 'Choose and upload any file'}</Text>
+      </TouchableOpacity>
+
+      <Text style={[sty.workspaceFilesLabel, { color: colors.textMuted }]}>
+        {selectedFolderId === null ? 'Main folder' : sectionFolders.find(f => f.id === selectedFolderId)?.name} · {sectionFiles.length} file{sectionFiles.length === 1 ? '' : 's'}
+      </Text>
+      {sectionFiles.length === 0 ? (
+        <Text style={[sty.workspaceEmpty, { color: colors.textSubtle }]}>No files in this folder yet.</Text>
+      ) : (
+        sectionFiles.slice().reverse().map(file => (
+          <View key={file.id} style={[sty.workspaceFile, { borderColor: colors.border }]}>
+            <View style={[sty.workspaceFileIcon, { backgroundColor: roleColor + '14' }]}>
+              <Ionicons name="document-attach-outline" size={18} color={roleColor} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[sty.workspaceFileName, { color: colors.text }]} numberOfLines={1}>{file.name}</Text>
+              <Text style={[sty.workspaceFileMeta, { color: colors.textMuted }]}>
+                {file.mimeType} · {file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'Size unavailable'} · {file.uploadedBy}
+              </Text>
+            </View>
+             {canManage && (
+               <View style={sty.workspaceFileActions}>
+                 <TouchableOpacity
+                   onPress={() => confirmReplace(file)}
+                   disabled={uploading}
+                   style={[sty.workspaceFileAction, { borderColor: colors.border }]}
+                   accessibilityLabel={`Replace ${file.name}`}
+                 >
+                   <Ionicons name="swap-horizontal-outline" size={14} color={roleColor} />
+                 </TouchableOpacity>
+                 <TouchableOpacity
+                   onPress={() => confirmDelete(file)}
+                   disabled={uploading}
+                   style={[sty.workspaceFileAction, { borderColor: colors.border }]}
+                   accessibilityLabel={`Delete ${file.name}`}
+                 >
+                   <Ionicons name="trash-outline" size={14} color={colors.error} />
+                 </TouchableOpacity>
+               </View>
+             )}
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
 
 // ── Legal / Project status helpers ──────────────────────────────────────────
 const LEGAL_TYPES: LegalMatter['type'][] = ['Contract','Dispute','Regulatory','Advisory','Other'];
@@ -73,7 +331,7 @@ const APPROVAL_META: Record<CorpApproval['status'], { label: string; color: stri
 };
 
 // ── Tab definition ──────────────────────────────────────────────────────────
-type Tab = 'compliance' | 'legal' | 'projects' | 'minutes';
+type Tab = 'compliance' | 'legal' | 'projects' | 'minutes' | 'correspondences' | 'general';
 
 // ── Shared micro-components ─────────────────────────────────────────────────
 function Pill({ label, color, bg }: { label: string; color: string; bg: string }) {
@@ -94,7 +352,8 @@ function EmptySlate({ icon, text }: { icon: string; text: string }) {
 export default function CorporateScreen() {
   const {
     role, userName,
-    docs, companyFiles, addCompanyFile,
+    docs,
+    myFolders, myFolderFiles, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
     legalMatters, addLegalMatter, updateLegalMatter, updateLegalStatus, deleteLegalMatter,
     corpProjects, addCorpProject, updateCorpProject, updateProjectProgress, deleteCorpProject,
     meetingMinutes, addMeetingMinutes, updateMeetingMinutes, deleteMeetingMinutes,
@@ -104,21 +363,21 @@ export default function CorporateScreen() {
 
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
+  const hasFolderAccess = !!role;
+  const hasRestrictedFolderAccess = !!role && MY_FOLDER_ALLOWED_ROLES.includes(role as Role);
   const isCSM     = role === 'csm';
   const isCEO     = role === 'ceo' || role === 'md';
   const isAdmin   = role === 'admin';
   const canCreate = isCSM || isAdmin;
 
   // ── Tab ──
-  const [activeTab, setActiveTab] = useState<Tab>('compliance');
+  const [activeTab, setActiveTab] = useState<Tab>(hasRestrictedFolderAccess ? 'compliance' : 'general');
 
   // ── Expansion (which card shows its full panel) ──
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   // ── Attachment form state ──
   const [attachingTo, setAttachingTo] = useState<{ type: CorpRecordType; id: number } | null>(null);
-  const [attName,   setAttName]   = useState('');
-  const [attType,   setAttType]   = useState('pdf');
 
   // ── Submit modal ──
   const [submitTarget, setSubmitTarget] = useState<{ type: CorpRecordType; id: number } | null>(null);
@@ -156,11 +415,6 @@ export default function CorporateScreen() {
   const [mVenue,   setMVenue]   = useState('');
   const [mAtt,     setMAtt]     = useState('');
   const [mSummary, setMSummary] = useState('');
-
-  // ── Document upload ──
-  const [selCat,     setSelCat]     = useState(FILE_CATS[0]);
-  const [selType,    setSelType]    = useState<typeof DOC_FILE_TYPES[number]>('pdf');
-  const [uploadName, setUploadName] = useState('');
 
   // ── Compliance stats ──
   const expiredDocs = docs.filter(d => daysLeft(d.exp) < 0);
@@ -222,15 +476,48 @@ export default function CorporateScreen() {
     resetMinForm(); setShowMinForm(false);
   }
 
-  function handleAddAttachment() {
-    if (!attachingTo || !attName.trim()) { Alert.alert('Required', 'Please enter a file name.'); return; }
-    const ext  = attType === 'img' ? 'jpg' : attType === 'audio' ? 'mp3' : attType === 'zip' ? 'zip' : attType === 'other' ? 'bin' : attType;
-    const name = attName.trim().includes('.') ? attName.trim() : `${attName.trim()}.${ext}`;
-    const size = FILE_SIZES[Math.floor(Math.random() * FILE_SIZES.length)];
-    addCorpAttachment(attachingTo.type, attachingTo.id, { name, fileType: attType, size, uploadedBy: userName || 'System' });
-    setAttName(''); setAttType('pdf');
-    setAttachingTo(null);
-    Alert.alert('Attached', `${name} attached successfully.`);
+  async function handleAddAttachment() {
+    if (!attachingTo) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return;
+
+      const file = result.assets[0];
+      const fileInfo = await FileSystem.getInfoAsync(file.uri);
+      const sizeBytes = Math.max(
+        1,
+        file.size ?? (fileInfo.exists ? (fileInfo as FileSystem.FileInfo & { size?: number }).size ?? 0 : 0),
+      );
+      const mimeType = file.mimeType ?? 'application/octet-stream';
+      const upload = await storageApi.requestUploadUrl(file.name, sizeBytes, mimeType);
+      if (!upload) throw new Error('No upload URL returned');
+
+      const uploadResult = await FileSystem.uploadAsync(upload.uploadURL, file.uri, {
+        httpMethod: 'PUT',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: { 'Content-Type': mimeType },
+      });
+      if (uploadResult.status < 200 || uploadResult.status >= 300) {
+        throw new Error(`Upload failed: ${uploadResult.status}`);
+      }
+
+      addCorpAttachment(attachingTo.type, attachingTo.id, {
+        name: file.name,
+        fileType: attachmentType(file.name, mimeType),
+        size: formatAttachmentSize(sizeBytes),
+        uploadedBy: userName || 'System',
+        objectPath: upload.objectPath,
+        mimeType,
+      });
+      setAttachingTo(null);
+      Alert.alert('Uploaded', `${file.name} was uploaded to the meeting minutes.`);
+    } catch {
+      Alert.alert('Upload failed', 'The document could not be uploaded. Please try again.');
+    }
   }
 
   function handleSubmit() {
@@ -253,17 +540,6 @@ export default function CorporateScreen() {
     rejectCorpItem(rejectTarget.type, rejectTarget.id, rejectReason.trim());
     setRejectTarget(null); setRejectReason('');
     Alert.alert('Rejected', 'Record rejected. CSM has been notified to make corrections.');
-  }
-
-  function handleDocUpload() {
-    const trimmed = uploadName.trim();
-    if (!trimmed) { Alert.alert('Required', 'Please enter a file name.'); return; }
-    const ext  = selType === 'img' ? 'jpg' : selType === 'other' ? 'zip' : selType;
-    const name = trimmed.includes('.') ? trimmed : `${trimmed}.${ext}`;
-    const size = FILE_SIZES[Math.floor(Math.random() * FILE_SIZES.length)];
-    addCompanyFile({ name, cat: selCat, by: userName || 'System Admin', size, fileType: selType });
-    setUploadName('');
-    Alert.alert('Uploaded', `${name} saved to ${selCat}.`);
   }
 
   // ── Shared card panel renderer ───────────────────────────────────────────
@@ -358,7 +634,7 @@ export default function CorporateScreen() {
           <Text style={[sty.attTitle, { color: colors.text }]}>Attachments ({attachments.length})</Text>
           {!locked && (canCreate || isCEO || isAdmin) && (
             <TouchableOpacity onPress={() => {
-              if (isOpen) { setAttachingTo(null); setAttName(''); }
+               if (isOpen) { setAttachingTo(null); }
               else { setAttachingTo({ type, id }); }
             }} style={[sty.attAddBtn, { borderColor: roleColor }]}>
               <Ionicons name={isOpen ? 'close' : 'add'} size={13} color={roleColor} />
@@ -367,28 +643,16 @@ export default function CorporateScreen() {
           )}
         </View>
 
-        {/* Attach form */}
+        {/* Document picker/upload action */}
         {isOpen && (
           <View style={[sty.attForm, { backgroundColor: colors.background, borderColor: colors.border }]}>
-            <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Name *</Text>
-            <TextInput value={attName} onChangeText={setAttName}
-              placeholder="e.g. Contract_Draft_v2"
-              placeholderTextColor={colors.textMuted}
-              style={[sty.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
-            <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Type</Text>
-            <View style={[sty.typeRow, { marginBottom: 8 }]}>
-              {ATT_FILE_TYPES.map(t => (
-                <TouchableOpacity key={t.key} onPress={() => setAttType(t.key)}
-                  style={[sty.typeBtn, { backgroundColor: t.key === attType ? t.color + '22' : colors.surface, borderColor: t.key === attType ? t.color : colors.border }]}>
-                  <Ionicons name={t.icon as any} size={14} color={t.key === attType ? t.color : colors.textMuted} />
-                  <Text style={[sty.typeBtnTxt, { color: t.key === attType ? t.color : colors.textMuted }]}>{t.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity onPress={handleAddAttachment}
+            <Text style={[sty.attEmpty, { color: colors.textMuted }]}>
+              Choose a document from this device. PDFs, Word files, spreadsheets, presentations, images, media, and archives are supported.
+            </Text>
+            <TouchableOpacity onPress={() => void handleAddAttachment()}
               style={[sty.attSubmitBtn, { backgroundColor: roleColor }]}>
               <Ionicons name="cloud-upload" size={14} color="#fff" />
-              <Text style={sty.attSubmitTxt}>Attach File</Text>
+              <Text style={sty.attSubmitTxt}>Choose and Upload Document</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -423,18 +687,34 @@ export default function CorporateScreen() {
 
   // ── Tab bar ─────────────────────────────────────────────────────────────
   const TABS: { key: Tab; label: string; icon: string }[] = [
-    { key: 'compliance', label: 'Compliance', icon: 'shield-checkmark' },
-    { key: 'legal',      label: 'Legal',      icon: 'scale'            },
-    { key: 'projects',   label: 'Projects',   icon: 'hammer'           },
-    { key: 'minutes',    label: 'Minutes',    icon: 'reader'           },
+    { key: 'compliance', label: 'Compliance Folder',       icon: 'shield-checkmark' },
+    { key: 'legal',      label: 'Legal Documents Folder',  icon: 'scale'            },
+    { key: 'projects',   label: 'Projects Folder',          icon: 'hammer'           },
+    { key: 'minutes',    label: 'Minutes of Meetings Folder', icon: 'reader'        },
+    { key: 'correspondences', label: 'Correspondences Folder', icon: 'mail'        },
+    { key: 'general',    label: 'General Library',           icon: 'library'        },
   ];
 
+  if (!hasFolderAccess) {
+    return (
+      <ScreenLayout title="My Folder">
+        <View style={sty.accessDenied}>
+          <Ionicons name="lock-closed-outline" size={42} color={colors.textSubtle} />
+          <Text style={[sty.accessDeniedTitle, { color: colors.text }]}>Access restricted</Text>
+          <Text style={[sty.accessDeniedText, { color: colors.textMuted }]}>
+            Please sign in to access the General Library.
+          </Text>
+        </View>
+      </ScreenLayout>
+    );
+  }
+
   return (
-    <ScreenLayout title="Corporate Services">
+    <ScreenLayout title="My Folder">
 
       {/* ── Tab bar ── */}
       <View style={[sty.tabBar, sty.tabBarContent, { borderBottomColor: colors.border }]}>
-        {TABS.map(t => {
+        {TABS.filter(t => t.key === 'general' || hasRestrictedFolderAccess).map(t => {
           const active = t.key === activeTab;
           return (
             <TouchableOpacity key={t.key} onPress={() => { setActiveTab(t.key); setExpandedId(null); setEditId(null); setShowLegalForm(false); setShowProjForm(false); setShowMinForm(false); }}
@@ -446,7 +726,7 @@ export default function CorporateScreen() {
         })}
       </View>
 
-      {/* ════════════════════════════════════════ COMPLIANCE */}
+          {/* ════════════════════════════════════════ COMPLIANCE FOLDER */}
       {activeTab === 'compliance' && (
         <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
           <View style={sty.summaryRow}>
@@ -494,70 +774,19 @@ export default function CorporateScreen() {
           })}
           {docs.length === 0 && <EmptySlate icon="shield-outline" text="No compliance documents" />}
 
-          {/* ── Corporate Documents upload ── */}
-          <View style={[sty.divider, { borderColor: colors.border }]} />
-          <Text style={[sty.sectionTitle, { color: colors.text }]}>Corporate Documents</Text>
-
-          {(canCreate || isAdmin) && (
-            <View style={[sty.uploadPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={sty.uploadHeader}>
-                <Ionicons name="cloud-upload" size={20} color={roleColor} />
-                <Text style={[sty.uploadTitle, { color: colors.text }]}>Upload Document</Text>
-              </View>
-              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Category</Text>
-              <View style={sty.chipRow}>
-                {FILE_CATS.map(c => (
-                  <TouchableOpacity key={c} onPress={() => setSelCat(c)}
-                    style={[sty.chip, { backgroundColor: c === selCat ? roleColor : colors.background, borderColor: c === selCat ? roleColor : colors.border }]}>
-                    <Text style={[sty.chipTxt, { color: c === selCat ? '#fff' : colors.textMuted }]}>{c}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Type</Text>
-              <View style={[sty.typeRow, { marginBottom: 4 }]}>
-                {DOC_FILE_TYPES.map(t => {
-                  const fi = FILE_TYPE_MAP[t];
-                  return (
-                    <TouchableOpacity key={t} onPress={() => setSelType(t)}
-                      style={[sty.typeBtn, { backgroundColor: t === selType ? fi.color + '22' : colors.background, borderColor: t === selType ? fi.color : colors.border }]}>
-                      <Ionicons name={fi.icon as any} size={15} color={t === selType ? fi.color : colors.textMuted} />
-                      <Text style={[sty.typeBtnTxt, { color: t === selType ? fi.color : colors.textMuted }]}>{t.toUpperCase()}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>File Name</Text>
-              <TextInput
-                style={[sty.textInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, marginBottom: 12 }]}
-                value={uploadName} onChangeText={setUploadName}
-                placeholder="e.g. Board_Resolution_July2026" placeholderTextColor={colors.textSubtle} />
-              <TouchableOpacity onPress={handleDocUpload} style={[sty.submitBtn, { backgroundColor: roleColor }]}>
-                <Ionicons name="cloud-upload" size={16} color="#fff" />
-                <Text style={sty.submitBtnTxt}>Upload Document</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <Text style={[sty.subSectionTitle, { color: colors.textMuted }]}>Uploaded Files ({companyFiles.length})</Text>
-          {companyFiles.length === 0 && <EmptySlate icon="folder-open-outline" text="No documents uploaded yet" />}
-          {[...companyFiles].reverse().map(f => {
-            const fi = FILE_TYPE_MAP[f.fileType] || FILE_TYPE_MAP.other;
-            return (
-              <View key={f.id} style={[sty.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[sty.fileIconWrap, { backgroundColor: fi.color + '18' }]}>
-                  <Ionicons name={fi.icon as any} size={22} color={fi.color} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[sty.fileName, { color: colors.text }]} numberOfLines={1}>{f.name}</Text>
-                  <Text style={[sty.fileMeta, { color: colors.textMuted }]}>{f.cat} · {f.size}</Text>
-                  <Text style={[sty.fileBy, { color: colors.textSubtle }]}>by {f.by} · {fmtDateTime(f.dt)}</Text>
-                </View>
-                <TouchableOpacity style={[sty.iconBtn, { borderColor: colors.border }]}>
-                  <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
+          <FolderWorkspacePanel
+            section="compliance"
+            folders={myFolders}
+            files={myFolderFiles}
+            roleColor={roleColor}
+            colors={colors}
+            userName={userName || 'System'}
+            addFolder={addMyFolder}
+            addFile={addMyFolderFile}
+            removeFile={removeMyFolderFile}
+            replaceFile={replaceMyFolderFile}
+            canManage={hasRestrictedFolderAccess}
+          />
 
           <View style={{ height: 20 }} />
         </ScrollView>
@@ -699,6 +928,19 @@ export default function CorporateScreen() {
               </View>
             );
           })}
+          <FolderWorkspacePanel
+            section="legal"
+            folders={myFolders}
+            files={myFolderFiles}
+            roleColor={roleColor}
+            colors={colors}
+            userName={userName || 'System'}
+            addFolder={addMyFolder}
+            addFile={addMyFolderFile}
+            removeFile={removeMyFolderFile}
+            replaceFile={replaceMyFolderFile}
+            canManage={hasRestrictedFolderAccess}
+          />
           <View style={{ height: 20 }} />
         </ScrollView>
       )}
@@ -846,6 +1088,19 @@ export default function CorporateScreen() {
               </View>
             );
           })}
+          <FolderWorkspacePanel
+            section="projects"
+            folders={myFolders}
+            files={myFolderFiles}
+            roleColor={roleColor}
+            colors={colors}
+            userName={userName || 'System'}
+            addFolder={addMyFolder}
+            addFile={addMyFolderFile}
+            removeFile={removeMyFolderFile}
+            replaceFile={replaceMyFolderFile}
+            canManage={hasRestrictedFolderAccess}
+          />
           <View style={{ height: 20 }} />
         </ScrollView>
       )}
@@ -921,6 +1176,19 @@ export default function CorporateScreen() {
                 </View>
               );
             })}
+            <FolderWorkspacePanel
+              section="minutes"
+              folders={myFolders}
+              files={myFolderFiles}
+              roleColor={roleColor}
+              colors={colors}
+              userName={userName || 'System'}
+              addFolder={addMyFolder}
+              addFile={addMyFolderFile}
+              removeFile={removeMyFolderFile}
+              replaceFile={replaceMyFolderFile}
+              canManage={hasRestrictedFolderAccess}
+            />
             <View style={{ height: 20 }} />
           </ScrollView>
         );
@@ -1078,10 +1346,83 @@ export default function CorporateScreen() {
                 </View>
               );
             })}
+            <FolderWorkspacePanel
+              section="minutes"
+              folders={myFolders}
+              files={myFolderFiles}
+              roleColor={roleColor}
+              colors={colors}
+              userName={userName || 'System'}
+              addFolder={addMyFolder}
+              addFile={addMyFolderFile}
+              removeFile={removeMyFolderFile}
+              replaceFile={replaceMyFolderFile}
+              canManage={hasRestrictedFolderAccess}
+            />
             <View style={{ height: 20 }} />
           </ScrollView>
         );
       })()}
+
+      {activeTab === 'general' && (
+        <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+          <View style={[sty.libraryIntro, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[sty.workspaceIcon, { backgroundColor: roleColor + '18' }]}>
+              <Ionicons name="library-outline" size={21} color={roleColor} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[sty.workspaceTitle, { color: colors.text }]}>Company General Library</Text>
+              <Text style={[sty.libraryIntroText, { color: colors.textMuted }]}>
+                Shared resources for everyone, including company handbooks, standard operating procedures, safety manuals and other guidance.
+              </Text>
+            </View>
+          </View>
+          <FolderWorkspacePanel
+            section="general"
+            folders={myFolders}
+            files={myFolderFiles}
+            roleColor={roleColor}
+            colors={colors}
+            userName={userName || 'System'}
+            addFolder={addMyFolder}
+            addFile={addMyFolderFile}
+            removeFile={removeMyFolderFile}
+            replaceFile={replaceMyFolderFile}
+            canManage={hasRestrictedFolderAccess}
+          />
+          <View style={{ height: 20 }} />
+        </ScrollView>
+      )}
+
+      {activeTab === 'correspondences' && (
+        <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+          <View style={[sty.libraryIntro, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[sty.workspaceIcon, { backgroundColor: roleColor + '18' }]}>
+              <Ionicons name="mail-open-outline" size={21} color={roleColor} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[sty.workspaceTitle, { color: colors.text }]}>Company Correspondences</Text>
+              <Text style={[sty.libraryIntroText, { color: colors.textMuted }]}>
+                Store letters, emails, notices, memos and other miscellaneous company correspondence. Create subfolders to keep records organized.
+              </Text>
+            </View>
+          </View>
+          <FolderWorkspacePanel
+            section="correspondences"
+            folders={myFolders}
+            files={myFolderFiles}
+            roleColor={roleColor}
+            colors={colors}
+            userName={userName || 'System'}
+            addFolder={addMyFolder}
+            addFile={addMyFolderFile}
+            removeFile={removeMyFolderFile}
+            replaceFile={replaceMyFolderFile}
+            canManage={hasRestrictedFolderAccess}
+          />
+          <View style={{ height: 20 }} />
+        </ScrollView>
+      )}
 
       {/* ════════════════════════════════ SUBMIT MODAL */}
       <Modal visible={!!submitTarget} transparent animationType="fade">
@@ -1147,6 +1488,33 @@ const sp = StyleSheet.create({
 
 // ── Main styles ─────────────────────────────────────────────────────────────
 const sty = StyleSheet.create({
+  accessDenied: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 10 },
+  accessDeniedTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center' },
+  accessDeniedText: { fontSize: 13, lineHeight: 19, textAlign: 'center', maxWidth: 340 },
+  workspacePanel: { borderRadius: 15, borderWidth: 1, padding: 13, marginTop: 8, marginBottom: 8, gap: 10 },
+  workspaceHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  workspaceIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  workspaceTitle: { fontSize: 14, fontWeight: '800' },
+  workspaceSub: { fontSize: 11, marginTop: 2 },
+  libraryIntro: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: 15, borderWidth: 1, padding: 13, marginBottom: 8 },
+  libraryIntroText: { fontSize: 11, lineHeight: 16, marginTop: 3 },
+  folderCreateRow: { flexDirection: 'row', gap: 8 },
+  folderInput: { flex: 1, borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12 },
+  folderCreateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 9, paddingHorizontal: 11 },
+  folderCreateTxt: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  folderChips: { gap: 7, paddingVertical: 2 },
+  folderChip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, paddingVertical: 7 },
+  folderChipTxt: { fontSize: 11, fontWeight: '700' },
+  uploadAnyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 10, paddingVertical: 11 },
+  uploadAnyTxt: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  workspaceFilesLabel: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  workspaceEmpty: { fontSize: 11, fontStyle: 'italic', paddingVertical: 4 },
+  workspaceFile: { flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 8 },
+  workspaceFileIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  workspaceFileName: { fontSize: 12, fontWeight: '700' },
+  workspaceFileMeta: { fontSize: 10, marginTop: 2 },
+  workspaceFileActions: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  workspaceFileAction: { width: 30, height: 30, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   tabBar:        { borderBottomWidth: StyleSheet.hairlineWidth },
   tabBarContent: { flexDirection: 'row', flexWrap: 'wrap' },
   tabBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 2 },
