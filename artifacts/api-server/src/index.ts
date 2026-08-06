@@ -184,23 +184,32 @@ async function seedAndMigrateUsers(): Promise<void> {
   }
 }
 
-seedAndMigrateUsers().then(() => {
-  app.listen(port, (err) => {
-    if (err) {
-      logger.error({ err }, "Error listening on port");
-      process.exit(1);
-    }
-    logger.info({ port }, "Server listening");
+// Start listening before database seeding/migration. The health endpoint does
+// not depend on the database, so deployments can become ready immediately
+// instead of returning 500 while seedAndMigrateUsers is still running.
+app.listen(port, (err) => {
+  if (err) {
+    logger.error({ err }, "Error listening on port");
+    process.exit(1);
+  }
+  logger.info({ port }, "Server listening");
 
-    // Automatic app-state backup every 12 hours.
-    // Runs at 00:00 and 12:00 UTC. Keeps the last 14 backups (7 days).
-    cron.schedule("0 0,12 * * *", async () => {
-      try {
-        await createBackup();
-      } catch (backupErr) {
-        logger.error({ err: backupErr }, "Scheduled app-state backup failed");
-      }
+  seedAndMigrateUsers()
+    .then(() => {
+      // Automatic app-state backup every 12 hours.
+      // Runs at 00:00 and 12:00 UTC. Keeps the last 14 backups (7 days).
+      cron.schedule("0 0,12 * * *", async () => {
+        try {
+          await createBackup();
+        } catch (backupErr) {
+          logger.error({ err: backupErr }, "Scheduled app-state backup failed");
+        }
+      });
+      logger.info("Scheduled app-state backups every 12 hours");
+    })
+    .catch((err) => {
+      // seedAndMigrateUsers currently handles expected database errors itself,
+      // but keep startup alive for health checks if an unexpected error escapes.
+      logger.error({ err }, "Startup user seeding failed");
     });
-    logger.info("Scheduled app-state backups every 12 hours");
-  });
 });

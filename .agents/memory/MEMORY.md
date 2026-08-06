@@ -4,3 +4,4 @@
 - [LPG unit convention](lpg-unit-convention.md) — LPG tank capacity and delivery quantities are tracked in kg, not litres; use `unitForProd` / `PROD_UNIT` helpers to render labels
 - [Authenticated state sync](authenticated-state-sync.md) — refresh full app state after login because initial unauthenticated sync can leave empty local defaults
 - [Four-dashboard navigation](four-dashboard-navigation.md) — primary app navigation is Home, My Jobs, My Messages, and My Profile; operational modules remain grouped beneath My Jobs
+- [Startup health readiness](startup-health-readiness.md) — bind the API and serve health before database seeding or migrations

@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 20.5.1"
+    "version": ">= 20.5.1",
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
