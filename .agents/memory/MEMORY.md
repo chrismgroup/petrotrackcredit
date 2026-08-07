@@ -7,6 +7,7 @@
 - [Startup health readiness](startup-health-readiness.md) — bind the API and serve health before database seeding or migrations
 - [EAS iOS credentials](eas-ios-credentials.md) — Expo tokens do not replace Apple signing setup for a newly linked EAS project
 - [App Store build numbers](app-store-build-numbers.md) — iOS uploads must use a build number higher than the latest App Store Connect upload
+- [Replit Launch versioning](replit-launch-versioning.md) — Launch may use managed build state separate from app.json; trust the submitted build number in Launch logs
 - [My Folder shared storage](my-folder-storage.md) — approved My Folder users can create subfolders and upload any file type; metadata syncs through app state and bytes use protected object storage
 - [Rejected enrollment persistence](rejected-enrollment-persistence.md) — rejected status, reviewer, timestamp, and reason are authoritative in the staff-user record
 - [Price permissions](price-permissions.md) — direct selling-price changes are allowed for admin, CEO, MD, and station managers
