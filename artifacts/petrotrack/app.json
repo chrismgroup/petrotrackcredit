@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.replit.petrotrack",
-      "buildNumber": "51",
+      "buildNumber": "52",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "Petrotrack uses Face ID to let you sign in quickly and securely."
