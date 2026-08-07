@@ -1,3 +1,54 @@
 {
-  "expo": {}
+  "expo": {
+    "name": "Petrotrack",
+    "slug": "petrotrack",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./artifacts/petrotrack/assets/images/icon.png",
+    "scheme": "petrotrack",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./artifacts/petrotrack/assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.replit.petrotrack",
+      "buildNumber": "51",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Petrotrack uses Face ID to let you sign in quickly and securely."
+      }
+    },
+    "android": {
+      "package": "com.petrack.app",
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "web": {
+      "favicon": "./artifacts/petrotrack/assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://petrotrack.replit.app/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      "expo-document-picker",
+      "expo-notifications"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "075f5965-7a4a-41dc-8700-f956b13b942f"
+      }
+    },
+    "owner": "chrismoil"
+  }
 }
