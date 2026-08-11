@@ -11,7 +11,9 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
+  fmt,
   getCurrentTankStock,
+  salesRevenueByBranch,
   ROLE_LABELS,
   SCREEN_ROUTES,
   unitForProd,
@@ -245,7 +247,20 @@ export default function HomeScreen() {
   });
 
   // ── KPIs ──────────────────────────────────────────────────────────────
-  const totalRevenue = useMemo(() => branches.reduce((s, b) => s + b.rev, 0), [branches]);
+  const { byBranch: branchRev } = useMemo(() => salesRevenueByBranch(sales), [sales]);
+  const currentMonthKey = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  })();
+  const monthlyRevenue = useMemo(
+    () => sales
+      .filter(entry => entry.dt?.startsWith(currentMonthKey) && (!branchId || entry.branchId === branchId))
+      .reduce((sum, entry) => {
+        const amount = entry.L * entry.price;
+        return sum + (Number.isFinite(amount) ? amount : 0);
+      }, 0),
+    [sales, branchId, currentMonthKey],
+  );
 
   const totalPetrolStock = useMemo(
     () => tanks.filter(t => !branchId || t.branchId === branchId)
@@ -258,7 +273,22 @@ export default function HomeScreen() {
     [lpgTanks, dips, branchId],
   );
 
-  const activeBranches = branches.filter(b => b.st === 'Active').length;
+  const stockByProduct = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const tank of tanks) {
+      if (branchId && tank.branchId !== branchId) continue;
+      totals[tank.prod] = (totals[tank.prod] ?? 0) + getCurrentTankStock(tank, dips);
+    }
+    for (const tank of lpgTanks) {
+      if (branchId && tank.branchId !== branchId) continue;
+      totals.LPG = (totals.LPG ?? 0) + getCurrentTankStock(tank, dips, 'lpg');
+    }
+    return ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'].map(prod => ({
+      prod,
+      stock: totals[prod] ?? 0,
+      unit: unitForProd(prod),
+    }));
+  }, [tanks, lpgTanks, dips, branchId]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -338,10 +368,10 @@ export default function HomeScreen() {
 
   // ── Branch sort by rev ────────────────────────────────────────────────
   const sortedBranches = useMemo(
-    () => [...branches].sort((a, b) => b.rev - a.rev),
-    [branches],
+    () => [...branches].sort((a, b) => (branchRev[b.id] ?? 0) - (branchRev[a.id] ?? 0)),
+    [branches, branchRev],
   );
-  const maxBranchRev = sortedBranches[0]?.rev ?? 1;
+  const maxBranchRev = branchRev[sortedBranches[0]?.id ?? ''] ?? 1;
 
   return (
     <ScreenLayout title="Home">
@@ -404,39 +434,46 @@ export default function HomeScreen() {
         <View style={s.kpiGrid}>
           <KpiTile
             icon="cash-outline"
-            label="Total Revenue"
-            value={fmtK(totalRevenue)}
+            label="Revenue This Month"
+            value={fmt(monthlyRevenue)}
             accent={colors.primary}
-            colors={colors}
-            onPress={() => router.push(SCREEN_ROUTES.acct as never)}
-          />
-          <KpiTile
-            icon="business-outline"
-            label="Cash in Bank"
-            value={fmtK(financialEntry.cashInBank)}
-            accent={colors.blue}
             colors={colors}
             onPress={() => router.push(SCREEN_ROUTES.acct as never)}
           />
           <KpiTile
             icon="water-outline"
             label="Fuel Stock"
-            value={`${(totalPetrolStock / 1000).toFixed(1)}kL`}
-            sub={`+ ${totalLpgStock.toLocaleString()} kg LPG`}
+            value={`${totalPetrolStock.toLocaleString()} L`}
+            sub={`${totalLpgStock.toLocaleString()} kg LPG`}
             accent={colors.teal}
             colors={colors}
             onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=inventory` as never)}
           />
-          <KpiTile
-            icon="storefront-outline"
-            label="Active Branches"
-            value={`${activeBranches}`}
-            sub={`of ${branches.length} total`}
-            accent={colors.purple}
-            colors={colors}
-            onPress={() => router.push(SCREEN_ROUTES.branches as never)}
-          />
         </View>
+
+        {/* ── Full fuel stock ──────────────────────────────────────── */}
+        <Section label="FUEL STOCK" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
+          <View style={[s.stockCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[s.stockSummary, { backgroundColor: colors.teal + '12', borderColor: colors.teal + '30' }]}>
+              <View>
+                <Text style={[s.stockSummaryLabel, { color: colors.textMuted }]}>Total petrol stock</Text>
+                <Text style={[s.stockSummaryValue, { color: colors.teal }]}>{totalPetrolStock.toLocaleString()} L</Text>
+              </View>
+              <View style={[s.stockSummaryDivider, { backgroundColor: colors.border }]} />
+              <View>
+                <Text style={[s.stockSummaryLabel, { color: colors.textMuted }]}>Total LPG stock</Text>
+                <Text style={[s.stockSummaryValue, { color: colors.teal }]}>{totalLpgStock.toLocaleString()} kg</Text>
+              </View>
+            </View>
+            {stockByProduct.map(({ prod, stock, unit }) => (
+              <View key={prod} style={[s.stockRow, { borderTopColor: colors.border }]}>
+                <View style={[s.stockDot, { backgroundColor: colors.teal }]} />
+                <Text style={[s.stockProduct, { color: colors.text }]}>{prod}</Text>
+                <Text style={[s.stockAmount, { color: colors.text }]}>{stock.toLocaleString()} {unit}</Text>
+              </View>
+            ))}
+          </View>
+        </Section>
 
         {/* ── Approvals Inbox ─────────────────────────────────────── */}
         <Section label="APPROVALS & ACTIONS" colors={colors}>
@@ -556,13 +593,6 @@ export default function HomeScreen() {
           />
           <View style={s.finGrid}>
             <FinancialCell
-              label="Cash in Bank"
-              value={fmtK(financialEntry.cashInBank)}
-              icon="business-outline"
-              accent={colors.blue}
-              colors={colors}
-            />
-            <FinancialCell
               label="Cash in Hand"
               value={fmtK(financialEntry.cashInHand)}
               icon="hand-left-outline"
@@ -670,7 +700,7 @@ export default function HomeScreen() {
                 <BranchBar
                   key={branch.id}
                   name={branch.name}
-                  rev={branch.rev}
+                  rev={branchRev[branch.id] ?? 0}
                   maxRev={maxBranchRev}
                   st={branch.st}
                   colors={colors}
@@ -826,6 +856,21 @@ const s = StyleSheet.create({
 
   // card wrapper
   card: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  stockCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  stockSummary: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
+    margin: 10, padding: 12, borderRadius: 12, borderWidth: 1,
+  },
+  stockSummaryLabel: { fontSize: 10, fontWeight: '600' },
+  stockSummaryValue: { fontSize: 17, fontWeight: '800', marginTop: 3 },
+  stockSummaryDivider: { width: 1, height: 32 },
+  stockRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 9,
+    paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  stockDot: { width: 8, height: 8, borderRadius: 4 },
+  stockProduct: { flex: 1, fontSize: 12, fontWeight: '700' },
+  stockAmount: { fontSize: 13, fontWeight: '800' },
 
   // approval rows
   approvalRow: {

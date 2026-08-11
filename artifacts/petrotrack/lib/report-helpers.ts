@@ -65,6 +65,30 @@ export function matchesProd(pump: string, prod: string): boolean {
   return p.includes(prod.toLowerCase());
 }
 
+/** Cost of goods sold: for each product, the weighted-average cost per unit
+ *  (from MD-approved deliveries with a cost price) times the volume sold.
+ *  Same method the P&L report uses. Products with no cost data contribute 0. */
+export function computeCOGS(
+  sales: Array<{ pump: string; L: number }>,
+  deliveries: Array<{ prod: string; rec: number; costPrice?: number; approvalStatus?: string }>,
+): number {
+  const PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil', 'Others'];
+  let total = 0;
+  const num = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : 0);
+  for (const prod of PRODS) {
+    const vol = sales.filter(s => matchesProd(s.pump, prod)).reduce((sum, e) => sum + num(e.L), 0);
+    if (vol <= 0) continue;
+    const dv = deliveries.filter(d =>
+      d.prod === prod && num(d.costPrice) > 0 &&
+      (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
+    const vr = dv.reduce((sum, d) => sum + num(d.rec), 0);
+    const ct = dv.reduce((sum, d) => sum + num(d.rec) * num(d.costPrice), 0);
+    const avgCost = vr > 0 ? ct / vr : 0;
+    total += avgCost * vol;
+  }
+  return Math.round(total);
+}
+
 export function nfmt(n: number): string {
   return '₦' + n.toLocaleString('en-NG', { maximumFractionDigits: 0 });
 }

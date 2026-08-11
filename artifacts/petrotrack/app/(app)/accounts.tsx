@@ -2,30 +2,45 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { FinancialStatusCard } from '@/components/FinancialStatusCard';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
+import { computeCOGS } from '@/lib/report-helpers';
 import { useColors } from '@/hooks/useColors';
 
 export default function AccountsScreen() {
-  const { role, branchId, prices, tanks, sales, branches, expenses, companyInfo, pumpDailyReports } = useApp();
+  const { role, branchId, prices, tanks, sales, branches, expenses, companyInfo, pumpDailyReports, deliveries } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
 
   const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'admin';
   const visibleBranches = isGlobal ? branches : branches.filter(b => !branchId || !b.id || b.id === branchId);
-  const branchRev = (bid: string) =>
-    pumpDailyReports.filter(r => r.status === 'approved' && r.branchId === bid)
-      .reduce((s, r) => s + r.grossAmount, 0);
-  const totalRevenue  = visibleBranches.reduce((s, b) => s + branchRev(b.id), 0);
-  const totalExpenses = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + e.amt, 0);
-  const grossProfit   = totalRevenue - totalExpenses;
 
-  const todaySales = sales.reduce((s, e) => s + e.L * e.price, 0);
-  const pmsRev     = sales.filter(s => s.pump.includes('PMS')).reduce((sum, s) => sum + s.L * s.price, 0);
-  const agoRev     = sales.filter(s => s.pump.includes('AGO')).reduce((sum, s) => sum + s.L * s.price, 0);
-  const dkpRev     = sales.filter(s => s.pump.includes('DPK')).reduce((sum, s) => sum + s.L * s.price, 0);
-  const lpgRev     = sales.filter(s => s.pump.includes('LPG')).reduce((sum, s) => sum + s.L * s.price, 0);
-  const lubeRev    = sales.filter(s => s.pump.includes('Lube Oil')).reduce((sum, s) => sum + s.L * s.price, 0);
+  // One branch scope applied to every input so branch-locked users never mix
+  // local revenue with company-wide costs. Records without a branchId are
+  // treated as company-level and only visible to global roles.
+  const inScope = (bid?: string) => isGlobal || !branchId || bid === branchId;
+  const num = (n: number) => (Number.isFinite(n) ? n : 0);
+  const scopedSales      = sales.filter(e => inScope(e.branchId));
+  const scopedDeliveries = deliveries.filter(d => inScope(d.branchId));
+  const scopedExpenses   = expenses.filter(e => e.status === 'approved' && inScope(e.branchId));
+
+  // Revenue and COGS both derive from the same sales records (auto-created
+  // when pump reports are approved) so the P&L is internally consistent.
+  const branchRev = (bid: string) =>
+    Math.round(scopedSales.filter(e => e.branchId === bid).reduce((s, e) => s + num(e.L * e.price), 0));
+  const totalRevenue  = Math.round(scopedSales.reduce((s, e) => s + num(e.L * e.price), 0));
+  const totalExpenses = Math.round(scopedExpenses.reduce((s, e) => s + num(e.amt), 0));
+  const totalCOGS     = computeCOGS(scopedSales, scopedDeliveries);
+  const grossProfit   = totalRevenue - totalCOGS;
+  const operatingProfit = grossProfit - totalExpenses;
+
+  const todaySales = scopedSales.reduce((s, e) => s + num(e.L * e.price), 0);
+  const pmsRev     = scopedSales.filter(s => s.pump.includes('PMS')).reduce((sum, s) => sum + num(s.L * s.price), 0);
+  const agoRev     = scopedSales.filter(s => s.pump.includes('AGO')).reduce((sum, s) => sum + num(s.L * s.price), 0);
+  const dkpRev     = scopedSales.filter(s => s.pump.includes('DPK')).reduce((sum, s) => sum + num(s.L * s.price), 0);
+  const lpgRev     = scopedSales.filter(s => s.pump.includes('LPG')).reduce((sum, s) => sum + num(s.L * s.price), 0);
+  const lubeRev    = scopedSales.filter(s => s.pump.includes('Lube Oil')).reduce((sum, s) => sum + num(s.L * s.price), 0);
 
   // Tax computations
   const vatRate    = parseFloat(companyInfo.vatRate  || '7.5') / 100;
@@ -33,8 +48,8 @@ export default function AccountsScreen() {
   const payeAmt    = 80_000; // fixed PAYE provision placeholder
 
   const vatProvision  = Math.round(totalRevenue * vatRate);
-  const citaProvision = grossProfit > 0 ? Math.round(grossProfit * citaRate) : 0;
-  const netProfit     = grossProfit - citaProvision;
+  const citaProvision = operatingProfit > 0 ? Math.round(operatingProfit * citaRate) : 0;
+  const netProfit     = operatingProfit - citaProvision;
 
   const taxItems = [
     {
@@ -71,37 +86,51 @@ export default function AccountsScreen() {
           <View style={styles.sumRow}>
             <View style={styles.sumItem}>
               <Text style={styles.sumItemLabel}>Revenue</Text>
-              <Text style={styles.sumItemValue}>{fmt(totalRevenue)}</Text>
+              <Text style={styles.sumItemValue} numberOfLines={1} adjustsFontSizeToFit>{fmt(totalRevenue)}</Text>
+            </View>
+            <View style={styles.sumDivider} />
+            <View style={styles.sumItem}>
+              <Text style={styles.sumItemLabel}>COGS</Text>
+              <Text style={styles.sumItemValue} numberOfLines={1} adjustsFontSizeToFit>{fmt(totalCOGS)}</Text>
             </View>
             <View style={styles.sumDivider} />
             <View style={styles.sumItem}>
               <Text style={styles.sumItemLabel}>Expenses</Text>
-              <Text style={styles.sumItemValue}>{fmt(totalExpenses)}</Text>
+              <Text style={styles.sumItemValue} numberOfLines={1} adjustsFontSizeToFit>{fmt(totalExpenses)}</Text>
             </View>
             <View style={styles.sumDivider} />
             <View style={styles.sumItem}>
               <Text style={styles.sumItemLabel}>CITA</Text>
-              <Text style={styles.sumItemValue}>{fmt(citaProvision)}</Text>
+              <Text style={styles.sumItemValue} numberOfLines={1} adjustsFontSizeToFit>{fmt(citaProvision)}</Text>
             </View>
           </View>
         </View>
+
+        {/* Accountant-maintained financial position */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Financial Status</Text>
+        <Text style={[styles.sectionHint, { color: colors.textMuted }]}>
+          Accountant-entered cash, POS, debts, loans and liabilities
+        </Text>
+        <FinancialStatusCard roleColor={roleColor} />
 
         {/* Profit waterfall */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Profit Waterfall</Text>
         <View style={[styles.waterfallCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {[
-            { label: 'Gross Revenue',      value: totalRevenue,  color: colors.success,  sign: '' },
-            { label: 'Total Expenses',     value: totalExpenses, color: colors.error,    sign: '−' },
-            { label: 'Gross Profit',       value: grossProfit,   color: colors.text,     sign: '=' },
+            { label: 'Gross Revenue',      value: totalRevenue,    color: colors.success,  sign: '' },
+            { label: 'Cost of Goods',      value: totalCOGS,       color: colors.error,    sign: '−' },
+            { label: 'Gross Profit',       value: grossProfit,     color: colors.text,     sign: '=' },
+            { label: 'Total Expenses',     value: totalExpenses,   color: colors.error,    sign: '−' },
+            { label: 'Operating Profit',   value: operatingProfit, color: colors.text,     sign: '=' },
             { label: `CITA @ ${(citaRate * 100).toFixed(0)}%`, value: citaProvision, color: colors.amber, sign: '−' },
-            { label: 'Net Profit',         value: netProfit,     color: roleColor,       sign: '=' },
+            { label: 'Net Profit',         value: netProfit,       color: roleColor,       sign: '=' },
           ].map((row, i) => (
             <View
               key={row.label}
               style={[
                 styles.wfRow,
                 i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-                (row.label === 'Gross Profit' || row.label === 'Net Profit') && {
+                (row.label === 'Gross Profit' || row.label === 'Operating Profit' || row.label === 'Net Profit') && {
                   backgroundColor: row.color + '0a',
                 },
               ]}
@@ -198,6 +227,7 @@ const styles = StyleSheet.create({
   sumDivider:    { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.25)' },
 
   sectionTitle:  { fontSize: 15, fontWeight: '700', marginBottom: 10 },
+  sectionHint:   { fontSize: 12, marginTop: -5, marginBottom: 10 },
 
   waterfallCard: { borderRadius: 14, borderWidth: 1, marginBottom: 16, overflow: 'hidden' },
   wfRow:         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11 },
