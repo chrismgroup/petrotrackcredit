@@ -2224,13 +2224,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         branchId: report.branchId,
       }];
     });
-    setTanks(ts => {
-      const matching = ts.filter(t => t.prod === report.product && (!report.branchId || !t.branchId || t.branchId === report.branchId));
-      if (matching.length === 0) return ts;
-      const share = report.liters / matching.length;
-      const ids = new Set(matching.map(t => t.id));
-      return ts.map(t => ids.has(t.id) ? { ...t, sl: t.sl + share } : t);
-    });
+    if (report.product === 'LPG') {
+      setLpgTanks(ts => {
+        const matching = ts.filter(t => !report.branchId || !t.branchId || t.branchId === report.branchId);
+        if (matching.length === 0) return ts;
+        const share = report.liters / matching.length;
+        const ids = new Set(matching.map(t => t.id));
+        return ts.map(t => ids.has(t.id) ? { ...t, sl: t.sl + share } : t);
+      });
+    } else {
+      setTanks(ts => {
+        const matching = ts.filter(t => t.prod === report.product && (!report.branchId || !t.branchId || t.branchId === report.branchId));
+        if (matching.length === 0) return ts;
+        const share = report.liters / matching.length;
+        const ids = new Set(matching.map(t => t.id));
+        return ts.map(t => ids.has(t.id) ? { ...t, sl: t.sl + share } : t);
+      });
+    }
     const unit = report.product === 'LPG' ? 'kg' : 'L';
     setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} — ${report.pumpName} · ${report.liters}${unit} · sales record auto-created`, ts: nowTs() }, ...a]);
     void notificationsApi.send({
@@ -2258,31 +2268,81 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deletePumpReport = useCallback((id: number) => {
     setPumpDailyReports(rs => rs.filter(r => r.id !== id));
     setSales(s => s.filter(e => e.shiftReportId !== id));
-    setTanks(ts => {
+    {
       const report = pumpDailyReports.find(r => r.id === id);
-      if (!report || report.status !== 'approved') return ts;
-      const matching = ts.filter(t => t.prod === report.product && (!report.branchId || !t.branchId || t.branchId === report.branchId));
-      if (matching.length === 0) return ts;
-      const share = report.liters / matching.length;
-      const ids = new Set(matching.map(t => t.id));
-      return ts.map(t => ids.has(t.id) ? { ...t, sl: Math.max(0, t.sl - share) } : t);
-    });
+      if (report && report.status === 'approved') {
+        if (report.product === 'LPG') {
+          setLpgTanks(ts => {
+            const matching = ts.filter(t => !report.branchId || !t.branchId || t.branchId === report.branchId);
+            if (matching.length === 0) return ts;
+            const share = report.liters / matching.length;
+            const ids = new Set(matching.map(t => t.id));
+            return ts.map(t => ids.has(t.id) ? { ...t, sl: Math.max(0, t.sl - share) } : t);
+          });
+        } else {
+          setTanks(ts => {
+            const matching = ts.filter(t => t.prod === report.product && (!report.branchId || !t.branchId || t.branchId === report.branchId));
+            if (matching.length === 0) return ts;
+            const share = report.liters / matching.length;
+            const ids = new Set(matching.map(t => t.id));
+            return ts.map(t => ids.has(t.id) ? { ...t, sl: Math.max(0, t.sl - share) } : t);
+          });
+        }
+      }
+    }
     setAudit(a => [{ id: genId(), action: 'Pump report deleted', user: userName, detail: `Report #${id} deleted`, ts: nowTs() }, ...a]);
   }, [userName, pumpDailyReports]);
 
   const updatePumpReport = useCallback((id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => {
-    setPumpDailyReports(rs => rs.map(r => {
-      if (r.id !== id) return r;
-      const next = { ...r, ...updates } as PumpDailyReport;
-      // Recalculate derived values when meter or price values change.
-      const liters = next.closingMeter > next.openingMeter ? parseFloat((next.closingMeter - next.openingMeter).toFixed(4)) : 0;
-      const grossAmount = liters * next.unitPrice;
-      const totalCollected = next.posAmount + next.cashAmount + next.transferAmount;
-      const variance = totalCollected + next.creditAmount - grossAmount;
-      return { ...next, liters, grossAmount, totalCollected, variance };
-    }));
-    setAudit(a => [{ id: genId(), action: 'Pump report updated', user: userName, detail: `Report #${id} edited`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const prev = pumpDailyReports.find(r => r.id === id);
+    if (!prev) return;
+    const merged = { ...prev, ...updates } as PumpDailyReport;
+    // Recalculate derived values when meter or price values change.
+    const liters = merged.closingMeter > merged.openingMeter ? parseFloat((merged.closingMeter - merged.openingMeter).toFixed(4)) : 0;
+    const grossAmount = liters * merged.unitPrice;
+    const totalCollected = merged.posAmount + merged.cashAmount + merged.transferAmount;
+    const variance = totalCollected + merged.creditAmount - grossAmount;
+    const next: PumpDailyReport = { ...merged, liters, grossAmount, totalCollected, variance };
+    setPumpDailyReports(rs => rs.map(r => r.id === id ? next : r));
+    if (prev.status === 'approved') {
+      // Keep the auto-created sales record in sync so revenue/COGS/profit
+      // derived from sales don't diverge from the edited report.
+      const pump = pumps.find(p => p.id === next.pumpId);
+      setSales(s => s.map(e => e.shiftReportId === id ? {
+        ...e,
+        pump: `${next.pumpName} (${next.product})`,
+        pumpId: next.pumpId,
+        lpgCategory: next.product === 'LPG' ? pump?.lpgCategory ?? 'single' : undefined,
+        L: next.liters,
+        price: next.unitPrice,
+        dt: next.date,
+        pos: next.posAmount,
+        branchId: next.branchId,
+      } : e));
+      // Adjust tank sold quantity by the delta so inventory stays consistent.
+      const litersDelta = next.liters - prev.liters;
+      if (litersDelta !== 0) {
+        if (next.product === 'LPG') {
+          setLpgTanks(ts => {
+            const matching = ts.filter(t => !next.branchId || !t.branchId || t.branchId === next.branchId);
+            if (matching.length === 0) return ts;
+            const share = litersDelta / matching.length;
+            const ids = new Set(matching.map(t => t.id));
+            return ts.map(t => ids.has(t.id) ? { ...t, sl: Math.max(0, t.sl + share) } : t);
+          });
+        } else {
+          setTanks(ts => {
+            const matching = ts.filter(t => t.prod === next.product && (!next.branchId || !t.branchId || t.branchId === next.branchId));
+            if (matching.length === 0) return ts;
+            const share = litersDelta / matching.length;
+            const ids = new Set(matching.map(t => t.id));
+            return ts.map(t => ids.has(t.id) ? { ...t, sl: Math.max(0, t.sl + share) } : t);
+          });
+        }
+      }
+    }
+    setAudit(a => [{ id: genId(), action: 'Pump report updated', user: userName, detail: `Report #${id} edited${prev.status === 'approved' ? ' — linked sales record synced' : ''}`, ts: nowTs() }, ...a]);
+  }, [userName, pumpDailyReports, pumps]);
 
   const addHREmployee = useCallback((e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => {
     setHrEmployees(prev => {
