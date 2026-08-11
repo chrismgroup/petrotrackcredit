@@ -7,7 +7,7 @@ import {
 import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { LPGTank, Pump, ROLE_COLORS, Tank, fmt, useApp } from '@/context/AppContext';
+import { LPGTank, Pump, ROLE_COLORS, Tank, fmt, salesRevenueByBranch, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const ST_STYLES: Record<string, { color: string; bg: string }> = {
@@ -88,12 +88,13 @@ export default function BranchesScreen() {
   const {
     role, branches, addBranch, updateBranch, deleteBranch,
     tanks, lpgTanks, pumps, updateTank, updateLpgTank, updatePump,
+    sales,
   } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
   const isAdmin   = role === 'admin';
 
-  const totalRev    = branches.reduce((s, b) => s + b.rev, 0);
+  const { total: totalRev, byBranch: branchRev } = salesRevenueByBranch(sales);
   const activeCount = branches.filter(b => b.st === 'Active').length;
 
   /* ── helpers to get assets assigned to a branch ── */
@@ -348,11 +349,11 @@ export default function BranchesScreen() {
                 </Text>
               )}
 
-              {b.rev > 0 && (
+              {(branchRev[b.id] ?? 0) > 0 && (
                 <View style={styles.statsRow}>
                   <View style={[styles.statItem, { backgroundColor: roleColor + '12' }]}>
                     <Ionicons name="trending-up" size={14} color={roleColor} />
-                    <Text style={[styles.statVal, { color: roleColor }]}>{fmt(b.rev)}</Text>
+                    <Text style={[styles.statVal, { color: roleColor }]}>{fmt(branchRev[b.id] ?? 0)}</Text>
                   </View>
                 </View>
               )}

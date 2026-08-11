@@ -69,6 +69,21 @@ export function getCurrentTankStock(
     : latestDip?.rd[tank.id];
   return reading === undefined ? balance : Math.max(0, reading);
 }
+/** Live revenue derived from actual sales records (auto-created when pump
+ *  reports are approved, plus any manual entries). Replaces the static
+ *  `branch.rev` field which is never updated by operations. */
+export function salesRevenueByBranch(sales: SalesEntry[]): { total: number; byBranch: Record<string, number> } {
+  const byBranch: Record<string, number> = {};
+  let total = 0;
+  for (const e of sales) {
+    const amt = e.L * e.price;
+    if (!Number.isFinite(amt)) continue;
+    total += amt;
+    if (e.branchId) byBranch[e.branchId] = (byBranch[e.branchId] || 0) + amt;
+  }
+  return { total, byBranch };
+}
+
 export interface MgrPermissions {
   canDip: boolean; canSales: boolean; canExpenses: boolean;
   canMaintenance: boolean; canBudget: boolean; canChat: boolean;
@@ -2416,9 +2431,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  // Admin always sees their own fixed nav; every other role starts from FULL_NAV_CATALOG
-  // then gets filtered by roleAccess (role-level toggles) and userAccess (per-user overrides).
-  // Both are controlled exclusively by the admin via the Access Control panel.
+  // Admin always sees their own fixed nav. Every other role starts from the
+  // full catalog, then gets filtered by the admin-managed role defaults and
+  // per-user overrides. No business role bypasses Access Control.
   const baseNav: NavItem[] = role === 'admin'
     ? (NAVDEF.admin ?? [])
     : FULL_NAV_CATALOG;
@@ -2452,10 +2467,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const filterFolder = (items: NavItem[]) => items.filter(item => item.id !== 'corp' || folderVisible);
   const navItems: NavItem[] = role === 'admin'
     ? filterFolder(baseNav)
-    : GLOBAL_OVERVIEW_ROLES.has(role ?? '')
-    ? filterFolder(FULL_NAV_CATALOG)
     : filterFolder(baseNav.filter(item => {
-        // Per-user override takes priority over role default
+        // Per-user override takes priority over the role default.
+        // This applies equally to CEO, MD, accountant, CSM, manager,
+        // marketing, and attendant accounts.
         if (staffId !== null) {
           const userLevel = (userAccess[staffId] ?? {})[item.id];
           if (userLevel !== undefined) return userLevel;
