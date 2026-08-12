@@ -238,7 +238,7 @@ export default function SystemSettingsScreen() {
   const [tankEdits, setTankEdits] = useState<Record<string, { name: string; cap: string; dip: string; prod: Tank['prod']; branchId: string }>>({});
   const [lpgEdits,  setLpgEdits]  = useState<Record<string, { name: string; cap: string; branchId: string }>>({});
   const [pumpEdits, setPumpEdits] = useState<Record<string, { name: string; prod: Pump['prod']; active: boolean; branchId: string; openingMeter: string; lpgCategory: 'single' | 'distributor' | '' }>>({});
-  const [staffEdits,setStaffEdits]= useState<Record<number, { name: string; email: string }>>({});
+  const [staffEdits,setStaffEdits]= useState<Record<number, { name: string; email: string; branchId: string }>>({});
 
   /* ── new-item forms ── */
   const [showNewTank,  setShowNewTank]  = useState(false);
@@ -270,7 +270,7 @@ export default function SystemSettingsScreen() {
   }, [pumps, pumpInitialMeters]);
   useEffect(() => {
     const se: typeof staffEdits = {};
-    for (const m of staff) se[m.id] = { name: m.name, email: m.email };
+    for (const m of staff) se[m.id] = { name: m.name, email: m.email, branchId: m.branchId ?? '' };
     setStaffEdits(se);
   }, [staff]);
 
@@ -307,7 +307,7 @@ export default function SystemSettingsScreen() {
   function saveStaff() {
     for (const [idStr, e] of Object.entries(staffEdits)) {
       if (!e.name.trim()) { Alert.alert('Error', 'Staff name cannot be empty.'); return; }
-      updateStaff(parseInt(idStr), { name: e.name.trim(), email: e.email.trim() });
+      updateStaff(parseInt(idStr), { name: e.name.trim(), email: e.email.trim(), branchId: e.branchId || undefined });
     }
     Alert.alert('Saved', 'Staff information updated.');
   }
@@ -359,7 +359,7 @@ export default function SystemSettingsScreen() {
     }
     const sal = parseInt(newStaff.sal) || 0;
     const deptId = (newStaff as any).dept as string | undefined;
-    addStaff({ name, email, role: newStaff.role, sal, st: 'Active', dept: deptId });
+    addStaff({ name, email, role: newStaff.role, sal, st: 'Active', dept: deptId, branchId: newStaff.branchId || undefined });
     await addActiveUserAccount({
       empName: name,
       username,
@@ -933,7 +933,7 @@ export default function SystemSettingsScreen() {
               </View>
 
               {staff.map(member => {
-                const e = staffEdits[member.id] ?? { name: member.name, email: member.email };
+                const e = staffEdits[member.id] ?? { name: member.name, email: member.email, branchId: member.branchId ?? '' };
                 const initials = (e.name || 'U').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
                 return (
                   <View key={member.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -961,6 +961,28 @@ export default function SystemSettingsScreen() {
                     </View>
                     <FieldInput colors={colors} editable={canManageStaff} label="Full Name" value={e.name} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, name: v } }))} placeholder="Enter full name" autoCapitalize="words" />
                     <FieldInput colors={colors} editable={canManageStaff} label="Email Address" value={e.email} onChangeText={v => setStaffEdits(s => ({ ...s, [member.id]: { ...e, email: v } }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
+                    <View style={{ marginBottom: 4 }}>
+                      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
+                      <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                        <TouchableOpacity
+                          disabled={!canManageStaff}
+                          onPress={() => setStaffEdits(s => ({ ...s, [member.id]: { ...e, branchId: '' } }))}
+                          style={[styles.roleChip, { borderColor: !e.branchId ? roleColor : colors.border, backgroundColor: !e.branchId ? roleColor + '18' : colors.surface, opacity: canManageStaff ? 1 : 0.6 }]}
+                        >
+                          <Text style={[styles.roleChipText, { color: !e.branchId ? roleColor : colors.textMuted }]}>Head Office / Global</Text>
+                        </TouchableOpacity>
+                        {branches.map(b => (
+                          <TouchableOpacity
+                            key={b.id}
+                            disabled={!canManageStaff}
+                            onPress={() => setStaffEdits(s => ({ ...s, [member.id]: { ...e, branchId: b.id } }))}
+                            style={[styles.roleChip, { borderColor: e.branchId === b.id ? roleColor : colors.border, backgroundColor: e.branchId === b.id ? roleColor + '18' : colors.surface, opacity: canManageStaff ? 1 : 0.6 }]}
+                          >
+                            <Text style={[styles.roleChipText, { color: e.branchId === b.id ? roleColor : colors.textMuted }]}>{b.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
                     {/* Department assignment */}
                     {departments.length > 0 && canManageStaff && (
                       <View style={{ marginTop: 4 }}>

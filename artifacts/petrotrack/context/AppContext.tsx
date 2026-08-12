@@ -17,7 +17,7 @@ export interface Delivery { id: number; dt: string; submittedAt?: string; sup: s
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; submittedAt?: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
 export interface MarketCompetitor { id: string; name: string; location: string; pms: string; ago: string; dpk: string; lpg: string; updatedBy: string; updatedAt: string; }
-export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
+export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; branchId?: string; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
 export interface PriceProposal {
@@ -561,7 +561,7 @@ interface AppContextType {
   updateTank: (id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip' | 'branchId'>>) => void;
   updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap' | 'branchId'>>) => void;
   updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId' | 'lpgCategory'>>) => void;
-  updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept'>>) => void;
+  updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId'>>) => void;
   addExpense: (exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => void;
   updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => void;
   deleteExpense: (id: number) => void;
@@ -595,7 +595,7 @@ interface AppContextType {
   addStaff: (s: Omit<Staff, 'id'>) => void;
   toggleStaff: (id: number) => void;
   deleteStaff: (id: number) => void;
-  addBranch: (b: Omit<Branch, 'id'>) => void;
+  addBranch: (b: Omit<Branch, 'id'>) => Branch;
   updateBranch: (id: string, updates: Partial<Pick<Branch, 'st' | 'mgr' | 'name' | 'pumps' | 'tanks'>>) => void;
   deleteBranch: (id: string) => void;
   addAudit: (entry: Omit<AuditEntry, 'id' | 'ts'>) => void;
@@ -1298,7 +1298,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Pump configuration updated', user: userName, detail: `Pump ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updateStaff = useCallback((id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept'>>) => {
+  const updateStaff = useCallback((id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId'>>) => {
     setStaff(s => s.map(m => m.id === id ? { ...m, ...updates } : m));
     setAudit(a => [{ id: genId(), action: 'Staff record updated', user: userName, detail: `Staff ID ${id} updated`, ts: nowTs() }, ...a]);
   }, [userName]);
@@ -1690,13 +1690,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteStaff = useCallback((id: number) => {
+    if (role !== 'admin') return;
     setStaff(st => st.filter(s => s.id !== id));
     setAudit(a => [{ id: genId(), action: 'User deleted', user: userName, detail: `Staff ID ${id} removed`, ts: nowTs() }, ...a]);
-  }, [userName]);
+  }, [role, userName]);
 
   const addBranch = useCallback((b: Omit<Branch, 'id'>) => {
-    setBranches(br => [...br, { ...b, id: `B${genId()}` }]);
+    const branch: Branch = { ...b, id: `B${genId()}` };
+    setBranches(br => [...br, branch]);
     setAudit(a => [{ id: genId(), action: 'Branch created', user: userName, detail: b.name, ts: nowTs() }, ...a]);
+    return branch;
   }, [userName]);
 
   const updateBranch = useCallback((id: string, updates: Partial<Pick<Branch, 'st' | 'mgr' | 'name' | 'pumps' | 'tanks'>>) => {
@@ -1957,8 +1960,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const removed = await usersApi.remove(id);
     if (!removed) return false;
     setUserAccounts(prev => prev.filter(a => a.id !== id));
+    setUserAccess(prev => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setAudit(a => [{ id: genId(), action: 'Account deleted', user: userName, detail: `User account #${id} permanently removed`, ts: nowTs() }, ...a]);
     return true;
-  }, []);
+  }, [userName]);
 
   const validateCredentials = useCallback(async (username: string, password: string): Promise<UserAccount | null> => {
     const candidates = userAccounts.filter(a => a.username === username && a.status === 'active');

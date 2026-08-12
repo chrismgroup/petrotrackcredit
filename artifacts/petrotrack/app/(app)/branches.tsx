@@ -145,8 +145,7 @@ export default function BranchesScreen() {
 
   function handleAdd() {
     if (!addForm.name.trim()) { Alert.alert('Required', 'Branch name is required.'); return; }
-    const tempId = `B${Date.now()}`;
-    addBranch({
+    const newBranch = addBranch({
       name:  addForm.name.trim(),
       st:    isAdmin ? 'Active' : 'Pending',
       rev:   0,
@@ -154,13 +153,9 @@ export default function BranchesScreen() {
       pumps: addForm.pumpIds.length,
       tanks: addForm.tankIds.length + addForm.lpgIds.length,
     });
-    // Apply assignments — the new branch id is generated inside addBranch as tempId pattern.
-    // We look it up by name right after since addBranch is synchronous state update.
-    // Use a short timeout to let state settle, then find the new branch by name.
-    setTimeout(() => {
-      const newBranch = [...branches].reverse().find(b => b.name === addForm.name.trim());
-      if (newBranch) applyAssignments(newBranch.id, addForm, [], [], []);
-    }, 0);
+    // addBranch returns the generated id immediately, so assignments do not
+    // depend on a stale render's `branches` array.
+    applyAssignments(newBranch.id, addForm, [], [], []);
     setAddForm(BLANK_FORM);
     setShowAddForm(false);
   }
