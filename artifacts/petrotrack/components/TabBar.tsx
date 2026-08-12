@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import React from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ROLE_COLORS, SCREEN_ROUTES, useApp } from '@/context/AppContext';
@@ -28,6 +28,7 @@ export function TabBar() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
 
   if (!role) return null;
   const roleColor = ROLE_COLORS[role] || colors.primary;
@@ -49,6 +50,8 @@ export function TabBar() {
   }
 
   const bottomPad = Platform.OS === 'web' ? 30 : insets.bottom;
+  const compact = width < 360;
+  const navItems = PRIMARY_TABS.filter(item => item.id !== 'folder' || canOpenFolder);
 
   return (
     <View style={[styles.container, {
@@ -56,32 +59,41 @@ export function TabBar() {
       backgroundColor: colors.surface,
       shadowColor: '#000',
     }]}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-      {PRIMARY_TABS.filter(item => item.id !== 'folder' || canOpenFolder).map(item => {
+      <View style={styles.navRail}>
+      {navItems.map(item => {
         const active = isActive(item.id);
         return (
-          <TouchableOpacity key={item.id} style={styles.tab} onPress={() => navigate(item.route)} activeOpacity={0.7}>
-            <View style={[styles.iconPill, active && { backgroundColor: roleColor + '1A' }]}>
+          <TouchableOpacity
+            key={item.id}
+            style={[styles.tab, compact && styles.compactTab]}
+            onPress={() => navigate(item.route)}
+            activeOpacity={0.7}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={item.label}
+          >
+            <View style={[styles.iconPill, compact && styles.compactIconPill, active && { backgroundColor: roleColor + '1A' }]}>
               <Ionicons
                 name={(active ? item.icon : `${item.icon}-outline`) as any}
-                size={22}
+                size={compact ? 20 : 22}
                 color={active ? roleColor : colors.tabIconDefault}
               />
             </View>
-            <Text style={[styles.label, {
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={[styles.label, compact && styles.compactLabel, {
               color: active ? roleColor : colors.tabIconDefault,
               fontWeight: active ? '700' : '500',
-            }]}>
+            }]}
+            >
               {item.label}
             </Text>
           </TouchableOpacity>
         );
       })}
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -89,16 +101,35 @@ export function TabBar() {
 const styles = StyleSheet.create({
   container: {
     paddingTop: 6,
+    width: '100%',
+    alignItems: 'center',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.06,
     shadowRadius: 10,
     elevation: 8,
   },
-  scrollContent: { flexDirection: 'row', paddingHorizontal: 6 },
-  tab: { flex: 1, minWidth: 68, alignItems: 'center', paddingVertical: 2, gap: 2 },
+  navRail: {
+    width: '100%',
+    maxWidth: 720,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+  },
+  tab: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+    gap: 2,
+  },
+  compactTab: { paddingHorizontal: 0 },
   iconPill: {
     width: 44, height: 30, borderRadius: 15,
     alignItems: 'center', justifyContent: 'center',
   },
-  label: { fontSize: 10, textAlign: 'center', letterSpacing: 0.1 },
+  compactIconPill: { width: 38, height: 28 },
+  label: { width: '100%', fontSize: 10, textAlign: 'center', letterSpacing: 0.1 },
+  compactLabel: { fontSize: 9 },
 });

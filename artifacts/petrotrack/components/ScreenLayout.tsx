@@ -18,7 +18,9 @@ export function ScreenLayout({ title, children, rightAction, subHeader }: Props)
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Header title={title} rightAction={rightAction} />
       {subHeader}
-      <View style={styles.content}>{children}</View>
+      <View style={styles.content}>
+        <View style={styles.contentFrame}>{children}</View>
+      </View>
       <TabBar />
     </View>
   );
@@ -26,5 +28,6 @@ export function ScreenLayout({ title, children, rightAction, subHeader }: Props)
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { flex: 1 },
+  content: { flex: 1, width: '100%' },
+  contentFrame: { flex: 1, width: '100%', maxWidth: 860, alignSelf: 'center' },
 });
