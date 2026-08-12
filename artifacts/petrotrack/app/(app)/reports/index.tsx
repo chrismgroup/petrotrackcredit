@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import { Branch, ROLE_COLORS, fmt, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import {
@@ -123,8 +124,18 @@ export default function ReportsScreen() {
   const [selBranch,  setSelBranch]  = useState<string | null>(isBranchLocked ? (branchId ?? null) : null);
   const [reportType, setReportType] = useState<ReportType>(defaultType);
   const [period,     setPeriod]     = useState<Period>('Monthly');
+  const [anchorDate, setAnchorDate] = useState('');
 
-  const { from, to } = useMemo(() => periodRange(period), [period]);
+  const { from, to } = useMemo(() => {
+    if (!anchorDate) return periodRange(period);
+    const anchor = new Date(`${anchorDate}T12:00:00`);
+    const end = new Date(anchor);
+    end.setHours(23, 59, 59, 999);
+    const start = new Date(anchor);
+    start.setDate(start.getDate() - (SCALE[period] - 1));
+    start.setHours(0, 0, 0, 0);
+    return { from: start, to: end };
+  }, [period, anchorDate]);
   const scale = SCALE[period]; // kept for PDF/label compatibility
   const fromStr = from.toISOString().slice(0, 10);
   const toStr   = to.toISOString().slice(0, 10);
@@ -429,6 +440,13 @@ export default function ReportsScreen() {
 
       {/* ── Compact top bar: Period + Branch ── */}
       <View style={[s.topBar, { borderBottomColor: colors.border }]}>
+        <AppliedDateField
+          value={anchorDate}
+          onChange={setAnchorDate}
+          label="View reports as at a date"
+          accent={rc}
+          helper={anchorDate ? 'The selected date anchors the chosen reporting period.' : 'Defaults to the current date until you select another business date.'}
+        />
         {/* Period chips — wrap so all stay visible */}
         <View style={s.chipWrap}>
           {PERIODS.map(p => {

@@ -222,7 +222,7 @@ interface RevenueTrendChartProps {
 
 export default function HomeScreen() {
   const {
-    role, userName, branchId, branches,
+    role, userName, branchId, branches, navItems,
     tanks, lpgTanks, dips,
     deliveries, maintenance, expenses, budgets,
     financialEntry, priceProposals,
@@ -241,6 +241,8 @@ export default function HomeScreen() {
   if (!role) return null;
 
   const isApprover = role === 'md' || role === 'admin' || role === 'ceo';
+  const canViewRevenue = role === 'admin' || navItems.some(item => item.id === 'revenue');
+  const canViewFuelStock = role === 'admin' || navItems.some(item => item.id === 'fuelStock');
   const greeting = dayGreeting();
   const dayStamp = new Date().toLocaleDateString('en-NG', {
     weekday: 'long', day: 'numeric', month: 'long',
@@ -432,27 +434,32 @@ export default function HomeScreen() {
 
         {/* ── KPI Grid ────────────────────────────────────────────── */}
         <View style={s.kpiGrid}>
-          <KpiTile
-            icon="cash-outline"
-            label="Revenue This Month"
-            value={fmt(monthlyRevenue)}
-            accent={colors.primary}
-            colors={colors}
-            onPress={() => router.push(SCREEN_ROUTES.acct as never)}
-          />
-          <KpiTile
-            icon="water-outline"
-            label="Fuel Stock"
-            value={`${totalPetrolStock.toLocaleString()} L`}
-            sub={`${totalLpgStock.toLocaleString()} kg LPG`}
-            accent={colors.teal}
-            colors={colors}
-            onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=inventory` as never)}
-          />
+          {canViewRevenue ? (
+            <KpiTile
+              icon="cash-outline"
+              label="Revenue This Month"
+              value={fmt(monthlyRevenue)}
+              accent={colors.primary}
+              colors={colors}
+              onPress={() => router.push(SCREEN_ROUTES.acct as never)}
+            />
+          ) : null}
+          {canViewFuelStock ? (
+            <KpiTile
+              icon="water-outline"
+              label="Fuel Stock"
+              value={`${totalPetrolStock.toLocaleString()} L`}
+              sub={`${totalLpgStock.toLocaleString()} kg LPG`}
+              accent={colors.teal}
+              colors={colors}
+              onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=inventory` as never)}
+            />
+          ) : null}
         </View>
 
         {/* ── Full fuel stock ──────────────────────────────────────── */}
-        <Section label="FUEL STOCK" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
+        {canViewFuelStock ? (
+          <Section label="FUEL STOCK" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
           <View style={[s.stockCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[s.stockSummary, { backgroundColor: colors.teal + '12', borderColor: colors.teal + '30' }]}>
               <View>
@@ -473,7 +480,8 @@ export default function HomeScreen() {
               </View>
             ))}
           </View>
-        </Section>
+          </Section>
+        ) : null}
 
         {/* ── Approvals Inbox ─────────────────────────────────────── */}
         <Section label="APPROVALS & ACTIONS" colors={colors}>

@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { Budget, Expense, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -23,9 +24,9 @@ const ST_MAP: Record<string, { label: string; color: string; bg: string; icon: s
   rejected:     { label: 'Rejected',        color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle' },
 };
 
-type FormState = { cat: string; desc: string; amt: string; ref: string; budgetId: number };
-function blankForm(): FormState { return { cat: EXPENSE_CATS[0], desc: '', amt: '', ref: '', budgetId: 0 }; }
-function expToForm(e: Expense): FormState { return { cat: e.cat, desc: e.desc, amt: String(e.amt), ref: e.ref ?? '', budgetId: e.budgetId }; }
+type FormState = { cat: string; desc: string; amt: string; ref: string; budgetId: number; dt: string };
+function blankForm(): FormState { return { cat: EXPENSE_CATS[0], desc: '', amt: '', ref: '', budgetId: 0, dt: '' }; }
+function expToForm(e: Expense): FormState { return { cat: e.cat, desc: e.desc, amt: String(e.amt), ref: e.ref ?? '', budgetId: e.budgetId, dt: e.dt.slice(0, 10) }; }
 
 type FormSheetProps = { f: FormState; setF: React.Dispatch<React.SetStateAction<FormState>>; roleColor: string; approvedBudgets: Budget[] };
 function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
@@ -41,6 +42,12 @@ function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
           </TouchableOpacity>
         ))}
       </View>
+      <AppliedDateField
+        value={f.dt}
+        onChange={dt => setF(p => ({ ...p, dt }))}
+        accent={roleColor}
+        helper="This is the date the expense belongs to, not the submission date."
+      />
       <Text style={[styles.fieldLabel, { color: colors.text }]}>Charge to Budget *</Text>
       {approvedBudgets.length === 0 ? (
         <View style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, justifyContent: 'center' }]}>
@@ -103,6 +110,7 @@ export default function ExpensesScreen() {
   /* Acc forward modal */
   const [fwdTarget, setFwdTarget]   = useState<Expense | null>(null);
   const [fwdNote, setFwdNote]       = useState('');
+  const [filterDate, setFilterDate] = useState('');
 
   const today = new Date().toISOString().slice(0, 10);
   const todaySalesRev    = sales.filter(s => s.dt.startsWith(today)).reduce((s, x) => s + x.L * x.price, 0);
@@ -123,7 +131,7 @@ export default function ExpensesScreen() {
   const TABS_CEO = ['Pending', 'Approved', 'All'];
   const currentTabs = isCeo ? TABS_CEO : isMD ? TABS_MD : isAcc ? TABS_ACC : TABS_MGR;
 
-  const displayedExpenses = isCeo
+  const displayedExpensesBase = isCeo
     ? (tab === 0 ? expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded')
       : tab === 1 ? expenses.filter(e => e.status === 'approved') : expenses)
     : isMD
@@ -131,6 +139,9 @@ export default function ExpensesScreen() {
     : isAcc
     ? (tab === 0 ? pendingForAcc : expenses)
     : (tab === 0 ? myExpenses : expenses);
+  const displayedExpenses = filterDate
+    ? displayedExpensesBase.filter(expense => expense.dt.slice(0, 10) === filterDate)
+    : displayedExpensesBase;
 
   const pendingCount = isCeo ? expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded').length
     : isAcc ? pendingForAcc.length : isMD ? pendingForMD.length : 0;
@@ -146,14 +157,15 @@ export default function ExpensesScreen() {
     const amount = parseFloat(form.amt.replace(/,/g, ''));
     if (!form.desc.trim()) { Alert.alert('Error', 'Please enter a description.'); return; }
     if (!amount || amount <= 0) { Alert.alert('Error', 'Please enter a valid amount.'); return; }
+    if (!form.dt) { Alert.alert('Date required', 'Select the date this expense applies to.'); return; }
     if (!editTarget && (!form.budgetId || !approvedBudgets.find(b => b.id === form.budgetId))) {
       Alert.alert('No Budget Selected', 'Please select an approved budget to charge this expense to.');
       return;
     }
     if (editTarget) {
-      updateExpense(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, ref: form.ref.trim() || undefined });
+      updateExpense(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, dt: form.dt });
     } else {
-      addExpense({ cat: form.cat, desc: form.desc.trim(), amt: amount, by: role || 'mgr', byName: userName, ref: form.ref.trim() || undefined, budgetId: form.budgetId });
+      addExpense({ dt: form.dt, cat: form.cat, desc: form.desc.trim(), amt: amount, by: role || 'mgr', byName: userName, ref: form.ref.trim() || undefined, budgetId: form.budgetId });
     }
     setShowForm(false);
   }
@@ -237,6 +249,14 @@ export default function ExpensesScreen() {
         ))}
       </View>
 
+      <AppliedDateField
+        value={filterDate}
+        onChange={setFilterDate}
+        label="View expenses for a date"
+        accent={roleColor}
+        helper="Filter by the date the expense applies to."
+      />
+
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {displayedExpenses.length === 0 ? (
           <View style={styles.emptyState}>
@@ -263,7 +283,7 @@ export default function ExpensesScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.expCat, { color: colors.text }]}>{exp.cat}</Text>
                   <Text style={[styles.expDesc, { color: colors.textMuted }]}>{exp.desc}</Text>
-                  <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{'by '}{exp.byName}{' · '}{fmtDateTime(exp.dt)}</Text>
+                   <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{'by '}{exp.byName}{' · applies on '}{exp.dt.slice(0, 10)}{' · submitted '}{exp.submittedAt ? fmtDateTime(exp.submittedAt) : fmtDateTime(exp.dt)}</Text>
                   {exp.ref ? <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{'Ref: '}{exp.ref}</Text> : null}
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 4 }}>

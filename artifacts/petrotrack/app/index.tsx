@@ -107,7 +107,7 @@ export default function LoginScreen() {
           Alert.alert('Sign-in Failed', 'Your saved credentials are no longer valid. Please sign in with your password.');
         }
       } else {
-        login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, undefined, serverResult.branchId ?? undefined);
+        login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, serverResult.staffId, serverResult.branchId ?? undefined);
       }
     } catch { setBioLoading(false); }
   }, [bioCreds, bioLoading, login]);
@@ -130,7 +130,7 @@ export default function LoginScreen() {
       return;
     }
     await saveCredentials(u, p);
-    login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, undefined, serverResult.branchId ?? undefined);
+    login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, serverResult.staffId, serverResult.branchId ?? undefined);
   }
 
   const bioIcon  = bioType === 'face' ? 'scan-outline' : 'finger-print-outline';

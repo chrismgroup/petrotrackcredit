@@ -10,6 +10,7 @@ import {
   PumpDailyReport, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForPump, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { AppliedDateField } from '@/components/AppliedDateField';
 
 /* ── helpers ─────────────────────────────────────────── */
 const fmtL = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
@@ -136,6 +137,8 @@ export default function ShiftReportScreen() {
   const [xferAmt, setXferAmt]         = useState('');
   const [creditAmt, setCreditAmt]     = useState('');
   const [noteAtt, setNoteAtt]         = useState('');
+  const [appliesOn, setAppliesOn]     = useState('');
+  const [historyDate, setHistoryDate] = useState('');
 
   const closeVal  = parseFloat(closeMeter.replace(/,/g, '')) || 0;
   const liters    = closeVal > openingMeter ? parseFloat((closeVal - openingMeter).toFixed(4)) : 0;
@@ -149,27 +152,28 @@ export default function ShiftReportScreen() {
   const variance  = totalColl + creditVal - grossAmt;
   const varColor  = variance === 0 ? '#27500A' : variance > 0 ? '#185FA5' : '#791F1F';
 
-  const todayBlockingReport = useMemo(() =>
+  const blockingReport = useMemo(() =>
     pumpDailyReports.find(
-      r => r.pumpId === selPump && r.date === today &&
+      r => r.pumpId === selPump && !!appliesOn && r.date === appliesOn &&
            (r.status === 'pending_manager' || r.status === 'returned')
     ) ?? null,
-    [pumpDailyReports, selPump, today]
+    [pumpDailyReports, selPump, appliesOn]
   );
 
   function handleSubmit() {
     if (!pump) { Alert.alert('Error', 'No active pump selected.'); return; }
+    if (!appliesOn) { Alert.alert('Date required', 'Select the date this shift report applies to.'); return; }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
     if (totalColl + creditVal <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, transfer, or credit).'); return; }
-    if (todayBlockingReport) {
-      const label = todayBlockingReport.status === 'returned'
+    if (blockingReport) {
+      const label = blockingReport.status === 'returned'
         ? 'was returned and must be re-forwarded by the manager'
         : 'is awaiting manager review';
       Alert.alert('Manager Approval Required', `Your earlier report for ${pump.name} today ${label}. You can submit another shift report once the manager approves it.`);
       return;
     }
     submitPumpReport({
-      date: today,
+       date: appliesOn,
       pumpId: pump.id, pumpName: pump.name, product: pump.prod,
       branchId: branchId ?? '',
       openingMeter, closingMeter: closeVal, liters,
@@ -180,6 +184,7 @@ export default function ShiftReportScreen() {
       submittedBy: userName ?? '', submittedByName: userName ?? '',
     });
     setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditAmt(''); setNoteAtt('');
+    setAppliesOn('');
     const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
     Alert.alert('Shift Report Submitted', `${pump.name} · ${fmtL(liters)}${unitForProd(pump.prod)}\nGross: ${fmt(grossAmt)}\n${vLabel}\nSent to branch manager for review.`);
     setTab('history');
@@ -643,22 +648,30 @@ export default function ShiftReportScreen() {
                 })}
               </View>
 
-              {todayBlockingReport ? (
+              <AppliedDateField
+                value={appliesOn}
+                onChange={setAppliesOn}
+                label="Shift report applies on *"
+                accent={roleColor}
+                helper="Select the business date for this shift. It is not set from submission time."
+              />
+
+              {blockingReport ? (
                 <View style={[c.alreadyCard, {
-                  backgroundColor: todayBlockingReport.status === 'returned' ? '#FFF3E0' : '#FFF8E1',
-                  borderColor: todayBlockingReport.status === 'returned' ? '#E65100AA' : '#BA751744',
+                   backgroundColor: blockingReport.status === 'returned' ? '#FFF3E0' : '#FFF8E1',
+                   borderColor: blockingReport.status === 'returned' ? '#E65100AA' : '#BA751744',
                 }]}>
                   <Ionicons
-                    name={todayBlockingReport.status === 'returned' ? 'arrow-undo-circle' : 'time-outline'}
+                    name={blockingReport.status === 'returned' ? 'arrow-undo-circle' : 'time-outline'}
                     size={22}
-                    color={todayBlockingReport.status === 'returned' ? '#E65100' : '#BA7517'}
+                    color={blockingReport.status === 'returned' ? '#E65100' : '#BA7517'}
                   />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: todayBlockingReport.status === 'returned' ? '#E65100' : '#7A4F00' }}>
-                      {todayBlockingReport.status === 'returned' ? 'Report returned — awaiting re-forward' : 'Awaiting manager review'}
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: blockingReport.status === 'returned' ? '#E65100' : '#7A4F00' }}>
+                       {blockingReport.status === 'returned' ? 'Report returned — awaiting re-forward' : 'Awaiting manager review'}
                     </Text>
-                    <Text style={{ fontSize: 12, color: todayBlockingReport.status === 'returned' ? '#BF360C' : '#6D4C00', marginTop: 2 }}>
-                      Your earlier report for {pump?.name} today must be approved by the manager before you can submit another shift report.
+                    <Text style={{ fontSize: 12, color: blockingReport.status === 'returned' ? '#BF360C' : '#6D4C00', marginTop: 2 }}>
+                       Your earlier report for {pump?.name} on {appliesOn} must be approved by the manager before you can submit another shift report.
                     </Text>
                   </View>
                 </View>
@@ -776,13 +789,20 @@ export default function ShiftReportScreen() {
       {/* ══ HISTORY ══ */}
       {tab === 'history' && (
         <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
-          {myReports.length === 0 && (
+          <AppliedDateField
+            value={historyDate}
+            onChange={setHistoryDate}
+            label="View shift reports for a date"
+            accent={roleColor}
+            helper="Filter by the business date the shift report applies to."
+          />
+          {myReports.filter(r => !historyDate || r.date === historyDate).length === 0 && (
             <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="document-outline" size={36} color={colors.textSubtle} />
               <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No shift reports yet</Text>
             </View>
           )}
-          {myReports.map(r => (
+          {myReports.filter(r => !historyDate || r.date === historyDate).map(r => (
             <ReportCard key={r.id} report={r} roleColor={roleColor} colors={colors} onPress={() => openReport(r)} />
           ))}
           <View style={{ height: 24 }} />

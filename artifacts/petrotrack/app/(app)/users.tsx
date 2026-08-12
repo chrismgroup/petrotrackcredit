@@ -149,10 +149,9 @@ export default function UsersScreen() {
     if (!approving) return;
     if (!aUsername.trim()) { Alert.alert('Required', 'Username is required.'); return; }
     if (!aPassword.trim()) { Alert.alert('Required', 'Set a temporary password.'); return; }
-    if (!aBranch) { Alert.alert('Required', 'Please assign a branch.'); return; }
     const dup = userAccounts.find(a => a.username === aUsername.trim() && a.id !== approving.id);
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
-    await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch);
+    await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch || null);
     Alert.alert('Account Approved', `${approving.empName} can now log in as @${aUsername.trim()}.`);
     setApproving(null);
   }
@@ -178,11 +177,10 @@ export default function UsersScreen() {
     if (ePassword.trim() && ePassword.trim().length < 6) {
       Alert.alert('Invalid', 'New password must be at least 6 characters.'); return;
     }
-    if (!eBranch) { Alert.alert('Required', 'Please assign a branch.'); return; }
     const dup = userAccounts.find(a => a.username === eUsername.trim() && a.id !== editing.id);
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
-    const updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string } = {
-      username: eUsername.trim(), role: eRole, branchId: eBranch,
+    const updates: { username?: string; password?: string; role?: Role; branchId?: string | null; phoneNumber?: string } = {
+      username: eUsername.trim(), role: eRole, branchId: eBranch || null,
       phoneNumber: ePhone.trim() || undefined,
     };
     if (ePassword.trim()) updates.password = ePassword.trim();
@@ -353,7 +351,6 @@ export default function UsersScreen() {
     if (!viewEnroll) return;
     if (!vaUsername.trim()) { Alert.alert('Required', 'Username is required.'); return; }
     if (!vaPassword.trim()) { Alert.alert('Required', 'Set a temporary password.'); return; }
-    if (!vaBranch) { Alert.alert('Required', 'Please assign a branch.'); return; }
     const dup = userAccounts.find(a => a.username === vaUsername.trim() && a.id !== viewEnroll.id);
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
     const phone = viewEnroll.phoneNumber || vePhone.trim();
@@ -361,7 +358,7 @@ export default function UsersScreen() {
       Alert.alert('Phone Missing', 'Add a phone number to the enrollment before activating.');
       return;
     }
-    await approveUserAccount(viewEnroll.id, vaRole, vaUsername.trim(), vaPassword.trim(), userName || 'Admin', vaBranch);
+    await approveUserAccount(viewEnroll.id, vaRole, vaUsername.trim(), vaPassword.trim(), userName || 'Admin', vaBranch || null);
     Alert.alert('Account Activated', `${viewEnroll.empName} can now log in as @${vaUsername.trim()}.`);
     setViewEnroll(null);
   }
@@ -389,12 +386,11 @@ export default function UsersScreen() {
     if (!cPassword.trim() || cPassword.trim().length < 6) {
       Alert.alert('Required', 'Password must be at least 6 characters.'); return;
     }
-    if (!cBranch) { Alert.alert('Required', 'Please assign a branch.'); return; }
     const dup = userAccounts.find(a => a.username === cUsername.trim());
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
     await addActiveUserAccount({
       empName: cEmpName.trim(), username: cUsername.trim(), password: cPassword.trim(),
-      role: cRole, branchId: cBranch, phoneNumber: cPhone.trim() || undefined,
+      role: cRole, branchId: cBranch || null, phoneNumber: cPhone.trim() || undefined,
       createdBy: userName || 'Admin',
     });
     Alert.alert('Account Created', `${cEmpName.trim()} can now log in as @${cUsername.trim()}.`);
@@ -873,11 +869,15 @@ export default function UsersScreen() {
                     })}
                   </View>
 
-                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch * <Text style={{ color: '#c0392b', fontWeight: '400', fontSize: 11 }}>(required)</Text></Text>
+                   <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                    {branches.length === 0
-                      ? <Text style={{ color: colors.textMuted, fontSize: 12, fontStyle: 'italic' }}>No branches yet — add one first.</Text>
-                      : branches.map(b => (
+                     <TouchableOpacity
+                       onPress={() => setVaBranch('')}
+                       style={[styles.roleChip, { backgroundColor: !vaBranch ? (ROLE_COLORS[vaRole] || roleColor) : colors.background, borderColor: !vaBranch ? (ROLE_COLORS[vaRole] || roleColor) : colors.border }]}
+                     >
+                       <Text style={[styles.roleChipText, { color: !vaBranch ? '#fff' : colors.textMuted }]}>Head Office / Global</Text>
+                     </TouchableOpacity>
+                     {branches.map(b => (
                           <TouchableOpacity
                             key={b.id}
                             onPress={() => setVaBranch(b.id)}
@@ -885,8 +885,7 @@ export default function UsersScreen() {
                           >
                             <Text style={[styles.roleChipText, { color: vaBranch === b.id ? '#fff' : colors.textMuted }]}>{b.name}</Text>
                           </TouchableOpacity>
-                        ))
-                    }
+                         ))}
                   </View>
 
                   <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Username *</Text>
@@ -980,8 +979,13 @@ export default function UsersScreen() {
                 );
               })}
             </View>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Branch *</Text>
+             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+               <TouchableOpacity onPress={() => setABranch('')}
+                 style={[styles.roleChip, { backgroundColor: !aBranch ? (ROLE_COLORS[aRole] || roleColor) : colors.surface, borderColor: !aBranch ? (ROLE_COLORS[aRole] || roleColor) : colors.border }]}
+               >
+                 <Text style={[styles.roleChipText, { color: !aBranch ? '#fff' : colors.textMuted }]}>Head Office / Global</Text>
+               </TouchableOpacity>
               {branches.map(b => (
                 <TouchableOpacity key={b.id} onPress={() => setABranch(b.id)}
                   style={[styles.roleChip, { backgroundColor: aBranch === b.id ? (ROLE_COLORS[aRole] || roleColor) : colors.surface, borderColor: aBranch === b.id ? (ROLE_COLORS[aRole] || roleColor) : colors.border }]}
@@ -1046,8 +1050,13 @@ export default function UsersScreen() {
                   );
                 })}
               </View>
-              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
+               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                 <TouchableOpacity onPress={() => setEBranch('')}
+                   style={[styles.roleChip, { backgroundColor: !eBranch ? (ROLE_COLORS[eRole] || roleColor) : colors.surface, borderColor: !eBranch ? (ROLE_COLORS[eRole] || roleColor) : colors.border }]}
+                 >
+                   <Text style={[styles.roleChipText, { color: !eBranch ? '#fff' : colors.textMuted }]}>Head Office / Global</Text>
+                 </TouchableOpacity>
                 {branches.map(b => (
                   <TouchableOpacity key={b.id} onPress={() => setEBranch(b.id)}
                     style={[styles.roleChip, { backgroundColor: eBranch === b.id ? (ROLE_COLORS[eRole] || roleColor) : colors.surface, borderColor: eBranch === b.id ? (ROLE_COLORS[eRole] || roleColor) : colors.border }]}
@@ -1137,10 +1146,15 @@ export default function UsersScreen() {
                 );
               })}
             </View>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch *</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              <TouchableOpacity onPress={() => setCBranch('')}
+                style={[styles.roleChip, { backgroundColor: !cBranch ? (ROLE_COLORS[cRole] || roleColor) : colors.surface, borderColor: !cBranch ? (ROLE_COLORS[cRole] || roleColor) : colors.border }]}
+              >
+                <Text style={[styles.roleChipText, { color: !cBranch ? '#fff' : colors.textMuted }]}>Head Office / Global</Text>
+              </TouchableOpacity>
               {branches.length === 0
-                ? <Text style={{ color: colors.textMuted, fontSize: 12, fontStyle: 'italic' }}>No branches yet.</Text>
+                ? null
                 : branches.map(b => (
                     <TouchableOpacity key={b.id} onPress={() => setCBranch(b.id)}
                       style={[styles.roleChip, { backgroundColor: cBranch === b.id ? (ROLE_COLORS[cRole] || roleColor) : colors.surface, borderColor: cBranch === b.id ? (ROLE_COLORS[cRole] || roleColor) : colors.border }]}

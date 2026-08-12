@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ROLE_COLORS, fmtDate, useApp } from '@/context/AppContext';
+import { AppliedDateField } from '@/components/AppliedDateField';
+import { ROLE_COLORS, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PRI_COLORS: Record<string, { bg: string; fg: string }> = {
@@ -20,19 +21,22 @@ export default function MaintenanceScreen() {
   const canManage = canSubmit || role === 'md';
 
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', pri: 'Urgent' as 'Urgent' | 'Medium' | 'Low' });
+  const [form, setForm] = useState({ title: '', pri: 'Urgent' as 'Urgent' | 'Medium' | 'Low', date: '' });
+  const [filterDate, setFilterDate] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editPri, setEditPri] = useState<'Urgent' | 'Medium' | 'Low'>('Urgent');
   const [editCost, setEditCost] = useState('');
 
-  const open = maintenance.filter(m => m.st === 'Open');
-  const done = maintenance.filter(m => m.st === 'Done');
+  const dateFiltered = maintenance.filter(m => !filterDate || m.date.slice(0, 10) === filterDate);
+  const open = dateFiltered.filter(m => m.st === 'Open');
+  const done = dateFiltered.filter(m => m.st === 'Done');
 
   function handleSubmit() {
     if (!form.title.trim()) { Alert.alert('Required', 'Please enter a description.'); return; }
-    addMaintenance({ title: form.title.trim(), pri: form.pri, by: userName, date: new Date().toISOString().slice(0, 10), st: 'Open' });
-    setForm({ title: '', pri: 'Urgent' });
+    if (!form.date) { Alert.alert('Date required', 'Select the date this request applies to.'); return; }
+    addMaintenance({ title: form.title.trim(), pri: form.pri, by: userName, date: form.date, st: 'Open' });
+    setForm({ title: '', pri: 'Urgent', date: '' });
     setShowForm(false);
     Alert.alert('Submitted', 'Maintenance request logged.');
   }
@@ -102,6 +106,12 @@ export default function MaintenanceScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            <AppliedDateField
+              value={form.date}
+              onChange={date => setForm(f => ({ ...f, date }))}
+              accent={roleColor}
+              helper="Select the date the maintenance issue applies to."
+            />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
               <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleSubmit} activeOpacity={0.85}>
                 <Ionicons name="send" size={16} color="#fff" />
@@ -113,6 +123,14 @@ export default function MaintenanceScreen() {
             </View>
           </View>
         )}
+
+        <AppliedDateField
+          value={filterDate}
+          onChange={setFilterDate}
+          label="View maintenance for a date"
+          accent={roleColor}
+          helper="Filter by the date the request applies to."
+        />
 
         <View style={[styles.summaryRow]}>
           <View style={[styles.summaryCard, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}>
@@ -185,6 +203,7 @@ export default function MaintenanceScreen() {
                       <Text style={[styles.metaText, { color: colors.textMuted }]}>by {m.by}</Text>
                       <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
                       <Text style={[styles.metaText, { color: colors.textMuted }]}>{fmtDate(m.date)}</Text>
+                      <Text style={[styles.metaText, { color: colors.textSubtle }]}>submitted {fmtDateTime(m.submittedAt ?? m.date)}</Text>
                     </View>
                     {canManage && (
                       <View style={styles.actionRow}>
