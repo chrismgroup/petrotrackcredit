@@ -12,6 +12,7 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   fmt,
+  GLOBAL_OVERVIEW_ROLES,
   getCurrentTankStock,
   salesRevenueByBranch,
   ROLE_LABELS,
@@ -243,6 +244,11 @@ export default function HomeScreen() {
   const isApprover = role === 'md' || role === 'admin' || role === 'ceo';
   const canViewRevenue = role === 'admin' || navItems.some(item => item.id === 'revenue');
   const canViewFuelStock = role === 'admin' || navItems.some(item => item.id === 'fuelStock');
+  // CEO, MD, Accountant and CSM are company-wide overview roles. Their
+  // account may still contain a legacy branchId, but it must not narrow
+  // their Home KPIs to one branch.
+  const isGlobalOverview = role === 'admin' || (role ? GLOBAL_OVERVIEW_ROLES.has(role) : false);
+  const scopedBranchId = isGlobalOverview ? null : branchId;
   const greeting = dayGreeting();
   const dayStamp = new Date().toLocaleDateString('en-NG', {
     weekday: 'long', day: 'numeric', month: 'long',
@@ -256,33 +262,33 @@ export default function HomeScreen() {
   })();
   const monthlyRevenue = useMemo(
     () => sales
-      .filter(entry => entry.dt?.startsWith(currentMonthKey) && (!branchId || entry.branchId === branchId))
+      .filter(entry => entry.dt?.startsWith(currentMonthKey) && (!scopedBranchId || entry.branchId === scopedBranchId))
       .reduce((sum, entry) => {
         const amount = entry.L * entry.price;
         return sum + (Number.isFinite(amount) ? amount : 0);
       }, 0),
-    [sales, branchId, currentMonthKey],
+    [sales, scopedBranchId, currentMonthKey],
   );
 
   const totalPetrolStock = useMemo(
-    () => tanks.filter(t => !branchId || t.branchId === branchId)
+    () => tanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId)
       .reduce((s, t) => s + getCurrentTankStock(t, dips), 0),
-    [tanks, dips, branchId],
+    [tanks, dips, scopedBranchId],
   );
   const totalLpgStock = useMemo(
-    () => lpgTanks.filter(t => !branchId || t.branchId === branchId)
+    () => lpgTanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId)
       .reduce((s, t) => s + getCurrentTankStock(t, dips, 'lpg'), 0),
-    [lpgTanks, dips, branchId],
+    [lpgTanks, dips, scopedBranchId],
   );
 
   const stockByProduct = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const tank of tanks) {
-      if (branchId && tank.branchId !== branchId) continue;
+      if (scopedBranchId && tank.branchId !== scopedBranchId) continue;
       totals[tank.prod] = (totals[tank.prod] ?? 0) + getCurrentTankStock(tank, dips);
     }
     for (const tank of lpgTanks) {
-      if (branchId && tank.branchId !== branchId) continue;
+      if (scopedBranchId && tank.branchId !== scopedBranchId) continue;
       totals.LPG = (totals.LPG ?? 0) + getCurrentTankStock(tank, dips, 'lpg');
     }
     return ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'].map(prod => ({
@@ -290,7 +296,7 @@ export default function HomeScreen() {
       stock: totals[prod] ?? 0,
       unit: unitForProd(prod),
     }));
-  }, [tanks, lpgTanks, dips, branchId]);
+  }, [tanks, lpgTanks, dips, scopedBranchId]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');

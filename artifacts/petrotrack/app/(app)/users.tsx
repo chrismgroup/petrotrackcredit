@@ -7,7 +7,7 @@ import {
 
 import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ROLE_COLORS, ROLE_LABELS, UserAccount, useApp, type Role } from '@/context/AppContext';
+import { GLOBAL_OVERVIEW_ROLES, ROLE_COLORS, ROLE_LABELS, UserAccount, useApp, type Role } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 type Tab = 'pending' | 'active';
@@ -151,7 +151,8 @@ export default function UsersScreen() {
     if (!aPassword.trim()) { Alert.alert('Required', 'Set a temporary password.'); return; }
     const dup = userAccounts.find(a => a.username === aUsername.trim() && a.id !== approving.id);
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
-    await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch || null);
+    const accountBranch = GLOBAL_OVERVIEW_ROLES.has(aRole) ? null : (aBranch || null);
+    await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', accountBranch);
     Alert.alert('Account Approved', `${approving.empName} can now log in as @${aUsername.trim()}.`);
     setApproving(null);
   }
@@ -180,7 +181,7 @@ export default function UsersScreen() {
     const dup = userAccounts.find(a => a.username === eUsername.trim() && a.id !== editing.id);
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
     const updates: { username?: string; password?: string; role?: Role; branchId?: string | null; phoneNumber?: string } = {
-      username: eUsername.trim(), role: eRole, branchId: eBranch || null,
+      username: eUsername.trim(), role: eRole, branchId: GLOBAL_OVERVIEW_ROLES.has(eRole) ? null : (eBranch || null),
       phoneNumber: ePhone.trim() || undefined,
     };
     if (ePassword.trim()) updates.password = ePassword.trim();
@@ -366,7 +367,8 @@ export default function UsersScreen() {
       Alert.alert('Phone Missing', 'Add a phone number to the enrollment before activating.');
       return;
     }
-    await approveUserAccount(viewEnroll.id, vaRole, vaUsername.trim(), vaPassword.trim(), userName || 'Admin', vaBranch || null);
+    const accountBranch = GLOBAL_OVERVIEW_ROLES.has(vaRole) ? null : (vaBranch || null);
+    await approveUserAccount(viewEnroll.id, vaRole, vaUsername.trim(), vaPassword.trim(), userName || 'Admin', accountBranch);
     Alert.alert('Account Activated', `${viewEnroll.empName} can now log in as @${vaUsername.trim()}.`);
     setViewEnroll(null);
   }
@@ -398,7 +400,7 @@ export default function UsersScreen() {
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
     await addActiveUserAccount({
       empName: cEmpName.trim(), username: cUsername.trim(), password: cPassword.trim(),
-      role: cRole, branchId: cBranch || null, phoneNumber: cPhone.trim() || undefined,
+      role: cRole, branchId: GLOBAL_OVERVIEW_ROLES.has(cRole) ? null : (cBranch || null), phoneNumber: cPhone.trim() || undefined,
       createdBy: userName || 'Admin',
     });
     Alert.alert('Account Created', `${cEmpName.trim()} can now log in as @${cUsername.trim()}.`);
