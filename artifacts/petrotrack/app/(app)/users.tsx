@@ -206,9 +206,17 @@ export default function UsersScreen() {
   function handleDelete(acc: UserAccount) {
     Alert.alert('Delete Account', `Permanently remove ${acc.empName}'s account? This cannot be undone.`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => {
-        deleteUserAccount(acc.id);
-        setEditing(null); setViewAcc(null);
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        const removed = await deleteUserAccount(acc.id);
+        if (!removed) {
+          Alert.alert('Delete Failed', 'The account could not be removed. Check your connection and try again.');
+          return;
+        }
+        setEditing(null);
+        setViewAcc(null);
+        setViewEnroll(null);
+        setEditingEnroll(false);
+        Alert.alert('Account Deleted', `${acc.empName}'s account has been permanently removed.`);
       }},
     ]);
   }
@@ -944,6 +952,17 @@ export default function UsersScreen() {
                 </View>
               )}
 
+              {isAdmin && !editingEnroll && (
+                <TouchableOpacity
+                  onPress={() => handleDelete(viewEnroll)}
+                  style={[styles.deleteBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg, marginTop: 4 }]}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="trash-outline" size={15} color={colors.error} />
+                  <Text style={[styles.deleteBtnText, { color: colors.error }]}>Delete Enrollment</Text>
+                </TouchableOpacity>
+              )}
+
               <View style={{ height: 16 }} />
             </ScrollView>
           </View>
@@ -1270,15 +1289,23 @@ export default function UsersScreen() {
               <TextInput style={[styles.input, { color: colors.text }]} value={nDept} onChangeText={setNDept} placeholder="e.g. Operations" placeholderTextColor={colors.textSubtle} />
             </View>
 
-            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Preferred Branch</Text>
+             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Post to Branch</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-              {branches.map(b => (
-                <TouchableOpacity key={b.id} onPress={() => setNBranch(b.id)}
-                  style={[styles.roleChip, { backgroundColor: nBranch === b.id ? roleColor : colors.surface, borderColor: nBranch === b.id ? roleColor : colors.border }]}
-                >
-                  <Text style={[styles.roleChipText, { color: nBranch === b.id ? '#fff' : colors.text }]}>{b.name || b.id}</Text>
-                </TouchableOpacity>
-              ))}
+               <TouchableOpacity onPress={() => setNBranch('')}
+                 style={[styles.roleChip, { backgroundColor: !nBranch ? roleColor : colors.surface, borderColor: !nBranch ? roleColor : colors.border }]}
+               >
+                 <Text style={[styles.roleChipText, { color: !nBranch ? '#fff' : colors.text }]}>Head Office / Global</Text>
+               </TouchableOpacity>
+               {branches.length === 0
+                 ? <Text style={{ color: colors.textMuted, fontSize: 12, fontStyle: 'italic', alignSelf: 'center' }}>No branches available yet.</Text>
+                 : branches.map(b => (
+                   <TouchableOpacity key={b.id} onPress={() => setNBranch(b.id)}
+                     style={[styles.roleChip, { backgroundColor: nBranch === b.id ? roleColor : colors.surface, borderColor: nBranch === b.id ? roleColor : colors.border }]}
+                   >
+                     <Text style={[styles.roleChipText, { color: nBranch === b.id ? '#fff' : colors.text }]}>{b.name || b.id}</Text>
+                   </TouchableOpacity>
+                 ))
+               }
             </View>
 
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Phone Number <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text></Text>
