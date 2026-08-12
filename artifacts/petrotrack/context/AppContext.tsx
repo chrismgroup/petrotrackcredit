@@ -17,7 +17,7 @@ export interface Delivery { id: number; dt: string; submittedAt?: string; sup: s
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; submittedAt?: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
 export interface MarketCompetitor { id: string; name: string; location: string; pms: string; ago: string; dpk: string; lpg: string; updatedBy: string; updatedAt: string; }
-export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; branchId?: string; }
+export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; branchId?: string; accountId?: number; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
 export interface PriceProposal {
@@ -561,7 +561,7 @@ interface AppContextType {
   updateTank: (id: string, updates: Partial<Pick<Tank, 'name' | 'cap' | 'prod' | 'dip' | 'branchId'>>) => void;
   updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap' | 'branchId'>>) => void;
   updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId' | 'lpgCategory'>>) => void;
-  updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId'>>) => void;
+  updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId' | 'accountId'>>) => void;
   addExpense: (exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => void;
   updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => void;
   deleteExpense: (id: number) => void;
@@ -592,9 +592,9 @@ interface AppContextType {
   markRead: (peerName: string) => void;
   approveExpense: (id: number) => void;
   rejectExpense: (id: number) => void;
-  addStaff: (s: Omit<Staff, 'id'>) => void;
+  addStaff: (s: Omit<Staff, 'id'>) => number;
   toggleStaff: (id: number) => void;
-  deleteStaff: (id: number) => void;
+  deleteStaff: (id: number) => Promise<boolean>;
   addBranch: (b: Omit<Branch, 'id'>) => Branch;
   updateBranch: (id: string, updates: Partial<Pick<Branch, 'st' | 'mgr' | 'name' | 'pumps' | 'tanks'>>) => void;
   deleteBranch: (id: string) => void;
@@ -609,7 +609,7 @@ interface AppContextType {
   userAccounts: UserAccount[];
   refreshUsers: () => Promise<void>;
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
-  addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string | null; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => Promise<void>;
+  addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string | null; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => Promise<number | null>;
   updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string | null; phoneNumber?: string }, by: string) => Promise<void>;
   updateEnrollmentData: (id: number, data: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => Promise<boolean>;
   changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
@@ -1298,7 +1298,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Pump configuration updated', user: userName, detail: `Pump ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updateStaff = useCallback((id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId'>>) => {
+  const updateStaff = useCallback((id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId' | 'accountId'>>) => {
     setStaff(s => s.map(m => m.id === id ? { ...m, ...updates } : m));
     setAudit(a => [{ id: genId(), action: 'Staff record updated', user: userName, detail: `Staff ID ${id} updated`, ts: nowTs() }, ...a]);
   }, [userName]);
@@ -1681,19 +1681,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const addStaff = useCallback((s: Omit<Staff, 'id'>) => {
-    setStaff(st => [...st, { ...s, id: genId() }]);
+    const id = genId();
+    setStaff(st => [...st, { ...s, id }]);
     setAudit(a => [{ id: genId(), action: 'User created', user: userName, detail: `${s.name} added as ${s.role}`, ts: nowTs() }, ...a]);
+    return id;
   }, [userName]);
 
   const toggleStaff = useCallback((id: number) => {
     setStaff(st => st.map(s => s.id === id ? { ...s, st: s.st === 'Active' ? 'Suspended' : 'Active' } : s));
   }, []);
 
-  const deleteStaff = useCallback((id: number) => {
-    if (role !== 'admin') return;
+  const deleteStaff = useCallback(async (id: number): Promise<boolean> => {
+    if (role !== 'admin') return false;
+    const member = staff.find(s => s.id === id);
+    if (!member) return false;
+
+    // The staff directory and the authoritative login table are separate
+    // records. Delete the linked login first so a failed API request does not
+    // leave the UI looking deleted while the account can still sign in.
+    const linkedAccount = userAccounts.find(account =>
+      (member.accountId !== undefined && account.id === member.accountId) ||
+      (account.status === 'active' &&
+        account.empName.trim().toLowerCase() === member.name.trim().toLowerCase() &&
+        (!member.email || !account.username || `${account.username}@petrotrack.com`.toLowerCase() === member.email.trim().toLowerCase()))
+    );
+    if (linkedAccount) {
+      const removed = await usersApi.remove(linkedAccount.id);
+      if (!removed) return false;
+      setUserAccounts(prev => prev.filter(account => account.id !== linkedAccount.id));
+      setUserAccess(prev => {
+        if (!(linkedAccount.id in prev)) return prev;
+        const next = { ...prev };
+        delete next[linkedAccount.id];
+        return next;
+      });
+    }
+
     setStaff(st => st.filter(s => s.id !== id));
     setAudit(a => [{ id: genId(), action: 'User deleted', user: userName, detail: `Staff ID ${id} removed`, ts: nowTs() }, ...a]);
-  }, [role, userName]);
+    return true;
+  }, [role, staff, userAccounts, userName]);
 
   const addBranch = useCallback((b: Omit<Branch, 'id'>) => {
     const branch: Branch = { ...b, id: `B${genId()}` };
@@ -1760,7 +1787,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(row => { if (row) setUserAccounts(prev => prev.map(a => a.id === localId ? apiRowToUserAccount(row) : a)); });
   }, []);
 
-  const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string | null; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => {
+  const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string | null; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }): Promise<number | null> => {
     // Send plaintext — server hashes via ensureHashed
     const row = await usersApi.create({
       empName: acc.empName, username: acc.username, password: acc.password,
@@ -1769,17 +1796,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     if (row) {
       setUserAccounts(prev => [...prev, apiRowToUserAccount(row)]);
+      setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
+      return row.id;
     } else {
       // Offline fallback: keep in local state until connectivity restored
+      const localId = genId();
       setUserAccounts(prev => [...prev, {
-        id: genId(), createdAt: nowTs(), status: 'active',
+        id: localId, createdAt: nowTs(), status: 'active',
         approvedBy: acc.createdBy, approvedAt: nowTs(),
         empName: acc.empName, username: acc.username, password: '',
         role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept,
         phoneNumber: acc.phoneNumber, createdBy: acc.createdBy,
       }]);
+      setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
+      return localId;
     }
-    setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
   }, []);
 
   const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string | null; phoneNumber?: string }, by: string) => {
@@ -1883,7 +1914,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const empIdVal = activated?.empId;
       setStaff(prev => {
         if (prev.some(s => s.name === empName)) return prev;
-        return [...prev, { id: genId(), name: empName, role, sal: 0, st: 'Active', email: `${username}@petrotrack.com`, dept }];
+         return [...prev, { id: genId(), accountId: id, name: empName, role, sal: 0, st: 'Active', email: `${username}@petrotrack.com`, dept, branchId: branchId ?? undefined }];
       });
       setHrEmployees(prev => {
         if (prev.some(e => e.name === empName)) return prev;
@@ -1957,9 +1988,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteUserAccount = useCallback(async (id: number): Promise<boolean> => {
+    const account = userAccounts.find(a => a.id === id);
     const removed = await usersApi.remove(id);
     if (!removed) return false;
     setUserAccounts(prev => prev.filter(a => a.id !== id));
+    setStaff(prev => prev.filter(member =>
+      member.accountId !== id &&
+      !(account && member.name.trim().toLowerCase() === account.empName.trim().toLowerCase() &&
+        account.status === 'active' &&
+        (!member.email || !account.username || `${account.username}@petrotrack.com`.toLowerCase() === member.email.trim().toLowerCase()))
+    ));
     setUserAccess(prev => {
       if (!(id in prev)) return prev;
       const next = { ...prev };
@@ -1968,7 +2006,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     setAudit(a => [{ id: genId(), action: 'Account deleted', user: userName, detail: `User account #${id} permanently removed`, ts: nowTs() }, ...a]);
     return true;
-  }, [userName]);
+  }, [userAccounts, userName]);
 
   const validateCredentials = useCallback(async (username: string, password: string): Promise<UserAccount | null> => {
     const candidates = userAccounts.filter(a => a.username === username && a.status === 'active');

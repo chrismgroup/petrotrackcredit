@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
+import { BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'access' | 'system';
@@ -195,7 +195,7 @@ export default function SystemSettingsScreen() {
   const canManageStaff = isAdmin || isCsm;
   const headOfficeUsers = userAccounts.filter(
     account => account.status === 'active' && account.role && account.role !== 'admin' &&
-      (!account.branchId || account.branchId === 'HQ'),
+      (GLOBAL_OVERVIEW_ROLES.has(account.role) || !account.branchId || account.branchId === 'HQ'),
   );
   const homeAccessModules = [
     { id: 'revenue', label: 'Total Revenue', icon: 'cash-outline' },
@@ -359,16 +359,18 @@ export default function SystemSettingsScreen() {
     }
     const sal = parseInt(newStaff.sal) || 0;
     const deptId = (newStaff as any).dept as string | undefined;
-    addStaff({ name, email, role: newStaff.role, sal, st: 'Active', dept: deptId, branchId: newStaff.branchId || undefined });
-    await addActiveUserAccount({
+    const staffBranchId = GLOBAL_OVERVIEW_ROLES.has(newStaff.role) ? undefined : (newStaff.branchId || undefined);
+    const localStaffId = addStaff({ name, email, role: newStaff.role, sal, st: 'Active', dept: deptId, branchId: staffBranchId });
+    const accountId = await addActiveUserAccount({
       empName: name,
       username,
       password,
       role: newStaff.role,
-      branchId: newStaff.branchId || null,
+      branchId: staffBranchId || null,
       jobTitle: ROLE_LABELS[newStaff.role],
       createdBy: 'System Admin',
     });
+    if (accountId !== null) updateStaff(localStaffId, { accountId });
     setNewStaff(BLANK_STAFF);
     setShowNewStaff(false);
     Alert.alert('User Created', `${name} has been added as ${ROLE_LABELS[newStaff.role]}.\n\nUsername: ${username}\n\nShare the login password you set securely — it is not displayed here.`);
@@ -951,7 +953,15 @@ export default function SystemSettingsScreen() {
                         <TouchableOpacity
                           onPress={() => Alert.alert('Delete Staff', `Remove "${member.name}" from the directory? This cannot be undone.`, [
                             { text: 'Cancel', style: 'cancel' },
-                            { text: 'Delete', style: 'destructive', onPress: () => deleteStaff(member.id) },
+                            { text: 'Delete', style: 'destructive', onPress: async () => {
+                              const removed = await deleteStaff(member.id);
+                              Alert.alert(
+                                removed ? 'Staff Deleted' : 'Delete Failed',
+                                removed
+                                  ? `"${member.name}" and the associated login account were deleted.`
+                                  : 'The staff account could not be deleted. Check your connection and try again.',
+                              );
+                            } },
                           ])}
                           style={styles.deleteIconBtn}
                         >
@@ -1027,10 +1037,12 @@ export default function SystemSettingsScreen() {
                   <FieldInput colors={colors} label="Full Name *" value={newStaff.name} onChangeText={v => setNewStaff(n => ({ ...n, name: v, username: autoUsername(v) }))} placeholder="e.g. Chukwuma Adeyemi" autoCapitalize="words" />
                   <FieldInput colors={colors} label="Email Address *" value={newStaff.email} onChangeText={v => setNewStaff(n => ({ ...n, email: v }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
                   <FieldInput colors={colors} label="Monthly Salary (₦)" value={newStaff.sal} onChangeText={v => setNewStaff(n => ({ ...n, sal: v }))} keyboardType="numeric" placeholder="150000" />
-                  <RolePicker isAdmin={isAdmin} colors={colors} roleColor={roleColor} value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v, branchId: '' }))} />
+                  <RolePicker isAdmin={isAdmin} colors={colors} roleColor={roleColor} value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v, branchId: GLOBAL_OVERVIEW_ROLES.has(v) ? '' : n.branchId }))} />
                   <View style={{ marginBottom: 10 }}>
                      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
-                    {branches.length === 0
+                     {GLOBAL_OVERVIEW_ROLES.has(newStaff.role)
+                       ? <Text style={[{ color: roleColor, fontSize: 13, fontWeight: '600', marginTop: 4 }]}>Global role — this user automatically sees all branches.</Text>
+                       : branches.length === 0
                       ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
                        : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
                            <TouchableOpacity onPress={() => setNewStaff(n => ({ ...n, branchId: '' }))}
