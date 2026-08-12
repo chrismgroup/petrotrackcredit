@@ -86,6 +86,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
     res.json({
       token,
+      staffId: dbUser.id,
       role: dbUser.role,
       empName: dbUser.empName,
       branchId: dbUser.branchId ?? null,
@@ -173,6 +174,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   res.json({
     token,
+    staffId: legacyAccount.id,
     role: legacyAccount.role,
     empName: legacyAccount.empName,
     branchId: legacyAccount.branchId ?? null,

@@ -6,8 +6,9 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import {
-  DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmtDateTime, unitForProd, useApp,
+  DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -55,7 +56,9 @@ export default function OperationsScreen() {
   const [readings, setReadings]       = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
+  const [appliesOn, setAppliesOn]     = useState('');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'variance'>('all');
+  const [historyDate, setHistoryDate] = useState('');
 
   const perms           = isMgr ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
@@ -66,12 +69,16 @@ export default function OperationsScreen() {
   const hasPendingDip   = canDip && dips.some(d => d.by === userName && d.status === 'pending');
 
   function handleDipSubmit() {
+    if (!appliesOn) {
+      Alert.alert('Date required', 'Select the date this tank dip applies to.');
+      return;
+    }
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
     for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
-    addDip({ dt: new Date().toISOString(), by: userName, rd, lpg, obs, status: 'pending' });
-    setReadings({}); setLpgReadings({}); setObs('');
+    addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
+    setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
     Alert.alert('Dip Submitted', 'Tank readings recorded successfully.');
   }
 
@@ -83,9 +90,9 @@ export default function OperationsScreen() {
   const visibleInventoryLog = inventoryLog
     .filter(entry => !branchId || !entry.branchId || entry.branchId === branchId)
     .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
-  const filteredInventoryLog = historyFilter === 'variance'
-    ? visibleInventoryLog.filter(entry => Math.abs(entry.discrepancy) > 50)
-    : visibleInventoryLog;
+  const filteredInventoryLog = visibleInventoryLog
+    .filter(entry => !historyDate || dips.find(dip => dip.id === entry.dipId)?.dt.slice(0, 10) === historyDate)
+    .filter(entry => historyFilter === 'variance' ? Math.abs(entry.discrepancy) > 50 : true);
   const varianceCount = visibleInventoryLog.filter(entry => Math.abs(entry.discrepancy) > 50).length;
   const petroleumCapacity = visibleTanks.reduce((sum, tank) => sum + tank.cap, 0);
   const petroleumStock = visibleTanks.reduce((sum, tank) => sum + getCurrentTankStock(tank, dips), 0);
@@ -230,6 +237,13 @@ export default function OperationsScreen() {
                 multiline numberOfLines={3}
                 value={obs} onChangeText={setObs} editable={canDip}
               />
+              <AppliedDateField
+                value={appliesOn}
+                onChange={setAppliesOn}
+                label="Tank dip applies on *"
+                accent={roleColor}
+                helper="Select the business date for this reading. Approval time is stored separately."
+              />
 
               {canDip && hasPendingDip && (
                 <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517' }]}>
@@ -268,7 +282,8 @@ export default function OperationsScreen() {
                     <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: '#BA751744', borderWidth: 1.5 }]}>
                       <View style={styles.logHeader}>
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.logDate, { color: colors.text }]}>{fmtDateTime(dip.dt)}</Text>
+                        <Text style={[styles.logDate, { color: colors.text }]}>Applies on {fmtDate(dip.dt)}</Text>
+                        <Text style={[styles.logBy, { color: colors.textMuted }]}>Submitted {fmtDateTime(dip.submittedAt ?? dip.dt)}</Text>
                           <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
                         </View>
                         <View style={[styles.dipStatusBadge, { backgroundColor: '#BA751718' }]}>
@@ -442,7 +457,7 @@ export default function OperationsScreen() {
                     <View style={styles.historyCardHeader}>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.historyTankName, { color: colors.text }]}>Tank Dip #{dip.id}</Text>
-                        <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{fmtDateTime(dip.approvedDt ?? dip.dt)} · Submitted by {dip.by}</Text>
+                        <Text style={[styles.historyMeta, { color: colors.textMuted }]}>Applies on {fmtDate(dip.dt)} · Submitted {fmtDateTime(dip.submittedAt ?? dip.dt)} · by {dip.by}</Text>
                       </View>
                       <View style={[styles.historyStatus, { backgroundColor: colors.success + '18' }]}>
                         <Ionicons name="checkmark-circle-outline" size={12} color={colors.success} />
@@ -626,6 +641,13 @@ export default function OperationsScreen() {
                   ))}
                 </View>
               </View>
+              <AppliedDateField
+                value={historyDate}
+                onChange={setHistoryDate}
+                label="View approved checks for a date"
+                accent={roleColor}
+                helper="Filter by the date the tank dip applies to."
+              />
 
               {filteredInventoryLog.length === 0 ? (
                 <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>

@@ -7,7 +7,8 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
+import { AppliedDateField } from '@/components/AppliedDateField';
+import { DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const TABS = ['Dip Form', 'Log & Delivery', 'Inventory', 'History'];
@@ -60,6 +61,8 @@ export default function TanksScreen() {
   const [readings, setReadings] = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs] = useState('');
+  const [appliesOn, setAppliesOn] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
   const [delForm, setDelForm] = useState({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
   const [editingDipId, setEditingDipId] = useState<number | null>(null);
@@ -116,14 +119,18 @@ export default function TanksScreen() {
   }
 
   function handleDipSubmit() {
+    if (!appliesOn) {
+      Alert.alert('Date required', 'Select the date this tank dip applies to.');
+      return;
+    }
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
     for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
 
     const analysis = computeDipAnalysis(rd);
-    addDip({ dt: new Date().toISOString(), by: userName, rd, lpg, obs, status: 'pending' });
-    setReadings({}); setLpgReadings({}); setObs('');
+    addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
+    setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
 
     if (analysis.length > 0) {
       const lines = analysis.map(a => {
@@ -151,8 +158,13 @@ export default function TanksScreen() {
   }
 
   function handleDeliverySubmit() {
-    addDelivery({ dt: new Date().toISOString(), sup: delForm.sup, prod: delForm.prod, wb: delForm.wb, ord: parseFloat(delForm.ord) || 0, rec: parseFloat(delForm.rec) || 0, st: delForm.st as any, notes: delForm.notes });
+    if (!deliveryDate) {
+      Alert.alert('Date required', 'Select the date this delivery applies to.');
+      return;
+    }
+    addDelivery({ dt: deliveryDate, sup: delForm.sup, prod: delForm.prod, wb: delForm.wb, ord: parseFloat(delForm.ord) || 0, rec: parseFloat(delForm.rec) || 0, st: delForm.st as any, notes: delForm.notes });
     setDelForm({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
+    setDeliveryDate('');
     setShowDeliveryForm(false);
     Alert.alert('Delivery Recorded', 'Delivery entry saved.');
   }
@@ -185,7 +197,7 @@ export default function TanksScreen() {
   function handleDeleteDip(dip: typeof dips[0]) {
     Alert.alert(
       'Delete Dip Record?',
-      `Recorded by ${dip.by} on ${fmtDateTime(dip.dt)}. This cannot be undone.`,
+      `Recorded by ${dip.by} for ${fmtDate(dip.dt)}. Submitted ${fmtDateTime(dip.submittedAt ?? dip.dt)}. This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => deleteDip(dip.id) },
@@ -299,6 +311,13 @@ export default function TanksScreen() {
             onChangeText={setObs}
             editable={canEdit}
           />
+          <AppliedDateField
+            value={appliesOn}
+            onChange={setAppliesOn}
+            label="Tank dip applies on *"
+            accent={roleColor}
+            helper="Select the business date for this reading."
+          />
 
           {canEdit && (() => {
             const rdMap: Record<string, number> = {};
@@ -338,6 +357,13 @@ export default function TanksScreen() {
             </TouchableOpacity>
           ) : (
             <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <AppliedDateField
+                value={deliveryDate}
+                onChange={setDeliveryDate}
+                label="Delivery applies on *"
+                accent={roleColor}
+                helper="Select the date the delivery belongs to."
+              />
               {['PMS', 'AGO', 'DPK', 'LPG'].map(p => (
                 <TouchableOpacity key={p} onPress={() => setDelForm(f => ({ ...f, prod: p }))} style={[styles.prodBtn, { backgroundColor: delForm.prod === p ? roleColor : colors.background, borderColor: delForm.prod === p ? roleColor : colors.border }]}>
                   <Text style={{ color: delForm.prod === p ? '#fff' : colors.textMuted, fontSize: 12, fontWeight: '600' }}>{p}</Text>
@@ -408,7 +434,8 @@ export default function TanksScreen() {
               <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: isPending ? sc + '66' : colors.border, borderWidth: isPending ? 1.5 : 1 }]}>
                 <View style={styles.logHeader}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.logDate, { color: colors.text }]}>{fmtDateTime(dip.dt)}</Text>
+                    <Text style={[styles.logDate, { color: colors.text }]}>Applies on {fmtDate(dip.dt)}</Text>
+                    <Text style={[styles.logBy, { color: colors.textMuted }]}>Submitted {fmtDateTime(dip.submittedAt ?? dip.dt)}</Text>
                     <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
                   </View>
                   <View style={[styles.dipStatusBadge, { backgroundColor: sc + '18' }]}>
@@ -686,7 +713,7 @@ export default function TanksScreen() {
                 <View style={[styles.invBreakdown, { borderTopColor: colors.border }]}>
                   <View style={styles.invBreakdownRow}>
                     <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>
-                      Last dip{lastDipRecord ? ` (${fmtDateTime(lastDipRecord.dt)})` : ''}
+                      Last dip{lastDipRecord ? ` applies on ${fmtDate(lastDipRecord.dt)}` : ''}
                     </Text>
                     <Text style={[styles.invBreakdownVal, { color: colors.text }]}>{dipReading.toLocaleString()}L</Text>
                   </View>
@@ -756,7 +783,7 @@ export default function TanksScreen() {
                 <View style={[styles.invBreakdown, { borderTopColor: colors.border }]}>
                   <View style={styles.invBreakdownRow}>
                     <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>
-                      Last dip{lastDipRecord ? ` (${fmtDateTime(lastDipRecord.dt)})` : ''}
+                      Last dip{lastDipRecord ? ` applies on ${fmtDate(lastDipRecord.dt)}` : ''}
                     </Text>
                     <Text style={[styles.invBreakdownVal, { color: colors.text }]}>{dipReading.toLocaleString()} kg</Text>
                   </View>

@@ -120,6 +120,7 @@ async function del(path: string): Promise<boolean> {
 
 export interface LoginResult {
   token: string;
+  staffId: number;
   role: string;
   empName: string;
   branchId: string | null;
@@ -264,7 +265,7 @@ export const usersApi = {
     username?: string;
     password?: string;
     role?: string;
-    branchId?: string;
+    branchId?: string | null;
     rejectionReason?: string;
     rejectedBy?: string;
   }) => patchR<StaffUserRecord>(`/users/${id}/status`, { status, ...extra }),

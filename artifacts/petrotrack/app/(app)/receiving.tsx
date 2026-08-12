@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import React, { useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
+import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { Delivery, LPGTank, Tank, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
@@ -46,7 +47,7 @@ type MgrFormState = {
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 function unitForProd(p: string) { return p === 'LPG' ? 'kg' : 'L'; }
 function blankMgrForm(): MgrFormState {
-  return { prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '', dt: todayIso() };
+  return { prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '', dt: '' };
 }
 function deliveryToMgrForm(d: Delivery): MgrFormState {
   return {
@@ -149,22 +150,13 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
         ))}
       </View>
 
-      <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Delivery Date *</Text>
-      <View style={[styles.dateRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Ionicons name="calendar-outline" size={16} color={roleColor} />
-        <TextInput
-          style={[styles.dateInput, { color: colors.text }]}
-          value={f.dt}
-          onChangeText={v => setF(prev => ({ ...prev, dt: v }))}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={colors.textSubtle}
-          keyboardType="numbers-and-punctuation"
-          maxLength={10}
-        />
-        <TouchableOpacity onPress={() => setF(prev => ({ ...prev, dt: todayIso() }))}>
-          <Text style={[styles.todayBtn, { color: roleColor }]}>Today</Text>
-        </TouchableOpacity>
-      </View>
+      <AppliedDateField
+        value={f.dt}
+        onChange={dt => setF(prev => ({ ...prev, dt }))}
+        label="Delivery applies on *"
+        accent={roleColor}
+        helper="Choose the date the delivery was received. Submission time is tracked separately."
+      />
 
       <TextInput
         style={[styles.input, styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
@@ -187,6 +179,7 @@ export default function ReceivingScreen() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
+  const [filterDate, setFilterDate] = useState('');
 
   const isMgr        = role === 'mgr' || role === 'csm' || role === 'admin';
   const isAcc        = role === 'acc' || role === 'admin';
@@ -214,7 +207,7 @@ export default function ReceivingScreen() {
      - mgr                      : only their own submissions, branch-scoped
   ── */
   const isGlobalViewer = role === 'admin' || role === 'ceo' || role === 'md' || role === 'mktg' || role === 'acc' || role === 'csm';
-  const sortedDeliveries = [...deliveries]
+  const visibleDeliveries = [...deliveries]
     .filter(d => {
       if (isGlobalViewer) return true;
       // branch-scope first
@@ -225,6 +218,9 @@ export default function ReceivingScreen() {
       return true; // acc and others see all branch deliveries
     })
     .sort((a, b) => b.id - a.id);
+  const sortedDeliveries = filterDate
+    ? visibleDeliveries.filter(d => d.dt.slice(0, 10) === filterDate)
+    : visibleDeliveries;
 
   const pendingAccCount = sortedDeliveries.filter(d => d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending').length;
   const pendingMdCount  = sortedDeliveries.filter(d => d.approvalStatus === 'pending_md').length;
@@ -300,7 +296,7 @@ export default function ReceivingScreen() {
     : [{
         branchId: branchId ?? null,
         branchName: branches.find(b => b.id === branchId)?.name ?? 'This Branch',
-        prods: buildProdInventory(myTanks, myLpgTanks, sortedDeliveries),
+        prods: buildProdInventory(myTanks, myLpgTanks, visibleDeliveries),
       }].filter(b => b.prods.length > 0);
 
   // ── Stock Report (book-stock = total approved deliveries − total sold via pump reports) ──
@@ -332,7 +328,7 @@ export default function ReceivingScreen() {
     : [{
         branchId: branchId ?? null,
         branchName: branches.find(b => b.id === branchId)?.name ?? 'This Branch',
-        rows: buildStockRows(branchId ?? null, sortedDeliveries, pumpDailyReports.filter(r => !branchId || r.branchId === branchId)),
+        rows: buildStockRows(branchId ?? null, visibleDeliveries, pumpDailyReports.filter(r => !branchId || r.branchId === branchId)),
       }].filter(b => b.rows.length > 0);
 
   // ── Mismatch alarms (dip stock vs book stock, per product per branch) ──
@@ -401,6 +397,7 @@ export default function ReceivingScreen() {
     if (!f.sup.trim()) { Alert.alert('Required', 'Supplier name is required.'); return null; }
     if (!f.wb.trim())  { Alert.alert('Required', 'Waybill number is required.'); return null; }
     if (!ordN || !recN) { Alert.alert('Required', 'Ordered and received quantities are required.'); return null; }
+    if (!f.dt) { Alert.alert('Date required', 'Select the date this delivery applies to.'); return null; }
     return { ordN, recN };
   }
 
@@ -408,7 +405,7 @@ export default function ReceivingScreen() {
     const vals = validateMgrForm(form);
     if (!vals) return;
     addDelivery({
-      dt: form.dt ? new Date(form.dt).toISOString() : new Date().toISOString(),
+      dt: form.dt,
       sup: form.sup.trim(), prod: form.prod, wb: form.wb,
       ord: vals.ordN, rec: vals.recN, st: form.st, notes: form.notes,
       receivedBy: userName, approvalStatus: 'draft',
@@ -425,7 +422,7 @@ export default function ReceivingScreen() {
     const vals = validateMgrForm(editForm);
     if (!vals) return;
     updateDelivery(editTarget.id, {
-      dt: editForm.dt ? new Date(editForm.dt).toISOString() : editTarget.dt,
+      dt: editForm.dt,
       sup: editForm.sup.trim(), prod: editForm.prod, wb: editForm.wb,
       ord: vals.ordN, rec: vals.recN, st: editForm.st, notes: editForm.notes,
       receivedBy: editTarget.receivedBy,
@@ -606,6 +603,14 @@ export default function ReceivingScreen() {
             </Text>
           </View>
         ) : null}
+
+        <AppliedDateField
+          value={filterDate}
+          onChange={setFilterDate}
+          label="View deliveries for a date"
+          accent={roleColor}
+          helper="Filter by the date the delivery applies to."
+        />
 
         {isMdOrCeo && mismatches.length > 0 ? (
           <View style={[styles.mismatchBanner, { backgroundColor: '#FCEBEB', borderColor: '#791F1F' }]}>

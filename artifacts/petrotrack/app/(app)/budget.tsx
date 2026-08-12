@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import { ROLE_COLORS, fmt, fmtDateTime, useApp, type Budget, type Expense } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -154,7 +155,9 @@ export default function BudgetScreen() {
   const [editTarget, setEditTarget] = useState<Budget | null>(null);
   const [formMonth, setFormMonth]   = useState(new Date().getMonth());
   const [formYear, setFormYear]     = useState(new Date().getFullYear());
+  const [formDate, setFormDate]     = useState('');
   const [formItems, setFormItems]   = useState<LineItem[]>([blankItem()]);
+  const [filterDate, setFilterDate] = useState('');
 
   /* Branch name lookup */
   const branchMap: Record<string, string> = {};
@@ -167,11 +170,14 @@ export default function BudgetScreen() {
     role === 'mgr' ? b.byName === userName : (b.by === role || b.byName === userName)
   );
 
-  const displayList: Budget[] =
+  const displayListBase: Budget[] =
     isCeo || role === 'csm' ? budgets
     : isMD  ? (tab === 'pending' ? pendingForMD  : budgets)
     : isAcc ? (tab === 'pending' ? pendingForAcc : budgets)
     : myBudgets;
+  const displayList = filterDate
+    ? displayListBase.filter(b => (b.appliesOn ?? '').slice(0, 10) === filterDate)
+    : displayListBase;
 
   /* Approved budgets summary for MD/ACC overview */
   const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
@@ -183,6 +189,7 @@ export default function BudgetScreen() {
     setEditTarget(null);
     setFormMonth(new Date().getMonth());
     setFormYear(new Date().getFullYear());
+    setFormDate('');
     setFormItems([blankItem()]);
     setShowForm(true);
   }
@@ -191,6 +198,7 @@ export default function BudgetScreen() {
     setEditTarget(b);
     setFormMonth(b.month - 1);
     setFormYear(b.year);
+    setFormDate(b.appliesOn?.slice(0, 10) ?? '');
     setFormItems(b.items.map(i => ({ cat: i.cat, amt: String(i.amt) })));
     setShowForm(true);
   }
@@ -205,25 +213,27 @@ export default function BudgetScreen() {
   }
 
   function handleSaveDraft() {
+    if (!formDate) { Alert.alert('Date required', 'Select the date this budget applies to.'); return; }
     const built = buildItems();
     if (!built) return;
     if (editTarget) {
-      updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear });
+      updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
     } else {
       const status = isAcc ? 'submitted' : 'draft';
-      addBudget({ month: formMonth + 1, year: formYear, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status });
+      addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status });
     }
     setShowForm(false);
   }
 
   function handleSaveAndSubmit() {
+    if (!formDate) { Alert.alert('Date required', 'Select the date this budget applies to.'); return; }
     const built = buildItems();
     if (!built) return;
     if (editTarget) {
-      updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear });
+      updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
       setTimeout(() => submitBudgetToAcc(editTarget.id), 50);
     } else {
-      addBudget({ month: formMonth + 1, year: formYear, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted' });
+      addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted' });
     }
     setShowForm(false);
   }
@@ -312,6 +322,14 @@ export default function BudgetScreen() {
           ))}
         </View>
       ) : null}
+
+      <AppliedDateField
+        value={filterDate}
+        onChange={setFilterDate}
+        label="View budgets for a date"
+        accent={roleColor}
+        helper="Filter by the date the budget applies to."
+      />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
@@ -736,6 +754,12 @@ export default function BudgetScreen() {
               <Text style={styles.modalTitle}>{editTarget ? 'Edit Budget' : 'New Budget'}</Text>
             </View>
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+              <AppliedDateField
+                value={formDate}
+                onChange={setFormDate}
+                accent={roleColor}
+                helper="Select the business date covered by this budget. Submission time is recorded separately."
+              />
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Month</Text>
               <View style={styles.chipRow}>
                 {MONTHS.map((m, i) => (

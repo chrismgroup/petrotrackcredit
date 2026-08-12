@@ -193,6 +193,27 @@ export default function SystemSettingsScreen() {
   const isAdmin = role === 'admin';
   const isCsm = role === 'csm';
   const canManageStaff = isAdmin || isCsm;
+  const headOfficeUsers = userAccounts.filter(
+    account => account.status === 'active' && account.role && account.role !== 'admin' &&
+      (!account.branchId || account.branchId === 'HQ'),
+  );
+  const homeAccessModules = [
+    { id: 'revenue', label: 'Total Revenue', icon: 'cash-outline' },
+    { id: 'fuelStock', label: 'Fuel Stock', icon: 'water-outline' },
+  ] as const;
+
+  function headOfficeModuleEnabled(moduleId: string): boolean {
+    return headOfficeUsers.length > 0 && headOfficeUsers.every(account => {
+      const override = (userAccess[account.id] ?? {})[moduleId];
+      if (override !== undefined) return override;
+      return (roleAccess[account.role ?? 'att'] ?? {})[moduleId] !== false;
+    });
+  }
+
+  function setHeadOfficeModuleAccess(moduleId: string, enabled: boolean) {
+    if (!isAdmin) return;
+    for (const account of headOfficeUsers) updateUserAccess(account.id, moduleId, enabled);
+  }
 
   const [activeTab, setActiveTab] = useState<Tab>('company');
   const [expandedUsers, setExpandedUsers] = useState<Record<number, boolean>>({});
@@ -336,9 +357,6 @@ export default function SystemSettingsScreen() {
     if (userAccounts.some(a => a.username === username)) {
       Alert.alert('Error', `Username "${username}" is already taken. Please choose another.`); return;
     }
-    if (!newStaff.branchId) {
-      Alert.alert('Error', 'Please select a branch for this user. Every user must be assigned a branch.'); return;
-    }
     const sal = parseInt(newStaff.sal) || 0;
     const deptId = (newStaff as any).dept as string | undefined;
     addStaff({ name, email, role: newStaff.role, sal, st: 'Active', dept: deptId });
@@ -347,7 +365,7 @@ export default function SystemSettingsScreen() {
       username,
       password,
       role: newStaff.role,
-      branchId: newStaff.branchId,
+      branchId: newStaff.branchId || null,
       jobTitle: ROLE_LABELS[newStaff.role],
       createdBy: 'System Admin',
     });
@@ -989,10 +1007,14 @@ export default function SystemSettingsScreen() {
                   <FieldInput colors={colors} label="Monthly Salary (₦)" value={newStaff.sal} onChangeText={v => setNewStaff(n => ({ ...n, sal: v }))} keyboardType="numeric" placeholder="150000" />
                   <RolePicker isAdmin={isAdmin} colors={colors} roleColor={roleColor} value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v, branchId: '' }))} />
                   <View style={{ marginBottom: 10 }}>
-                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch * <Text style={{ color: '#c0392b', fontSize: 11 }}>(required for all users)</Text></Text>
+                     <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
                     {branches.length === 0
                       ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
-                      : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                       : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                           <TouchableOpacity onPress={() => setNewStaff(n => ({ ...n, branchId: '' }))}
+                             style={[styles.roleChip, { borderColor: !newStaff.branchId ? roleColor : colors.border, backgroundColor: !newStaff.branchId ? roleColor + '18' : colors.surface }]}>
+                             <Text style={[styles.roleChipText, { color: !newStaff.branchId ? roleColor : colors.textMuted }]}>Head Office / Global</Text>
+                           </TouchableOpacity>
                           {branches.map(b => (
                             <TouchableOpacity key={b.id} onPress={() => setNewStaff(n => ({ ...n, branchId: b.id }))}
                               style={[styles.roleChip, { borderColor: newStaff.branchId === b.id ? roleColor : colors.border, backgroundColor: newStaff.branchId === b.id ? roleColor + '18' : colors.surface }]}>
@@ -1149,23 +1171,63 @@ export default function SystemSettingsScreen() {
                   );
                 })}
 
+              {/* ── Head Office / Global Users ── */}
+              <View style={[styles.sectionRow, { marginTop: 8 }]}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Head Office / Global Users</Text>
+                <Text style={[styles.sectionCount, { color: colors.textMuted }]}>
+                  {headOfficeUsers.length} active user{headOfficeUsers.length === 1 ? '' : 's'}
+                </Text>
+              </View>
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 14 }]}>
+                <View style={[styles.lockBanner, { backgroundColor: roleColor + '10', borderColor: roleColor + '35', marginBottom: 0 }]}>
+                  <Ionicons name="globe-outline" size={15} color={roleColor} />
+                  <Text style={[styles.lockText, { color: colors.text }]}>
+                    These switches apply to every active user assigned to Head Office / Global access. Their Home totals remain company-wide.
+                  </Text>
+                </View>
+                {homeAccessModules.map(({ id, label, icon }, idx) => {
+                  const enabled = headOfficeModuleEnabled(id);
+                  return (
+                    <View key={id} style={[styles.permRow, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                      <View style={[styles.permIcon, { backgroundColor: enabled ? roleColor + '22' : colors.border + '55' }]}>
+                        <Ionicons name={icon as any} size={16} color={enabled ? roleColor : colors.textMuted} />
+                      </View>
+                      <Text style={[styles.permLabel, { color: enabled ? colors.text : colors.textMuted }]}>{label}</Text>
+                      <Switch
+                        value={enabled}
+                        onValueChange={value => setHeadOfficeModuleAccess(id, value)}
+                        thumbColor={enabled ? roleColor : '#aaa'}
+                        trackColor={{ false: colors.border, true: roleColor + '55' }}
+                        disabled={!isAdmin || headOfficeUsers.length === 0}
+                      />
+                    </View>
+                  );
+                })}
+                {headOfficeUsers.length === 0 && (
+                  <Text style={[styles.subLabel, { color: colors.textMuted, padding: 14 }]}>
+                    No active users are currently assigned to Head Office / Global access.
+                  </Text>
+                )}
+              </View>
+
               {/* ── By User ── */}
               <View style={[styles.sectionRow, { marginTop: 8 }]}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>By User</Text>
                 <Text style={[styles.sectionCount, { color: colors.textMuted }]}>overrides role defaults</Text>
               </View>
 
-              {staff.filter(m => m.role !== 'admin').map(member => {
-                const rc = ROLE_COLORS[member.role] || roleColor;
-                const modules = ROLE_FULL_NAV[member.role] ?? [];
+              {userAccounts.filter(m => m.status === 'active' && m.role && m.role !== 'admin').map(member => {
+                const memberRole = member.role ?? 'att';
+                const rc = ROLE_COLORS[memberRole] || roleColor;
+                const modules = ROLE_FULL_NAV[memberRole] ?? [];
                 const overrides = userAccess[member.id] ?? {};
                 const hasOverrides = Object.keys(overrides).length > 0;
                 const expanded = expandedUsers[member.id] ?? false;
-                const initials = member.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+                const initials = member.empName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
 
                 const effectiveEnabled = (id: string) => {
                   if (overrides[id] !== undefined) return overrides[id];
-                  return (roleAccess[member.role] ?? {})[id] !== false;
+                  return (roleAccess[memberRole] ?? {})[id] !== false;
                 };
                 const enabledCount = modules.filter(m => effectiveEnabled(m.id)).length;
 
@@ -1180,10 +1242,10 @@ export default function SystemSettingsScreen() {
                         <Text style={[styles.initials, { color: rc }]}>{initials}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.itemCurrent, { color: colors.text }]}>{member.name}</Text>
+                         <Text style={[styles.itemCurrent, { color: colors.text }]}>{member.empName}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                           <View style={[styles.mgrBadge, { backgroundColor: rc + '18', paddingHorizontal: 6, paddingVertical: 2 }]}>
-                            <Text style={[styles.mgrBadgeText, { color: rc, fontSize: 10 }]}>{(ROLE_LABELS[member.role] ?? member.role).toUpperCase()}</Text>
+                             <Text style={[styles.mgrBadgeText, { color: rc, fontSize: 10 }]}>{(ROLE_LABELS[memberRole] ?? memberRole).toUpperCase()}</Text>
                           </View>
                           <Text style={[styles.subLabel, { color: colors.textMuted }]}>{enabledCount}/{modules.length} panels</Text>
                           {hasOverrides && (
@@ -1224,7 +1286,7 @@ export default function SystemSettingsScreen() {
                         })}
                         {isAdmin && hasOverrides && (
                           <TouchableOpacity
-                            onPress={() => Alert.alert('Reset Access', `Reset "${member.name}" to role defaults?`, [
+                            onPress={() => Alert.alert('Reset Access', `Reset "${member.empName}" to role defaults?`, [
                               { text: 'Cancel', style: 'cancel' },
                               { text: 'Reset', style: 'destructive', onPress: () => clearUserAccess(member.id) },
                             ])}

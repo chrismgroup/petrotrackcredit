@@ -12,9 +12,9 @@ export interface Tank {
 }
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; branchId?: string; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil'; active: boolean; branchId?: string; lpgCategory?: 'single' | 'distributor'; }
-export interface DipRecord { id: number; dt: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
-export interface Delivery { id: number; dt: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
-export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; st: 'Open' | 'Done'; cost?: number; }
+export interface DipRecord { id: number; dt: string; submittedAt?: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
+export interface Delivery { id: number; dt: string; submittedAt?: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
+export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; submittedAt?: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
 export interface MarketCompetitor { id: string; name: string; location: string; pms: string; ago: string; dpk: string; lpg: string; updatedBy: string; updatedAt: string; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; }
@@ -26,9 +26,9 @@ export interface PriceProposal {
   status: 'pending' | 'approved' | 'rejected';
   reviewedBy?: string; reviewedAt?: string; note?: string;
 }
-export interface Expense { id: number; dt: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId?: string; }
+export interface Expense { id: number; dt: string; submittedAt?: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId?: string; }
 export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
-export interface Budget { id: number; month: number; year: number; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
+export interface Budget { id: number; month: number; year: number; appliesOn?: string; submittedAt?: string; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
 export interface BankLoan { bank: string; amount: number; }
 export interface FinancialEntry {
   cashInBank: number; posValue: number; goodsOnTransit: number;
@@ -103,7 +103,7 @@ export interface UserAccount {
   username: string;
   password: string;
   role: Role | null;
-  branchId?: string;
+  branchId?: string | null;
   status: AccountStatus;
   createdBy: string;
   createdAt: string;
@@ -330,6 +330,8 @@ export const NAVDEF: Record<string, NavItem[]> = {
 // Admin toggles which of these each role/user can actually see via Access Control.
 export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'home',     icon: 'home',             label: 'Home'       },
+  { id: 'revenue',  icon: 'cash',              label: 'Total Revenue' },
+  { id: 'fuelStock',icon: 'water',             label: 'Fuel Stock'  },
   { id: 'ops',      icon: 'construct',        label: 'Operations' },
   { id: 'tasks',    icon: 'checkmark-circle', label: 'Tasks'      },
   { id: 'hr',       icon: 'people-circle',    label: 'HR'         },
@@ -510,7 +512,7 @@ interface AppContextType {
   financialEntry: FinancialEntry;
   updateFinancialEntry: (updates: Partial<Omit<FinancialEntry, 'updatedBy' | 'updatedAt'>>) => void;
   addBudget: (b: Omit<Budget, 'id' | 'workflow'>) => void;
-  updateBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string }) => void;
+  updateBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string; appliesOn?: string }) => void;
   deleteBudget: (id: number) => void;
   submitBudgetToAcc: (id: number) => void;
   forwardBudget: (id: number, note: string) => void;
@@ -560,8 +562,8 @@ interface AppContextType {
   updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap' | 'branchId'>>) => void;
   updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId' | 'lpgCategory'>>) => void;
   updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept'>>) => void;
-  addExpense: (exp: Omit<Expense, 'id' | 'dt' | 'status'>) => void;
-  updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref'>>) => void;
+  addExpense: (exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => void;
+  updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => void;
   deleteExpense: (id: number) => void;
   forwardExpenseToMD: (id: number, note?: string) => void;
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
@@ -607,14 +609,14 @@ interface AppContextType {
   userAccounts: UserAccount[];
   refreshUsers: () => Promise<void>;
   addUserAccount: (acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => void;
-  addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => Promise<void>;
-  updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => Promise<void>;
+  addActiveUserAccount: (acc: { empName: string; username: string; password: string; role: Role; branchId?: string | null; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => Promise<void>;
+  updateUserAccount: (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string | null; phoneNumber?: string }, by: string) => Promise<void>;
   updateEnrollmentData: (id: number, data: { empName?: string; jobTitle?: string; dept?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string }, by: string) => Promise<boolean>;
   changeOwnPassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   enrollStaff: (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string, initialStatus?: AccountStatus) => Promise<void>;
   mdApproveEnrollment: (id: number, by: string) => Promise<void>;
   mdRejectEnrollment: (id: number, by: string) => Promise<void>;
-  approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => Promise<void>;
+  approveUserAccount: (id: number, role: Role, username: string, password: string, by: string, branchId?: string | null) => Promise<void>;
   suspendUserAccount: (id: number) => Promise<void>;
   reactivateUserAccount: (id: number) => Promise<void>;
   rejectUserAccount: (id: number) => Promise<void>;
@@ -1303,7 +1305,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addDip = useCallback((dip: Omit<DipRecord, 'id'>) => {
     const status = dip.status ?? 'pending';
-    setDips(d => [{ ...dip, id: genId(), status }, ...d]);
+    setDips(d => [{ ...dip, id: genId(), status, submittedAt: dip.submittedAt ?? nowTs() }, ...d]);
     setAudit(a => [{ id: genId(), action: 'Dip submitted', user: userName, detail: 'All tanks dipped — awaiting MD approval.', ts: nowTs() }, ...a]);
   }, [userName]);
 
@@ -1419,7 +1421,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const addDelivery = useCallback((rec: Omit<Delivery, 'id'>) => {
-    setDeliveries(d => [{ ...rec, id: genId(), branchId: rec.branchId ?? branchId ?? undefined }, ...d]);
+    setDeliveries(d => [{ ...rec, id: genId(), submittedAt: rec.submittedAt ?? nowTs(), branchId: rec.branchId ?? branchId ?? undefined }, ...d]);
     setAudit(a => [{ id: genId(), action: 'Delivery recorded', user: userName, detail: `${rec.prod} — ${rec.rec}L from ${rec.sup}`, ts: nowTs() }, ...a]);
   }, [userName, branchId]);
 
@@ -1541,7 +1543,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName, deliveries]);
 
   const addMaintenance = useCallback((item: Omit<MaintenanceItem, 'id'>) => {
-    setMaintenance(m => [{ ...item, id: genId() }, ...m]);
+    setMaintenance(m => [{ ...item, id: genId(), submittedAt: item.submittedAt ?? nowTs() }, ...m]);
     setAudit(a => [{ id: genId(), action: 'Maintenance request', user: userName, detail: item.title, ts: nowTs() }, ...a]);
   }, [userName]);
 
@@ -1605,7 +1607,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addBudget = useCallback((b: Omit<Budget, 'id' | 'workflow'>) => {
     const isDraft = b.status === 'draft';
     const newBudget: Budget = {
-      ...b, id: genId(),
+      ...b, id: genId(), submittedAt: b.submittedAt ?? nowTs(),
       workflow: isDraft ? [] : [{ stage: 'Submitted to Accountant', by: userName, role: b.by, dt: nowTs(), action: 'submit', note: `${b.items.length} line items — ₦${b.total.toLocaleString()}` }],
     };
     setBudgets(prev => [...prev, newBudget]);
@@ -1624,7 +1626,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userName]);
 
-  const updateBudget = useCallback((id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string }) => {
+  const updateBudget = useCallback((id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string; appliesOn?: string }) => {
     setBudgets(prev => prev.map(b => b.id !== id ? b : { ...b, ...updates }));
     setAudit(a => [{ id: genId(), action: 'Budget updated', user: userName, detail: `Budget #${id} edited`, ts: nowTs() }, ...a]);
   }, [userName]);
@@ -1755,7 +1757,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(row => { if (row) setUserAccounts(prev => prev.map(a => a.id === localId ? apiRowToUserAccount(row) : a)); });
   }, []);
 
-  const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => {
+  const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string | null; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }) => {
     // Send plaintext — server hashes via ensureHashed
     const row = await usersApi.create({
       empName: acc.empName, username: acc.username, password: acc.password,
@@ -1777,7 +1779,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
   }, []);
 
-  const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string; phoneNumber?: string }, by: string) => {
+  const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string | null; phoneNumber?: string }, by: string) => {
     // Send plaintext password — server hashes via ensureHashed
     const resolved: Record<string, unknown> = { ...updates };
     // Write to DB so login works on all devices immediately
@@ -1858,7 +1860,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, []);
 
-  const approveUserAccount = useCallback(async (id: number, role: Role, username: string, password: string, by: string, branchId?: string) => {
+  const approveUserAccount = useCallback(async (id: number, role: Role, username: string, password: string, by: string, branchId?: string | null) => {
     // Send plaintext password — server hashes via ensureHashed, new user can log in immediately
     const row = await usersApi.setStatus(id, 'active', { username, password, role, branchId });
     const activated = row ? apiRowToUserAccount(row) : null;
@@ -2004,12 +2006,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'KPI removed', user: userName, detail: `KPI #${id} deleted`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const addExpense = useCallback((exp: Omit<Expense, 'id' | 'dt' | 'status'>) => {
-    setExpenses(e => [...e, { ...exp, id: genId(), dt: nowTs(), status: 'pending', branchId: exp.branchId ?? branchId ?? undefined }]);
+  const addExpense = useCallback((exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => {
+    setExpenses(e => [...e, { ...exp, id: genId(), submittedAt: nowTs(), status: 'pending', branchId: exp.branchId ?? branchId ?? undefined }]);
     setAudit(a => [{ id: genId(), action: 'Expense submitted', user: userName, detail: `${exp.cat} — ₦${exp.amt.toLocaleString()}`, ts: nowTs() }, ...a]);
   }, [userName, branchId]);
 
-  const updateExpense = useCallback((id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref'>>) => {
+  const updateExpense = useCallback((id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => {
     setExpenses(e => e.map(x => x.id === id ? { ...x, ...updates } : x));
     setAudit(a => [{ id: genId(), action: 'Expense updated', user: userName, detail: `Expense #${id} edited`, ts: nowTs() }, ...a]);
   }, [userName]);
