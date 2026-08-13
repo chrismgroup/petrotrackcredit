@@ -17,6 +17,25 @@ export interface Delivery { id: number; dt: string; submittedAt?: string; sup: s
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; submittedAt?: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
 export type StockProduct = 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil';
+export const STOCK_SNAPSHOT_METRICS = [
+  'startupStock', 'deliveries', 'sales', 'submittedTankDip', 'bookStock', 'variance',
+] as const;
+export type StockSnapshotMetric = typeof STOCK_SNAPSHOT_METRICS[number];
+export interface StockSnapshotConfig {
+  metrics: Record<StockSnapshotMetric, boolean>;
+  productsByBranch: Record<string, Partial<Record<StockProduct, boolean>>>;
+}
+export const DEFAULT_STOCK_SNAPSHOT_CONFIG: StockSnapshotConfig = {
+  metrics: {
+    startupStock: true,
+    deliveries: true,
+    sales: true,
+    submittedTankDip: true,
+    bookStock: true,
+    variance: true,
+  },
+  productsByBranch: {},
+};
 export interface StartupStock {
   id: string;
   product: StockProduct;
@@ -553,6 +572,9 @@ interface AppContextType {
   addStartupStock: (stock: { product: StockProduct; quantity: number; branchId?: string }) => void;
   updateStartupStock: (id: string, quantity: number) => void;
   deleteStartupStock: (id: string) => void;
+  stockSnapshotConfig: StockSnapshotConfig;
+  updateStockSnapshotMetric: (metric: StockSnapshotMetric, enabled: boolean) => void;
+  updateStockSnapshotProduct: (branchId: string, product: StockProduct, enabled: boolean) => void;
   setPumpInitialMeter: (pumpId: string, meter: number) => void;
   lockPumpMeter: (pumpId: string, meter: number) => void;
   unlockPumpMeter: (pumpId: string) => void;
@@ -748,6 +770,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pumpLockedMeters, setPumpLockedMeters] = useState<Record<string, number>>({});
   const [inventoryLog, setInventoryLog] = useState<InventoryLogEntry[]>(INIT_INVENTORY_LOG);
   const [startupStocks, setStartupStocks] = useState<StartupStock[]>(INIT_STARTUP_STOCK);
+  const [stockSnapshotConfig, setStockSnapshotConfig] = useState<StockSnapshotConfig>(DEFAULT_STOCK_SNAPSHOT_CONFIG);
   const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
@@ -779,7 +802,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
-      'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks',
+      'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks', 'stockSnapshotConfig',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -830,6 +853,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.myFolders)         setMyFolders(s.myFolders);
       if (s.myFolderFiles)     setMyFolderFiles(s.myFolderFiles);
       if (s.startupStocks)     setStartupStocks(s.startupStocks);
+      if (s.stockSnapshotConfig) {
+        setStockSnapshotConfig({
+          ...DEFAULT_STOCK_SNAPSHOT_CONFIG,
+          ...s.stockSnapshotConfig,
+          metrics: { ...DEFAULT_STOCK_SNAPSHOT_CONFIG.metrics, ...(s.stockSnapshotConfig.metrics ?? {}) },
+          productsByBranch: s.stockSnapshotConfig.productsByBranch ?? {},
+        });
+      }
       if (s.deliveryEvidences) setDeliveryEvidences(s.deliveryEvidences);
       if (s.hrEmployees)       setHrEmployees(s.hrEmployees);
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks);
@@ -887,6 +918,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.mgrPerms && !p.has('mgrPerms'))                   setMgrPerms(s.mgrPerms as Record<string, MgrPermissions>);
       if (s.roleAccess && !p.has('roleAccess'))               setRoleAccess(s.roleAccess as Record<string, Record<string, boolean>>);
       if (s.userAccess && !p.has('userAccess'))               setUserAccess(s.userAccess as Record<number, Record<string, boolean>>);
+      if (s.stockSnapshotConfig && !p.has('stockSnapshotConfig')) {
+        const incoming = s.stockSnapshotConfig as Partial<StockSnapshotConfig>;
+        setStockSnapshotConfig({
+          ...DEFAULT_STOCK_SNAPSHOT_CONFIG,
+          ...incoming,
+          metrics: { ...DEFAULT_STOCK_SNAPSHOT_CONFIG.metrics, ...(incoming.metrics ?? {}) },
+          productsByBranch: incoming.productsByBranch ?? {},
+        });
+      }
       // Safety rule: never overwrite a non-empty local array with an empty server array.
       // This prevents a single accidental reset (or an empty server key) from wiping data
       // on every device that opens the app. The functional setter reads the latest local
@@ -1059,6 +1099,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
   useEffect(() => { if (loaded) syncSlice('startupStocks',    startupStocks); },      [startupStocks, loaded]);
+  useEffect(() => { if (loaded) syncSlice('stockSnapshotConfig', stockSnapshotConfig); }, [stockSnapshotConfig, loaded]);
 
   /* ── Version-check poll: 3 s lightweight ping → full sync only when data changed ── */
   // /api/version returns a ~50-byte timestamp. syncFromServer() only fires when it changes,
@@ -2614,6 +2655,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const updateStockSnapshotMetric = useCallback((metric: StockSnapshotMetric, enabled: boolean) => {
+    if (role !== 'admin') return;
+    setStockSnapshotConfig(prev => ({
+      ...prev,
+      metrics: { ...prev.metrics, [metric]: enabled },
+    }));
+  }, [role]);
+
+  const updateStockSnapshotProduct = useCallback((branchId: string, product: StockProduct, enabled: boolean) => {
+    if (role !== 'admin') return;
+    setStockSnapshotConfig(prev => ({
+      ...prev,
+      productsByBranch: {
+        ...prev.productsByBranch,
+        [branchId]: {
+          ...(prev.productsByBranch[branchId] ?? {}),
+          [product]: enabled,
+        },
+      },
+    }));
+  }, [role]);
+
   const updateUserAccess = useCallback((uid: number, moduleId: string, enabled: boolean) => {
     setUserAccess(prev => ({
       ...prev,
@@ -2693,13 +2756,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, updateMaintenance, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
-       pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
+        pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
+        stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
+        setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport, updatePumpReport,
         sendMessage, addSystemNotification, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
-      addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
+       addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
       userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, updateEnrollmentData, changeOwnPassword, enrollStaff, mdApproveEnrollment, mdRejectEnrollment, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, rejectEnrollmentWithReason, resubmitEnrollment, deleteUserAccount, validateCredentials,
       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
       hrEmployees, hrRecommendations, hrHandbooks,

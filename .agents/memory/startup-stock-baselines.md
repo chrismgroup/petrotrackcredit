@@ -12,3 +12,5 @@ Start-up stock in the Home Snapshot is derived from the previous business day’
 Dip aggregation must normalize stored readings to finite numbers and use the same branch rule as Tank Dipping: explicitly assigned tanks are scoped, while unassigned tanks remain visible to branch users.
 
 Home Stock Snapshot uses strict branch ownership: only branches with assigned tanks and pumps render; branch users see their branch, while CEO, MD, Accountant, CSM, and admin see all eligible branches.
+
+Admins control Stock Snapshot display density through persisted global metric toggles and per-branch product toggles; disabled products/metrics are omitted from Home without changing calculations or source records.
