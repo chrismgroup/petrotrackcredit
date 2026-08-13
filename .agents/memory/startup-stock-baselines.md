@@ -18,3 +18,5 @@ Admins control Stock Snapshot display density through persisted global metric to
 Inventory display aggregates physical stock by product within the visible branch scope; PMS, AGO, DPK, and Lube Oil remain independent, while tank-by-tank readings are reserved for Tank Dip views.
 
 Dip history must filter each record’s tank readings to the viewer’s visible branch assets; a dip record can contain readings beyond the current branch scope.
+
+The confirmed stock rule is: branch Fuel Stock sums each product across that branch’s assigned tanks, and Book Stock is that product’s Fuel Stock less its quantity sold; never combine PMS and AGO.
