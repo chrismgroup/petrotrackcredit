@@ -612,7 +612,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                 <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                  Yesterday&apos;s approved tank dip + live deliveries and sales versus today&apos;s submitted tank dip
+                  Live data · yesterday&apos;s approved tank dip + today&apos;s deliveries and sales versus today&apos;s submitted tank dip
                 </Text>
               </View>
               {stockSnapshot.map(snapshot => {
