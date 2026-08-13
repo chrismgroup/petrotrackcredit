@@ -73,7 +73,6 @@ export default function TanksScreen() {
   const canEdit = role === 'mgr';
   const isMD = role === 'md';
   const isAdmin = role === 'admin';
-  const pendingDips = dips.filter(d => d.status === 'pending');
   // Pending dips are independent submissions. Do not block a manager from
   // recording a new reading because an earlier reading is still awaiting MD;
   // MD can review multiple pending records and the server remains the source
@@ -84,6 +83,12 @@ export default function TanksScreen() {
   const canSeeAllTanks = role === 'admin' || role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'mktg';
   const visibleTanks    = role === 'mgr' && !perms.canPetrolTanks ? [] : canSeeAllTanks ? tanks : tanks.filter(inMyBranch);
   const visibleLpgTanks = role === 'mgr' && !perms.canLpgTanks   ? [] : canSeeAllTanks ? lpgTanks : lpgTanks.filter(inMyBranch);
+  const visiblePetrolTankIds = new Set(visibleTanks.map(tank => tank.id));
+  const visibleLpgTankIds = new Set(visibleLpgTanks.map(tank => tank.id));
+  const dipHasVisibleReading = (dip: (typeof dips)[number]) =>
+    Object.keys(dip.rd).some(tankId => visiblePetrolTankIds.has(tankId)) ||
+    Object.keys(dip.lpg).some(tankId => visibleLpgTankIds.has(tankId));
+  const pendingDips = dips.filter(d => d.status === 'pending' && dipHasVisibleReading(d));
 
   function computeDipAnalysis(rdMap: Record<string, number>) {
     const expectedByProd: Record<string, number> = {};
@@ -427,7 +432,7 @@ export default function TanksScreen() {
             </View>
           )}
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Records</Text>
-          {dips.map(dip => {
+          {dips.filter(dipHasVisibleReading).map(dip => {
             const sc = DIP_STATUS_COLOR[dip.status] || '#888';
             const isPending = dip.status === 'pending';
             return (
@@ -444,7 +449,7 @@ export default function TanksScreen() {
                   </View>
                 </View>
                 <View style={styles.readingsGrid}>
-                  {Object.entries(dip.rd).map(([tid, litres]) => {
+                  {Object.entries(dip.rd).filter(([tid]) => visiblePetrolTankIds.has(tid)).map(([tid, litres]) => {
                     const tank = tanks.find(t => t.id === tid);
                     return (
                       <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -453,7 +458,7 @@ export default function TanksScreen() {
                       </View>
                     );
                   })}
-                  {Object.entries(dip.lpg).map(([lid, kg]) => {
+                  {Object.entries(dip.lpg).filter(([lid]) => visibleLpgTankIds.has(lid)).map(([lid, kg]) => {
                     const lt = lpgTanks.find(l => l.id === lid);
                     return (
                       <View key={lid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>

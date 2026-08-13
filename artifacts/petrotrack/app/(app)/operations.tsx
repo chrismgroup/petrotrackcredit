@@ -68,6 +68,11 @@ export default function OperationsScreen() {
   const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : canSeeAllTanks ? lpgTanks : lpgTanks.filter(inMyBranch);
   const canDip          = isMgr;
   const hasPendingDip   = canDip && dips.some(d => d.by === userName && d.status === 'pending');
+  const visiblePetrolTankIds = new Set(visibleTanks.map(tank => tank.id));
+  const visibleLpgTankIds = new Set(visibleLpgTanks.map(tank => tank.id));
+  const dipHasVisibleReading = (dip: (typeof dips)[number]) =>
+    Object.keys(dip.rd).some(tankId => visiblePetrolTankIds.has(tankId)) ||
+    Object.keys(dip.lpg).some(tankId => visibleLpgTankIds.has(tankId));
 
   function handleDipSubmit() {
     if (!appliesOn) {
@@ -104,9 +109,9 @@ export default function OperationsScreen() {
   });
   const lpgCapacity = visibleLpgTanks.reduce((sum, tank) => sum + tank.cap, 0);
   const lpgStock = visibleLpgTanks.reduce((sum, tank) => sum + getCurrentTankStock(tank, dips, 'lpg'), 0);
-  const pendingDips = dips.filter(dip => dip.status === 'pending');
+  const pendingDips = dips.filter(dip => dip.status === 'pending' && dipHasVisibleReading(dip));
   const approvedDips = dips
-    .filter(dip => dip.status === 'approved')
+    .filter(dip => dip.status === 'approved' && dipHasVisibleReading(dip))
     .sort((a, b) => new Date(b.approvedDt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.dt).getTime());
 
   return (
@@ -298,7 +303,7 @@ export default function OperationsScreen() {
 
                       {/* Tank readings */}
                       <View style={styles.readingsGrid}>
-                        {Object.entries(dip.rd).map(([tid, litres]) => {
+                        {Object.entries(dip.rd).filter(([tid]) => visiblePetrolTankIds.has(tid)).map(([tid, litres]) => {
                           const tank = tanks.find(t => t.id === tid);
                           return (
                             <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -307,7 +312,7 @@ export default function OperationsScreen() {
                             </View>
                           );
                         })}
-                        {Object.entries(dip.lpg).map(([lid, kg]) => {
+                        {Object.entries(dip.lpg).filter(([lid]) => visibleLpgTankIds.has(lid)).map(([lid, kg]) => {
                           const lt = lpgTanks.find(l => l.id === lid);
                           return (
                             <View key={lid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -388,7 +393,7 @@ export default function OperationsScreen() {
                 <View style={styles.inventorySummaryHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.inventorySummaryTitle, { color: colors.text }]}>Current stock snapshot</Text>
-                    <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>Live stock compared with approved tank readings</Text>
+                    <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>Current product stock after receipts and sales; dip readings are point-in-time physical checks</Text>
                   </View>
                   <View style={[styles.inventorySummaryIcon, { backgroundColor: roleColor + '18' }]}>
                     <Ionicons name="water-outline" size={20} color={roleColor} />
@@ -467,7 +472,7 @@ export default function OperationsScreen() {
                       </View>
                     </View>
                     <View style={styles.dipHistoryReadingList}>
-                      {Object.entries(dip.rd).map(([tankId, litres]) => {
+                      {Object.entries(dip.rd).filter(([tankId]) => visiblePetrolTankIds.has(tankId)).map(([tankId, litres]) => {
                         const tank = tanks.find(item => item.id === tankId);
                         const previous = approvedDips.find(candidate =>
                           candidate.id !== dip.id
@@ -487,7 +492,7 @@ export default function OperationsScreen() {
                           </View>
                         );
                       })}
-                      {Object.entries(dip.lpg).map(([tankId, kg]) => {
+                      {Object.entries(dip.lpg).filter(([tankId]) => visibleLpgTankIds.has(tankId)).map(([tankId, kg]) => {
                         const tank = lpgTanks.find(item => item.id === tankId);
                         const previous = approvedDips.find(candidate =>
                           candidate.id !== dip.id
@@ -625,7 +630,7 @@ export default function OperationsScreen() {
               <View style={styles.historyHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 2 }]}>Historical inventory log</Text>
-                  <Text style={[styles.historySubtitle, { color: colors.textMuted }]}>Approved checks compared with expected stock</Text>
+                  <Text style={[styles.historySubtitle, { color: colors.textMuted }]}>Branch-scoped physical checks compared with expected stock</Text>
                 </View>
                 <View style={[styles.historyToggle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   {(['all', 'variance'] as const).map(filter => (
