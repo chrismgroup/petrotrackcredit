@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -40,7 +41,7 @@ export default function CallScreen() {
   const [mediaViewReady, setMediaViewReady] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' || Constants.appOwnership === 'expo') {
       setStatus('Calls require the Petrotrack iOS or Android development build.');
       return;
     }

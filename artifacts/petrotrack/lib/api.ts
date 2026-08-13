@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
 
 function getBase(): string {
   if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
@@ -322,6 +323,21 @@ export const storageApi = {
       return r.ok;
     } catch {
       return false;
+    }
+  },
+  downloadObject: async (objectPath: string, destinationUri: string): Promise<string | null> => {
+    if (!BASE || !objectPath.startsWith('/objects/')) return null;
+    try {
+      const headers = await authHeaders();
+      const encodedPath = objectPath.slice('/objects/'.length).split('/').map(encodeURIComponent).join('/');
+      const result = await FileSystem.downloadAsync(
+        `${BASE}/storage/objects/${encodedPath}`,
+        destinationUri,
+        { headers },
+      );
+      return result.status >= 200 && result.status < 300 ? result.uri : null;
+    } catch {
+      return null;
     }
   },
 };

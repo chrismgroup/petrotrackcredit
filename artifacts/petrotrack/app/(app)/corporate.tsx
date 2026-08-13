@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import React, { useState } from 'react';
 import {
-  Alert, Modal, ScrollView, StyleSheet, Text,
+  Alert, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text,
   TextInput, TouchableOpacity, View,
 } from 'react-native';
 
@@ -84,8 +86,106 @@ function FolderWorkspacePanel({
   const [folderName, setFolderName] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [busyFileId, setBusyFileId] = useState<number | null>(null);
+  const [previewFile, setPreviewFile] = useState<{ file: MyFolderFile; uri: string } | null>(null);
   const sectionFolders = folders.filter(f => f.section === section);
   const sectionFiles = files.filter(f => f.section === section && f.folderId === selectedFolderId);
+
+  function localFileName(file: MyFolderFile): string {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    return `petrotrack-my-folder-${file.id}-${safeName}`;
+  }
+
+  async function getLocalFile(file: MyFolderFile): Promise<string> {
+    if (!file.objectPath) throw new Error('This document is missing its stored file.');
+    const root = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+    if (!root) throw new Error('No local file directory is available.');
+    const destinationUri = `${root}${localFileName(file)}`;
+    const existing = await FileSystem.getInfoAsync(destinationUri);
+    if (existing.exists) return destinationUri;
+    const downloaded = await storageApi.downloadObject(file.objectPath, destinationUri);
+    if (!downloaded) throw new Error('The document could not be downloaded.');
+    return downloaded;
+  }
+
+  async function previewDocument(file: MyFolderFile) {
+    setBusyFileId(file.id);
+    try {
+      const uri = await getLocalFile(file);
+      if (file.mimeType.startsWith('image/')) {
+        setPreviewFile({ file, uri });
+        return;
+      }
+      const openUri = Platform.OS === 'android' ? await FileSystem.getContentUriAsync(uri) : uri;
+      try {
+        await Linking.openURL(openUri);
+      } catch {
+        await Sharing.shareAsync(uri, { dialogTitle: `Open ${file.name}` });
+      }
+    } catch {
+      Alert.alert('Preview unavailable', 'This document could not be opened on the device.');
+    } finally {
+      setBusyFileId(null);
+    }
+  }
+
+  async function downloadDocument(file: MyFolderFile) {
+    setBusyFileId(file.id);
+    try {
+      const uri = await getLocalFile(file);
+      if (Platform.OS === 'android') {
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (!permissions.granted) return;
+        const targetUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          file.name,
+          file.mimeType || 'application/octet-stream',
+        );
+        const contents = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.writeAsStringAsync(targetUri, contents, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        Alert.alert('Downloaded', `${file.name} was saved to the selected folder.`);
+      } else {
+        await Sharing.shareAsync(uri, { dialogTitle: `Save ${file.name}` });
+      }
+    } catch {
+      Alert.alert('Download failed', 'The document could not be saved to this device.');
+    } finally {
+      setBusyFileId(null);
+    }
+  }
+
+  async function printDocument(file: MyFolderFile) {
+    setBusyFileId(file.id);
+    try {
+      const uri = await getLocalFile(file);
+      await Print.printAsync({ uri });
+    } catch {
+      Alert.alert('Print unavailable', 'This document could not be sent to a printer.');
+    } finally {
+      setBusyFileId(null);
+    }
+  }
+
+  async function shareDocument(file: MyFolderFile) {
+    setBusyFileId(file.id);
+    try {
+      const uri = await getLocalFile(file);
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert('Sharing unavailable', 'Sharing is not supported on this device.');
+        return;
+      }
+      await Sharing.shareAsync(uri, { dialogTitle: `Share ${file.name}` });
+    } catch {
+      Alert.alert('Share failed', 'The document could not be shared.');
+    } finally {
+      setBusyFileId(null);
+    }
+  }
 
   function createFolder() {
     const name = folderName.trim();
@@ -268,35 +368,101 @@ function FolderWorkspacePanel({
             <View style={[sty.workspaceFileIcon, { backgroundColor: roleColor + '14' }]}>
               <Ionicons name="document-attach-outline" size={18} color={roleColor} />
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[sty.workspaceFileName, { color: colors.text }]} numberOfLines={1}>{file.name}</Text>
               <Text style={[sty.workspaceFileMeta, { color: colors.textMuted }]}>
                 {file.mimeType} · {file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'Size unavailable'} · {file.uploadedBy}
               </Text>
-            </View>
-             {canManage && (
-               <View style={sty.workspaceFileActions}>
+              <View style={sty.workspaceFileActions}>
+                <TouchableOpacity
+                  onPress={() => void previewDocument(file)}
+                  disabled={busyFileId === file.id}
+                  style={[sty.workspaceFileAction, { borderColor: colors.border }]}
+                  accessibilityLabel={`Preview ${file.name}`}
+                >
+                  <Ionicons name="eye-outline" size={14} color={roleColor} />
+                  <Text style={[sty.workspaceFileActionText, { color: roleColor }]}>Preview</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void downloadDocument(file)}
+                  disabled={busyFileId === file.id}
+                  style={[sty.workspaceFileAction, { borderColor: colors.border }]}
+                  accessibilityLabel={`Download ${file.name}`}
+                >
+                  <Ionicons name="download-outline" size={14} color={roleColor} />
+                  <Text style={[sty.workspaceFileActionText, { color: roleColor }]}>Download</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void printDocument(file)}
+                  disabled={busyFileId === file.id}
+                  style={[sty.workspaceFileAction, { borderColor: colors.border }]}
+                  accessibilityLabel={`Print ${file.name}`}
+                >
+                  <Ionicons name="print-outline" size={14} color={roleColor} />
+                  <Text style={[sty.workspaceFileActionText, { color: roleColor }]}>Print</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void shareDocument(file)}
+                  disabled={busyFileId === file.id}
+                  style={[sty.workspaceFileAction, { borderColor: colors.border }]}
+                  accessibilityLabel={`Share ${file.name}`}
+                >
+                  <Ionicons name="share-outline" size={14} color={roleColor} />
+                  <Text style={[sty.workspaceFileActionText, { color: roleColor }]}>Share</Text>
+                </TouchableOpacity>
+                {canManage && (
                  <TouchableOpacity
                    onPress={() => confirmReplace(file)}
-                   disabled={uploading}
+                    disabled={uploading || busyFileId === file.id}
                    style={[sty.workspaceFileAction, { borderColor: colors.border }]}
                    accessibilityLabel={`Replace ${file.name}`}
                  >
                    <Ionicons name="swap-horizontal-outline" size={14} color={roleColor} />
+                    <Text style={[sty.workspaceFileActionText, { color: roleColor }]}>Replace</Text>
                  </TouchableOpacity>
-                 <TouchableOpacity
-                   onPress={() => confirmDelete(file)}
-                   disabled={uploading}
-                   style={[sty.workspaceFileAction, { borderColor: colors.border }]}
-                   accessibilityLabel={`Delete ${file.name}`}
-                 >
-                   <Ionicons name="trash-outline" size={14} color={colors.error} />
-                 </TouchableOpacity>
-               </View>
-             )}
+                )}
+                {canManage && (
+                  <TouchableOpacity
+                    onPress={() => confirmDelete(file)}
+                    disabled={uploading || busyFileId === file.id}
+                    style={[sty.workspaceFileAction, { borderColor: colors.errorBorder }]}
+                    accessibilityLabel={`Delete ${file.name}`}
+                  >
+                    <Ionicons name="trash-outline" size={14} color={colors.error} />
+                    <Text style={[sty.workspaceFileActionText, { color: colors.error }]}>Delete</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
           </View>
         ))
       )}
+      <Modal
+        visible={!!previewFile}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewFile(null)}
+      >
+        <View style={sty.previewBackdrop}>
+          <View style={[sty.previewCard, { backgroundColor: colors.surface }]}>
+            <View style={sty.previewHeader}>
+              <Text style={[sty.previewTitle, { color: colors.text }]} numberOfLines={1}>
+                {previewFile?.file.name}
+              </Text>
+              <TouchableOpacity onPress={() => setPreviewFile(null)} accessibilityLabel="Close preview">
+                <Ionicons name="close-circle" size={26} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            {previewFile && (
+              <Image
+                source={{ uri: previewFile.uri }}
+                style={sty.previewImage}
+                resizeMode="contain"
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1509,12 +1675,18 @@ const sty = StyleSheet.create({
   uploadAnyTxt: { color: '#fff', fontSize: 12, fontWeight: '800' },
   workspaceFilesLabel: { fontSize: 11, fontWeight: '700', marginTop: 2 },
   workspaceEmpty: { fontSize: 11, fontStyle: 'italic', paddingVertical: 4 },
-  workspaceFile: { flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 8 },
+  workspaceFile: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 8 },
   workspaceFileIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   workspaceFileName: { fontSize: 12, fontWeight: '700' },
   workspaceFileMeta: { fontSize: 10, marginTop: 2 },
-  workspaceFileActions: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  workspaceFileAction: { width: 30, height: 30, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  workspaceFileActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: 7 },
+  workspaceFileAction: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  workspaceFileActionText: { fontSize: 9, fontWeight: '700' },
+  previewBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', justifyContent: 'center', alignItems: 'center', padding: 18 },
+  previewCard: { width: '100%', maxWidth: 390, borderRadius: 16, padding: 12 },
+  previewHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  previewTitle: { flex: 1, fontSize: 14, fontWeight: '800' },
+  previewImage: { width: '100%', height: 500, borderRadius: 10, backgroundColor: '#101418' },
   tabBar:        { borderBottomWidth: StyleSheet.hairlineWidth },
   tabBarContent: { flexDirection: 'row', flexWrap: 'wrap' },
   tabBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 2 },

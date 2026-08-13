@@ -18,7 +18,7 @@ const PRIMARY_TABS = [
 const JOB_PATHS = [
   'jobs', 'operations', 'maintenance', 'tanks', 'receiving', 'sales', 'shift',
   'accounts', 'expenses', 'budget', 'reports', 'pump-report', 'tasks', 'users',
-  'departments', 'branches', 'corporate', 'marketing', 'prices', 'audit',
+  'departments', 'branches', 'marketing', 'prices', 'audit',
   'system-settings', 'hr',
 ];
 
@@ -42,7 +42,8 @@ export function TabBar() {
     if (id === 'messages') return pathname.includes('/messages') || pathname.includes('/comms');
     if (id === 'folder') return pathname.includes('/corporate');
     if (id === 'profile') return pathname.includes('/profile');
-    return JOB_PATHS.some(path => pathname.includes(`/${path}`));
+    if (id === 'jobs') return JOB_PATHS.some(path => pathname.includes(`/${path}`));
+    return false;
   }
 
   function navigate(route: string) {
