@@ -34,6 +34,7 @@ import { useColors } from '@/hooks/useColors';
 
 type Tab    = 'chats' | 'broadcast' | 'calls';
 type InboxFilter = 'active' | 'archived';
+type CallKind = 'audio' | 'video';
 type Colors = ReturnType<typeof useColors>;
 
 const CAN_BROADCAST = ['admin', 'ceo', 'md', 'csm'];
@@ -393,16 +394,47 @@ export default function CommsScreen() {
   }
 
   // ── Calls ──────────────────────────────────────────────────────────────────
-  function initiateCall(user: UserAccount) {
+  async function startCall(user: UserAccount, kind: CallKind) {
     const phone = user.phoneNumber?.trim();
     if (!phone) {
       Alert.alert('No Phone Number', `${user.empName} doesn't have a phone number on file.`);
       return;
     }
-    addCallRecord({ from: role!, fromName: userName, to: user.role!, toName: user.empName, status: 'ended' });
-    Linking.openURL(`tel:${phone}`).catch(() =>
-      Alert.alert('Cannot Open Dialer', 'Your device could not open the phone dialer.'),
-    );
+    if (kind === 'video' && Platform.OS !== 'ios') {
+      Alert.alert(
+        'Video Calling',
+        'Video calls use FaceTime on iPhone. This device does not expose a native video-call app through the current Expo build.',
+      );
+      return;
+    }
+    const url = kind === 'video' ? `facetime:${phone}` : `tel:${phone}`;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert(
+          kind === 'video' ? 'Video Calling Unavailable' : 'Cannot Open Dialer',
+          kind === 'video'
+            ? 'This device does not have a video calling app configured for this number.'
+            : 'Your device could not open the phone dialer.',
+        );
+        return;
+      }
+      addCallRecord({ kind, from: role!, fromName: userName, to: user.role!, toName: user.empName, status: 'ended' });
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert(
+        kind === 'video' ? 'Cannot Start Video Call' : 'Cannot Open Dialer',
+        'Your device could not start this call.',
+      );
+    }
+  }
+
+  function initiateCall(user: UserAccount) {
+    void startCall(user, 'audio');
+  }
+
+  function initiateVideoCall(user: UserAccount) {
+    void startCall(user, 'video');
   }
 
   // ── Filtered peer list for search ──────────────────────────────────────────
@@ -450,8 +482,16 @@ export default function CommsScreen() {
           <TouchableOpacity
             onPress={() => initiateCall(chatPeer)}
             style={[styles.callBtn, { backgroundColor: '#27ae60' + '18' }]}
+            accessibilityLabel="Start audio call"
           >
             <Ionicons name="call" size={18} color="#27ae60" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => initiateVideoCall(chatPeer)}
+            style={[styles.callBtn, { backgroundColor: '#185FA5' + '18' }]}
+            accessibilityLabel="Start video call"
+          >
+            <Ionicons name="videocam" size={18} color="#185FA5" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { toggleArchive(chatPeer); setChatPeer(null); }}
@@ -784,12 +824,22 @@ export default function CommsScreen() {
                    >
                      <Ionicons name={isArchived(user) ? 'archive' : 'archive-outline'} size={15} color={colors.textMuted} />
                    </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => initiateCall(user)}
-                    style={[styles.callIconBtn, { backgroundColor: '#27ae60' + '18' }]}
-                  >
-                    <Ionicons name="call-outline" size={15} color="#27ae60" />
-                  </TouchableOpacity>
+                   <View style={styles.callIconRow}>
+                     <TouchableOpacity
+                       onPress={() => initiateCall(user)}
+                       style={[styles.callIconBtn, { backgroundColor: '#27ae60' + '18' }]}
+                       accessibilityLabel="Start audio call"
+                     >
+                       <Ionicons name="call-outline" size={15} color="#27ae60" />
+                     </TouchableOpacity>
+                     <TouchableOpacity
+                       onPress={() => initiateVideoCall(user)}
+                       style={[styles.callIconBtn, { backgroundColor: '#185FA5' + '18' }]}
+                       accessibilityLabel="Start video call"
+                     >
+                       <Ionicons name="videocam-outline" size={15} color="#185FA5" />
+                     </TouchableOpacity>
+                   </View>
                   <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
                 </View>
               </TouchableOpacity>
@@ -937,14 +987,26 @@ export default function CommsScreen() {
                     <Text style={[styles.contactSub, { color: colors.textSubtle }]}>No phone on file</Text>
                   )}
                 </View>
-                <TouchableOpacity
-                  onPress={() => initiateCall(user)}
-                  style={[styles.callNowBtn, { backgroundColor: user.phoneNumber ? '#27ae60' : colors.border }]}
-                  disabled={!user.phoneNumber}
-                >
-                  <Ionicons name="call" size={14} color="#fff" />
-                  <Text style={styles.callNowText}>Call</Text>
-                </TouchableOpacity>
+                 <View style={styles.callActions}>
+                   <TouchableOpacity
+                     onPress={() => initiateCall(user)}
+                     style={[styles.callNowBtn, { backgroundColor: user.phoneNumber ? '#27ae60' : colors.border }]}
+                     disabled={!user.phoneNumber}
+                     accessibilityLabel="Start audio call"
+                   >
+                     <Ionicons name="call" size={14} color="#fff" />
+                     <Text style={styles.callNowText}>Audio</Text>
+                   </TouchableOpacity>
+                   <TouchableOpacity
+                     onPress={() => initiateVideoCall(user)}
+                     style={[styles.callNowBtn, { backgroundColor: user.phoneNumber ? '#185FA5' : colors.border }]}
+                     disabled={!user.phoneNumber}
+                     accessibilityLabel="Start video call"
+                   >
+                     <Ionicons name="videocam" size={14} color="#fff" />
+                     <Text style={styles.callNowText}>Video</Text>
+                   </TouchableOpacity>
+                 </View>
               </View>
             );
           })}
@@ -965,6 +1027,11 @@ export default function CommsScreen() {
                     <View style={{ flex: 1, marginLeft: 10 }}>
                       <Text style={[styles.contactName, { color: colors.text }]}>{peerName}</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <Ionicons
+                          name={c.kind === 'video' ? 'videocam-outline' : 'call-outline'}
+                          size={10}
+                          color={c.kind === 'video' ? '#185FA5' : '#27ae60'}
+                        />
                         <Ionicons
                           name={isMine ? 'arrow-up-outline' : 'arrow-down-outline'}
                           size={10}
@@ -1032,6 +1099,7 @@ const styles = StyleSheet.create({
   avatarBadgeText:{ color: '#fff', fontSize: 8, fontWeight: '800' },
   unreadBadge:    { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   unreadText:     { color: '#fff', fontSize: 10, fontWeight: '800' },
+  callIconRow:    { flexDirection: 'row', gap: 5 },
   callIconBtn:    { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   archiveIconBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 
@@ -1109,7 +1177,8 @@ const styles = StyleSheet.create({
   // Calls tab
   sectionTitle:   { fontSize: 15, fontWeight: '700', marginBottom: 12 },
   callContactRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
-  callNowBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  callActions:    { flexDirection: 'row', gap: 5 },
+  callNowBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 8, borderRadius: 10 },
   callNowText:    { color: '#fff', fontSize: 13, fontWeight: '700' },
   callLogRow:     { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
   callTime:       { fontSize: 11, marginRight: 8 },

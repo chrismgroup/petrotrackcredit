@@ -138,7 +138,7 @@ export interface PriceChange { id: number; prod: string; oldPrice: number; newPr
 export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media'; body: string; ts: string; read: boolean; archivedBy?: string[]; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; }
 export type { AppNotification };
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
-export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; duration?: string; }
+export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; kind?: 'audio' | 'video'; duration?: string; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
 export interface ShiftHandoverNote { id: number; body: string; by: string; ts: string; branchId?: string; }
 export interface InventoryLogEntry {
@@ -902,7 +902,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               const localById = new Map(localList.map(m => [m.id, m]));
               merged[k] = serverList.map(m => {
                 const local = localById.get(m.id);
-                return local ? { ...m, read: m.read || local.read } : m;
+                return local
+                  ? {
+                      ...m,
+                      read: m.read || local.read,
+                      archivedBy: Array.from(new Set([...(m.archivedBy || []), ...(local.archivedBy || [])])),
+                    }
+                  : m;
               });
               changed = true;
             } else {
