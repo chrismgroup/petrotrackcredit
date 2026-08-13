@@ -15,7 +15,7 @@ const ALLOWED_KEYS = new Set([
   "legalMatters", "corpProjects", "meetingMinutes",
   "broadcasts", "callLog", "pumpDailyReports", "pumpInitialMeters",
   "pumpLockedMeters", "inventoryLog", "financialEntry", "marketCompetitors",
-  "myFolders", "myFolderFiles",
+  "myFolders", "myFolderFiles", "startupStocks",
 ]);
 
 // Keys that modify access control, credentials, or HR/legal/financial records.
@@ -24,7 +24,7 @@ const ADMIN_WRITE_KEYS = new Set([
   "userAccounts", "roleAccess", "userAccess", "mgrPerms",
   "hrEmployees", "hrHandbooks", "hrRecommendations",
   "companyFiles", "legalMatters", "meetingMinutes", "corpProjects",
-  "companyInfo", "departments", "branches",
+  "companyInfo", "departments", "branches", "startupStocks",
 ]);
 
 // Selling prices are operational but affect the whole station network.

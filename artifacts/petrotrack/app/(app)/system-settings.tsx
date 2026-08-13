@@ -6,13 +6,14 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, Tank, useApp } from '@/context/AppContext';
+import { BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, StockProduct, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab = 'company' | 'tanks' | 'pumps' | 'staff' | 'access' | 'system';
+type Tab = 'company' | 'tanks' | 'startup' | 'pumps' | 'staff' | 'access' | 'system';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'company', label: 'Company', icon: 'business' },
   { id: 'tanks',   label: 'Tanks',   icon: 'water' },
+  { id: 'startup', label: 'Start-up stock', icon: 'calculator' },
   { id: 'pumps',   label: 'Pumps',   icon: 'speedometer' },
   { id: 'staff',   label: 'Staff',   icon: 'people' },
   { id: 'access',  label: 'Access',  icon: 'lock-closed' },
@@ -32,8 +33,9 @@ const MGR_PERM_LABELS: { key: keyof MgrPermissions; label: string; icon: string;
 
 const PROD_OPTS: Tank['prod'][] = ['PMS', 'AGO', 'DPK'];
 const PROD_COLORS: Record<string, string> = {
-  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56',
+  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#7B3FA5',
 };
+const STARTUP_PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const ROLE_OPTS = ['admin', 'ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'] as const;
 const ROLE_LABELS: Record<string, string> = {
   admin: 'System Admin', ceo: 'CEO', md: 'MD', mktg: 'Marketing',
@@ -187,6 +189,7 @@ export default function SystemSettingsScreen() {
     deleteTank, deleteLpgTank, deletePump, deleteStaff,
     userAccounts, companyInfo, updateCompanyInfo,
     departments, assignStaffDept, setPumpInitialMeter, resetOperationalData, pumpInitialMeters,
+    startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -239,16 +242,19 @@ export default function SystemSettingsScreen() {
   const [lpgEdits,  setLpgEdits]  = useState<Record<string, { name: string; cap: string; branchId: string }>>({});
   const [pumpEdits, setPumpEdits] = useState<Record<string, { name: string; prod: Pump['prod']; active: boolean; branchId: string; openingMeter: string; lpgCategory: 'single' | 'distributor' | '' }>>({});
   const [staffEdits,setStaffEdits]= useState<Record<number, { name: string; email: string; branchId: string }>>({});
+  const [startupEdits, setStartupEdits] = useState<Record<string, string>>({});
 
   /* ── new-item forms ── */
   const [showNewTank,  setShowNewTank]  = useState(false);
   const [showNewLpg,   setShowNewLpg]   = useState(false);
   const [showNewPump,  setShowNewPump]  = useState(false);
   const [showNewStaff, setShowNewStaff] = useState(false);
+  const [showNewStartup, setShowNewStartup] = useState(false);
   const [newTank,  setNewTank]  = useState(BLANK_TANK);
   const [newLpg,   setNewLpg]   = useState(BLANK_LPG);
   const [newPump,  setNewPump]  = useState(BLANK_PUMP);
   const [newStaff, setNewStaff] = useState(BLANK_STAFF);
+  const [newStartup, setNewStartup] = useState<{ product: StockProduct; quantity: string; branchId: string }>({ product: 'PMS', quantity: '', branchId: '' });
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -273,6 +279,11 @@ export default function SystemSettingsScreen() {
     for (const m of staff) se[m.id] = { name: m.name, email: m.email, branchId: m.branchId ?? '' };
     setStaffEdits(se);
   }, [staff]);
+  useEffect(() => {
+    const edits: Record<string, string> = {};
+    for (const stock of startupStocks) edits[stock.id] = String(stock.quantity);
+    setStartupEdits(edits);
+  }, [startupStocks]);
 
   /* ── save handlers ── */
   function saveTanks() {
@@ -312,6 +323,16 @@ export default function SystemSettingsScreen() {
     Alert.alert('Saved', 'Staff information updated.');
   }
 
+  function saveStartupStock(id: string) {
+    const quantity = parseFloat((startupEdits[id] ?? '').replace(/,/g, ''));
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      Alert.alert('Error', 'Start-up stock must be a valid quantity of 0 or more.');
+      return;
+    }
+    updateStartupStock(id, quantity);
+    Alert.alert('Updated', 'Start-up stock updated and remains locked for non-admin users.');
+  }
+
   /* ── create handlers ── */
   function createTank() {
     const cap = parseInt(newTank.cap);
@@ -342,6 +363,22 @@ export default function SystemSettingsScreen() {
     setNewPump(BLANK_PUMP);
     setShowNewPump(false);
     Alert.alert('Pump Added', `"${newPump.name.trim()}" is now available in the Sales screen.`);
+  }
+
+  function createStartupStock() {
+    const quantity = parseFloat(newStartup.quantity.replace(/,/g, ''));
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      Alert.alert('Error', 'Start-up stock must be a valid quantity of 0 or more.');
+      return;
+    }
+    if (startupStocks.some(stock => stock.product === newStartup.product && (stock.branchId || '') === newStartup.branchId)) {
+      Alert.alert('Already set', `${newStartup.product} already has start-up stock for this branch. Edit the existing locked record instead.`);
+      return;
+    }
+    addStartupStock({ product: newStartup.product, quantity, branchId: newStartup.branchId || undefined });
+    setNewStartup({ product: 'PMS', quantity: '', branchId: '' });
+    setShowNewStartup(false);
+    Alert.alert('Start-up stock set', 'The baseline is now locked for non-admin users and will be used in the Home Stock Snapshot.');
   }
 
   async function createStaff() {
@@ -786,6 +823,124 @@ export default function SystemSettingsScreen() {
 
               {isAdmin && (
                 <SaveBtn roleColor={roleColor} label="Save Tank Configuration" onPress={saveTanks} />
+              )}
+            </>
+          )}
+
+          {/* ── START-UP STOCK ── */}
+          {activeTab === 'startup' && (
+            <>
+              <LockBanner isAdmin={isAdmin} canManageStaff={canManageStaff} colors={colors} />
+              <View style={[styles.banner, { backgroundColor: '#12304a' }]}>
+                <Ionicons name="lock-closed" size={22} color="#8ec5ff" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bannerTitle}>Locked start-up stock</Text>
+                  <Text style={styles.bannerSub}>Set the opening quantity for each product before daily deliveries and sales are recorded. Only System Admin can edit or delete these values.</Text>
+                </View>
+              </View>
+              <View style={styles.sectionRow}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Configured baselines</Text>
+                <Text style={[styles.sectionCount, { color: colors.textMuted }]}>{startupStocks.length} set</Text>
+              </View>
+
+              {startupStocks.length === 0 && (
+                <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Text style={[styles.itemCurrent, { color: colors.text }]}>No start-up stock has been set.</Text>
+                  <Text style={[styles.itemSub, { color: colors.textMuted }]}>Home will show “Set baseline” until an admin configures each product.</Text>
+                </View>
+              )}
+
+              {startupStocks.map(stock => {
+                const branchName = stock.branchId ? branches.find(b => b.id === stock.branchId)?.name ?? 'Assigned branch' : 'All branches';
+                return (
+                  <View key={stock.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.itemHeader}>
+                      <View style={[styles.idBadge, { backgroundColor: (PROD_COLORS[stock.product] ?? roleColor) + '18' }]}>
+                        <Ionicons name="water" size={17} color={PROD_COLORS[stock.product] ?? roleColor} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>{stock.product}</Text>
+                        <Text style={[styles.itemSub, { color: colors.textMuted }]}>{branchName} · set by {stock.setBy}</Text>
+                      </View>
+                      <View style={[styles.stBadge, { backgroundColor: '#0F6E5618' }]}>
+                        <Ionicons name="lock-closed" size={11} color="#0F6E56" />
+                        <Text style={[styles.stText, { color: '#0F6E56' }]}>LOCKED</Text>
+                      </View>
+                    </View>
+                    <FieldInput
+                      colors={colors}
+                      editable={isAdmin}
+                      label={`Start-up quantity (${stock.product === 'LPG' ? 'kg' : 'L'})`}
+                      value={startupEdits[stock.id] ?? String(stock.quantity)}
+                      onChangeText={value => setStartupEdits(prev => ({ ...prev, [stock.id]: value }))}
+                      keyboardType="decimal-pad"
+                    />
+                    {isAdmin && (
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                        <TouchableOpacity style={[styles.createBtn, { flex: 1, backgroundColor: roleColor, marginTop: 0 }]} onPress={() => saveStartupStock(stock.id)} activeOpacity={0.85}>
+                          <Ionicons name="save-outline" size={16} color="#fff" />
+                          <Text style={styles.createBtnText}>Update</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.dangerBtn, { flex: 1, borderColor: colors.errorBorder, marginTop: 0 }]}
+                          onPress={() => Alert.alert('Delete start-up stock?', `Remove the ${stock.product} baseline for ${branchName}? Home will show it as not set.`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => deleteStartupStock(stock.id) },
+                          ])}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={colors.error} />
+                          <Text style={[styles.dangerBtnText, { color: colors.error }]}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+
+              {isAdmin && !showNewStartup && (
+                <AddBtn roleColor={roleColor} colors={colors} label="Set Product Start-up Stock" onPress={() => { setShowNewStartup(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />
+              )}
+              {isAdmin && showNewStartup && (
+                <View style={[styles.newCard, { backgroundColor: colors.infoBg, borderColor: roleColor + '55' }]}>
+                  <View style={styles.newCardHeader}>
+                    <View style={[styles.idBadge, { backgroundColor: roleColor + '22' }]}>
+                      <Ionicons name="add" size={16} color={roleColor} />
+                    </View>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>New start-up stock</Text>
+                    <TouchableOpacity onPress={() => { setShowNewStartup(false); setNewStartup({ product: 'PMS', quantity: '', branchId: '' }); }}>
+                      <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                  <ProdPicker isAdmin={isAdmin} colors={colors} value={newStartup.product} onChange={value => setNewStartup(prev => ({ ...prev, product: value as StockProduct }))} opts={STARTUP_PRODUCTS} />
+                  <FieldInput
+                    colors={colors}
+                    label={`Start-up quantity (${newStartup.product === 'LPG' ? 'kg' : 'L'}) *`}
+                    value={newStartup.quantity}
+                    onChangeText={value => setNewStartup(prev => ({ ...prev, quantity: value }))}
+                    keyboardType="decimal-pad"
+                    placeholder={newStartup.product === 'LPG' ? 'e.g. 5000' : 'e.g. 25000'}
+                  />
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
+                    <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
+                      <TouchableOpacity onPress={() => setNewStartup(prev => ({ ...prev, branchId: '' }))}
+                        style={[styles.roleChip, { borderColor: !newStartup.branchId ? roleColor : colors.border, backgroundColor: !newStartup.branchId ? roleColor + '18' : colors.surface }]}>
+                        <Text style={[styles.roleChipText, { color: !newStartup.branchId ? roleColor : colors.textMuted }]}>All Branches</Text>
+                      </TouchableOpacity>
+                      {branches.map(branch => (
+                        <TouchableOpacity key={branch.id} onPress={() => setNewStartup(prev => ({ ...prev, branchId: branch.id }))}
+                          style={[styles.roleChip, { borderColor: newStartup.branchId === branch.id ? roleColor : colors.border, backgroundColor: newStartup.branchId === branch.id ? roleColor + '18' : colors.surface }]}>
+                          <Text style={[styles.roleChipText, { color: newStartup.branchId === branch.id ? roleColor : colors.textMuted }]}>{branch.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                  <TouchableOpacity style={[styles.createBtn, { backgroundColor: roleColor }]} onPress={createStartupStock} activeOpacity={0.85}>
+                    <Ionicons name="lock-closed" size={16} color="#fff" />
+                    <Text style={styles.createBtnText}>Set & Lock Stock</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </>
           )}

@@ -16,6 +16,16 @@ export interface DipRecord { id: number; dt: string; submittedAt?: string; by: s
 export interface Delivery { id: number; dt: string; submittedAt?: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; submittedAt?: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
+export type StockProduct = 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil';
+export interface StartupStock {
+  id: string;
+  product: StockProduct;
+  quantity: number;
+  branchId?: string;
+  setBy: string;
+  setAt: string;
+  locked: boolean;
+}
 export interface MarketCompetitor { id: string; name: string; location: string; pms: string; ago: string; dpk: string; lpg: string; updatedBy: string; updatedAt: string; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; branchId?: string; accountId?: number; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
@@ -467,6 +477,7 @@ const INIT_TASKS: Task[] = [];
 const INIT_KPIS: KPI[] = [];
 const INIT_AUDIT: AuditEntry[] = [];
 const INIT_INVENTORY_LOG: InventoryLogEntry[] = [];
+const INIT_STARTUP_STOCK: StartupStock[] = [];
 const INIT_DEPTS: Department[] = [];
 const INIT_MSGS: Record<string, Message[]> = {};
 
@@ -538,6 +549,10 @@ interface AppContextType {
   pumpInitialMeters: Record<string, number>;
   pumpLockedMeters: Record<string, number>;
   inventoryLog: InventoryLogEntry[];
+  startupStocks: StartupStock[];
+  addStartupStock: (stock: { product: StockProduct; quantity: number; branchId?: string }) => void;
+  updateStartupStock: (id: string, quantity: number) => void;
+  deleteStartupStock: (id: string) => void;
   setPumpInitialMeter: (pumpId: string, meter: number) => void;
   lockPumpMeter: (pumpId: string, meter: number) => void;
   unlockPumpMeter: (pumpId: string) => void;
@@ -732,6 +747,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pumpInitialMeters, setPumpInitialMeters] = useState<Record<string, number>>({});
   const [pumpLockedMeters, setPumpLockedMeters] = useState<Record<string, number>>({});
   const [inventoryLog, setInventoryLog] = useState<InventoryLogEntry[]>(INIT_INVENTORY_LOG);
+  const [startupStocks, setStartupStocks] = useState<StartupStock[]>(INIT_STARTUP_STOCK);
   const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
@@ -763,7 +779,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
-      'marketCompetitors', 'myFolders', 'myFolderFiles',
+      'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks',
     ] as const;
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
@@ -813,6 +829,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.companyFiles)      setCompanyFiles(s.companyFiles);
       if (s.myFolders)         setMyFolders(s.myFolders);
       if (s.myFolderFiles)     setMyFolderFiles(s.myFolderFiles);
+      if (s.startupStocks)     setStartupStocks(s.startupStocks);
       if (s.deliveryEvidences) setDeliveryEvidences(s.deliveryEvidences);
       if (s.hrEmployees)       setHrEmployees(s.hrEmployees);
       if (s.hrHandbooks)       setHrHandbooks(s.hrHandbooks);
@@ -939,6 +956,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
       if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(s.financialEntry as FinancialEntry);
+      if (!p.has('startupStocks'))       setStartupStocks(safeArray<StartupStock>(s.startupStocks));
       // Lift the startup write-gate ONLY on success: server state is now applied, safe to accept user writes.
       // If syncFromServer fails (no network, 500, etc.), the gate stays DOWN so the app's empty defaults
       // cannot overwrite whatever real data is on the server. The next poll (3 s) will retry.
@@ -1040,6 +1058,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
+  useEffect(() => { if (loaded) syncSlice('startupStocks',    startupStocks); },      [startupStocks, loaded]);
 
   /* ── Version-check poll: 3 s lightweight ping → full sync only when data changed ── */
   // /api/version returns a ~50-byte timestamp. syncFromServer() only fires when it changes,
@@ -2165,6 +2184,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, ...a]);
   }, [userName]);
 
+  const addStartupStock = useCallback((stock: { product: StockProduct; quantity: number; branchId?: string }) => {
+    if (role !== 'admin' || !Number.isFinite(stock.quantity) || stock.quantity < 0) return;
+    const branchId = stock.branchId || undefined;
+    setStartupStocks(prev => {
+      if (prev.some(item => item.product === stock.product && item.branchId === branchId)) return prev;
+      return [...prev, {
+        id: `startup-${genId()}`,
+        product: stock.product,
+        quantity: stock.quantity,
+        branchId,
+        setBy: userName,
+        setAt: nowTs(),
+        locked: true,
+      }];
+    });
+    setAudit(a => [{
+      id: genId(),
+      action: 'Start-up stock set',
+      user: userName,
+      detail: `${stock.product} · ${stock.quantity.toLocaleString()} ${unitForProd(stock.product)}${branchId ? ` · branch ${branchId}` : ' · all branches'}`,
+      ts: nowTs(),
+    }, ...a]);
+  }, [role, userName]);
+
+  const updateStartupStock = useCallback((id: string, quantity: number) => {
+    if (role !== 'admin' || !Number.isFinite(quantity) || quantity < 0) return;
+    setStartupStocks(prev => prev.map(item => item.id === id
+      ? { ...item, quantity, locked: true, setBy: userName, setAt: nowTs() }
+      : item
+    ));
+    setAudit(a => [{ id: genId(), action: 'Start-up stock updated', user: userName, detail: `Start-up stock #${id} updated to ${quantity.toLocaleString()}`, ts: nowTs() }, ...a]);
+  }, [role, userName]);
+
+  const deleteStartupStock = useCallback((id: string) => {
+    if (role !== 'admin') return;
+    setStartupStocks(prev => prev.filter(item => item.id !== id));
+    setAudit(a => [{ id: genId(), action: 'Start-up stock deleted', user: userName, detail: `Start-up stock #${id} removed`, ts: nowTs() }, ...a]);
+  }, [role, userName]);
+
   const addDeliveryEvidence = useCallback((ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => {
     setDeliveryEvidences(e => [...e, { ...ev, id: genId(), dt: nowTs() }]);
     setAudit(a => [{ id: genId(), action: 'Delivery evidence added', user: userName, detail: `${ev.name} for delivery #${ev.delivId}`, ts: nowTs() }, ...a]);
@@ -2635,7 +2693,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, updateMaintenance, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
-      pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
+       pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport, updatePumpReport,
         sendMessage, addSystemNotification, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
