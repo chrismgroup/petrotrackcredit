@@ -13,3 +13,4 @@
 - [Price permissions](price-permissions.md) — direct selling-price changes are allowed for admin, CEO, MD, and station managers
 - [Push notifications](push-notifications.md) — durable inbox works in previews; native background delivery requires an EAS device build with Expo Notifications
 - [Business-date auditing](business-date-auditing.md) — operational records use an explicit applies-on date separate from submission time and are filtered by that business date
+- [Native module preview isolation](native-module-preview.md) — load native-only SDKs behind a runtime platform guard so Expo web previews do not initialize them

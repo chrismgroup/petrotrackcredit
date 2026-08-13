@@ -1,9 +1,3 @@
-import Daily, {
-  DailyMediaView,
-  type DailyCall,
-  type DailyEvent,
-  type DailyParticipant,
-} from '@daily-co/react-native-daily-js';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -19,6 +13,14 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useColors } from '@/hooks/useColors';
 
+import type {
+  DailyCall,
+  DailyEvent,
+  DailyParticipant,
+} from '@daily-co/react-native-daily-js';
+
+type DailyMediaViewComponent = typeof import('@daily-co/react-native-daily-js')['DailyMediaView'];
+
 export default function CallScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -30,10 +32,12 @@ export default function CallScreen() {
     peerName: string;
   }>();
   const callRef = useRef<DailyCall | null>(null);
+  const mediaViewRef = useRef<DailyMediaViewComponent | null>(null);
   const [participants, setParticipants] = useState<DailyParticipant[]>([]);
   const [status, setStatus] = useState('Connecting…');
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(params.kind === 'audio');
+  const [mediaViewReady, setMediaViewReady] = useState(false);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -41,32 +45,45 @@ export default function CallScreen() {
       return;
     }
 
-    const call = Daily.createCallObject();
-    callRef.current = call;
-    const syncParticipants = () => setParticipants(Object.values(call.participants()));
-    const events: DailyEvent[] = [
-      'joined-meeting',
-      'participant-joined',
-      'participant-updated',
-      'participant-left',
-    ];
+    let cancelled = false;
+    let call: DailyCall | null = null;
+    const setupCall = async () => {
+      try {
+        const dailyModule = await import('@daily-co/react-native-daily-js');
+        if (cancelled) return;
+        mediaViewRef.current = dailyModule.DailyMediaView;
+        setMediaViewReady(true);
+        call = dailyModule.default.createCallObject();
+        callRef.current = call;
+        const syncParticipants = () => setParticipants(Object.values(call!.participants()));
+        const events: DailyEvent[] = [
+          'joined-meeting',
+          'participant-joined',
+          'participant-updated',
+          'participant-left',
+        ];
 
-    events.forEach(event => call.on(event, syncParticipants));
-    call.on('error', () => setStatus('Unable to connect to the call'));
-    call.on('left-meeting', () => setStatus('Call ended'));
+        events.forEach(event => call!.on(event, syncParticipants));
+        call!.on('error', () => setStatus('Unable to connect to the call'));
+        call!.on('left-meeting', () => setStatus('Call ended'));
 
-    call.join({ url: params.roomUrl, token: params.token })
-      .then(() => {
+        await call!.join({ url: params.roomUrl, token: params.token });
+        if (cancelled) return;
         syncParticipants();
         setStatus('Connected');
-        if (params.kind === 'audio') call.setLocalVideo(false);
-      })
-      .catch(() => setStatus('Unable to connect to the call'));
+        if (params.kind === 'audio') call!.setLocalVideo(false);
+      } catch {
+        if (!cancelled) setStatus('Unable to connect to the call');
+      }
+    };
+    void setupCall();
 
     return () => {
-      events.forEach(event => call.off(event, syncParticipants));
-      void call.leave();
-      call.destroy();
+      cancelled = true;
+      if (call) {
+        void call.leave();
+        call.destroy();
+      }
       callRef.current = null;
     };
   }, [params.kind, params.roomUrl, params.token]);
@@ -75,6 +92,7 @@ export default function CallScreen() {
   const localParticipant = participantList.find(participant => participant.local);
   const remoteParticipants = participantList.filter(participant => !participant.local);
   const remoteParticipant = remoteParticipants[0];
+  const MediaView = mediaViewRef.current;
 
   function toggleMute() {
     const nextMuted = !muted;
@@ -124,8 +142,8 @@ export default function CallScreen() {
           </View>
         </View>
 
-        {params.kind === 'video' && remoteParticipant?.videoTrack ? (
-          <DailyMediaView
+        {params.kind === 'video' && mediaViewReady && MediaView && remoteParticipant?.videoTrack ? (
+          <MediaView
             videoTrack={remoteParticipant.videoTrack}
             audioTrack={remoteParticipant.audioTrack || null}
             style={styles.remoteVideo}
@@ -143,8 +161,8 @@ export default function CallScreen() {
           </View>
         )}
 
-        {params.kind === 'video' && localParticipant?.videoTrack && (
-          <DailyMediaView
+        {params.kind === 'video' && mediaViewReady && MediaView && localParticipant?.videoTrack && (
+          <MediaView
             videoTrack={localParticipant.videoTrack}
             audioTrack={localParticipant.audioTrack || null}
             mirror
