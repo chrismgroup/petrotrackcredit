@@ -640,7 +640,7 @@ export default function HomeScreen() {
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
                         <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                          Start-up {snapshot.startupStock === null ? 'Not set' : `${formatQuantity(snapshot.startupStock)} ${snapshot.unit}`} · +{formatQuantity(snapshot.deliveries)} delivered · −{formatQuantity(snapshot.sales)} sold
+                          Book stock = start-up + delivered − sold: {snapshot.bookStock === null ? 'Not set' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
                         </Text>
                       </View>
                       <View style={[s.snapshotStatus, { backgroundColor: statusColor + '18' }]}>
@@ -650,11 +650,23 @@ export default function HomeScreen() {
                     </View>
                     <View style={s.snapshotValues}>
                       <View style={s.snapshotValue}>
-                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Book stock</Text>
-                        <Text style={[s.snapshotValueText, { color: colors.text }]}>{snapshot.bookStock === null ? 'Not set' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}</Text>
+                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Start-up qty.</Text>
+                        <Text style={[s.snapshotValueText, { color: colors.text }]}>{snapshot.startupStock === null ? 'Not set' : `${formatQuantity(snapshot.startupStock)} ${snapshot.unit}`}</Text>
                       </View>
                       <View style={s.snapshotValue}>
-                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Today&apos;s dip</Text>
+                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Delivered qty.</Text>
+                        <Text style={[s.snapshotValueText, { color: colors.text }]}>
+                          {formatQuantity(snapshot.deliveries)} {snapshot.unit}
+                        </Text>
+                      </View>
+                      <View style={s.snapshotValue}>
+                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
+                        <Text style={[s.snapshotValueText, { color: colors.text }]}>
+                          {formatQuantity(snapshot.sales)} {snapshot.unit}
+                        </Text>
+                      </View>
+                      <View style={s.snapshotValue}>
+                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Tank dip qty.</Text>
                         <Text style={[s.snapshotValueText, { color: colors.text }]}>
                           {snapshot.submittedTankDip === null ? '—' : `${formatQuantity(snapshot.submittedTankDip)} ${snapshot.unit}`}
                         </Text>
@@ -1088,9 +1100,9 @@ const s = StyleSheet.create({
   },
   snapshotStatusDot: { width: 6, height: 6, borderRadius: 3 },
   snapshotStatusText: { fontSize: 9, fontWeight: '800' },
-  snapshotValues: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  snapshotValue: { flex: 1, minWidth: 0 },
-  snapshotVarianceValue: { alignItems: 'flex-end' },
+  snapshotValues: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  snapshotValue: { width: '48%', minWidth: 0 },
+  snapshotVarianceValue: { width: '100%', alignItems: 'flex-start' },
   snapshotValueLabel: { fontSize: 9, fontWeight: '600' },
   snapshotValueText: { fontSize: 11, fontWeight: '800', marginTop: 3 },
 
