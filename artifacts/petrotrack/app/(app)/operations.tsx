@@ -19,6 +19,7 @@ const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517',
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
 const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 const DIP_STATUS_ICON: Record<string, string>  = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
+const PETROLEUM_PRODUCTS = ['PMS', 'AGO', 'DPK', 'Lube Oil'] as const;
 type TopTab = 'dip';
 
 export default function OperationsScreen() {
@@ -83,10 +84,6 @@ export default function OperationsScreen() {
   }
 
 
-  function stockPct(t: { id: string; op: number; sl: number; rv: number; cap: number }) {
-    return Math.round((getCurrentTankStock(t, dips) / t.cap) * 100);
-  }
-
   const visibleInventoryLog = inventoryLog
     .filter(entry => !branchId || !entry.branchId || entry.branchId === branchId)
     .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
@@ -94,12 +91,19 @@ export default function OperationsScreen() {
     .filter(entry => !historyDate || dips.find(dip => dip.id === entry.dipId)?.dt.slice(0, 10) === historyDate)
     .filter(entry => historyFilter === 'variance' ? Math.abs(entry.discrepancy) > 50 : true);
   const varianceCount = visibleInventoryLog.filter(entry => Math.abs(entry.discrepancy) > 50).length;
-  const petroleumCapacity = visibleTanks.reduce((sum, tank) => sum + tank.cap, 0);
-  const petroleumStock = visibleTanks.reduce((sum, tank) => sum + getCurrentTankStock(tank, dips), 0);
-  const petroleumFill = petroleumCapacity > 0 ? Math.round((petroleumStock / petroleumCapacity) * 100) : 0;
+  const petroleumStockByProduct = PETROLEUM_PRODUCTS.map(product => {
+    const productTanks = visibleTanks.filter(tank => tank.prod === product);
+    const capacity = productTanks.reduce((sum, tank) => sum + tank.cap, 0);
+    const stock = productTanks.reduce((sum, tank) => sum + getCurrentTankStock(tank, dips), 0);
+    return {
+      product,
+      capacity,
+      stock,
+      fill: capacity > 0 ? Math.round((stock / capacity) * 100) : 0,
+    };
+  });
   const lpgCapacity = visibleLpgTanks.reduce((sum, tank) => sum + tank.cap, 0);
   const lpgStock = visibleLpgTanks.reduce((sum, tank) => sum + getCurrentTankStock(tank, dips, 'lpg'), 0);
-  const lpgFill = lpgCapacity > 0 ? Math.round((lpgStock / lpgCapacity) * 100) : 0;
   const pendingDips = dips.filter(dip => dip.status === 'pending');
   const approvedDips = dips
     .filter(dip => dip.status === 'approved')
@@ -391,17 +395,15 @@ export default function OperationsScreen() {
                   </View>
                 </View>
                 <View style={styles.inventoryMetricGrid}>
-                  <View style={styles.inventoryMetric}>
-                    <Text style={[styles.inventoryMetricValue, { color: colors.text }]}>{petroleumStock.toLocaleString()} L</Text>
-                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Petroleum stock</Text>
-                  </View>
+                  {petroleumStockByProduct.map(({ product, stock }) => (
+                    <View key={product} style={styles.inventoryMetric}>
+                      <Text style={[styles.inventoryMetricValue, { color: colors.text }]}>{stock.toLocaleString()} L</Text>
+                      <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>{product} stock</Text>
+                    </View>
+                  ))}
                   <View style={styles.inventoryMetric}>
                     <Text style={[styles.inventoryMetricValue, { color: colors.teal }]}>{lpgStock.toLocaleString()} kg</Text>
                     <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>LPG stock</Text>
-                  </View>
-                  <View style={styles.inventoryMetric}>
-                    <Text style={[styles.inventoryMetricValue, { color: colors.primary }]}>{petroleumFill}% / {lpgFill}%</Text>
-                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Petroleum / LPG fill</Text>
                   </View>
                   <View style={styles.inventoryMetric}>
                     <Text style={[styles.inventoryMetricValue, { color: colors.text }]}>{approvedDips.length}</Text>
@@ -529,17 +531,15 @@ export default function OperationsScreen() {
                   </View>
                 </View>
                 <View style={styles.inventoryMetricGrid}>
-                  <View style={styles.inventoryMetric}>
-                    <Text style={[styles.inventoryMetricValue, { color: colors.text }]}>{petroleumStock.toLocaleString()} L</Text>
-                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Petroleum stock</Text>
-                  </View>
+                  {petroleumStockByProduct.map(({ product, stock }) => (
+                    <View key={product} style={styles.inventoryMetric}>
+                      <Text style={[styles.inventoryMetricValue, { color: colors.text }]}>{stock.toLocaleString()} L</Text>
+                      <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>{product} stock</Text>
+                    </View>
+                  ))}
                   <View style={styles.inventoryMetric}>
                     <Text style={[styles.inventoryMetricValue, { color: colors.teal }]}>{lpgStock.toLocaleString()} kg</Text>
                     <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>LPG stock</Text>
-                  </View>
-                  <View style={styles.inventoryMetric}>
-                    <Text style={[styles.inventoryMetricValue, { color: colors.primary }]}>{petroleumFill}% / {lpgFill}%</Text>
-                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Petroleum / LPG fill</Text>
                   </View>
                   <View style={styles.inventoryMetric}>
                     <Text style={[styles.inventoryMetricValue, { color: varianceCount > 0 ? colors.error : colors.success }]}>{visibleInventoryLog.length} / {varianceCount}</Text>
@@ -557,20 +557,21 @@ export default function OperationsScreen() {
                   <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No tanks found. Add tanks in System Settings.</Text>
                 </View>
               )}
-              {visibleTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>}
-              {visibleTanks.map(t => {
-                const stock = getCurrentTankStock(t, dips);
-                const pct   = stockPct(t);
+              {petroleumStockByProduct.some(item => item.capacity > 0) && (
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Stock by Product</Text>
+              )}
+              {petroleumStockByProduct.filter(item => item.capacity > 0).map(({ product, capacity, stock, fill }) => {
+                const pct = Math.max(0, Math.min(100, fill));
                 const barCol = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary;
                 return (
-                  <View key={t.id} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View key={product} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={styles.invHeader}>
                       <View>
-                        <Text style={[styles.invName, { color: colors.text }]}>{t.name}</Text>
-                        <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {t.cap.toLocaleString()}L</Text>
+                        <Text style={[styles.invName, { color: colors.text }]}>{product}</Text>
+                        <Text style={[styles.invProd, { color: colors.textMuted }]}>All {product} tanks · Capacity: {capacity.toLocaleString()}L</Text>
                       </View>
                       <View style={[styles.prodBadge, { backgroundColor: roleColor + '18' }]}>
-                        <Text style={[styles.prodBadgeText, { color: roleColor }]}>{t.prod}</Text>
+                        <Text style={[styles.prodBadgeText, { color: roleColor }]}>{product}</Text>
                       </View>
                     </View>
                     <View style={[styles.progressBg, { backgroundColor: colors.border, marginVertical: 10 }]}>
@@ -579,7 +580,7 @@ export default function OperationsScreen() {
                     <View style={styles.invStats}>
                       <View style={styles.invStat}>
                         <Text style={[styles.invStatVal, { color: colors.text }]}>{stock.toLocaleString()}L</Text>
-                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Current Stock</Text>
+                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Total Current Stock</Text>
                       </View>
                       <View style={styles.invStat}>
                         <Text style={[styles.invStatVal, { color: barCol }]}>{pct}%</Text>
@@ -589,17 +590,16 @@ export default function OperationsScreen() {
                   </View>
                 );
               })}
-              {visibleLpgTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>LPG Tanks</Text>}
-              {visibleLpgTanks.map(l => {
-                const stock  = getCurrentTankStock(l, dips, 'lpg');
-                const pct    = Math.max(0, Math.min(100, Math.round((stock / l.cap) * 100)));
+              {lpgCapacity > 0 && <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>LPG Stock</Text>}
+              {lpgCapacity > 0 ? (() => {
+                const pct = Math.max(0, Math.min(100, Math.round((lpgStock / lpgCapacity) * 100)));
                 const barCol = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.teal;
                 return (
-                  <View key={l.id} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={styles.invHeader}>
                       <View>
-                        <Text style={[styles.invName, { color: colors.text }]}>{l.name}</Text>
-                        <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {l.cap.toLocaleString()} kg</Text>
+                        <Text style={[styles.invName, { color: colors.text }]}>LPG</Text>
+                        <Text style={[styles.invProd, { color: colors.textMuted }]}>All LPG tanks · Capacity: {lpgCapacity.toLocaleString()} kg</Text>
                       </View>
                       <View style={[styles.prodBadge, { backgroundColor: colors.teal + '18' }]}>
                         <Text style={[styles.prodBadgeText, { color: colors.teal }]}>LPG</Text>
@@ -614,13 +614,13 @@ export default function OperationsScreen() {
                         <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Fill Level</Text>
                       </View>
                       <View style={styles.invStat}>
-                        <Text style={[styles.invStatVal, { color: colors.text }]}>{stock.toLocaleString()} kg</Text>
-                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Current Stock</Text>
+                        <Text style={[styles.invStatVal, { color: colors.text }]}>{lpgStock.toLocaleString()} kg</Text>
+                        <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Total Current Stock</Text>
                       </View>
                     </View>
                   </View>
                 );
-              })}
+              })() : null}
 
               <View style={styles.historyHeader}>
                 <View style={{ flex: 1 }}>

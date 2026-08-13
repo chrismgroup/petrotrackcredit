@@ -14,3 +14,5 @@ Dip aggregation must normalize stored readings to finite numbers and use the sam
 Home Stock Snapshot uses strict branch ownership: only branches with assigned tanks and pumps render; branch users see their branch, while CEO, MD, Accountant, CSM, and admin see all eligible branches.
 
 Admins control Stock Snapshot display density through persisted global metric toggles and per-branch product toggles; disabled products/metrics are omitted from Home without changing calculations or source records.
+
+Inventory display aggregates physical stock by product within the visible branch scope; PMS, AGO, DPK, and Lube Oil remain independent, while tank-by-tank readings are reserved for Tank Dip views.
