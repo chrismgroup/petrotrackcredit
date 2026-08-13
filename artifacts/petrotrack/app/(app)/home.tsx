@@ -54,6 +54,21 @@ function dayGreeting(): string {
 
 const STOCK_SNAPSHOT_PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
 type StockSnapshotProduct = StockProduct;
+interface ProductStockSnapshot {
+  product: StockSnapshotProduct;
+  startupStock: number | null;
+  deliveries: number;
+  sales: number;
+  bookStock: number | null;
+  submittedTankDip: number | null;
+  variance: number | null;
+  unit: string;
+}
+interface BranchStockSnapshot {
+  branchId: string | null;
+  branchName: string;
+  products: ProductStockSnapshot[];
+}
 
 function localDateKey(date: Date): string {
   return [
@@ -326,29 +341,26 @@ export default function HomeScreen() {
     }));
   }, [tanks, lpgTanks, dips, scopedBranchId]);
 
-  const stockSnapshot = useMemo(() => {
+  const branchStockSnapshots = useMemo<BranchStockSnapshot[]>(() => {
     const todayKey = localDateKey(new Date());
     const yesterdayKey = offsetDateKey(-1);
-    // Match the Tank Dipping screen: unassigned tanks remain visible to a
-    // branch-scoped user, while explicitly assigned tanks stay branch-scoped.
-    const inScope = (tank: { branchId?: string }) =>
-      !scopedBranchId || !tank.branchId || tank.branchId === scopedBranchId;
-    const visiblePetrolTanks = tanks.filter(inScope);
-    const visibleLpgTanks = lpgTanks.filter(inScope);
-
-    const latestDipFor = (dateKey: string, approvedOnly = false) => dips
+    const sortDips = (records: typeof dips) => records.sort((a, b) => {
+      const aTime = new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime();
+      const bTime = new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime();
+      return bTime - aTime || b.id - a.id;
+    });
+    const latestDipForBranch = (
+      dateKey: string,
+      petrolTanks: typeof tanks,
+      branchLpgTanks: typeof lpgTanks,
+      approvedOnly = false,
+    ) => sortDips(dips
       .filter(d =>
         recordDateKey(d.dt) === dateKey &&
-        (approvedOnly ? d.status === 'approved' : d.status !== 'rejected'),
-      )
-      .sort((a, b) => {
-        const aTime = new Date(a.submittedAt ?? a.approvedDt ?? a.dt).getTime();
-        const bTime = new Date(b.submittedAt ?? b.approvedDt ?? b.dt).getTime();
-        return bTime - aTime || b.id - a.id;
-      })[0];
-
-    const yesterdayApprovedDip = latestDipFor(yesterdayKey, true);
-    const todayDip = latestDipFor(todayKey);
+        (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
+        (petrolTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
+          branchLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
+      ))[0];
     const pumpById = new Map(pumps.map(pump => [pump.id, pump]));
 
     function productFromSalesEntry(entry: typeof sales[number]): StockSnapshotProduct | null {
@@ -367,60 +379,87 @@ export default function HomeScreen() {
       return null;
     }
 
-    function dipForProduct(record: typeof dips[number] | undefined, product: StockSnapshotProduct): number | null {
+    function dipForProduct(
+      record: typeof dips[number] | undefined,
+      product: StockSnapshotProduct,
+      petrolTanks: typeof tanks,
+      branchLpgTanks: typeof lpgTanks,
+    ): number | null {
       if (!record) return null;
       const numericReading = (value: unknown): number | null => {
         const reading = typeof value === 'number' ? value : Number(value);
         return Number.isFinite(reading) ? reading : null;
       };
       if (product === 'LPG') {
-        const readings = visibleLpgTanks
+        const readings = branchLpgTanks
           .map(tank => numericReading(record.lpg?.[tank.id]))
           .filter((reading): reading is number => reading !== null);
         return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
       }
-      const readings = visiblePetrolTanks
+      const readings = petrolTanks
         .filter(tank => tank.prod === product)
         .map(tank => numericReading(record.rd?.[tank.id]))
         .filter((reading): reading is number => reading !== null);
       return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
     }
 
-    return STOCK_SNAPSHOT_PRODUCTS.map(product => {
-      const deliveriesForProduct = deliveries
-        .filter(delivery =>
-          recordDateKey(delivery.dt) === todayKey &&
-          delivery.prod === product &&
-          (delivery.approvalStatus === 'approved' || delivery.approvalStatus === 'md_approved') &&
-          (!scopedBranchId || !delivery.branchId || delivery.branchId === scopedBranchId),
-        )
-        .reduce((sum, delivery) => sum + delivery.rec, 0);
-      const salesForProduct = sales
-        .filter(sale =>
-          recordDateKey(sale.dt) === todayKey &&
-          (!scopedBranchId || !sale.branchId || sale.branchId === scopedBranchId) &&
-          productFromSalesEntry(sale) === product,
-        )
-        .reduce((sum, sale) => sum + sale.L, 0);
-      const startupStock = dipForProduct(yesterdayApprovedDip, product);
-      const bookStock = startupStock === null ? null : startupStock + deliveriesForProduct - salesForProduct;
-      const submittedTankDip = dipForProduct(todayDip, product);
-      const variance = startupStock === null || submittedTankDip === null || bookStock === null
-        ? null
-        : bookStock - submittedTankDip;
+    const scopes: { branchId: string | null; branchName: string }[] = isGlobalOverview
+      ? branches.length > 0
+        ? branches.map(branch => ({ branchId: branch.id, branchName: branch.name }))
+        : [{ branchId: null, branchName: 'All branches' }]
+      : [{
+          branchId: scopedBranchId,
+          branchName: branches.find(branch => branch.id === scopedBranchId)?.name ?? 'My branch',
+        }];
 
-      return {
-        product,
-        startupStock,
-        deliveries: deliveriesForProduct,
-        sales: salesForProduct,
-        bookStock,
-        submittedTankDip,
-        variance,
-        unit: unitForProd(product),
-      };
+    return scopes.map(scope => {
+      // Match the Tank Dipping screen: unassigned tanks and records remain
+      // visible to a branch-scoped view, while assigned data stays scoped.
+      const inScope = (item: { branchId?: string }) =>
+        !scope.branchId || !item.branchId || item.branchId === scope.branchId;
+      const branchTanks = tanks.filter(inScope);
+      const branchLpgTanks = lpgTanks.filter(inScope);
+      const yesterdayApprovedDip = latestDipForBranch(yesterdayKey, branchTanks, branchLpgTanks, true);
+      const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks);
+
+      const products = STOCK_SNAPSHOT_PRODUCTS.map(product => {
+        const deliveriesForProduct = deliveries
+          .filter(delivery =>
+            recordDateKey(delivery.dt) === todayKey &&
+            delivery.prod === product &&
+            (delivery.approvalStatus === 'approved' || delivery.approvalStatus === 'md_approved') &&
+            (!scope.branchId || !delivery.branchId || delivery.branchId === scope.branchId),
+          )
+          .reduce((sum, delivery) => sum + delivery.rec, 0);
+        const salesForProduct = sales
+          .filter(sale =>
+            recordDateKey(sale.dt) === todayKey &&
+            (!scope.branchId || !sale.branchId || sale.branchId === scope.branchId) &&
+            productFromSalesEntry(sale) === product,
+          )
+          .reduce((sum, sale) => sum + sale.L, 0);
+        const startupStock = dipForProduct(yesterdayApprovedDip, product, branchTanks, branchLpgTanks);
+        const bookStock = startupStock === null ? null : startupStock + deliveriesForProduct - salesForProduct;
+        const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
+        const variance = startupStock === null || submittedTankDip === null || bookStock === null
+          ? null
+          : bookStock - submittedTankDip;
+
+        return {
+          product,
+          startupStock,
+          deliveries: deliveriesForProduct,
+          sales: salesForProduct,
+          bookStock,
+          submittedTankDip,
+          variance,
+          unit: unitForProd(product),
+        };
+      });
+
+      return { ...scope, products };
     });
-  }, [dips, deliveries, lpgTanks, pumps, sales, scopedBranchId, tanks]);
+  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, sales, scopedBranchId, tanks]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -623,7 +662,13 @@ export default function HomeScreen() {
                   Live data · yesterday&apos;s approved tank dip + today&apos;s deliveries and sales versus today&apos;s submitted tank dip
                 </Text>
               </View>
-              {stockSnapshot.map(snapshot => {
+              {branchStockSnapshots.map(branchSnapshot => (
+                <View key={branchSnapshot.branchId ?? 'all'} style={s.snapshotBranchGroup}>
+                  <View style={[s.snapshotBranchHeader, { borderTopColor: colors.border }]}>
+                    <Ionicons name="business-outline" size={14} color={colors.primary} />
+                    <Text style={[s.snapshotBranchName, { color: colors.text }]}>{branchSnapshot.branchName}</Text>
+                  </View>
+                  {branchSnapshot.products.map(snapshot => {
                 const statusColor = snapshot.startupStock === null
                   ? colors.amber
                   : snapshot.variance === null
@@ -680,7 +725,9 @@ export default function HomeScreen() {
                     </View>
                   </View>
                 );
-              })}
+                  })}
+                </View>
+              ))}
             </View>
           </Section>
         ) : null}
@@ -1090,6 +1137,12 @@ const s = StyleSheet.create({
     borderRadius: 11, borderWidth: 1,
   },
   snapshotIntroText: { flex: 1, fontSize: 10, fontWeight: '600' },
+  snapshotBranchGroup: { borderTopWidth: StyleSheet.hairlineWidth },
+  snapshotBranchHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  snapshotBranchName: { fontSize: 12, fontWeight: '800' },
   snapshotRow: { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
   snapshotRowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   snapshotProduct: { fontSize: 12, fontWeight: '800' },
