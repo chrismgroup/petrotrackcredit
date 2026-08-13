@@ -413,10 +413,14 @@ export default function HomeScreen() {
         }];
 
     return scopes.map(scope => {
-      // Match the Tank Dipping screen: unassigned tanks and records remain
-      // visible to a branch-scoped view, while assigned data stays scoped.
+      const isUnpartitionedOverview = isGlobalOverview && branches.length === 0 && !scope.branchId;
+      // A branch snapshot must never include another branch's or an
+      // unassigned record. The only exception is an explicitly unpartitioned
+      // installation with no configured branches.
       const inScope = (item: { branchId?: string }) =>
-        !scope.branchId || !item.branchId || item.branchId === scope.branchId;
+        isUnpartitionedOverview ? true : item.branchId === scope.branchId;
+      const recordInScope = (item: { branchId?: string }) =>
+        isUnpartitionedOverview ? true : item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
       const yesterdayApprovedDip = latestDipForBranch(yesterdayKey, branchTanks, branchLpgTanks, true);
@@ -428,13 +432,13 @@ export default function HomeScreen() {
             recordDateKey(delivery.dt) === todayKey &&
             delivery.prod === product &&
             (delivery.approvalStatus === 'approved' || delivery.approvalStatus === 'md_approved') &&
-            (!scope.branchId || !delivery.branchId || delivery.branchId === scope.branchId),
+            recordInScope(delivery),
           )
           .reduce((sum, delivery) => sum + delivery.rec, 0);
         const salesForProduct = sales
           .filter(sale =>
             recordDateKey(sale.dt) === todayKey &&
-            (!scope.branchId || !sale.branchId || sale.branchId === scope.branchId) &&
+            recordInScope(sale) &&
             productFromSalesEntry(sale) === product,
           )
           .reduce((sum, sale) => sum + sale.L, 0);
