@@ -12,7 +12,6 @@ export const ALL_REPORT_TYPES: ReportType[] = [
   'maintenance','operations','hr','marketing','full',
 ];
 export const PERIODS: Period[] = ['Daily','Weekly','Monthly','Quarterly','Yearly'];
-export const SCALE: Record<Period, number> = { Daily:1, Weekly:7, Monthly:30, Quarterly:90, Yearly:365 };
 export const PROD_COLORS: Record<string, string> = {
   PMS:'#1a6e3c', AGO:'#185FA5', DPK:'#BA7517', LPG:'#633806', 'Lube Oil':'#5c3d11',
 };
@@ -50,11 +49,48 @@ export function getPerms(role: Role | null): PermSet {
 }
 
 /* ─── Helpers ────────────────────────────────────────────── */
-export function periodRange(p: Period): { from: Date; to: Date } {
-  const to = new Date();
-  const from = new Date(to);
-  from.setDate(from.getDate() - (SCALE[p] - 1));
+export function localDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+export function periodRange(p: Period, anchor?: Date | string): { from: Date; to: Date } {
+  const base = typeof anchor === 'string'
+    ? new Date(`${anchor}T12:00:00`)
+    : anchor
+      ? new Date(anchor)
+      : new Date();
+  const day = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  let from: Date;
+  let to: Date;
+
+  if (p === 'Daily') {
+    from = new Date(day);
+    to = new Date(day);
+  } else if (p === 'Weekly') {
+    // Calendar weeks run Monday through Sunday.
+    const mondayOffset = day.getDay() === 0 ? -6 : 1 - day.getDay();
+    from = new Date(day);
+    from.setDate(day.getDate() + mondayOffset);
+    to = new Date(from);
+    to.setDate(from.getDate() + 6);
+  } else if (p === 'Monthly') {
+    from = new Date(day.getFullYear(), day.getMonth(), 1);
+    to = new Date(day.getFullYear(), day.getMonth() + 1, 0);
+  } else if (p === 'Quarterly') {
+    const quarterStartMonth = Math.floor(day.getMonth() / 3) * 3;
+    from = new Date(day.getFullYear(), quarterStartMonth, 1);
+    to = new Date(day.getFullYear(), quarterStartMonth + 3, 0);
+  } else {
+    from = new Date(day.getFullYear(), 0, 1);
+    to = new Date(day.getFullYear(), 11, 31);
+  }
+
   from.setHours(0, 0, 0, 0);
+  to.setHours(23, 59, 59, 999);
   return { from, to };
 }
 

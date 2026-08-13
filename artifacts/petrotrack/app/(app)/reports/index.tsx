@@ -11,10 +11,10 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import { Branch, ROLE_COLORS, fmt, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import {
-  PERIODS, PROD_COLORS, REPORT_META, SCALE,
+  PERIODS, PROD_COLORS, REPORT_META,
   Period, ReportType,
   buildPdf, getPerms, matchesProd, nfmt, periodRange,
-  priBg, priColor, stColor,
+  localDateKey, priBg, priColor, stColor,
 } from '@/lib/report-helpers';
 import { useLocalSearchParams } from 'expo-router';
 
@@ -127,20 +127,12 @@ export default function ReportsScreen() {
   const [anchorDate, setAnchorDate] = useState('');
 
   const { from, to } = useMemo(() => {
-    if (!anchorDate) return periodRange(period);
-    const anchor = new Date(`${anchorDate}T12:00:00`);
-    const end = new Date(anchor);
-    end.setHours(23, 59, 59, 999);
-    const start = new Date(anchor);
-    start.setDate(start.getDate() - (SCALE[period] - 1));
-    start.setHours(0, 0, 0, 0);
-    return { from: start, to: end };
+    return periodRange(period, anchorDate || undefined);
   }, [period, anchorDate]);
-  const scale = SCALE[period]; // kept for PDF/label compatibility
-  const fromStr = from.toISOString().slice(0, 10);
-  const toStr   = to.toISOString().slice(0, 10);
+  const fromStr = localDateKey(from);
+  const toStr   = localDateKey(to);
   const branchName  = selBranch === null ? 'All Branches' : (safeBranches.find(b => b.id === selBranch)?.name ?? selBranch);
-  const periodStr   = `${fmtDate(from.toISOString())} – ${fmtDate(to.toISOString())}`;
+  const periodStr   = `${fmtDate(`${fromStr}T12:00:00`)} – ${fmtDate(`${toStr}T12:00:00`)}`;
   const generatedAt = new Date().toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' });
   const canExport   = perms.canGenerate.includes(reportType);
   const meta        = REPORT_META[reportType] ?? REPORT_META.summary;
@@ -180,7 +172,7 @@ export default function ReportsScreen() {
       const gross = reps.reduce((s: number, r: any) => s + r.grossAmount, 0);
       return { prod, color, L, scaledL: Math.round(L), scaledGross: Math.round(gross) };
     }).filter(p => p.L > 0),
-    [fPumpReports, scale, rc]
+    [fPumpReports, rc]
   );
 
   const approved    = useMemo(() => fExps.filter((e: any) => e.status === 'approved'), [fExps]);
@@ -219,7 +211,7 @@ export default function ReportsScreen() {
       hasCostData: dv.length > 0,
       priceChanges: priceHistory.filter(h => h.prod === prod).slice(0, 3),
     };
-  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fSales, fDelvs, prices, priceHistory, scale]);
+  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fSales, fDelvs, prices, priceHistory]);
 
   const totSR   = pnlByProd.reduce((s, p) => s + p.salesRevenue, 0);
   const totCOGS = pnlByProd.reduce((s, p) => s + p.scaledCOGS,  0);
@@ -304,7 +296,7 @@ export default function ReportsScreen() {
         ]}],
         tables: [
           { heading: 'Product P&L', headers: ['Product','Volume (L)','Revenue','COGS','Gross Profit','Margin'],
-            rows: pnlByProd.map(p => [p.prod, (p.totalVolumeSold*scale).toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
+            rows: pnlByProd.map(p => [p.prod, p.totalVolumeSold.toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
           { heading: 'Operating Expenses', headers: ['Category','Amount'], rows: catScaled.map(c => [c.cat, nfmt(c.total)]) },
         ],
       });
@@ -424,7 +416,7 @@ export default function ReportsScreen() {
           ...(branchBD.length > 0 ? [{ heading: 'Branch Breakdown', headers: ['Branch','Revenue','Sales','Expenses','Net'],
             rows: branchBD.map(b => [b.name, nfmt(b.rev), nfmt(b.salesRev), nfmt(b.exp), nfmt(b.net)]) }] : []),
           { heading: 'Product P&L', headers: ['Product','Volume','Revenue','COGS','Gross Profit','Margin'],
-            rows: pnlByProd.map(p => [p.prod, (p.totalVolumeSold*scale).toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
+            rows: pnlByProd.map(p => [p.prod, p.totalVolumeSold.toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
         ],
       });
     }
@@ -565,7 +557,7 @@ export default function ReportsScreen() {
             {reportType === 'full' ? (
               <>
                 <SecTitle label="Profit & Loss" colors={colors} />
-                <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} catScaled={catScaled} scale={scale} colors={colors} rc={rc} />
+                <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} catScaled={catScaled} colors={colors} rc={rc} />
                 <SecTitle label="Sales by Product" colors={colors} />
                 {prodSales.length === 0 ? <EmptyState icon="bar-chart-outline" label="No sales data" colors={colors} /> : null}
                 {prodSales.map(p => <ProdSaleRow key={p.prod} p={p} colors={colors} />)}
@@ -576,7 +568,7 @@ export default function ReportsScreen() {
 
         {/* ── P&L ── */}
         {reportType === 'pnl' ? (
-          <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} catScaled={catScaled} scale={scale} colors={colors} rc={rc} />
+          <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} catScaled={catScaled} colors={colors} rc={rc} />
         ) : null}
 
         {/* ── EXPENSES ── */}
@@ -874,7 +866,7 @@ export default function ReportsScreen() {
 }
 
 /* ─── P&L block ─────────────────────────────────────────── */
-function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scaledExp, catScaled, scale, colors, rc }: any) {
+function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scaledExp, catScaled, colors, rc }: any) {
   return (
     <>
       <View style={[s.plHeader, { backgroundColor: netPnl >= 0 ? '#0a2318' : '#791F1F' }]}>
@@ -915,7 +907,7 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
             </View>
             <View style={{ flexDirection: 'row', marginBottom: 8 }}>
               {[
-                { label: 'Volume Sold', val: `${(p.totalVolumeSold * scale).toLocaleString()} L` },
+                { label: 'Volume Sold', val: `${p.totalVolumeSold.toLocaleString()} L` },
                 { label: 'Avg Sell',    val: `₦${p.avgSellPrice.toLocaleString()}/L`, color: pc },
                 { label: 'Avg Cost',    val: p.hasCostData ? `₦${p.avgCostPerL.toLocaleString()}/L` : '—' },
               ].map(g => (

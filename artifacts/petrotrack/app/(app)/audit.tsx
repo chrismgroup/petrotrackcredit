@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import { ROLE_COLORS, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -38,16 +39,47 @@ export default function AuditScreen() {
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
   const [search, setSearch] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const invalidDateRange = Boolean(fromDate && toDate && fromDate > toDate);
 
   const filtered = audit.filter(a =>
-    a.action.toLowerCase().includes(search.toLowerCase()) ||
-    a.user.toLowerCase().includes(search.toLowerCase()) ||
-    a.detail.toLowerCase().includes(search.toLowerCase())
+    !invalidDateRange &&
+    (!fromDate || a.ts.slice(0, 10) >= fromDate) &&
+    (!toDate || a.ts.slice(0, 10) <= toDate) &&
+    (
+      a.action.toLowerCase().includes(search.toLowerCase()) ||
+      a.user.toLowerCase().includes(search.toLowerCase()) ||
+      a.detail.toLowerCase().includes(search.toLowerCase())
+    )
   );
 
   return (
     <ScreenLayout title="Audit Log">
       <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <View style={styles.dateRange}>
+          <View style={{ flex: 1 }}>
+            <AppliedDateField
+              value={fromDate}
+              onChange={setFromDate}
+              label="Audit from"
+              accent={roleColor}
+              helper="Include events on or after this date."
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <AppliedDateField
+              value={toDate}
+              onChange={setToDate}
+              label="Audit to"
+              accent={roleColor}
+              helper="Include events on or before this date."
+            />
+          </View>
+        </View>
+        {invalidDateRange && (
+          <Text style={[styles.rangeError, { color: colors.error }]}>The “from” date must be on or before the “to” date.</Text>
+        )}
         <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="search" size={16} color={colors.textMuted} />
           <TextInput
@@ -102,6 +134,8 @@ export default function AuditScreen() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 16 },
+  dateRange: { flexDirection: 'row', gap: 10 },
+  rangeError: { fontSize: 11, marginTop: 6, marginBottom: 4 },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, marginBottom: 4 },
   searchInput: { flex: 1, fontSize: 14 },
   countText: { fontSize: 12, marginBottom: 12 },

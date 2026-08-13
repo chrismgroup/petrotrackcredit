@@ -8,3 +8,7 @@ Operational records must carry an explicit business/applies-on date selected by 
 **Why:** Staff may enter a record after the calendar day it belongs to, and replacing the business date with submission time makes prior-day revenue, expenses, deliveries, dips, and maintenance impossible to audit reliably.
 
 **How to apply:** Reuse the shared date selector for new operational forms, validate that required records have a selected date, preserve backward-compatible fallbacks for legacy records, and label both applies-on and submitted/approved times when showing audit history.
+
+Reporting periods are calendar periods, not rolling day counts: daily is one date, weekly is Monday–Sunday, monthly is the 1st through the last day, quarterly is the calendar quarter, and yearly is January 1 through December 31.
+
+Revenue KPIs and revenue reports should use the same approved pump-report gross revenue source and the selected record business date.

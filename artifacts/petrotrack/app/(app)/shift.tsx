@@ -651,9 +651,9 @@ export default function ShiftReportScreen() {
               <AppliedDateField
                 value={appliesOn}
                 onChange={setAppliesOn}
-                label="Shift report applies on *"
+                label="Business date generated *"
                 accent={roleColor}
-                helper="Select the business date for this shift. It is not set from submission time."
+                helper="Select the date the shift report was generated. Submission time is recorded separately."
               />
 
               {blockingReport ? (
