@@ -135,7 +135,7 @@ export const unitForProd = (p: string) => p === 'LPG' ? 'kg' : 'L';
 export const getPriceForPump = (pump: Pump, prices: Prices): number =>
   pump.prod === 'LPG' ? (prices[lpgPriceKey(pump.lpgCategory)] ?? prices.LPG) : (prices as any)[pump.prod] ?? 0;
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; reason?: string; }
-export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media'; body: string; ts: string; read: boolean; archivedBy?: string[]; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; }
+export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media' | 'call'; body: string; ts: string; read: boolean; archivedBy?: string[]; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; call?: { callId: string; kind: 'audio' | 'video'; roomUrl: string }; }
 export type { AppNotification };
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
 export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; kind?: 'audio' | 'video'; duration?: string; }

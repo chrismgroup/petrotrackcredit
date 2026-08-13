@@ -40,6 +40,14 @@
       "expo-web-browser",
       "expo-document-picker"
       ,"expo-notifications"
+      ,[
+        "@daily-co/config-plugin-rn-daily-js",
+        {
+          "enableCamera": true,
+          "enableMicrophone": true,
+          "enableScreenShare": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
