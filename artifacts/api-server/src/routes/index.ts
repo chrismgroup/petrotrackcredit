@@ -6,6 +6,7 @@ import authRouter from "./auth";
 import usersRouter from "./users";
 import storageRouter from "./storage";
 import notificationsRouter from "./notifications";
+import callsRouter from "./calls";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -16,6 +17,7 @@ router.use(authRouter);
 router.use(requireAuth, stateRouter);
 router.use(requireAuth, usersRouter);
 router.use(requireAuth, notificationsRouter);
+router.use(requireAuth, callsRouter);
 router.use(storageRouter);
 
 export default router;

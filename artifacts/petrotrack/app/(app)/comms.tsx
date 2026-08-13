@@ -2,6 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
   Alert,
@@ -20,6 +21,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { dailyCallsApi } from '@/lib/api';
 import {
   CallRecord,
   Message,
@@ -220,6 +222,7 @@ export default function CommsScreen() {
   } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
+  const router = useRouter();
 
   // All active users that are not the current user
   const peerUsers: UserAccount[] = userAccounts.filter(
@@ -255,6 +258,9 @@ export default function CommsScreen() {
     if (!conv.length) return 'Tap to start chatting';
     const m = conv[conv.length - 1];
     const prefix = m.from === userName ? 'You: ' : '';
+    if (m.type === 'call') {
+      return prefix + `${m.call?.kind === 'video' ? 'Video' : 'Audio'} call`;
+    }
     if (m.type === 'media') {
       const label = m.media?.mimeType?.startsWith('image/') ? '📷 Photo'
         : m.media?.mimeType?.startsWith('video/') ? '🎬 Video'
@@ -391,37 +397,35 @@ export default function CommsScreen() {
 
   // ── Calls ──────────────────────────────────────────────────────────────────
   async function startCall(user: UserAccount, kind: CallKind) {
-    const phone = user.phoneNumber?.trim();
-    if (!phone) {
-      Alert.alert('No Phone Number', `${user.empName} doesn't have a phone number on file.`);
-      return;
-    }
-    if (kind === 'video' && Platform.OS !== 'ios') {
-      Alert.alert(
-        'Video Calling',
-        'Video calls use FaceTime on iPhone. This device does not expose a native video-call app through the current Expo build.',
-      );
-      return;
-    }
-    const url = kind === 'video' ? `facetime:${phone}` : `tel:${phone}`;
     try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
-        Alert.alert(
-          kind === 'video' ? 'Video Calling Unavailable' : 'Cannot Open Dialer',
-          kind === 'video'
-            ? 'This device does not have a video calling app configured for this number.'
-            : 'Your device could not open the phone dialer.',
-        );
+      const session = await dailyCallsApi.create({
+        recipientUsername: user.username,
+        recipientName: user.empName,
+        kind,
+      });
+      if (!session) {
+        Alert.alert('Calling Unavailable', 'In-app calling is not configured or the call could not be started.');
         return;
       }
+      sendMessage(user.empName, {
+        type: 'call',
+        body: `${kind === 'video' ? 'Video' : 'Audio'} call`,
+        to: user.empName,
+        call: { callId: session.callId, kind: session.kind, roomUrl: session.roomUrl },
+      });
       addCallRecord({ kind, from: role!, fromName: userName, to: user.role!, toName: user.empName, status: 'ended' });
-      await Linking.openURL(url);
+      router.push({
+        pathname: '/(app)/call',
+        params: {
+          callId: session.callId,
+          token: session.token,
+          roomUrl: session.roomUrl,
+          kind: session.kind,
+          peerName: session.peerName,
+        },
+      } as never);
     } catch {
-      Alert.alert(
-        kind === 'video' ? 'Cannot Start Video Call' : 'Cannot Open Dialer',
-        'Your device could not start this call.',
-      );
+      Alert.alert('Cannot Start Call', 'Your device could not start this in-app call.');
     }
   }
 
@@ -431,6 +435,25 @@ export default function CommsScreen() {
 
   function initiateVideoCall(user: UserAccount) {
     void startCall(user, 'video');
+  }
+
+  async function joinCall(message: Message) {
+    if (!message.call) return;
+    const session = await dailyCallsApi.token(message.call.callId);
+    if (!session) {
+      Alert.alert('Call Unavailable', 'This call has expired or is no longer available.');
+      return;
+    }
+    router.push({
+      pathname: '/(app)/call',
+      params: {
+        callId: session.callId,
+        token: session.token,
+        roomUrl: session.roomUrl,
+        kind: session.kind,
+        peerName: session.peerName,
+      },
+    } as never);
   }
 
   // ── Filtered peer list for search ──────────────────────────────────────────
@@ -523,6 +546,46 @@ export default function CommsScreen() {
             ) : (
               conv.map(msg => {
                 const isMine = msg.from === userName;
+                if (msg.type === 'call' && msg.call) {
+                  return (
+                    <View
+                      key={msg.id}
+                      style={[styles.bubbleRow, isMine ? styles.bubbleRight : styles.bubbleLeft]}
+                    >
+                      {!isMine && (
+                        <View style={{ marginRight: 6, marginTop: 2 }}>
+                          <UserAvatar account={chatPeer} size={26} colors={colors} />
+                        </View>
+                      )}
+                      <View style={[
+                        styles.callBubble,
+                        isMine
+                          ? { backgroundColor: peerCol }
+                          : { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
+                      ]}>
+                        <Ionicons
+                          name={msg.call.kind === 'video' ? 'videocam' : 'call'}
+                          size={22}
+                          color={isMine ? '#fff' : roleColor}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.callBubbleTitle, { color: isMine ? '#fff' : colors.text }]}>
+                            {msg.call.kind === 'video' ? 'Video call' : 'Audio call'}
+                          </Text>
+                          <Text style={[styles.callBubbleSub, { color: isMine ? 'rgba(255,255,255,0.72)' : colors.textMuted }]}>
+                            {isMine ? 'Call started' : 'Tap to join'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => void joinCall(msg)}
+                          style={[styles.joinCallBtn, { backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : roleColor }]}
+                        >
+                          <Text style={styles.joinCallText}>Join</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                }
                 if (msg.type === 'media') {
                   return (
                     <View
@@ -1087,6 +1150,11 @@ const styles = StyleSheet.create({
   bubble:      { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 9 },
   bubbleText:  { fontSize: 14, lineHeight: 20 },
   bubbleTime:  { fontSize: 10, marginTop: 4, textAlign: 'right' },
+  callBubble:  { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 210, borderRadius: 16, padding: 12 },
+  callBubbleTitle: { fontSize: 13, fontWeight: '800' },
+  callBubbleSub: { fontSize: 11, marginTop: 2 },
+  joinCallBtn: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  joinCallText: { color: '#fff', fontSize: 11, fontWeight: '800' },
 
   // Media bubbles
   mediaBubble: { borderRadius: 16, overflow: 'hidden', paddingBottom: 8 },
