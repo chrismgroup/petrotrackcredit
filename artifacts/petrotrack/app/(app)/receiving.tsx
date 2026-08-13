@@ -33,9 +33,18 @@ const PROD_COLORS: Record<string, string> = {
 type TankRow        = { id: string; name: string; stock: number; cap: number; dipDt: string | null };
 type ProdInv        = { prod: string; unit: string; totalStock: number; totalCap: number; tanks: TankRow[]; lastDipDt: string | null; dipBased: boolean };
 type BranchInv      = { branchId: string | null; branchName: string; prods: ProdInv[] };
-type StockProdRow   = { prod: string; unit: string; delivered: number; sold: number; bookStock: number };
+type StockProdRow   = {
+  prod: string;
+  unit: string;
+  startupStock: number | null;
+  delivered: number;
+  sold: number;
+  bookStock: number | null;
+  submittedTankDip: number | null;
+  variance: number | null;
+};
 type BranchStockRpt = { branchId: string | null; branchName: string; rows: StockProdRow[] };
-type MismatchRow    = { branchName: string; prod: string; dipStock: number; bookStock: number; diff: number; unit: string };
+type MismatchRow    = { branchName: string; prod: string; dipStock: number; bookStock: number; variance: number; unit: string };
 
 type MgrFormState = {
   prod: string; sup: string; wb: string;
@@ -44,7 +53,18 @@ type MgrFormState = {
   notes: string; dt: string;
 };
 
-function todayIso() { return new Date().toISOString().slice(0, 10); }
+function localDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+function todayIso() { return localDateKey(new Date()); }
+function offsetDateKey(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return localDateKey(date);
+}
+function recordDateKey(value?: string) {
+  return value ? value.slice(0, 10) : '';
+}
 function unitForProd(p: string) { return p === 'LPG' ? 'kg' : 'L'; }
 function blankMgrForm(): MgrFormState {
   return { prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '', dt: '' };
@@ -172,7 +192,7 @@ export default function ReceivingScreen() {
   const {
     role, userName, branchId,
     tanks, lpgTanks, dips, deliveries, prices, branches,
-    pumpDailyReports,
+    pumpDailyReports, sales, pumps,
     deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery,
@@ -299,52 +319,164 @@ export default function ReceivingScreen() {
         prods: buildProdInventory(myTanks, myLpgTanks, visibleDeliveries),
       }].filter(b => b.prods.length > 0);
 
-  // ── Stock Report (book-stock = total approved deliveries − total sold via pump reports) ──
+  // ── Stock Snapshot (same business-date formula used on Home) ────────────────
   const ALL_PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
   const PROD_UNIT: Record<string, string> = { PMS: 'L', AGO: 'L', DPK: 'L', LPG: 'kg', 'Lube Oil': 'L' };
 
-  function buildStockRows(scopeBranchId: string | null, scopeDeliveries: Delivery[], scopeReports: typeof pumpDailyReports): StockProdRow[] {
+  function latestDipForBranch(
+    dateKey: string,
+    scopeTanks: Tank[],
+    scopeLpgTanks: LPGTank[],
+    approvedOnly: boolean,
+  ) {
+    return dips
+      .filter(d =>
+        recordDateKey(d.dt) === dateKey &&
+        (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
+        (scopeTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
+          scopeLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
+      )
+      .sort((a, b) => {
+        const aTime = new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime();
+        const bTime = new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime();
+        return bTime - aTime || b.id - a.id;
+      })[0];
+  }
+
+  function dipForProduct(
+    record: typeof dips[number] | undefined,
+    product: string,
+    scopeTanks: Tank[],
+    scopeLpgTanks: LPGTank[],
+  ): number | null {
+    if (!record) return null;
+    const readings = product === 'LPG'
+      ? scopeLpgTanks.map(tank => record.lpg?.[tank.id])
+      : scopeTanks.filter(tank => tank.prod === product).map(tank => record.rd?.[tank.id]);
+    const numericReadings = readings
+      .map(value => typeof value === 'number' ? value : Number(value))
+      .filter((value): value is number => Number.isFinite(value));
+    return numericReadings.length > 0
+      ? numericReadings.reduce((sum, reading) => sum + reading, 0)
+      : null;
+  }
+
+  function productFromSalesEntry(entry: typeof sales[number]): string | null {
+    const linkedPump = entry.pumpId ? pumps.find(pump => pump.id === entry.pumpId) : undefined;
+    if (linkedPump) return linkedPump.prod;
+
+    const entryPumpName = entry.pump.split(' (')[0].trim().toLowerCase();
+    const namedPump = pumps.find(pump => pump.name.trim().toLowerCase() === entryPumpName);
+    if (namedPump) return namedPump.prod;
+
+    const label = entry.pump.toLowerCase();
+    if (label.includes('lube oil')) return 'Lube Oil';
+    return ALL_PRODS.find(product => new RegExp(`\\b${product.toLowerCase()}\\b`).test(label)) ?? null;
+  }
+
+  function buildStockRows(
+    scopeBranchId: string | null,
+    scopeTanks: Tank[],
+    scopeLpgTanks: LPGTank[],
+    scopeDeliveries: Delivery[],
+    scopeReports: typeof pumpDailyReports,
+  ): StockProdRow[] {
+    const todayKey = localDateKey(new Date());
+    const yesterdayKey = offsetDateKey(-1);
+    const yesterdayApprovedDip = latestDipForBranch(yesterdayKey, scopeTanks, scopeLpgTanks, true);
+    const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, false);
+    const inBranch = (item: { branchId?: string }) => item.branchId === scopeBranchId;
+    const pumpReportSales = scopeReports
+      .filter(report =>
+        recordDateKey(report.date) === yesterdayKey &&
+        report.status !== 'returned' &&
+        inBranch(report),
+      );
+    const shiftReportIds = new Set(
+      scopeReports
+        .filter(report => recordDateKey(report.date) === yesterdayKey && inBranch(report))
+        .map(report => report.id),
+    );
+    const manualSales = sales.filter(sale =>
+      recordDateKey(sale.dt) === yesterdayKey &&
+      inBranch(sale) &&
+      !sale.shiftReportId &&
+      !shiftReportIds.has(sale.id),
+    );
+
     return ALL_PRODS
       .map(prod => {
         const delivered = scopeDeliveries
-          .filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
-            (scopeBranchId === null || d.branchId === scopeBranchId || (!d.branchId && scopeBranchId === null)))
+          .filter(d =>
+            recordDateKey(d.dt) === todayKey &&
+            d.prod === prod &&
+            (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+            inBranch(d),
+          )
           .reduce((s, d) => s + d.rec, 0);
-        const sold = scopeReports
-          .filter(r => r.product === prod && r.status === 'approved' &&
-            (scopeBranchId === null || r.branchId === scopeBranchId || (!r.branchId && scopeBranchId === null)))
-          .reduce((s, r) => s + r.liters, 0);
-        const bookStock = Math.max(0, delivered - sold);
-        if (delivered === 0 && sold === 0) return null;
-        return { prod, unit: PROD_UNIT[prod] ?? 'L', delivered, sold, bookStock };
+        const sold = pumpReportSales
+          .filter(report => report.product === prod)
+          .reduce((sum, report) => sum + report.liters, 0) +
+          manualSales
+            .filter(sale => productFromSalesEntry(sale) === prod)
+            .reduce((sum, sale) => sum + sale.L, 0);
+        const startupStock = dipForProduct(yesterdayApprovedDip, prod, scopeTanks, scopeLpgTanks);
+        const bookStock = startupStock === null ? null : startupStock + delivered - sold;
+        const submittedTankDip = dipForProduct(todaySubmittedDip, prod, scopeTanks, scopeLpgTanks);
+        const variance = bookStock === null || submittedTankDip === null
+          ? null
+          : bookStock - submittedTankDip;
+        if (startupStock === null && delivered === 0 && sold === 0 && submittedTankDip === null) return null;
+        return { prod, unit: PROD_UNIT[prod] ?? 'L', startupStock, delivered, sold, bookStock, submittedTankDip, variance };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
   }
 
   const branchStockReports: BranchStockRpt[] = isGlobalViewer
     ? branches
-        .map(b => ({ branchId: b.id, branchName: b.name, rows: buildStockRows(b.id, deliveries, pumpDailyReports) }))
+         .map(b => ({
+           branchId: b.id,
+           branchName: b.name,
+           rows: buildStockRows(
+             b.id,
+             tanks.filter(t => t.branchId === b.id),
+             lpgTanks.filter(t => t.branchId === b.id),
+             deliveries,
+             pumpDailyReports,
+           ),
+         }))
         .filter(b => b.rows.length > 0)
     : [{
         branchId: branchId ?? null,
         branchName: branches.find(b => b.id === branchId)?.name ?? 'This Branch',
-        rows: buildStockRows(branchId ?? null, visibleDeliveries, pumpDailyReports.filter(r => !branchId || r.branchId === branchId)),
+         rows: buildStockRows(
+           branchId ?? null,
+           tanks.filter(t => t.branchId === (branchId ?? null)),
+           lpgTanks.filter(t => t.branchId === (branchId ?? null)),
+           visibleDeliveries,
+           pumpDailyReports,
+         ),
       }].filter(b => b.rows.length > 0);
 
-  // ── Mismatch alarms (dip stock vs book stock, per product per branch) ──
+  // ── Mismatch alarms (Home formula variance, per product per branch) ─────────
   const MISMATCH_THRESHOLD_L   = 200;  // litres — flag if diff > 200 L
   const MISMATCH_THRESHOLD_KG  = 50;   // kg for LPG
 
   const mismatches: MismatchRow[] = [];
-  for (const bInv of branchInventories) {
-    for (const pi of bInv.prods) {
-      const sr = branchStockReports.find(b => b.branchId === bInv.branchId);
-      const bookRow = sr?.rows.find(r => r.prod === pi.prod);
-      if (!bookRow) continue;
-      const diff = Math.abs(pi.totalStock - bookRow.bookStock);
-      const threshold = pi.unit === 'kg' ? MISMATCH_THRESHOLD_KG : MISMATCH_THRESHOLD_L;
+  for (const stockReport of branchStockReports) {
+    for (const row of stockReport.rows) {
+      if (row.variance === null || row.bookStock === null || row.submittedTankDip === null) continue;
+      const diff = Math.abs(row.variance);
+      const threshold = row.unit === 'kg' ? MISMATCH_THRESHOLD_KG : MISMATCH_THRESHOLD_L;
       if (diff > threshold) {
-        mismatches.push({ branchName: bInv.branchName, prod: pi.prod, dipStock: pi.totalStock, bookStock: bookRow.bookStock, diff, unit: pi.unit });
+        mismatches.push({
+          branchName: stockReport.branchName,
+          prod: row.prod,
+          dipStock: row.submittedTankDip,
+          bookStock: row.bookStock,
+          variance: row.variance,
+          unit: row.unit,
+        });
       }
     }
   }
@@ -623,15 +755,15 @@ export default function ReceivingScreen() {
             <Text style={[styles.mismatchBannerSub, { color: '#791F1F' }]}>Dip reading differs from book stock by more than the accepted threshold</Text>
             {mismatches.map((m, i) => {
               const pc = PROD_COLORS[m.prod] || '#791F1F';
-              const over = m.dipStock > m.bookStock;
+              const shortageInDip = m.variance > 0;
               return (
                 <View key={i} style={[styles.mismatchRow, { backgroundColor: '#fff3' }]}>
                   <View style={[styles.mismatchProdDot, { backgroundColor: pc }]} />
                   <Text style={[styles.mismatchProdName, { color: '#791F1F' }]}>{m.prod}</Text>
                   {isGlobalViewer ? <Text style={[styles.mismatchBranch, { color: '#791F1F' }]}>{m.branchName}</Text> : null}
                   <Text style={[styles.mismatchDiff, { color: '#791F1F' }]}>
-                    {over ? '+' : '−'}{m.diff.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' ' + m.unit}
-                    <Text style={{ fontWeight: '500', fontSize: 10 }}>{over ? ' excess in dip' : ' shortage in dip'}</Text>
+                    {m.variance > 0 ? '+' : '−'}{Math.abs(m.variance).toLocaleString(undefined, { maximumFractionDigits: 0 })}{' ' + m.unit}
+                    <Text style={{ fontWeight: '500', fontSize: 10 }}>{shortageInDip ? ' shortage in dip' : ' excess in dip'}</Text>
                   </Text>
                 </View>
               );
@@ -717,7 +849,10 @@ export default function ReceivingScreen() {
 
         {canSeeStock && branchStockReports.length > 0 ? (
           <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Report (Delivery − Sales)</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Snapshot (Book Stock + Variance)</Text>
+            <Text style={[styles.stockFormulaText, { color: colors.textMuted }]}>
+              Book stock = yesterday&apos;s approved dip + today&apos;s approved deliveries − yesterday&apos;s eligible sales. Variance = book stock − today&apos;s submitted dip.
+            </Text>
             {branchStockReports.map(bsr => (
               <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>
                 {isGlobalViewer ? (
@@ -726,39 +861,52 @@ export default function ReceivingScreen() {
                     <Text style={[styles.branchHeaderText, { color: roleColor }]}>{bsr.branchName}</Text>
                   </View>
                 ) : null}
-                <View style={[styles.stockTable, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={[styles.stockTableHeader, { borderBottomColor: colors.border }]}>
-                    <Text style={[styles.stockColProd, styles.stockHeaderText, { color: colors.textMuted }]}>Product</Text>
-                    <Text style={[styles.stockColNum,  styles.stockHeaderText, { color: colors.textMuted }]}>Delivered</Text>
-                    <Text style={[styles.stockColNum,  styles.stockHeaderText, { color: colors.textMuted }]}>Sold</Text>
-                    <Text style={[styles.stockColNum,  styles.stockHeaderText, { color: colors.textMuted }]}>Book Stock</Text>
-                    {isMdOrCeo ? <Text style={[styles.stockColFlag, styles.stockHeaderText, { color: colors.textMuted }]}>Δ</Text> : null}
-                  </View>
-                  {bsr.rows.map(row => {
-                    const pc = PROD_COLORS[row.prod] || roleColor;
-                    const mismatch = isMdOrCeo ? mismatches.find(m => m.branchName === bsr.branchName && m.prod === row.prod) : null;
-                    return (
-                      <View key={row.prod} style={[styles.stockTableRow, { borderBottomColor: colors.border }]}>
-                        <View style={styles.stockColProd}>
-                          <View style={[styles.stockProdDot, { backgroundColor: pc }]} />
-                          <Text style={[styles.stockProdText, { color: colors.text }]}>{row.prod}</Text>
-                        </View>
-                        <Text style={[styles.stockColNum, styles.stockNum, { color: colors.textMuted }]}>{row.delivered.toLocaleString()}</Text>
-                        <Text style={[styles.stockColNum, styles.stockNum, { color: '#791F1F' }]}>{row.sold.toLocaleString()}</Text>
-                        <Text style={[styles.stockColNum, styles.stockNum, { color: '#27500A', fontWeight: '800' }]}>{row.bookStock.toLocaleString()}</Text>
-                        {isMdOrCeo ? (
-                          <View style={styles.stockColFlag}>
-                            {mismatch ? (
-                              <Ionicons name="warning" size={14} color="#791F1F" />
-                            ) : (
-                              <Ionicons name="checkmark-circle" size={14} color="#27500A" />
-                            )}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={[styles.stockTable, { minWidth: 720, backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={[styles.stockTableHeader, { borderBottomColor: colors.border }]}>
+                      <Text style={[styles.stockColProd, styles.stockHeaderText, { color: colors.textMuted }]}>Product</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Start-up</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Delivered</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Sold</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Book Stock</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Dip</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Variance</Text>
+                      {isMdOrCeo ? <Text style={[styles.stockColFlag, styles.stockHeaderText, { color: colors.textMuted }]}>Alert</Text> : null}
+                    </View>
+                    {bsr.rows.map(row => {
+                      const pc = PROD_COLORS[row.prod] || roleColor;
+                      const mismatch = isMdOrCeo ? mismatches.find(m => m.branchName === bsr.branchName && m.prod === row.prod) : null;
+                      const varianceColor = row.variance === null
+                        ? colors.textSubtle
+                        : row.variance > 0 ? '#791F1F' : row.variance < 0 ? '#BA7517' : '#27500A';
+                      return (
+                        <View key={row.prod} style={[styles.stockTableRow, { borderBottomColor: colors.border }]}>
+                          <View style={styles.stockColProd}>
+                            <View style={[styles.stockProdDot, { backgroundColor: pc }]} />
+                            <Text style={[styles.stockProdText, { color: colors.text }]}>{row.prod}</Text>
                           </View>
-                        ) : null}
-                      </View>
-                    );
-                  })}
-                </View>
+                          <Text style={[styles.stockColNum, styles.stockNum, { color: colors.textMuted }]}>{row.startupStock === null ? '—' : row.startupStock.toLocaleString()}</Text>
+                          <Text style={[styles.stockColNum, styles.stockNum, { color: colors.textMuted }]}>{row.delivered.toLocaleString()}</Text>
+                          <Text style={[styles.stockColNum, styles.stockNum, { color: '#791F1F' }]}>{row.sold.toLocaleString()}</Text>
+                          <Text style={[styles.stockColNum, styles.stockNum, { color: '#27500A', fontWeight: '800' }]}>{row.bookStock === null ? '—' : row.bookStock.toLocaleString()}</Text>
+                          <Text style={[styles.stockColNum, styles.stockNum, { color: colors.textMuted }]}>{row.submittedTankDip === null ? '—' : row.submittedTankDip.toLocaleString()}</Text>
+                          <Text style={[styles.stockColNum, styles.stockNum, { color: varianceColor, fontWeight: '800' }]}>
+                            {row.variance === null ? '—' : `${row.variance > 0 ? '+' : ''}${row.variance.toLocaleString()}`}
+                          </Text>
+                          {isMdOrCeo ? (
+                            <View style={styles.stockColFlag}>
+                              {mismatch ? (
+                                <Ionicons name="warning" size={14} color="#791F1F" />
+                              ) : (
+                                <Ionicons name="checkmark-circle" size={14} color="#27500A" />
+                              )}
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
               </View>
             ))}
           </>
@@ -1342,6 +1490,7 @@ const styles = StyleSheet.create({
   mismatchProdName: { fontSize: 13, fontWeight: '700', minWidth: 52 },
   mismatchBranch: { fontSize: 12, flex: 1, opacity: 0.8 },
   mismatchDiff: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
+  stockFormulaText: { fontSize: 11, lineHeight: 16, marginTop: -6, marginBottom: 10 },
   stockTable: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 14 },
   stockTableHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1 },
   stockHeaderText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
