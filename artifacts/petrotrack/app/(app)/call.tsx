@@ -22,9 +22,38 @@ import type {
 
 type DailyMediaViewComponent = typeof import('@daily-co/react-native-daily-js')['DailyMediaView'];
 
+function dailyEmbedDocument(roomUrl: string, token: string, kind: 'audio' | 'video'): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body { width: 100%; height: 100%; margin: 0; background: #101418; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <script crossorigin src="https://unpkg.com/@daily-co/daily-js"></script>
+    <script>
+      (function () {
+        var call = window.Daily.createFrame({
+          showLeaveButton: true,
+          iframeStyle: { width: '100%', height: '100%', border: '0' }
+        });
+        call.join({
+          url: ${JSON.stringify(roomUrl)},
+          token: ${JSON.stringify(token)},
+          start_video_off: ${kind === 'audio' ? 'true' : 'false'}
+        });
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
 export default function CallScreen() {
   const colors = useColors();
   const router = useRouter();
+  const isExpoGo = Constants.appOwnership === 'expo';
   const params = useLocalSearchParams<{
     callId: string;
     token: string;
@@ -39,10 +68,16 @@ export default function CallScreen() {
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(params.kind === 'audio');
   const [mediaViewReady, setMediaViewReady] = useState(false);
+  const webCallDocument = useMemo(
+    () => dailyEmbedDocument(params.roomUrl, params.token, params.kind),
+    [params.kind, params.roomUrl, params.token],
+  );
 
   useEffect(() => {
-    if (Platform.OS === 'web' || Constants.appOwnership === 'expo') {
-      setStatus('Calls require the Petrotrack iOS or Android development build.');
+    if (Platform.OS === 'web' || isExpoGo) {
+      setStatus(Platform.OS === 'web'
+        ? 'Connecting to the browser call…'
+        : 'Calls require the Petrotrack iOS or Android development build.');
       return;
     }
 
@@ -87,7 +122,7 @@ export default function CallScreen() {
       }
       callRef.current = null;
     };
-  }, [params.kind, params.roomUrl, params.token]);
+  }, [isExpoGo, params.kind, params.roomUrl, params.token]);
 
   const participantList = useMemo(() => participants, [participants]);
   const localParticipant = participantList.find(participant => participant.local);
@@ -115,11 +150,33 @@ export default function CallScreen() {
   if (Platform.OS === 'web') {
     return (
       <ScreenLayout title="Call">
+        <View style={[styles.webCall, { backgroundColor: colors.background }]}>
+          {React.createElement('iframe', {
+            title: `${params.kind === 'video' ? 'Video' : 'Audio'} call`,
+            srcDoc: webCallDocument,
+            allow: 'camera; microphone; autoplay; fullscreen; display-capture',
+            referrerPolicy: 'no-referrer',
+            style: {
+              width: '100%',
+              height: '100%',
+              minHeight: '560px',
+              border: 0,
+              display: 'block',
+            } as React.CSSProperties,
+          })}
+        </View>
+      </ScreenLayout>
+    );
+  }
+
+  if (isExpoGo) {
+    return (
+      <ScreenLayout title="Call">
         <View style={[styles.webFallback, { backgroundColor: colors.background }]}>
           <Ionicons name={params.kind === 'video' ? 'videocam-outline' : 'call-outline'} size={56} color={colors.primary} />
-          <Text style={[styles.title, { color: colors.text }]}>In-app calls need a device build</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Install the Petrotrack development build</Text>
           <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-            Daily audio and video calling is available on Android and iPhone through the Petrotrack development build.
+            Expo Go cannot load the native Daily audio and video module. Use the Petrotrack iOS or Android development build for device calls.
           </Text>
           <TouchableOpacity style={[styles.leaveButton, { backgroundColor: colors.primary }]} onPress={() => router.back()}>
             <Text style={styles.leaveButtonText}>Back to messages</Text>
@@ -209,6 +266,7 @@ const styles = StyleSheet.create({
   controlButton: { minWidth: 62, alignItems: 'center', gap: 5 },
   controlText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   endButton: { minWidth: 62, alignItems: 'center', gap: 5, backgroundColor: '#d64545', borderRadius: 30, paddingVertical: 12, paddingHorizontal: 15 },
+  webCall: { flex: 1, minHeight: 560, overflow: 'hidden' },
   webFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   title: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginTop: 18 },
   subtitle: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 10, maxWidth: 320 },
