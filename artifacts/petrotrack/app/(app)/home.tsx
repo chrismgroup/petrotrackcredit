@@ -51,6 +51,32 @@ function dayGreeting(): string {
   return 'Good evening';
 }
 
+const STOCK_SNAPSHOT_PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
+type StockSnapshotProduct = typeof STOCK_SNAPSHOT_PRODUCTS[number];
+
+function localDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function offsetDateKey(days: number): string {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return localDateKey(date);
+}
+
+function recordDateKey(value?: string): string {
+  return value?.slice(0, 10) ?? '';
+}
+
+function formatQuantity(value: number): string {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
 // ─── sub-components ────────────────────────────────────────────────────────
 
 interface SectionProps {
@@ -224,7 +250,7 @@ interface RevenueTrendChartProps {
 export default function HomeScreen() {
   const {
     role, userName, branchId, branches, navItems,
-    tanks, lpgTanks, dips,
+    tanks, lpgTanks, pumps, dips,
     deliveries, maintenance, expenses, budgets,
     financialEntry, priceProposals,
     pumpDailyReports, userAccounts, messages, notifications,
@@ -297,6 +323,89 @@ export default function HomeScreen() {
       unit: unitForProd(prod),
     }));
   }, [tanks, lpgTanks, dips, scopedBranchId]);
+
+  const stockSnapshot = useMemo(() => {
+    const todayKey = localDateKey(new Date());
+    const yesterdayKey = offsetDateKey(-1);
+    const visiblePetrolTanks = tanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId);
+    const visibleLpgTanks = lpgTanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId);
+
+    const latestDipFor = (dateKey: string) => dips
+      .filter(d => d.status !== 'rejected' && recordDateKey(d.dt) === dateKey)
+      .sort((a, b) => {
+        const aTime = new Date(a.submittedAt ?? a.approvedDt ?? a.dt).getTime();
+        const bTime = new Date(b.submittedAt ?? b.approvedDt ?? b.dt).getTime();
+        return bTime - aTime || b.id - a.id;
+      })[0];
+
+    const yesterdayDip = latestDipFor(yesterdayKey);
+    const todayDip = latestDipFor(todayKey);
+    const pumpById = new Map(pumps.map(pump => [pump.id, pump]));
+
+    function productFromSalesEntry(entry: typeof sales[number]): StockSnapshotProduct | null {
+      const linkedPump = entry.pumpId ? pumpById.get(entry.pumpId) : undefined;
+      if (linkedPump) return linkedPump.prod;
+
+      const entryPumpName = entry.pump.split(' (')[0].trim().toLowerCase();
+      const namedPump = pumps.find(pump => pump.name.trim().toLowerCase() === entryPumpName);
+      if (namedPump) return namedPump.prod;
+
+      const label = entry.pump.toLowerCase();
+      if (label.includes('lube oil')) return 'Lube Oil';
+      for (const product of STOCK_SNAPSHOT_PRODUCTS) {
+        if (new RegExp(`\\b${product.toLowerCase()}\\b`).test(label)) return product;
+      }
+      return null;
+    }
+
+    function dipForProduct(record: typeof dips[number] | undefined, product: StockSnapshotProduct): number | null {
+      if (!record) return null;
+      if (product === 'LPG') {
+        const readings = visibleLpgTanks
+          .map(tank => record.lpg[tank.id])
+          .filter((reading): reading is number => reading !== undefined);
+        return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
+      }
+      const readings = visiblePetrolTanks
+        .filter(tank => tank.prod === product)
+        .map(tank => record.rd[tank.id])
+        .filter((reading): reading is number => reading !== undefined);
+      return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
+    }
+
+    return STOCK_SNAPSHOT_PRODUCTS.map(product => {
+      const deliveriesForProduct = deliveries
+        .filter(delivery =>
+          recordDateKey(delivery.dt) === todayKey &&
+          delivery.prod === product &&
+          (delivery.approvalStatus === 'approved' || delivery.approvalStatus === 'md_approved') &&
+          (!scopedBranchId || !delivery.branchId || delivery.branchId === scopedBranchId),
+        )
+        .reduce((sum, delivery) => sum + delivery.rec, 0);
+      const salesForProduct = sales
+        .filter(sale =>
+          recordDateKey(sale.dt) === todayKey &&
+          (!scopedBranchId || !sale.branchId || sale.branchId === scopedBranchId) &&
+          productFromSalesEntry(sale) === product,
+        )
+        .reduce((sum, sale) => sum + sale.L, 0);
+      const startupStock = dipForProduct(yesterdayDip, product) ?? 0;
+      const bookStock = startupStock + deliveriesForProduct - salesForProduct;
+      const submittedTankDip = dipForProduct(todayDip, product);
+      const variance = submittedTankDip === null ? null : bookStock - submittedTankDip;
+
+      return {
+        product,
+        startupStock,
+        deliveries: deliveriesForProduct,
+        sales: salesForProduct,
+        bookStock,
+        submittedTankDip,
+        variance,
+        unit: unitForProd(product),
+      };
+    });
+  }, [dips, deliveries, lpgTanks, pumps, sales, scopedBranchId, tanks]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -486,6 +595,62 @@ export default function HomeScreen() {
               </View>
             ))}
           </View>
+          </Section>
+        ) : null}
+
+        {/* ── Daily stock snapshot ───────────────────────────────────── */}
+        {canViewFuelStock ? (
+          <Section label="STOCK SNAPSHOT" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
+            <View style={[s.snapshotCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
+                <Ionicons name="analytics-outline" size={16} color={colors.info} />
+                <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
+                  Book stock versus today&apos;s submitted tank dip
+                </Text>
+              </View>
+              {stockSnapshot.map(snapshot => {
+                const statusColor = snapshot.variance === null
+                  ? colors.textMuted
+                  : snapshot.variance < 0 ? colors.error : colors.success;
+                const statusLabel = snapshot.variance === null
+                  ? 'Awaiting dip'
+                  : snapshot.variance < 0 ? 'Shortage' : snapshot.variance > 0 ? 'Excess' : 'Balanced';
+                return (
+                  <View key={snapshot.product} style={[s.snapshotRow, { borderTopColor: colors.border }]}>
+                    <View style={s.snapshotRowHead}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
+                        <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
+                          Start-up {formatQuantity(snapshot.startupStock)} {snapshot.unit} · +{formatQuantity(snapshot.deliveries)} delivered · −{formatQuantity(snapshot.sales)} sold
+                        </Text>
+                      </View>
+                      <View style={[s.snapshotStatus, { backgroundColor: statusColor + '18' }]}>
+                        <View style={[s.snapshotStatusDot, { backgroundColor: statusColor }]} />
+                        <Text style={[s.snapshotStatusText, { color: statusColor }]}>{statusLabel}</Text>
+                      </View>
+                    </View>
+                    <View style={s.snapshotValues}>
+                      <View style={s.snapshotValue}>
+                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Book stock</Text>
+                        <Text style={[s.snapshotValueText, { color: colors.text }]}>{formatQuantity(snapshot.bookStock)} {snapshot.unit}</Text>
+                      </View>
+                      <View style={s.snapshotValue}>
+                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Today&apos;s dip</Text>
+                        <Text style={[s.snapshotValueText, { color: colors.text }]}>
+                          {snapshot.submittedTankDip === null ? '—' : `${formatQuantity(snapshot.submittedTankDip)} ${snapshot.unit}`}
+                        </Text>
+                      </View>
+                      <View style={[s.snapshotValue, s.snapshotVarianceValue]}>
+                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Variance</Text>
+                        <Text style={[s.snapshotValueText, { color: statusColor }]}>
+                          {snapshot.variance === null ? '—' : `${snapshot.variance > 0 ? '+' : ''}${formatQuantity(snapshot.variance)} ${snapshot.unit}`}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
           </Section>
         ) : null}
 
@@ -885,6 +1050,30 @@ const s = StyleSheet.create({
   stockDot: { width: 8, height: 8, borderRadius: 4 },
   stockProduct: { flex: 1, fontSize: 12, fontWeight: '700' },
   stockAmount: { fontSize: 13, fontWeight: '800' },
+
+  // stock snapshot
+  snapshotCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  snapshotIntro: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    margin: 10, paddingHorizontal: 11, paddingVertical: 9,
+    borderRadius: 11, borderWidth: 1,
+  },
+  snapshotIntroText: { flex: 1, fontSize: 10, fontWeight: '600' },
+  snapshotRow: { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  snapshotRowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  snapshotProduct: { fontSize: 12, fontWeight: '800' },
+  snapshotFormula: { fontSize: 9, marginTop: 3 },
+  snapshotStatus: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 8, paddingVertical: 5, borderRadius: 99,
+  },
+  snapshotStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  snapshotStatusText: { fontSize: 9, fontWeight: '800' },
+  snapshotValues: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  snapshotValue: { flex: 1, minWidth: 0 },
+  snapshotVarianceValue: { alignItems: 'flex-end' },
+  snapshotValueLabel: { fontSize: 9, fontWeight: '600' },
+  snapshotValueText: { fontSize: 11, fontWeight: '800', marginTop: 3 },
 
   // approval rows
   approvalRow: {
