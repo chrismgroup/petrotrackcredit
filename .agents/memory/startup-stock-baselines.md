@@ -3,8 +3,8 @@ name: Start-up stock baselines
 description: Business rules for configured opening inventory used by the Home Stock Snapshot
 ---
 
-Start-up stock is an explicit admin-configured baseline for each product and branch scope. It is locked for non-admin users; admins may still update or delete it. LPG uses kilograms while other products use litres.
+Start-up stock in the Home Snapshot is derived from the previous business day’s approved tank dip. LPG uses kilograms while other products use litres.
 
-**Why:** Using the previous day’s dip as the opening quantity made the book-stock calculation circular and prevented an auditable opening balance.
+**Why:** The operational opening balance must follow the approved tank-dip record and remain live with the app’s business-date data, rather than relying on a separate manually configured value.
 
-**How to apply:** Calculate `start-up stock + approved deliveries − sales` independently per product. For a branch-scoped user, use that branch’s baseline first and fall back to the all-branches baseline; if no baseline exists, show “Not set” rather than treating it as zero.
+**How to apply:** Calculate `yesterday’s approved dip + approved deliveries − sales` independently per product. Compare that book stock with the current business day’s submitted tank dip; negative variance is shortage and positive variance is excess. If yesterday has no approved dip, show the baseline as unavailable rather than treating it as zero.
