@@ -252,7 +252,7 @@ interface RevenueTrendChartProps {
 export default function HomeScreen() {
   const {
     role, userName, branchId, branches, navItems,
-    tanks, lpgTanks, pumps, dips, startupStocks,
+    tanks, lpgTanks, pumps, dips,
     deliveries, maintenance, expenses, budgets,
     financialEntry, priceProposals,
     pumpDailyReports, userAccounts, messages, notifications,
@@ -328,32 +328,24 @@ export default function HomeScreen() {
 
   const stockSnapshot = useMemo(() => {
     const todayKey = localDateKey(new Date());
+    const yesterdayKey = offsetDateKey(-1);
     const visiblePetrolTanks = tanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId);
     const visibleLpgTanks = lpgTanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId);
 
-    const latestDipFor = (dateKey: string) => dips
-      .filter(d => d.status !== 'rejected' && recordDateKey(d.dt) === dateKey)
+    const latestDipFor = (dateKey: string, approvedOnly = false) => dips
+      .filter(d =>
+        recordDateKey(d.dt) === dateKey &&
+        (approvedOnly ? d.status === 'approved' : d.status !== 'rejected'),
+      )
       .sort((a, b) => {
         const aTime = new Date(a.submittedAt ?? a.approvedDt ?? a.dt).getTime();
         const bTime = new Date(b.submittedAt ?? b.approvedDt ?? b.dt).getTime();
         return bTime - aTime || b.id - a.id;
       })[0];
 
+    const yesterdayApprovedDip = latestDipFor(yesterdayKey, true);
     const todayDip = latestDipFor(todayKey);
     const pumpById = new Map(pumps.map(pump => [pump.id, pump]));
-
-    function startupStockForProduct(product: StockSnapshotProduct): number | null {
-      const records = startupStocks.filter(record => record.product === product);
-      if (scopedBranchId) {
-        const branchRecords = records.filter(record => record.branchId === scopedBranchId);
-        if (branchRecords.length > 0) return branchRecords.reduce((sum, record) => sum + record.quantity, 0);
-        const globalRecords = records.filter(record => !record.branchId);
-        return globalRecords.length > 0
-          ? globalRecords.reduce((sum, record) => sum + record.quantity, 0)
-          : null;
-      }
-      return records.length > 0 ? records.reduce((sum, record) => sum + record.quantity, 0) : null;
-    }
 
     function productFromSalesEntry(entry: typeof sales[number]): StockSnapshotProduct | null {
       const linkedPump = entry.pumpId ? pumpById.get(entry.pumpId) : undefined;
@@ -402,7 +394,7 @@ export default function HomeScreen() {
           productFromSalesEntry(sale) === product,
         )
         .reduce((sum, sale) => sum + sale.L, 0);
-      const startupStock = startupStockForProduct(product);
+      const startupStock = dipForProduct(yesterdayApprovedDip, product);
       const bookStock = startupStock === null ? null : startupStock + deliveriesForProduct - salesForProduct;
       const submittedTankDip = dipForProduct(todayDip, product);
       const variance = startupStock === null || submittedTankDip === null || bookStock === null
@@ -420,7 +412,7 @@ export default function HomeScreen() {
         unit: unitForProd(product),
       };
     });
-  }, [dips, deliveries, lpgTanks, pumps, sales, scopedBranchId, startupStocks, tanks]);
+  }, [dips, deliveries, lpgTanks, pumps, sales, scopedBranchId, tanks]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -620,7 +612,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                 <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                  Book stock versus today&apos;s submitted tank dip
+                  Yesterday&apos;s approved tank dip + live deliveries and sales versus today&apos;s submitted tank dip
                 </Text>
               </View>
               {stockSnapshot.map(snapshot => {
@@ -630,7 +622,7 @@ export default function HomeScreen() {
                     ? colors.textMuted
                   : snapshot.variance < 0 ? colors.error : colors.success;
                 const statusLabel = snapshot.startupStock === null
-                  ? 'Set baseline'
+                  ? 'Awaiting approved baseline'
                   : snapshot.variance === null
                     ? 'Awaiting dip'
                   : snapshot.variance < 0 ? 'Shortage' : snapshot.variance > 0 ? 'Excess' : 'Balanced';
@@ -640,7 +632,7 @@ export default function HomeScreen() {
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
                         <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                          Book stock = start-up + delivered − sold: {snapshot.bookStock === null ? 'Not set' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
+                          Book stock = start-up + delivered − sold: {snapshot.bookStock === null ? 'Awaiting yesterday approved dip' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
                         </Text>
                       </View>
                       <View style={[s.snapshotStatus, { backgroundColor: statusColor + '18' }]}>
@@ -651,7 +643,7 @@ export default function HomeScreen() {
                     <View style={s.snapshotValues}>
                       <View style={s.snapshotValue}>
                         <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Start-up qty.</Text>
-                        <Text style={[s.snapshotValueText, { color: colors.text }]}>{snapshot.startupStock === null ? 'Not set' : `${formatQuantity(snapshot.startupStock)} ${snapshot.unit}`}</Text>
+                        <Text style={[s.snapshotValueText, { color: colors.text }]}>{snapshot.startupStock === null ? '—' : `${formatQuantity(snapshot.startupStock)} ${snapshot.unit}`}</Text>
                       </View>
                       <View style={s.snapshotValue}>
                         <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Delivered qty.</Text>
