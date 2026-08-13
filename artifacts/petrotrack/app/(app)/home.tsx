@@ -329,8 +329,12 @@ export default function HomeScreen() {
   const stockSnapshot = useMemo(() => {
     const todayKey = localDateKey(new Date());
     const yesterdayKey = offsetDateKey(-1);
-    const visiblePetrolTanks = tanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId);
-    const visibleLpgTanks = lpgTanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId);
+    // Match the Tank Dipping screen: unassigned tanks remain visible to a
+    // branch-scoped user, while explicitly assigned tanks stay branch-scoped.
+    const inScope = (tank: { branchId?: string }) =>
+      !scopedBranchId || !tank.branchId || tank.branchId === scopedBranchId;
+    const visiblePetrolTanks = tanks.filter(inScope);
+    const visibleLpgTanks = lpgTanks.filter(inScope);
 
     const latestDipFor = (dateKey: string, approvedOnly = false) => dips
       .filter(d =>
@@ -365,16 +369,20 @@ export default function HomeScreen() {
 
     function dipForProduct(record: typeof dips[number] | undefined, product: StockSnapshotProduct): number | null {
       if (!record) return null;
+      const numericReading = (value: unknown): number | null => {
+        const reading = typeof value === 'number' ? value : Number(value);
+        return Number.isFinite(reading) ? reading : null;
+      };
       if (product === 'LPG') {
         const readings = visibleLpgTanks
-          .map(tank => record.lpg[tank.id])
-          .filter((reading): reading is number => reading !== undefined);
+          .map(tank => numericReading(record.lpg?.[tank.id]))
+          .filter((reading): reading is number => reading !== null);
         return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
       }
       const readings = visiblePetrolTanks
         .filter(tank => tank.prod === product)
-        .map(tank => record.rd[tank.id])
-        .filter((reading): reading is number => reading !== undefined);
+        .map(tank => numericReading(record.rd?.[tank.id]))
+        .filter((reading): reading is number => reading !== null);
       return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
     }
 
