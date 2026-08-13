@@ -648,8 +648,19 @@ export default function HomeScreen() {
               icon="water-outline"
               label="PMS Stock"
               value={`${stockForProduct('PMS').toLocaleString()} L`}
-              sub={`AGO ${stockForProduct('AGO').toLocaleString()} L · DPK ${stockForProduct('DPK').toLocaleString()} L`}
+              sub="PMS only"
               accent={colors.teal}
+              colors={colors}
+              onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=inventory` as never)}
+            />
+          ) : null}
+          {canViewFuelStock ? (
+            <KpiTile
+              icon="water-outline"
+              label="AGO Stock"
+              value={`${stockForProduct('AGO').toLocaleString()} L`}
+              sub="AGO only"
+              accent={colors.primary}
               colors={colors}
               onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=inventory` as never)}
             />
