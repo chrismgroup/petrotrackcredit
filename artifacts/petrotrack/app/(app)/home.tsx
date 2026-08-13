@@ -299,18 +299,23 @@ export default function HomeScreen() {
 
   // ── KPIs ──────────────────────────────────────────────────────────────
   const { byBranch: branchRev } = useMemo(() => salesRevenueByBranch(sales), [sales]);
-  const currentMonthKey = (() => {
+  const currentMonthRange = (() => {
     const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return {
+      from: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`,
+      to: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`,
+    };
   })();
   const monthlyRevenue = useMemo(
-    () => sales
-      .filter(entry => entry.dt?.startsWith(currentMonthKey) && (!scopedBranchId || entry.branchId === scopedBranchId))
-      .reduce((sum, entry) => {
-        const amount = entry.L * entry.price;
-        return sum + (Number.isFinite(amount) ? amount : 0);
-      }, 0),
-    [sales, scopedBranchId, currentMonthKey],
+    () => Math.round(pumpDailyReports
+      .filter(report =>
+        report.status === 'approved' &&
+        report.date >= currentMonthRange.from &&
+        report.date <= currentMonthRange.to &&
+        (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+      )
+      .reduce((sum, report) => sum + (Number.isFinite(report.grossAmount) ? report.grossAmount : 0), 0)),
+    [pumpDailyReports, scopedBranchId, currentMonthRange.from, currentMonthRange.to],
   );
 
   const stockByProduct = useMemo(() => {
@@ -557,15 +562,19 @@ export default function HomeScreen() {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-      const iso = d.toISOString().slice(0, 10); // YYYY-MM-DD
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const dayLabel = d.toLocaleDateString('en-NG', { weekday: 'short' }).slice(0, 2);
-      const rev = sales
-        .filter(entry => entry.dt && entry.dt.startsWith(iso))
-        .reduce((sum, entry) => sum + entry.L * entry.price, 0);
+      const rev = pumpDailyReports
+        .filter(report =>
+          report.status === 'approved' &&
+          report.date === iso &&
+          (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+        )
+        .reduce((sum, report) => sum + report.grossAmount, 0);
       days.push({ label: dayLabel, value: rev });
     }
     return days;
-  }, [sales]);
+  }, [pumpDailyReports, scopedBranchId]);
 
   // ── Branch sort by rev ────────────────────────────────────────────────
   const sortedBranches = useMemo(
