@@ -135,7 +135,7 @@ export const unitForProd = (p: string) => p === 'LPG' ? 'kg' : 'L';
 export const getPriceForPump = (pump: Pump, prices: Prices): number =>
   pump.prod === 'LPG' ? (prices[lpgPriceKey(pump.lpgCategory)] ?? prices.LPG) : (prices as any)[pump.prod] ?? 0;
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; reason?: string; }
-export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media'; body: string; ts: string; read: boolean; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; }
+export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media'; body: string; ts: string; read: boolean; archivedBy?: string[]; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; }
 export type { AppNotification };
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
 export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; duration?: string; }
@@ -590,6 +590,8 @@ interface AppContextType {
   sendMessage: (toName: string, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => void;
   addSystemNotification: (from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => void;
   markRead: (peerName: string) => void;
+  archiveConversation: (peerName: string) => void;
+  unarchiveConversation: (peerName: string) => void;
   approveExpense: (id: number) => void;
   rejectExpense: (id: number) => void;
   addStaff: (s: Omit<Staff, 'id'>) => number;
@@ -1595,6 +1597,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       [key]: (m[key] || []).map(msg => msg.to === userName ? { ...msg, read: true } : msg),
     }));
   }, [userName]);
+
+  const setConversationArchived = useCallback((peerName: string, archived: boolean) => {
+    if (!userName) return;
+    const key = chatKey(userName, peerName);
+    setMessages(m => ({
+      ...m,
+      [key]: (m[key] || []).map(msg => {
+        const archivedBy = new Set(msg.archivedBy || []);
+        if (archived) archivedBy.add(userName);
+        else archivedBy.delete(userName);
+        return { ...msg, archivedBy: Array.from(archivedBy) };
+      }),
+    }));
+  }, [userName]);
+
+  const archiveConversation = useCallback((peerName: string) => {
+    setConversationArchived(peerName, true);
+  }, [setConversationArchived]);
+
+  const unarchiveConversation = useCallback((peerName: string) => {
+    setConversationArchived(peerName, false);
+  }, [setConversationArchived]);
 
   const approveExpense = useCallback((id: number) => {
     setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : x));
@@ -2607,7 +2631,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
       pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport, updatePumpReport,
-       sendMessage, addSystemNotification, markRead, approveExpense, rejectExpense,
+        sendMessage, addSystemNotification, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,

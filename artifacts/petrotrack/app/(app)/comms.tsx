@@ -33,6 +33,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 
 type Tab    = 'chats' | 'broadcast' | 'calls';
+type InboxFilter = 'active' | 'archived';
 type Colors = ReturnType<typeof useColors>;
 
 const CAN_BROADCAST = ['admin', 'ceo', 'md', 'csm'];
@@ -227,6 +228,7 @@ export default function CommsScreen() {
   const {
     role, userName, userAccounts,
     sendMessage, markRead, getConversation, unreadCount,
+    archiveConversation, unarchiveConversation,
     broadcasts, addBroadcast,
     callLog, addCallRecord,
   } = useApp();
@@ -240,6 +242,8 @@ export default function CommsScreen() {
 
   // ── Tab state ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>('chats');
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>('active');
+  const [showNewMessage, setShowNewMessage] = useState(false);
 
   // ── Direct message state ───────────────────────────────────────────────────
   const [chatPeer,     setChatPeer]     = useState<UserAccount | null>(null);
@@ -275,10 +279,26 @@ export default function CommsScreen() {
     return prefix + m.body;
   }
 
+  function hasIncomingMessage(user: UserAccount): boolean {
+    return getConversation(user.empName).some(
+      m => m.from === user.empName && m.to === userName,
+    );
+  }
+
+  function isArchived(user: UserAccount): boolean {
+    const conv = getConversation(user.empName);
+    return conv.length > 0 && conv.every(m => m.archivedBy?.includes(userName));
+  }
+
   function openChat(user: UserAccount) {
     setChatPeer(user);
     markRead(user.empName);
     setSearchQuery('');
+  }
+
+  function toggleArchive(user: UserAccount) {
+    if (isArchived(user)) unarchiveConversation(user.empName);
+    else archiveConversation(user.empName);
   }
 
   function sendDM() {
@@ -386,8 +406,12 @@ export default function CommsScreen() {
   }
 
   // ── Filtered peer list for search ──────────────────────────────────────────
+  const messagePeers = peerUsers.filter(hasIncomingMessage);
+  const inboxPeers = messagePeers.filter(u => (
+    inboxFilter === 'archived' ? isArchived(u) : !isArchived(u)
+  ));
   const filteredPeers = searchQuery.trim()
-    ? peerUsers.filter(u => {
+    ? inboxPeers.filter(u => {
         const q = searchQuery.toLowerCase();
         return (
           u.empName.toLowerCase().includes(q) ||
@@ -395,7 +419,7 @@ export default function CommsScreen() {
           (u.jobTitle ?? '').toLowerCase().includes(q)
         );
       })
-    : peerUsers;
+    : inboxPeers;
 
   // ── Chat thread view ───────────────────────────────────────────────────────
   if (chatPeer) {
@@ -428,6 +452,13 @@ export default function CommsScreen() {
             style={[styles.callBtn, { backgroundColor: '#27ae60' + '18' }]}
           >
             <Ionicons name="call" size={18} color="#27ae60" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { toggleArchive(chatPeer); setChatPeer(null); }}
+            style={[styles.callBtn, { backgroundColor: colors.background }]}
+            accessibilityLabel={isArchived(chatPeer) ? 'Unarchive conversation' : 'Archive conversation'}
+          >
+            <Ionicons name={isArchived(chatPeer) ? 'archive' : 'archive-outline'} size={18} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
 
@@ -543,6 +574,50 @@ export default function CommsScreen() {
 
   return (
     <ScreenLayout title="Communications">
+      <Modal
+        visible={showNewMessage}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNewMessage(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowNewMessage(false)}>
+          <Pressable
+            style={[styles.contactPicker, { backgroundColor: colors.surface }]}
+            onPress={() => undefined}
+          >
+            <View style={styles.contactPickerHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.composeTitle, { color: colors.text }]}>New message</Text>
+                <Text style={[styles.contactPickerHint, { color: colors.textMuted }]}>
+                  All active staff contacts
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowNewMessage(false)}>
+                <Ionicons name="close-circle" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled">
+              {peerUsers.map(user => (
+                <TouchableOpacity
+                  key={user.id}
+                  style={[styles.pickerRow, { borderBottomColor: colors.border }]}
+                  onPress={() => { setShowNewMessage(false); setChatPeer(user); }}
+                >
+                  <UserAvatar account={user} size={38} colors={colors} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.contactName, { color: colors.text }]}>{user.empName}</Text>
+                    <Text style={[styles.contactSub, { color: colors.textMuted }]}>
+                      {ROLE_LABELS[user.role as Role] ?? user.role ?? 'Staff'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Tab bar */}
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
         {([
@@ -599,6 +674,36 @@ export default function CommsScreen() {
             )}
           </View>
 
+           <TouchableOpacity
+             style={[styles.newMessageBtn, { backgroundColor: roleColor }]}
+             onPress={() => setShowNewMessage(true)}
+             activeOpacity={0.85}
+           >
+             <Ionicons name="create-outline" size={16} color="#fff" />
+             <Text style={styles.newMessageBtnText}>New message</Text>
+           </TouchableOpacity>
+
+           <View style={[styles.inboxFilter, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+             {([
+               { id: 'active' as InboxFilter, label: 'Inbox', icon: 'chatbubbles-outline' },
+               { id: 'archived' as InboxFilter, label: 'Archived', icon: 'archive-outline' },
+             ]).map(filter => (
+               <TouchableOpacity
+                 key={filter.id}
+                 onPress={() => setInboxFilter(filter.id)}
+                 style={[
+                   styles.inboxFilterItem,
+                   inboxFilter === filter.id && { backgroundColor: roleColor },
+                 ]}
+               >
+                 <Ionicons name={filter.icon as any} size={14} color={inboxFilter === filter.id ? '#fff' : colors.textMuted} />
+                 <Text style={[styles.inboxFilterText, { color: inboxFilter === filter.id ? '#fff' : colors.textMuted }]}>
+                   {filter.label}
+                 </Text>
+               </TouchableOpacity>
+             ))}
+           </View>
+
           {/* Broadcast shortcut for authorised users */}
           {CAN_BROADCAST.includes(role || '') && (
             <TouchableOpacity
@@ -614,23 +719,27 @@ export default function CommsScreen() {
             </TouchableOpacity>
           )}
 
-          {/* No staff registered */}
-          {peerUsers.length === 0 && (
+           {/* Only contacts that have sent an incoming message appear in the inbox. */}
+           {messagePeers.length === 0 && (
             <View style={[styles.emptyState, { marginTop: 32 }]}>
               <Ionicons name="people-outline" size={44} color={colors.border} />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Active Staff</Text>
+               <Text style={[styles.emptyTitle, { color: colors.text }]}>No incoming messages</Text>
               <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                Register and activate staff accounts to enable direct messaging.
+                 Contacts appear here after they send you a message. Use New message to contact any active user.
               </Text>
             </View>
           )}
 
-          {/* No search results */}
-          {peerUsers.length > 0 && filteredPeers.length === 0 && (
+           {/* No inbox results */}
+           {messagePeers.length > 0 && filteredPeers.length === 0 && (
             <View style={[styles.emptyState, { marginTop: 32 }]}>
               <Ionicons name="search-outline" size={40} color={colors.border} />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Staff Found</Text>
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>Try a different name or role.</Text>
+               <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                 {inboxFilter === 'archived' ? 'No Archived Messages' : 'No Active Conversations'}
+               </Text>
+               <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                 {searchQuery ? 'Try a different name or role.' : 'Messages remain available in the other inbox view.'}
+               </Text>
             </View>
           )}
 
@@ -660,11 +769,21 @@ export default function CommsScreen() {
                   <Text style={[styles.contactRole, { color: uColor, backgroundColor: uColor + '18' }]}>
                     {roleLabel}
                   </Text>
-                  <Text style={[styles.contactSub, { color: colors.textMuted }]} numberOfLines={1}>
+                   <Text style={[styles.contactSub, { color: colors.textMuted, fontWeight: unread > 0 ? '700' : '400' }]} numberOfLines={1}>
                     {lastText}
                   </Text>
+                   <Text style={[styles.contactStatus, { color: unread > 0 ? roleColor : colors.textSubtle }]}>
+                     {unread > 0 ? `${unread} unread` : 'Read'}
+                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                   <TouchableOpacity
+                     onPress={() => toggleArchive(user)}
+                     style={[styles.archiveIconBtn, { backgroundColor: colors.background }]}
+                     accessibilityLabel={isArchived(user) ? 'Unarchive conversation' : 'Archive conversation'}
+                   >
+                     <Ionicons name={isArchived(user) ? 'archive' : 'archive-outline'} size={15} color={colors.textMuted} />
+                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => initiateCall(user)}
                     style={[styles.callIconBtn, { backgroundColor: '#27ae60' + '18' }]}
@@ -893,6 +1012,11 @@ const styles = StyleSheet.create({
   // Search bar
   searchBar:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, marginBottom: 12 },
   searchInput: { flex: 1, fontSize: 14 },
+  newMessageBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, marginBottom: 10 },
+  newMessageBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  inboxFilter:       { flexDirection: 'row', borderWidth: 1, borderRadius: 11, padding: 3, marginBottom: 12 },
+  inboxFilterItem:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8 },
+  inboxFilterText:   { fontSize: 12, fontWeight: '700' },
 
   // Broadcast shortcut
   broadcastShortcut:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, borderWidth: 1, marginBottom: 12 },
@@ -903,11 +1027,20 @@ const styles = StyleSheet.create({
   contactName:    { fontSize: 14, fontWeight: '700' },
   contactRole:    { fontSize: 10, fontWeight: '700', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   contactSub:     { fontSize: 11, marginTop: 1 },
+  contactStatus:  { fontSize: 10, fontWeight: '700', marginTop: 2 },
   avatarBadge:    { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, borderWidth: 1.5, borderColor: '#fff' },
   avatarBadgeText:{ color: '#fff', fontSize: 8, fontWeight: '800' },
   unreadBadge:    { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   unreadText:     { color: '#fff', fontSize: 10, fontWeight: '800' },
   callIconBtn:    { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  archiveIconBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+
+  // Contact picker
+  modalBackdrop:      { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.42)' },
+  contactPicker:      { borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 28 },
+  contactPickerHeader:{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  contactPickerHint:  { fontSize: 12, marginTop: 3 },
+  pickerRow:          { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
 
   // Chat thread
   chatHeader:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
