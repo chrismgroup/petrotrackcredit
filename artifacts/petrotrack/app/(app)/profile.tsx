@@ -84,7 +84,7 @@ export default function ProfileScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Security & account</Text>
           <View style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <ActionRow icon="key-outline" title="Change password" subtitle="Update your Petrotrack sign-in password" onPress={() => setShowPassword(true)} colors={colors} />
-            <ActionRow icon="chatbubbles-outline" title="Open My Messages" subtitle="View conversations and company broadcasts" onPress={() => router.replace('/(app)/messages' as never)} colors={colors} />
+            <ActionRow icon="chatbubbles-outline" title="Open My Messages" subtitle="Chat with staff and message selected users" onPress={() => router.replace('/(app)/messages' as never)} colors={colors} />
             <ActionRow icon="log-out-outline" title="Sign out" subtitle="End this session on the device" onPress={signOut} colors={colors} destructive />
           </View>
         </View>
