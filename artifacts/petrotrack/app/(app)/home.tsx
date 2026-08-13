@@ -313,17 +313,6 @@ export default function HomeScreen() {
     [sales, scopedBranchId, currentMonthKey],
   );
 
-  const totalPetrolStock = useMemo(
-    () => tanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId)
-      .reduce((s, t) => s + getCurrentTankStock(t, dips), 0),
-    [tanks, dips, scopedBranchId],
-  );
-  const totalLpgStock = useMemo(
-    () => lpgTanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId)
-      .reduce((s, t) => s + getCurrentTankStock(t, dips, 'lpg'), 0),
-    [lpgTanks, dips, scopedBranchId],
-  );
-
   const stockByProduct = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const tank of tanks) {
@@ -340,6 +329,8 @@ export default function HomeScreen() {
       unit: unitForProd(prod),
     }));
   }, [tanks, lpgTanks, dips, scopedBranchId]);
+  const stockForProduct = (product: StockProduct) =>
+    stockByProduct.find(item => item.prod === product)?.stock ?? 0;
 
   const branchStockSnapshots = useMemo<BranchStockSnapshot[]>(() => {
     const todayKey = localDateKey(new Date());
@@ -655,9 +646,9 @@ export default function HomeScreen() {
           {canViewFuelStock ? (
             <KpiTile
               icon="water-outline"
-              label="Fuel Stock"
-              value={`${totalPetrolStock.toLocaleString()} L`}
-              sub={`${totalLpgStock.toLocaleString()} kg LPG`}
+              label="PMS Stock"
+              value={`${stockForProduct('PMS').toLocaleString()} L`}
+              sub={`AGO ${stockForProduct('AGO').toLocaleString()} L · DPK ${stockForProduct('DPK').toLocaleString()} L`}
               accent={colors.teal}
               colors={colors}
               onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=inventory` as never)}
@@ -669,16 +660,13 @@ export default function HomeScreen() {
         {canViewFuelStock ? (
           <Section label="FUEL STOCK" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
           <View style={[s.stockCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[s.stockSummary, { backgroundColor: colors.teal + '12', borderColor: colors.teal + '30' }]}>
-              <View>
-                <Text style={[s.stockSummaryLabel, { color: colors.textMuted }]}>Total petrol stock</Text>
-                <Text style={[s.stockSummaryValue, { color: colors.teal }]}>{totalPetrolStock.toLocaleString()} L</Text>
-              </View>
-              <View style={[s.stockSummaryDivider, { backgroundColor: colors.border }]} />
-              <View>
-                <Text style={[s.stockSummaryLabel, { color: colors.textMuted }]}>Total LPG stock</Text>
-                <Text style={[s.stockSummaryValue, { color: colors.teal }]}>{totalLpgStock.toLocaleString()} kg</Text>
-              </View>
+            <View style={[s.stockSummary, { backgroundColor: colors.teal + '12', borderColor: colors.teal + '30', flexWrap: 'wrap', gap: 12 }]}>
+              {stockByProduct.map(({ prod, stock, unit }) => (
+                <View key={prod} style={{ width: '42%' }}>
+                  <Text style={[s.stockSummaryLabel, { color: colors.textMuted }]}>{prod} stock</Text>
+                  <Text style={[s.stockSummaryValue, { color: colors.teal }]}>{stock.toLocaleString()} {unit}</Text>
+                </View>
+              ))}
             </View>
             {stockByProduct.map(({ prod, stock, unit }) => (
               <View key={prod} style={[s.stockRow, { borderTopColor: colors.border }]}>
@@ -1173,7 +1161,6 @@ const s = StyleSheet.create({
   },
   stockSummaryLabel: { fontSize: 10, fontWeight: '600' },
   stockSummaryValue: { fontSize: 17, fontWeight: '800', marginTop: 3 },
-  stockSummaryDivider: { width: 1, height: 32 },
   stockRow: {
     flexDirection: 'row', alignItems: 'center', gap: 9,
     paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: StyleSheet.hairlineWidth,
