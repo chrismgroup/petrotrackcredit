@@ -6,16 +6,17 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, StockProduct, Tank, useApp } from '@/context/AppContext';
+import { BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, STOCK_SNAPSHOT_METRICS, StockProduct, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab = 'company' | 'tanks' | 'startup' | 'pumps' | 'staff' | 'access' | 'system';
+type Tab = 'company' | 'tanks' | 'startup' | 'pumps' | 'staff' | 'access' | 'snapshot' | 'system';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'company', label: 'Company', icon: 'business' },
   { id: 'tanks',   label: 'Tanks',   icon: 'water' },
   { id: 'pumps',   label: 'Pumps',   icon: 'speedometer' },
   { id: 'staff',   label: 'Staff',   icon: 'people' },
   { id: 'access',  label: 'Access',  icon: 'lock-closed' },
+  { id: 'snapshot', label: 'Stock Snapshot', icon: 'analytics' },
   { id: 'system',  label: 'System',  icon: 'settings' },
 ];
 
@@ -35,6 +36,14 @@ const PROD_COLORS: Record<string, string> = {
   PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#7B3FA5',
 };
 const STARTUP_PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
+const STOCK_METRIC_LABELS: Record<(typeof STOCK_SNAPSHOT_METRICS)[number], { label: string; description: string }> = {
+  startupStock: { label: 'Start-up quantity', description: 'Yesterday’s approved tank dip' },
+  deliveries: { label: 'Delivered quantity', description: 'Approved or MD-approved deliveries' },
+  sales: { label: 'Quantity sold', description: 'Current sales records' },
+  submittedTankDip: { label: 'Tank dip quantity', description: 'Today’s submitted tank dip' },
+  bookStock: { label: 'Book stock formula', description: 'Start-up + delivered − sold' },
+  variance: { label: 'Variance and status', description: 'Book stock compared with tank dip' },
+};
 const ROLE_OPTS = ['admin', 'ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'] as const;
 const ROLE_LABELS: Record<string, string> = {
   admin: 'System Admin', ceo: 'CEO', md: 'MD', mktg: 'Marketing',
@@ -189,6 +198,7 @@ export default function SystemSettingsScreen() {
     userAccounts, companyInfo, updateCompanyInfo,
     departments, assignStaffDept, setPumpInitialMeter, resetOperationalData, pumpInitialMeters,
     startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
+    stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -1490,6 +1500,96 @@ export default function SystemSettingsScreen() {
                   </View>
                 );
               })}
+            </>
+          )}
+
+          {/* ── STOCK SNAPSHOT ── */}
+          {activeTab === 'snapshot' && (
+            <>
+              <View style={[styles.banner, { backgroundColor: '#102a43' }]}>
+                <Ionicons name="analytics" size={22} color="#7dd3fc" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bannerTitle}>Stock Snapshot Display</Text>
+                  <Text style={styles.bannerSub}>Choose which information and products appear on Home</Text>
+                </View>
+              </View>
+              {!isAdmin && (
+                <LockBanner isAdmin={false} canManageStaff={false} colors={colors} />
+              )}
+
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.iconBox, { backgroundColor: roleColor + '18' }]}>
+                    <Ionicons name="list" size={15} color={roleColor} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>Information shown</Text>
+                    <Text style={[styles.subLabel, { color: colors.textMuted }]}>Applies to every branch snapshot</Text>
+                  </View>
+                </View>
+                {STOCK_SNAPSHOT_METRICS.map((metric, idx) => {
+                  const option = STOCK_METRIC_LABELS[metric];
+                  const enabled = stockSnapshotConfig.metrics[metric];
+                  return (
+                    <View key={metric} style={[styles.permRow, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                      <View style={[styles.permIcon, { backgroundColor: enabled ? roleColor + '22' : colors.border + '55' }]}>
+                        <Ionicons name={enabled ? 'eye' : 'eye-off'} size={16} color={enabled ? roleColor : colors.textMuted} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.permLabel, { color: enabled ? colors.text : colors.textMuted }]}>{option.label}</Text>
+                        <Text style={[styles.subLabel, { color: colors.textMuted, fontSize: 10 }]}>{option.description}</Text>
+                      </View>
+                      <Switch
+                        value={enabled}
+                        onValueChange={value => updateStockSnapshotMetric(metric, value)}
+                        thumbColor={enabled ? roleColor : '#aaa'}
+                        trackColor={{ false: colors.border, true: roleColor + '55' }}
+                        disabled={!isAdmin}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View style={[styles.sectionRow, { marginTop: 8 }]}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Products by branch</Text>
+                <Text style={[styles.sectionCount, { color: colors.textMuted }]}>hide products not offered</Text>
+              </View>
+              {branches.filter(branch => branch.st !== 'Suspended').length === 0 ? (
+                <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Text style={[styles.subLabel, { color: colors.textMuted, padding: 14 }]}>No branches configured</Text>
+                </View>
+              ) : (
+                branches.filter(branch => branch.st !== 'Suspended').map(branch => (
+                  <View key={branch.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 12 }]}>
+                    <View style={[styles.mgrHeader, { borderBottomColor: colors.border }]}>
+                      <View style={[styles.mgrBadge, { backgroundColor: roleColor + '22' }]}>
+                        <Ionicons name="business" size={14} color={roleColor} />
+                        <Text style={[styles.mgrBadgeText, { color: roleColor }]}>{branch.name}</Text>
+                      </View>
+                      <Text style={[styles.subLabel, { color: colors.textMuted }]}>Products offered</Text>
+                    </View>
+                    {STARTUP_PRODUCTS.map((product, idx) => {
+                      const enabled = stockSnapshotConfig.productsByBranch[branch.id]?.[product] !== false;
+                      return (
+                        <View key={product} style={[styles.permRow, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                          <View style={[styles.permIcon, { backgroundColor: enabled ? (PROD_COLORS[product] ?? roleColor) + '22' : colors.border + '55' }]}>
+                            <Ionicons name={enabled ? 'checkmark-circle' : 'close-circle'} size={16} color={enabled ? (PROD_COLORS[product] ?? roleColor) : colors.textMuted} />
+                          </View>
+                          <Text style={[styles.permLabel, { color: enabled ? colors.text : colors.textMuted }]}>{product}</Text>
+                          <Switch
+                            value={enabled}
+                            onValueChange={value => updateStockSnapshotProduct(branch.id, product, value)}
+                            thumbColor={enabled ? (PROD_COLORS[product] ?? roleColor) : '#aaa'}
+                            trackColor={{ false: colors.border, true: (PROD_COLORS[product] ?? roleColor) + '55' }}
+                            disabled={!isAdmin}
+                          />
+                        </View>
+                      );
+                    })}
+                  </View>
+                ))
+              )}
             </>
           )}
 

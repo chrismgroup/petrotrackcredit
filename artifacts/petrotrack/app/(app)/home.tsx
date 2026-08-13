@@ -273,7 +273,7 @@ export default function HomeScreen() {
     pumpDailyReports, userAccounts, messages, notifications,
     unreadCount, approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
-    sales,
+    sales, stockSnapshotConfig,
   } = useApp();
 
   const colors = useColors();
@@ -432,7 +432,12 @@ export default function HomeScreen() {
       const yesterdayApprovedDip = latestDipForBranch(yesterdayKey, branchTanks, branchLpgTanks, true);
       const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks);
 
-      const products = STOCK_SNAPSHOT_PRODUCTS.map(product => {
+      const enabledProducts = scope.branchId
+        ? stockSnapshotConfig.productsByBranch[scope.branchId]
+        : undefined;
+      const products = STOCK_SNAPSHOT_PRODUCTS
+        .filter(product => enabledProducts?.[product] !== false)
+        .map(product => {
         const deliveriesForProduct = deliveries
           .filter(delivery =>
             recordDateKey(delivery.dt) === todayKey &&
@@ -469,7 +474,7 @@ export default function HomeScreen() {
 
       return { ...scope, products };
     });
-  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, sales, scopedBranchId, tanks]);
+  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, sales, scopedBranchId, stockSnapshotConfig, tanks]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -672,7 +677,7 @@ export default function HomeScreen() {
                   Live data · yesterday&apos;s approved tank dip + today&apos;s deliveries and sales versus today&apos;s submitted tank dip
                 </Text>
               </View>
-              {branchStockSnapshots.map(branchSnapshot => (
+              {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (
                 <View key={branchSnapshot.branchId ?? 'all'} style={s.snapshotBranchGroup}>
                   <View style={[s.snapshotBranchHeader, { borderTopColor: colors.border }]}>
                     <Ionicons name="business-outline" size={14} color={colors.primary} />
@@ -694,44 +699,58 @@ export default function HomeScreen() {
                     <View style={s.snapshotRowHead}>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
-                        <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                          Book stock = start-up + delivered − sold: {snapshot.bookStock === null ? 'Awaiting yesterday approved dip' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
-                        </Text>
+                        {stockSnapshotConfig.metrics.bookStock ? (
+                          <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
+                            Book stock = start-up + delivered − sold: {snapshot.bookStock === null ? 'Awaiting yesterday approved dip' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
+                          </Text>
+                        ) : null}
                       </View>
-                      <View style={[s.snapshotStatus, { backgroundColor: statusColor + '18' }]}>
-                        <View style={[s.snapshotStatusDot, { backgroundColor: statusColor }]} />
-                        <Text style={[s.snapshotStatusText, { color: statusColor }]}>{statusLabel}</Text>
-                      </View>
+                      {stockSnapshotConfig.metrics.variance ? (
+                        <View style={[s.snapshotStatus, { backgroundColor: statusColor + '18' }]}>
+                          <View style={[s.snapshotStatusDot, { backgroundColor: statusColor }]} />
+                          <Text style={[s.snapshotStatusText, { color: statusColor }]}>{statusLabel}</Text>
+                        </View>
+                      ) : null}
                     </View>
                     <View style={s.snapshotValues}>
-                      <View style={s.snapshotValue}>
-                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Start-up qty.</Text>
-                        <Text style={[s.snapshotValueText, { color: colors.text }]}>{snapshot.startupStock === null ? '—' : `${formatQuantity(snapshot.startupStock)} ${snapshot.unit}`}</Text>
-                      </View>
-                      <View style={s.snapshotValue}>
-                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Delivered qty.</Text>
-                        <Text style={[s.snapshotValueText, { color: colors.text }]}>
-                          {formatQuantity(snapshot.deliveries)} {snapshot.unit}
-                        </Text>
-                      </View>
-                      <View style={s.snapshotValue}>
-                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
-                        <Text style={[s.snapshotValueText, { color: colors.text }]}>
-                          {formatQuantity(snapshot.sales)} {snapshot.unit}
-                        </Text>
-                      </View>
-                      <View style={s.snapshotValue}>
-                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Tank dip qty.</Text>
-                        <Text style={[s.snapshotValueText, { color: colors.text }]}>
-                          {snapshot.submittedTankDip === null ? '—' : `${formatQuantity(snapshot.submittedTankDip)} ${snapshot.unit}`}
-                        </Text>
-                      </View>
-                      <View style={[s.snapshotValue, s.snapshotVarianceValue]}>
-                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Variance</Text>
-                        <Text style={[s.snapshotValueText, { color: statusColor }]}>
-                          {snapshot.variance === null ? '—' : `${snapshot.variance > 0 ? '+' : ''}${formatQuantity(snapshot.variance)} ${snapshot.unit}`}
-                        </Text>
-                      </View>
+                      {stockSnapshotConfig.metrics.startupStock ? (
+                        <View style={s.snapshotValue}>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Start-up qty.</Text>
+                          <Text style={[s.snapshotValueText, { color: colors.text }]}>{snapshot.startupStock === null ? '—' : `${formatQuantity(snapshot.startupStock)} ${snapshot.unit}`}</Text>
+                        </View>
+                      ) : null}
+                      {stockSnapshotConfig.metrics.deliveries ? (
+                        <View style={s.snapshotValue}>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Delivered qty.</Text>
+                          <Text style={[s.snapshotValueText, { color: colors.text }]}>
+                            {formatQuantity(snapshot.deliveries)} {snapshot.unit}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {stockSnapshotConfig.metrics.sales ? (
+                        <View style={s.snapshotValue}>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
+                          <Text style={[s.snapshotValueText, { color: colors.text }]}>
+                            {formatQuantity(snapshot.sales)} {snapshot.unit}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {stockSnapshotConfig.metrics.submittedTankDip ? (
+                        <View style={s.snapshotValue}>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Tank dip qty.</Text>
+                          <Text style={[s.snapshotValueText, { color: colors.text }]}>
+                            {snapshot.submittedTankDip === null ? '—' : `${formatQuantity(snapshot.submittedTankDip)} ${snapshot.unit}`}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {stockSnapshotConfig.metrics.variance ? (
+                        <View style={[s.snapshotValue, s.snapshotVarianceValue]}>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Variance</Text>
+                          <Text style={[s.snapshotValueText, { color: statusColor }]}>
+                            {snapshot.variance === null ? '—' : `${snapshot.variance > 0 ? '+' : ''}${formatQuantity(snapshot.variance)} ${snapshot.unit}`}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 );
