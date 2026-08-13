@@ -22,6 +22,7 @@ import {
   type Budget,
   type Message,
   type PumpDailyReport,
+  type StockProduct,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -52,7 +53,7 @@ function dayGreeting(): string {
 }
 
 const STOCK_SNAPSHOT_PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
-type StockSnapshotProduct = typeof STOCK_SNAPSHOT_PRODUCTS[number];
+type StockSnapshotProduct = StockProduct;
 
 function localDateKey(date: Date): string {
   return [
@@ -73,7 +74,8 @@ function recordDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
 }
 
-function formatQuantity(value: number): string {
+function formatQuantity(value: number | null): string {
+  if (value === null) return '—';
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
@@ -250,7 +252,7 @@ interface RevenueTrendChartProps {
 export default function HomeScreen() {
   const {
     role, userName, branchId, branches, navItems,
-    tanks, lpgTanks, pumps, dips,
+    tanks, lpgTanks, pumps, dips, startupStocks,
     deliveries, maintenance, expenses, budgets,
     financialEntry, priceProposals,
     pumpDailyReports, userAccounts, messages, notifications,
@@ -326,7 +328,6 @@ export default function HomeScreen() {
 
   const stockSnapshot = useMemo(() => {
     const todayKey = localDateKey(new Date());
-    const yesterdayKey = offsetDateKey(-1);
     const visiblePetrolTanks = tanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId);
     const visibleLpgTanks = lpgTanks.filter(t => !scopedBranchId || t.branchId === scopedBranchId);
 
@@ -338,9 +339,21 @@ export default function HomeScreen() {
         return bTime - aTime || b.id - a.id;
       })[0];
 
-    const yesterdayDip = latestDipFor(yesterdayKey);
     const todayDip = latestDipFor(todayKey);
     const pumpById = new Map(pumps.map(pump => [pump.id, pump]));
+
+    function startupStockForProduct(product: StockSnapshotProduct): number | null {
+      const records = startupStocks.filter(record => record.product === product);
+      if (scopedBranchId) {
+        const branchRecords = records.filter(record => record.branchId === scopedBranchId);
+        if (branchRecords.length > 0) return branchRecords.reduce((sum, record) => sum + record.quantity, 0);
+        const globalRecords = records.filter(record => !record.branchId);
+        return globalRecords.length > 0
+          ? globalRecords.reduce((sum, record) => sum + record.quantity, 0)
+          : null;
+      }
+      return records.length > 0 ? records.reduce((sum, record) => sum + record.quantity, 0) : null;
+    }
 
     function productFromSalesEntry(entry: typeof sales[number]): StockSnapshotProduct | null {
       const linkedPump = entry.pumpId ? pumpById.get(entry.pumpId) : undefined;
@@ -389,10 +402,12 @@ export default function HomeScreen() {
           productFromSalesEntry(sale) === product,
         )
         .reduce((sum, sale) => sum + sale.L, 0);
-      const startupStock = dipForProduct(yesterdayDip, product) ?? 0;
-      const bookStock = startupStock + deliveriesForProduct - salesForProduct;
+      const startupStock = startupStockForProduct(product);
+      const bookStock = startupStock === null ? null : startupStock + deliveriesForProduct - salesForProduct;
       const submittedTankDip = dipForProduct(todayDip, product);
-      const variance = submittedTankDip === null ? null : bookStock - submittedTankDip;
+      const variance = startupStock === null || submittedTankDip === null || bookStock === null
+        ? null
+        : bookStock - submittedTankDip;
 
       return {
         product,
@@ -405,7 +420,7 @@ export default function HomeScreen() {
         unit: unitForProd(product),
       };
     });
-  }, [dips, deliveries, lpgTanks, pumps, sales, scopedBranchId, tanks]);
+  }, [dips, deliveries, lpgTanks, pumps, sales, scopedBranchId, startupStocks, tanks]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -609,11 +624,15 @@ export default function HomeScreen() {
                 </Text>
               </View>
               {stockSnapshot.map(snapshot => {
-                const statusColor = snapshot.variance === null
-                  ? colors.textMuted
+                const statusColor = snapshot.startupStock === null
+                  ? colors.amber
+                  : snapshot.variance === null
+                    ? colors.textMuted
                   : snapshot.variance < 0 ? colors.error : colors.success;
-                const statusLabel = snapshot.variance === null
-                  ? 'Awaiting dip'
+                const statusLabel = snapshot.startupStock === null
+                  ? 'Set baseline'
+                  : snapshot.variance === null
+                    ? 'Awaiting dip'
                   : snapshot.variance < 0 ? 'Shortage' : snapshot.variance > 0 ? 'Excess' : 'Balanced';
                 return (
                   <View key={snapshot.product} style={[s.snapshotRow, { borderTopColor: colors.border }]}>
@@ -621,7 +640,7 @@ export default function HomeScreen() {
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
                         <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                          Start-up {formatQuantity(snapshot.startupStock)} {snapshot.unit} · +{formatQuantity(snapshot.deliveries)} delivered · −{formatQuantity(snapshot.sales)} sold
+                          Start-up {snapshot.startupStock === null ? 'Not set' : `${formatQuantity(snapshot.startupStock)} ${snapshot.unit}`} · +{formatQuantity(snapshot.deliveries)} delivered · −{formatQuantity(snapshot.sales)} sold
                         </Text>
                       </View>
                       <View style={[s.snapshotStatus, { backgroundColor: statusColor + '18' }]}>
@@ -632,7 +651,7 @@ export default function HomeScreen() {
                     <View style={s.snapshotValues}>
                       <View style={s.snapshotValue}>
                         <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Book stock</Text>
-                        <Text style={[s.snapshotValueText, { color: colors.text }]}>{formatQuantity(snapshot.bookStock)} {snapshot.unit}</Text>
+                        <Text style={[s.snapshotValueText, { color: colors.text }]}>{snapshot.bookStock === null ? 'Not set' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}</Text>
                       </View>
                       <View style={s.snapshotValue}>
                         <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Today&apos;s dip</Text>
