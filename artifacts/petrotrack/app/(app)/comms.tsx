@@ -803,7 +803,7 @@ export default function CommsScreen() {
       {/* Tab bar */}
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
         {([
-          { id: 'chats'     as Tab, label: 'Direct',    icon: 'chatbubbles', badge: totalUnread },
+          { id: 'chats'     as Tab, label: 'Direct message', icon: 'chatbubbles', badge: totalUnread },
           { id: 'calls'     as Tab, label: 'Calls',     icon: 'call',        badge: 0 },
         ]).map(t => (
           <TouchableOpacity
