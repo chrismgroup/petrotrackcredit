@@ -446,13 +446,37 @@ export default function HomeScreen() {
             recordInScope(delivery),
           )
           .reduce((sum, delivery) => sum + delivery.rec, 0);
-        const salesForProduct = sales
+        // Shift reports are the business source for yesterday's sold quantity.
+        // Submitted reports (pending_manager/pending_accountant) must count too;
+        // only returned reports are excluded. Approved reports also create a
+        // sales entry, so manual sales are included only when they are not
+        // linked to a shift report to avoid double-counting.
+        const shiftReportSalesForProduct = pumpDailyReports
+          .filter(report =>
+            recordDateKey(report.date) === yesterdayKey &&
+            report.status !== 'returned' &&
+            recordInScope(report) &&
+            report.product === product,
+          )
+          .reduce((sum, report) => {
+            const liters = Number(report.liters);
+            return sum + (Number.isFinite(liters) ? liters : 0);
+          }, 0);
+        const shiftReportIds = new Set(
+          pumpDailyReports
+            .filter(report => recordDateKey(report.date) === yesterdayKey && recordInScope(report))
+            .map(report => report.id),
+        );
+        const manualSalesForProduct = sales
           .filter(sale =>
-            recordDateKey(sale.dt) === todayKey &&
+            recordDateKey(sale.dt) === yesterdayKey &&
             recordInScope(sale) &&
+            !sale.shiftReportId &&
+            !shiftReportIds.has(sale.id) &&
             productFromSalesEntry(sale) === product,
           )
           .reduce((sum, sale) => sum + sale.L, 0);
+        const salesForProduct = shiftReportSalesForProduct + manualSalesForProduct;
         const startupStock = dipForProduct(yesterdayApprovedDip, product, branchTanks, branchLpgTanks);
         const bookStock = startupStock === null ? null : startupStock + deliveriesForProduct - salesForProduct;
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
@@ -474,7 +498,7 @@ export default function HomeScreen() {
 
       return { ...scope, products };
     });
-  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, sales, scopedBranchId, stockSnapshotConfig, tanks]);
+  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, sales, scopedBranchId, stockSnapshotConfig, tanks]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -674,7 +698,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                 <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                  Live data · yesterday&apos;s approved tank dip + today&apos;s deliveries and sales versus today&apos;s submitted tank dip
+                  Live data · yesterday&apos;s approved tank dip and shift reports + today&apos;s deliveries versus today&apos;s submitted tank dip
                 </Text>
               </View>
               {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (
