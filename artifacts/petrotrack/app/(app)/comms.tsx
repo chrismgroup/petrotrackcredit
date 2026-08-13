@@ -21,7 +21,6 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  Broadcast,
   CallRecord,
   Message,
   ROLE_COLORS,
@@ -32,23 +31,10 @@ import {
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab    = 'chats' | 'broadcast' | 'calls';
+type Tab    = 'chats' | 'calls';
 type InboxFilter = 'active' | 'archived';
 type CallKind = 'audio' | 'video';
 type Colors = ReturnType<typeof useColors>;
-
-const CAN_BROADCAST = ['admin', 'ceo', 'md', 'csm'];
-
-const AUDIENCE_OPTS = [
-  { value: 'all',       label: 'All Staff'      },
-  { value: 'role:ceo',  label: 'CEO'            },
-  { value: 'role:md',   label: 'MD'             },
-  { value: 'role:acc',  label: 'Accountant'     },
-  { value: 'role:csm',  label: 'CSM'            },
-  { value: 'role:mktg', label: 'Marketing'      },
-  { value: 'role:mgr',  label: 'Station Mgr'    },
-  { value: 'role:att',  label: 'Pump Attendant' },
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -230,7 +216,6 @@ export default function CommsScreen() {
     role, userName, userAccounts,
     sendMessage, markRead, getConversation, unreadCount,
     archiveConversation, unarchiveConversation,
-    broadcasts, addBroadcast,
     callLog, addCallRecord,
   } = useApp();
   const colors    = useColors();
@@ -255,11 +240,10 @@ export default function CommsScreen() {
   // ── Contact search ─────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ── Broadcast compose state ────────────────────────────────────────────────
-  const [showCompose, setShowCompose] = useState(false);
-  const [bTitle,      setBTitle]      = useState('');
-  const [bBody,       setBBody]       = useState('');
-  const [bAudience,   setBAudience]   = useState('all');
+  // ── Group message state ────────────────────────────────────────────────────
+  const [showGroupCompose, setShowGroupCompose] = useState(false);
+  const [groupRecipients, setGroupRecipients] = useState<string[]>([]);
+  const [groupDraft, setGroupDraft] = useState('');
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function peerUnread(user: UserAccount): number {
@@ -376,21 +360,33 @@ export default function CommsScreen() {
     setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
   }
 
-  // ── Broadcast ──────────────────────────────────────────────────────────────
-  function sendBroadcast() {
-    if (!bTitle.trim() || !bBody.trim()) {
-      Alert.alert('Required', 'Subject and message cannot be empty.');
+  // ── Selected group message ─────────────────────────────────────────────────
+  function toggleGroupRecipient(user: UserAccount) {
+    setGroupRecipients(current => current.includes(user.empName)
+      ? current.filter(name => name !== user.empName)
+      : [...current, user.empName]);
+  }
+
+  function sendGroupMessage() {
+    if (groupRecipients.length === 0) {
+      Alert.alert('Select recipients', 'Choose at least one active user.');
       return;
     }
-    const audienceLabel = AUDIENCE_OPTS.find(o => o.value === bAudience)?.label || 'All Staff';
-    addBroadcast({
-      from: role!, fromName: userName,
-      title: bTitle.trim(), body: bBody.trim(),
-      audience: bAudience, audienceName: audienceLabel,
-    });
-    setBTitle(''); setBBody(''); setBAudience('all');
-    setShowCompose(false);
-    Alert.alert('Sent', `Broadcast delivered to ${audienceLabel}.`);
+    if (!groupDraft.trim()) {
+      Alert.alert('Required', 'Message cannot be empty.');
+      return;
+    }
+    const recipients = peerUsers.filter(user => groupRecipients.includes(user.empName));
+    recipients.forEach(user => sendMessage(user.empName, {
+      type: 'txt',
+      body: groupDraft.trim(),
+      to: user.empName,
+    }));
+    const count = recipients.length;
+    setGroupRecipients([]);
+    setGroupDraft('');
+    setShowGroupCompose(false);
+    Alert.alert('Message sent', `Sent to ${count} selected user${count === 1 ? '' : 's'}.`);
   }
 
   // ── Calls ──────────────────────────────────────────────────────────────────
@@ -657,12 +653,94 @@ export default function CommsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      <Modal
+        visible={showGroupCompose}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowGroupCompose(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowGroupCompose(false)}>
+          <Pressable
+            style={[styles.contactPicker, { backgroundColor: colors.surface }]}
+            onPress={() => undefined}
+          >
+            <View style={styles.contactPickerHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.composeTitle, { color: colors.text }]}>Message selected users</Text>
+                <Text style={[styles.contactPickerHint, { color: colors.textMuted }]}>
+                  {groupRecipients.length} recipient{groupRecipients.length === 1 ? '' : 's'} selected
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { setShowGroupCompose(false); setGroupRecipients([]); }}
+              >
+                <Ionicons name="close-circle" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
+              {peerUsers.map(user => {
+                const selected = groupRecipients.includes(user.empName);
+                return (
+                  <TouchableOpacity
+                    key={user.id}
+                    style={[
+                      styles.pickerRow,
+                      {
+                        borderBottomColor: colors.border,
+                        backgroundColor: selected ? roleColor + '10' : 'transparent',
+                      },
+                    ]}
+                    onPress={() => toggleGroupRecipient(user)}
+                  >
+                    <UserAvatar account={user} size={38} colors={colors} />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={[styles.contactName, { color: colors.text }]}>{user.empName}</Text>
+                      <Text style={[styles.contactSub, { color: colors.textMuted }]}>
+                        {ROLE_LABELS[user.role as Role] ?? user.role ?? 'Staff'}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={22}
+                      color={selected ? roleColor : colors.textSubtle}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TextInput
+              style={[styles.composeInput, styles.composeBodyInput, styles.groupMessageInput, {
+                backgroundColor: colors.background,
+                borderColor: colors.inputBorder,
+                color: colors.text,
+              }]}
+              value={groupDraft}
+              onChangeText={setGroupDraft}
+              placeholder="Write a message to the selected users…"
+              placeholderTextColor={colors.textSubtle}
+              multiline
+              textAlignVertical="top"
+              maxLength={1000}
+            />
+            <TouchableOpacity
+              style={[styles.sendGroupBtn, { backgroundColor: groupRecipients.length > 0 && groupDraft.trim() ? roleColor : colors.border }]}
+              onPress={sendGroupMessage}
+              disabled={groupRecipients.length === 0 || !groupDraft.trim()}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="send" size={14} color="#fff" />
+              <Text style={styles.sendGroupBtnText}>Send to selected users</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Tab bar */}
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
         {([
           { id: 'chats'     as Tab, label: 'Direct',    icon: 'chatbubbles', badge: totalUnread },
-          { id: 'broadcast' as Tab, label: 'Broadcast', icon: 'megaphone',   badge: 0 },
           { id: 'calls'     as Tab, label: 'Calls',     icon: 'call',        badge: 0 },
         ]).map(t => (
           <TouchableOpacity
@@ -722,6 +800,14 @@ export default function CommsScreen() {
              <Ionicons name="create-outline" size={16} color="#fff" />
              <Text style={styles.newMessageBtnText}>New message</Text>
            </TouchableOpacity>
+           <TouchableOpacity
+             style={[styles.groupMessageBtn, { backgroundColor: colors.surface, borderColor: roleColor }]}
+             onPress={() => setShowGroupCompose(true)}
+             activeOpacity={0.85}
+           >
+             <Ionicons name="people-outline" size={16} color={roleColor} />
+             <Text style={[styles.groupMessageBtnText, { color: roleColor }]}>Message selected users</Text>
+           </TouchableOpacity>
 
            <View style={[styles.inboxFilter, { backgroundColor: colors.surface, borderColor: colors.border }]}>
              {([
@@ -743,21 +829,6 @@ export default function CommsScreen() {
                </TouchableOpacity>
              ))}
            </View>
-
-          {/* Broadcast shortcut for authorised users */}
-          {CAN_BROADCAST.includes(role || '') && (
-            <TouchableOpacity
-              style={[styles.broadcastShortcut, { backgroundColor: roleColor + '18', borderColor: roleColor + '44' }]}
-              onPress={() => { setActiveTab('broadcast'); setShowCompose(true); }}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="megaphone-outline" size={16} color={roleColor} />
-              <Text style={[styles.broadcastShortcutText, { color: roleColor }]}>
-                Send a Broadcast to All Staff
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={roleColor} />
-            </TouchableOpacity>
-          )}
 
            {/* Only contacts that have sent an incoming message appear in the inbox. */}
            {messagePeers.length === 0 && (
@@ -843,116 +914,6 @@ export default function CommsScreen() {
                   <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
                 </View>
               </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-
-      {/* ── Broadcast tab ── */}
-      {activeTab === 'broadcast' && (
-        <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false}>
-          {CAN_BROADCAST.includes(role || '') && !showCompose && (
-            <TouchableOpacity
-              style={[styles.composeBtn, { backgroundColor: roleColor }]}
-              onPress={() => setShowCompose(true)}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="megaphone" size={15} color="#fff" />
-              <Text style={styles.composeBtnText}>New Broadcast</Text>
-            </TouchableOpacity>
-          )}
-
-          {showCompose && (
-            <View style={[styles.composeCard, { backgroundColor: colors.surface, borderColor: roleColor + '66' }]}>
-              <View style={styles.composeCardHeader}>
-                <Ionicons name="megaphone" size={15} color={roleColor} />
-                <Text style={[styles.composeTitle, { color: colors.text }]}>New Company Broadcast</Text>
-                <TouchableOpacity onPress={() => { setShowCompose(false); setBTitle(''); setBBody(''); }}>
-                  <Ionicons name="close-circle" size={20} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Send To</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                {AUDIENCE_OPTS.map(opt => (
-                  <TouchableOpacity
-                    key={opt.value}
-                    onPress={() => setBAudience(opt.value)}
-                    style={[
-                      styles.audienceChip,
-                      {
-                        backgroundColor: bAudience === opt.value ? roleColor : colors.background,
-                        borderColor:     bAudience === opt.value ? roleColor : colors.border,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.audienceChipText, { color: bAudience === opt.value ? '#fff' : colors.textMuted }]}>
-                      {opt.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Subject</Text>
-              <TextInput
-                style={[styles.composeInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                value={bTitle}
-                onChangeText={setBTitle}
-                placeholder="e.g. Fuel Price Update, Safety Notice"
-                placeholderTextColor={colors.textSubtle}
-              />
-
-              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Message</Text>
-              <TextInput
-                style={[styles.composeInput, styles.composeBodyInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                value={bBody}
-                onChangeText={setBBody}
-                placeholder="Write your broadcast message…"
-                placeholderTextColor={colors.textSubtle}
-                multiline
-                textAlignVertical="top"
-              />
-
-              <TouchableOpacity
-                style={[styles.sendBroadcastBtn, { backgroundColor: roleColor }]}
-                onPress={sendBroadcast}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="send" size={14} color="#fff" />
-                <Text style={styles.sendBroadcastText}>Send Broadcast</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {broadcasts.length === 0 && !showCompose && (
-            <View style={styles.emptyState}>
-              <Ionicons name="megaphone-outline" size={48} color={colors.border} />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Broadcasts Yet</Text>
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                Company-wide announcements will appear here.
-              </Text>
-            </View>
-          )}
-
-          {broadcasts.map(b => {
-            const senderColor = ROLE_COLORS[b.from] || colors.primary;
-            return (
-              <View key={b.id} style={[styles.broadcastCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.broadcastCardHeader}>
-                  <RoleAvatar role={b.from} size={36} colors={colors} />
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={[styles.broadcastFrom, { color: colors.text }]}>{b.fromName}</Text>
-                    <Text style={[styles.broadcastMeta, { color: colors.textMuted }]}>
-                      To: {b.audienceName} · {b.ts.split('T')[0]}
-                    </Text>
-                  </View>
-                  <View style={[styles.audienceTag, { backgroundColor: senderColor + '18', borderColor: senderColor + '44' }]}>
-                    <Text style={[styles.audienceChipText, { color: senderColor }]}>{b.audienceName}</Text>
-                  </View>
-                </View>
-                <Text style={[styles.broadcastTitle, { color: colors.text }]}>{b.title}</Text>
-                <Text style={[styles.broadcastBody,  { color: colors.textMuted }]}>{b.body}</Text>
-              </View>
             );
           })}
         </ScrollView>
@@ -1085,9 +1046,9 @@ const styles = StyleSheet.create({
   inboxFilterItem:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8 },
   inboxFilterText:   { fontSize: 12, fontWeight: '700' },
 
-  // Broadcast shortcut
-  broadcastShortcut:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, borderWidth: 1, marginBottom: 12 },
-  broadcastShortcutText: { flex: 1, fontSize: 13, fontWeight: '600' },
+  // Group message
+  groupMessageBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
+  groupMessageBtnText: { fontSize: 13, fontWeight: '700' },
 
   // Contact row
   contactRow:     { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
@@ -1148,26 +1109,18 @@ const styles = StyleSheet.create({
   msgInput:  { flex: 1, borderWidth: 1, borderRadius: 22, paddingHorizontal: 14, paddingTop: 9, paddingBottom: 9, fontSize: 14, maxHeight: 110 },
   sendBtn:   { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
-  // Broadcast
-  composeBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, marginBottom: 14 },
-  composeBtnText:    { color: '#fff', fontSize: 14, fontWeight: '700' },
   composeCard:       { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 14 },
   composeCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   composeTitle:      { flex: 1, fontSize: 14, fontWeight: '700' },
   fieldLabel:        { fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
   composeInput:      { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 10 },
   composeBodyInput:  { height: 110, textAlignVertical: 'top' },
-  sendBroadcastBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 10, marginTop: 4 },
-  sendBroadcastText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  groupMessageInput: { height: 92, marginTop: 12 },
+  sendGroupBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 10, marginTop: 2 },
+  sendGroupBtnText:  { color: '#fff', fontSize: 14, fontWeight: '700' },
   audienceChip:      { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
   audienceChipText:  { fontSize: 11, fontWeight: '600' },
   audienceTag:       { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
-  broadcastCard:       { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
-  broadcastCardHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
-  broadcastFrom:       { fontSize: 13, fontWeight: '700' },
-  broadcastMeta:       { fontSize: 11, marginTop: 2 },
-  broadcastTitle:      { fontSize: 15, fontWeight: '700', marginBottom: 6 },
-  broadcastBody:       { fontSize: 13, lineHeight: 19 },
 
   // Empty state
   emptyState: { alignItems: 'center', marginTop: 56, gap: 10 },
