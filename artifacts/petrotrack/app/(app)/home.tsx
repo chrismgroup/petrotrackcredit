@@ -403,24 +403,30 @@ export default function HomeScreen() {
       return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
     }
 
+    const hasAssignedStockAssets = (candidateBranchId: string | null | undefined) =>
+      Boolean(candidateBranchId) &&
+      (tanks.some(tank => tank.branchId === candidateBranchId) ||
+        lpgTanks.some(tank => tank.branchId === candidateBranchId)) &&
+      pumps.some(pump => pump.branchId === candidateBranchId);
+
+    const branchScopes = branches
+      .filter(branch => hasAssignedStockAssets(branch.id))
+      .map(branch => ({ branchId: branch.id, branchName: branch.name }));
+
     const scopes: { branchId: string | null; branchName: string }[] = isGlobalOverview
-      ? branches.length > 0
-        ? branches.map(branch => ({ branchId: branch.id, branchName: branch.name }))
-        : [{ branchId: null, branchName: 'All branches' }]
-      : [{
-          branchId: scopedBranchId,
-          branchName: branches.find(branch => branch.id === scopedBranchId)?.name ?? 'My branch',
-        }];
+      ? branchScopes
+      : scopedBranchId && hasAssignedStockAssets(scopedBranchId)
+        ? [{
+            branchId: scopedBranchId,
+            branchName: branches.find(branch => branch.id === scopedBranchId)?.name ?? 'My branch',
+          }]
+        : [];
 
     return scopes.map(scope => {
-      const isUnpartitionedOverview = isGlobalOverview && branches.length === 0 && !scope.branchId;
-      // A branch snapshot must never include another branch's or an
-      // unassigned record. The only exception is an explicitly unpartitioned
-      // installation with no configured branches.
-      const inScope = (item: { branchId?: string }) =>
-        isUnpartitionedOverview ? true : item.branchId === scope.branchId;
-      const recordInScope = (item: { branchId?: string }) =>
-        isUnpartitionedOverview ? true : item.branchId === scope.branchId;
+      // Only explicitly assigned assets and records belong in a branch
+      // snapshot. Unassigned data is intentionally excluded.
+      const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
+      const recordInScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
       const yesterdayApprovedDip = latestDipForBranch(yesterdayKey, branchTanks, branchLpgTanks, true);
