@@ -89,6 +89,12 @@ function recordDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
 }
 
+function stockProductFromDelivery(product: string): StockSnapshotProduct | null {
+  if (product === 'LPG' || product === 'LPG_Single' || product === 'LPG_Distributor') return 'LPG';
+  if (product === 'PMS' || product === 'AGO' || product === 'DPK' || product === 'Lube Oil') return product;
+  return null;
+}
+
 function formatQuantity(value: number | null): string {
   if (value === null) return '—';
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -437,7 +443,7 @@ export default function HomeScreen() {
         const deliveriesForProduct = deliveries
           .filter(delivery =>
             recordDateKey(delivery.dt) === todayKey &&
-            delivery.prod === product &&
+            stockProductFromDelivery(delivery.prod) === product &&
             (delivery.approvalStatus === 'approved' || delivery.approvalStatus === 'md_approved') &&
             recordInScope(delivery),
           )

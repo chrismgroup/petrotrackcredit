@@ -65,6 +65,11 @@ function offsetDateKey(days: number) {
 function recordDateKey(value?: string) {
   return value ? value.slice(0, 10) : '';
 }
+function stockProductFromDelivery(product: string): string | null {
+  if (product === 'LPG' || product === 'LPG_Single' || product === 'LPG_Distributor') return 'LPG';
+  if (product === 'PMS' || product === 'AGO' || product === 'DPK' || product === 'Lube Oil') return product;
+  return null;
+}
 function unitForProd(p: string) { return p === 'LPG' ? 'kg' : 'L'; }
 function blankMgrForm(): MgrFormState {
   return { prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '', dt: '' };
@@ -409,7 +414,7 @@ export default function ReceivingScreen() {
         const delivered = scopeDeliveries
           .filter(d =>
             recordDateKey(d.dt) === todayKey &&
-            d.prod === prod &&
+            stockProductFromDelivery(d.prod) === prod &&
             (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
             inBranch(d),
           )
