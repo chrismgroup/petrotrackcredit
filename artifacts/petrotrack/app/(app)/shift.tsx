@@ -18,16 +18,13 @@ const fmtL = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits:
 const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   pending_manager:    { label: "Awaiting Manager's Approval",    color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline' },
   pending_accountant: { label: "Awaiting Accountant's Approval", color: '#185FA5', bg: '#E6F1FB', icon: 'hourglass-outline' },
-  returned:           { label: 'Returned',             color: '#791F1F', bg: '#FCEBEB', icon: 'return-down-back-outline' },
+  returned:           { label: 'Rejected',             color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle-outline' },
   approved:           { label: 'Approved',             color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle-outline' },
 };
 
-const REPORT_STATUS_ORDER: Record<PumpDailyReport['status'], number> = {
-  returned: 0,
-  approved: 1,
-  pending_manager: 2,
-  pending_accountant: 3,
-};
+const REPORT_STATUS_GROUPS = ['returned', 'approved', 'pending_manager', 'pending_accountant'] as const;
+const REPORT_STATUS_ORDER: Record<PumpDailyReport['status'], number> =
+  Object.fromEntries(REPORT_STATUS_GROUPS.map((status, index) => [status, index])) as Record<PumpDailyReport['status'], number>;
 
 function sortShiftReports(a: PumpDailyReport, b: PumpDailyReport): number {
   return REPORT_STATUS_ORDER[a.status] - REPORT_STATUS_ORDER[b.status]
@@ -78,6 +75,40 @@ function ReportCard({ report, onPress, roleColor, colors }: ReportCardProps) {
         </Text>
       </View>
     </TouchableOpacity>
+  );
+}
+
+interface GroupedReportsProps {
+  reports: PumpDailyReport[];
+  colors: any;
+  onPress: (report: PumpDailyReport) => void;
+}
+
+function GroupedReports({ reports, colors, onPress }: GroupedReportsProps) {
+  return (
+    <>
+      {REPORT_STATUS_GROUPS.map(status => {
+        const group = reports.filter(report => report.status === status);
+        if (group.length === 0) return null;
+        const meta = STATUS_META[status];
+        return (
+          <React.Fragment key={status}>
+            <Text style={[c.sectionLabel, { color: meta.color }]}>
+              {meta.label} ({group.length})
+            </Text>
+            {group.map(report => (
+              <ReportCard
+                key={report.id}
+                report={report}
+                roleColor={meta.color}
+                colors={colors}
+                onPress={() => onPress(report)}
+              />
+            ))}
+          </React.Fragment>
+        );
+      })}
+    </>
   );
 }
 
@@ -818,9 +849,11 @@ export default function ShiftReportScreen() {
               <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No shift reports yet</Text>
             </View>
           )}
-          {myReports.filter(r => !historyDate || r.date === historyDate).map(r => (
-            <ReportCard key={r.id} report={r} roleColor={roleColor} colors={colors} onPress={() => openReport(r)} />
-          ))}
+          <GroupedReports
+            reports={myReports.filter(r => !historyDate || r.date === historyDate)}
+            colors={colors}
+            onPress={openReport}
+          />
           <View style={{ height: 24 }} />
         </ScrollView>
       )}
@@ -836,7 +869,7 @@ export default function ShiftReportScreen() {
           )}
           {returnedMgr.length > 0 && (
             <>
-              <Text style={[c.sectionLabel, { color: '#791F1F' }]}>Returned by Accountant ({returnedMgr.length})</Text>
+               <Text style={[c.sectionLabel, { color: '#791F1F' }]}>Rejected / Returned by Accountant ({returnedMgr.length})</Text>
               {returnedMgr.map(r => (
                 <ReportCard key={r.id} report={r} roleColor="#791F1F" colors={colors} onPress={() => openReport(r)} />
               ))}
@@ -905,21 +938,7 @@ export default function ShiftReportScreen() {
           )}
           {allReports.length > 0 && (
             <>
-              {(['returned', 'approved', 'pending_manager', 'pending_accountant'] as const).map(st => {
-                const group = allReports.filter(r => r.status === st);
-                if (group.length === 0) return null;
-                const meta = STATUS_META[st] ?? STATUS_META.pending_manager;
-                return (
-                  <React.Fragment key={st}>
-                    <Text style={[c.sectionLabel, { color: meta.color }]}>
-                      {meta.label} ({group.length})
-                    </Text>
-                    {group.map(r => (
-                      <ReportCard key={r.id} report={r} roleColor={meta.color} colors={colors} onPress={() => openReport(r)} />
-                    ))}
-                  </React.Fragment>
-                );
-              })}
+              <GroupedReports reports={allReports} colors={colors} onPress={openReport} />
             </>
           )}
           <View style={{ height: 24 }} />
