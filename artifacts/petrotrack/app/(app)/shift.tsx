@@ -22,7 +22,7 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; ic
   approved:           { label: 'Approved',             color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle-outline' },
 };
 
-const REPORT_STATUS_GROUPS = ['returned', 'approved', 'pending_manager', 'pending_accountant'] as const;
+const REPORT_STATUS_GROUPS = ['pending_manager', 'pending_accountant', 'approved', 'returned'] as const;
 const REPORT_STATUS_ORDER: Record<PumpDailyReport['status'], number> =
   Object.fromEntries(REPORT_STATUS_GROUPS.map((status, index) => [status, index])) as Record<PumpDailyReport['status'], number>;
 
@@ -31,6 +31,20 @@ function sortShiftReports(a: PumpDailyReport, b: PumpDailyReport): number {
     || b.date.localeCompare(a.date)
     || b.submittedAt.localeCompare(a.submittedAt)
     || b.id - a.id;
+}
+
+function reportMatchesQuery(report: PumpDailyReport, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+  return [
+    report.pumpName,
+    report.product,
+    report.branchId,
+    report.submittedBy,
+    report.submittedByName,
+    report.date,
+    STATUS_META[report.status]?.label,
+  ].filter(Boolean).join(' ').toLowerCase().includes(normalizedQuery);
 }
 
 /* ── sub-components (module-scope — iOS keyboard safe) ──────── */
@@ -82,33 +96,116 @@ interface GroupedReportsProps {
   reports: PumpDailyReport[];
   colors: any;
   onPress: (report: PumpDailyReport) => void;
+  searchQuery?: string;
+  statuses?: readonly PumpDailyReport['status'][];
 }
 
-function GroupedReports({ reports, colors, onPress }: GroupedReportsProps) {
+function GroupedReports({ reports, colors, onPress, searchQuery = '', statuses = REPORT_STATUS_GROUPS }: GroupedReportsProps) {
+  const [expanded, setExpanded] = useState<Record<PumpDailyReport['status'], boolean>>({
+    pending_manager: true,
+    pending_accountant: true,
+    approved: false,
+    returned: false,
+  });
+  const normalizedQuery = searchQuery.trim();
+  const matchingReports = reports.filter(report => reportMatchesQuery(report, normalizedQuery));
+
   return (
     <>
-      {REPORT_STATUS_GROUPS.map(status => {
-        const group = reports.filter(report => report.status === status);
-        if (group.length === 0) return null;
+      {statuses.map(status => {
+        const group = matchingReports.filter(report => report.status === status).sort(sortShiftReports);
         const meta = STATUS_META[status];
         return (
-          <React.Fragment key={status}>
-            <Text style={[c.sectionLabel, { color: meta.color }]}>
-              {meta.label} ({group.length})
-            </Text>
-            {group.map(report => (
-              <ReportCard
-                key={report.id}
-                report={report}
-                roleColor={meta.color}
-                colors={colors}
-                onPress={() => onPress(report)}
+          <View key={status} style={[c.folder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              onPress={() => setExpanded(current => ({ ...current, [status]: !current[status] }))}
+              style={c.folderHeader}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={`${meta.label} folder, ${group.length} reports`}
+              accessibilityState={{ expanded: normalizedQuery ? true : expanded[status] }}
+            >
+              <View style={[c.folderIcon, { backgroundColor: meta.bg }]}>
+                <Ionicons name={(expanded[status] || normalizedQuery ? 'folder-open-outline' : 'folder-outline') as any} size={18} color={meta.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[c.folderTitle, { color: colors.text }]}>{meta.label}</Text>
+                <Text style={[c.folderHint, { color: colors.textMuted }]}>
+                  {group.length === 0 ? (normalizedQuery ? 'No matching reports' : 'No reports in this folder') : `${group.length} report${group.length === 1 ? '' : 's'} · newest first`}
+                </Text>
+              </View>
+              <View style={[c.folderCount, { backgroundColor: meta.bg }]}>
+                <Text style={[c.folderCountText, { color: meta.color }]}>{group.length}</Text>
+              </View>
+              <Ionicons
+                name={(normalizedQuery || expanded[status] ? 'chevron-up' : 'chevron-down') as any}
+                size={18}
+                color={colors.textMuted}
               />
-            ))}
-          </React.Fragment>
+            </TouchableOpacity>
+            {(normalizedQuery || expanded[status]) && group.length > 0 && (
+              <View style={[c.folderContent, { borderTopColor: colors.border }]}>
+                {group.map(report => (
+                  <ReportCard
+                    key={report.id}
+                    report={report}
+                    roleColor={meta.color}
+                    colors={colors}
+                    onPress={() => onPress(report)}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
         );
       })}
+      {normalizedQuery.length > 0 && matchingReports.length === 0 && (
+        <View style={[c.searchEmpty, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="search-outline" size={28} color={colors.textSubtle} />
+          <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No shift reports match “{searchQuery.trim()}”.</Text>
+        </View>
+      )}
     </>
+  );
+}
+
+interface ReportSearchProps {
+  value: string;
+  onChange: (value: string) => void;
+  colors: any;
+  roleColor: string;
+  resultCount: number;
+}
+
+function ReportSearch({ value, onChange, colors, roleColor, resultCount }: ReportSearchProps) {
+  return (
+    <View style={[c.searchWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={[c.searchInputWrap, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <Ionicons name="search-outline" size={17} color={colors.textMuted} />
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder="Search by pump, product, branch, staff, or date"
+          placeholderTextColor={colors.textSubtle}
+          style={[c.searchInput, { color: colors.text }]}
+          accessibilityLabel="Search shift reports"
+          returnKeyType="search"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {value.length > 0 && (
+          <TouchableOpacity onPress={() => onChange('')} accessibilityRole="button" accessibilityLabel="Clear report search">
+            <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
+      <View style={c.searchMetaRow}>
+        <Ionicons name="folder-open-outline" size={13} color={roleColor} />
+        <Text style={[c.searchMeta, { color: colors.textMuted }]}>
+          {resultCount} report{resultCount === 1 ? '' : 's'} · folders ordered by approval stage
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -184,6 +281,7 @@ export default function ShiftReportScreen() {
   const [noteAtt, setNoteAtt]         = useState('');
   const [appliesOn, setAppliesOn]     = useState('');
   const [historyDate, setHistoryDate] = useState('');
+  const [reportSearch, setReportSearch] = useState('');
 
   const closeVal  = parseFloat(closeMeter.replace(/,/g, '')) || 0;
   const liters    = closeVal > openingMeter ? parseFloat((closeVal - openingMeter).toFixed(4)) : 0;
@@ -429,6 +527,14 @@ export default function ShiftReportScreen() {
   const allReports = useMemo(() =>
     [...pumpDailyReports].sort(sortShiftReports),
     [pumpDailyReports]
+  );
+  const reviewReports = useMemo(() =>
+    [...pendingMgr, ...pendingAccMgr, ...returnedMgr].sort(sortShiftReports),
+    [pendingMgr, pendingAccMgr, returnedMgr]
+  );
+  const historyReports = useMemo(() =>
+    myReports.filter(r => !historyDate || r.date === historyDate),
+    [myReports, historyDate]
   );
 
   /* ── attendant dashboard stats ── */
@@ -836,6 +942,13 @@ export default function ShiftReportScreen() {
       {/* ══ HISTORY ══ */}
       {tab === 'history' && (
         <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
+          <ReportSearch
+            value={reportSearch}
+            onChange={setReportSearch}
+            colors={colors}
+            roleColor={roleColor}
+            resultCount={historyReports.filter(r => reportMatchesQuery(r, reportSearch)).length}
+          />
           <AppliedDateField
             value={historyDate}
             onChange={setHistoryDate}
@@ -843,16 +956,17 @@ export default function ShiftReportScreen() {
             accent={roleColor}
             helper="Filter by the business date the shift report applies to."
           />
-          {myReports.filter(r => !historyDate || r.date === historyDate).length === 0 && (
+          {historyReports.length === 0 && (
             <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="document-outline" size={36} color={colors.textSubtle} />
               <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No shift reports yet</Text>
             </View>
           )}
           <GroupedReports
-            reports={myReports.filter(r => !historyDate || r.date === historyDate)}
+            reports={historyReports}
             colors={colors}
             onPress={openReport}
+            searchQuery={reportSearch}
           />
           <View style={{ height: 24 }} />
         </ScrollView>
@@ -861,35 +975,27 @@ export default function ShiftReportScreen() {
       {/* ══ MANAGER: REVIEW ══ */}
       {tab === 'review' && isMgr && (
         <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
-          {pendingMgr.length === 0 && returnedMgr.length === 0 && pendingAccMgr.length === 0 && (
+          <ReportSearch
+            value={reportSearch}
+            onChange={setReportSearch}
+            colors={colors}
+            roleColor={roleColor}
+            resultCount={reviewReports.filter(r => reportMatchesQuery(r, reportSearch)).length}
+          />
+          {reviewReports.length === 0 && (
             <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="checkmark-done-circle-outline" size={36} color={colors.textSubtle} />
               <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No shift reports awaiting your review</Text>
             </View>
           )}
-          {returnedMgr.length > 0 && (
-            <>
-               <Text style={[c.sectionLabel, { color: '#791F1F' }]}>Rejected / Returned by Accountant ({returnedMgr.length})</Text>
-              {returnedMgr.map(r => (
-                <ReportCard key={r.id} report={r} roleColor="#791F1F" colors={colors} onPress={() => openReport(r)} />
-              ))}
-            </>
-          )}
-          {pendingMgr.length > 0 && (
-            <>
-              <Text style={[c.sectionLabel, { color: '#BA7517' }]}>Awaiting Your Review ({pendingMgr.length})</Text>
-              {pendingMgr.map(r => (
-                <ReportCard key={r.id} report={r} roleColor={roleColor} colors={colors} onPress={() => openReport(r)} />
-              ))}
-            </>
-          )}
-          {pendingAccMgr.length > 0 && (
-            <>
-              <Text style={[c.sectionLabel, { color: '#185FA5' }]}>Forwarded — With Accountant ({pendingAccMgr.length})</Text>
-              {pendingAccMgr.map(r => (
-                <ReportCard key={r.id} report={r} roleColor="#185FA5" colors={colors} onPress={() => openReport(r)} />
-              ))}
-            </>
+          {reviewReports.length > 0 && (
+            <GroupedReports
+              reports={reviewReports}
+              colors={colors}
+              onPress={openReport}
+              searchQuery={reportSearch}
+              statuses={['pending_manager', 'pending_accountant', 'returned']}
+            />
           )}
           <View style={{ height: 24 }} />
         </ScrollView>
@@ -898,13 +1004,20 @@ export default function ShiftReportScreen() {
       {/* ══ ACCOUNTANT: PENDING APPROVAL ══ */}
       {tab === 'pending_acc' && isAcc && (
         <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
+          <ReportSearch
+            value={reportSearch}
+            onChange={setReportSearch}
+            colors={colors}
+            roleColor={roleColor}
+            resultCount={pendingAcc.filter(r => reportMatchesQuery(r, reportSearch)).length}
+          />
           {pendingAcc.length === 0 && (
             <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="checkmark-circle-outline" size={36} color={colors.textSubtle} />
               <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No shift reports pending approval</Text>
             </View>
           )}
-          {pendingAcc.map(r => (
+          {pendingAcc.filter(r => reportMatchesQuery(r, reportSearch)).map(r => (
             <ReportCard key={r.id} report={r} roleColor={roleColor} colors={colors} onPress={() => openReport(r)} />
           ))}
           <View style={{ height: 24 }} />
@@ -914,15 +1027,28 @@ export default function ShiftReportScreen() {
       {/* ══ APPROVED HISTORY ══ */}
       {tab === 'approved' && (
         <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
+          <ReportSearch
+            value={reportSearch}
+            onChange={setReportSearch}
+            colors={colors}
+            roleColor={roleColor}
+            resultCount={approvedAll.filter(r => reportMatchesQuery(r, reportSearch)).length}
+          />
           {approvedAll.length === 0 && (
             <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="document-text-outline" size={36} color={colors.textSubtle} />
               <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No approved shift reports yet</Text>
             </View>
           )}
-          {approvedAll.map(r => (
-            <ReportCard key={r.id} report={r} roleColor="#27500A" colors={colors} onPress={() => openReport(r)} />
-          ))}
+          {approvedAll.length > 0 && (
+            <GroupedReports
+              reports={approvedAll}
+              colors={colors}
+              onPress={openReport}
+              searchQuery={reportSearch}
+              statuses={['approved']}
+            />
+          )}
           <View style={{ height: 24 }} />
         </ScrollView>
       )}
@@ -930,6 +1056,13 @@ export default function ShiftReportScreen() {
       {/* ══ ADMIN / MD / CEO: ALL RECORDS ══ */}
       {tab === 'all_records' && (
         <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false}>
+          <ReportSearch
+            value={reportSearch}
+            onChange={setReportSearch}
+            colors={colors}
+            roleColor={roleColor}
+            resultCount={allReports.filter(r => reportMatchesQuery(r, reportSearch)).length}
+          />
           {allReports.length === 0 && (
             <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="document-text-outline" size={36} color={colors.textSubtle} />
@@ -938,7 +1071,12 @@ export default function ShiftReportScreen() {
           )}
           {allReports.length > 0 && (
             <>
-              <GroupedReports reports={allReports} colors={colors} onPress={openReport} />
+              <GroupedReports
+                reports={allReports}
+                colors={colors}
+                onPress={openReport}
+                searchQuery={reportSearch}
+              />
             </>
           )}
           <View style={{ height: 24 }} />
@@ -1289,6 +1427,20 @@ const c = StyleSheet.create({
   tabBadgeTxt:   { fontSize: 10, fontWeight: '800', color: '#fff' },
   scroll:        { padding: 14 },
   sectionLabel:  { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8, marginTop: 4 },
+  searchWrap:    { borderRadius: 14, borderWidth: 1, padding: 10, marginBottom: 12 },
+  searchInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
+  searchInput:   { flex: 1, fontSize: 13, paddingVertical: 0 },
+  searchMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8, paddingHorizontal: 2 },
+  searchMeta:    { fontSize: 11 },
+  searchEmpty:   { alignItems: 'center', padding: 24, borderRadius: 14, borderWidth: 1, gap: 8, marginTop: 2 },
+  folder:        { borderRadius: 14, borderWidth: 1, marginBottom: 10, overflow: 'hidden' },
+  folderHeader:  { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
+  folderIcon:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  folderTitle:   { fontSize: 13, fontWeight: '800' },
+  folderHint:    { fontSize: 11, marginTop: 2 },
+  folderCount:   { minWidth: 26, height: 26, paddingHorizontal: 7, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  folderCountText: { fontSize: 12, fontWeight: '800' },
+  folderContent: { borderTopWidth: StyleSheet.hairlineWidth, padding: 10 },
   pumpChip:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, borderWidth: 1 },
   pumpChipTxt:   { fontSize: 13, fontWeight: '600' },
   pumpProd:      { fontSize: 10, fontWeight: '500' },
