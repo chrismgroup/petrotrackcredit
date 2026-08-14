@@ -7,7 +7,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { Delivery, LPGTank, Tank, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
+import { Delivery, LPGTank, Tank, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForProduct, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
@@ -630,8 +630,8 @@ export default function ReceivingScreen() {
     setMdNote('');
     setMdRejectMode(reject);
     if (!reject) {
-      // Pre-fill with current global price for this product
-      const curPrice = (prices as any)[d.prod];
+      // Pre-fill with the current price for this delivery's branch.
+      const curPrice = getPriceForProduct(prices, d.prod, d.branchId ?? branchId);
       setMdSellingPrice(curPrice && curPrice > 0 ? String(curPrice) : '');
     }
   }
@@ -642,7 +642,7 @@ export default function ReceivingScreen() {
     if (!sell || sell <= 0) { Alert.alert('Required', `Enter a valid selling price per ${unitForProd(mdTarget.prod)} before approving.`); return; }
     Alert.alert(
       'Approve & Lock Record?',
-      `${mdTarget.prod} ${mdTarget.rec.toLocaleString()}${unitForProd(mdTarget.prod)} from ${mdTarget.sup}\nWB: ${mdTarget.wb}\nCost: ₦${mdTarget.costPrice?.toLocaleString()}/${unitForProd(mdTarget.prod)} · Sell: ₦${sell.toLocaleString()}/${unitForProd(mdTarget.prod)}\n\nThis record will be permanently locked and the selling price will be updated system-wide.`,
+      `${mdTarget.prod} ${mdTarget.rec.toLocaleString()}${unitForProd(mdTarget.prod)} from ${mdTarget.sup}\nWB: ${mdTarget.wb}\nCost: ₦${mdTarget.costPrice?.toLocaleString()}/${unitForProd(mdTarget.prod)} · Sell: ₦${sell.toLocaleString()}/${unitForProd(mdTarget.prod)}\n\nThis record will be permanently locked and the selling price will be updated for this branch only.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -932,7 +932,7 @@ export default function ReceivingScreen() {
           const apSt = d.approvalStatus || 'draft';
           const apCfg = APPR_MAP[apSt] || APPR_MAP.draft;
           const hasCost = !!(d.costPrice && d.costPrice > 0);
-          const sellPrice = d.sellingPrice ?? ((prices as any)[d.prod] ?? 0);
+            const sellPrice = d.sellingPrice ?? getPriceForProduct(prices, d.prod, d.branchId ?? branchId);
           const margin = hasCost && sellPrice ? Math.round(((sellPrice - d.costPrice!) / sellPrice) * 100) : null;
           const totalCostVal = hasCost ? d.rec * d.costPrice! : null;
           const locked = isLocked(d);
@@ -1289,11 +1289,11 @@ export default function ReceivingScreen() {
                     {fmt(parseFloat(accCostPrice) * accTarget.rec)}
                   </Text>
                 </Text>
-                {(prices as any)[accTarget.prod] > 0 ? (
+                {getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId) > 0 ? (
                   <Text style={[styles.costHint, { color: colors.textMuted }]}>
-                    {'Sell: ₦'}{((prices as any)[accTarget.prod]).toLocaleString()}{`/${accTarget ? unitForProd(accTarget.prod) : 'L'}  ·  Margin: `}
-                    <Text style={{ fontWeight: '700', color: ((prices as any)[accTarget.prod] - parseFloat(accCostPrice)) >= 0 ? '#27500A' : '#791F1F' }}>
-                      {Math.round((((prices as any)[accTarget.prod] - parseFloat(accCostPrice)) / (prices as any)[accTarget.prod]) * 100)}{'%'}
+                    {'Sell: ₦'}{getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId).toLocaleString()}{`/${accTarget ? unitForProd(accTarget.prod) : 'L'}  ·  Margin: `}
+                    <Text style={{ fontWeight: '700', color: (getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId) - parseFloat(accCostPrice)) >= 0 ? '#27500A' : '#791F1F' }}>
+                      {Math.round(((getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId) - parseFloat(accCostPrice)) / getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId)) * 100)}{'%'}
                     </Text>
                   </Text>
                 ) : null}
@@ -1402,7 +1402,7 @@ export default function ReceivingScreen() {
           <View style={[{ backgroundColor: '#FAEEDA', borderRadius: 10, padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }]}>
             <Ionicons name="information-circle-outline" size={16} color="#BA7517" />
             <Text style={{ fontSize: 12, color: '#BA7517', flex: 1, fontWeight: '500' }}>
-              {'Approving will permanently lock this record and update the system selling price for '}{mdTarget?.prod}{' across all branches.'}
+              {'Approving will permanently lock this record and update the selling price for '}{mdTarget?.prod}{' at this branch only.'}
             </Text>
           </View>
 

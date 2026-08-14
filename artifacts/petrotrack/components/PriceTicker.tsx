@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { useApp } from '@/context/AppContext';
+import { getPriceForProduct, useApp } from '@/context/AppContext';
 
 const PRODS = [
   { key: 'PMS' as const, color: '#1a6e3c' },
@@ -12,7 +12,7 @@ const PRODS = [
 ];
 
 export function PriceTicker() {
-  const { prices } = useApp();
+  const { prices, branchId } = useApp();
   const router = useRouter();
   const [active, setActive] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -35,7 +35,7 @@ export function PriceTicker() {
       </View>
       <View style={styles.pricesRow}>
         {PRODS.map((p, i) => {
-          const val = (prices as any)[p.key];
+          const val = getPriceForProduct(prices, p.key, branchId);
           return (
             <TouchableOpacity key={p.key} onPress={() => router.push('/(app)/prices' as never)} activeOpacity={0.8} style={styles.priceItem}>
               <Text style={[styles.prodKey, { color: '#8ab8a0' }]}>{p.key}</Text>
