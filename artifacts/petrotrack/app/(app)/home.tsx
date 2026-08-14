@@ -69,6 +69,11 @@ interface BranchStockSnapshot {
   branchName: string;
   products: ProductStockSnapshot[];
 }
+interface BranchFuelStock {
+  branchId: string | null;
+  branchName: string;
+  products: { prod: StockSnapshotProduct; stock: number; unit: string }[];
+}
 
 function localDateKey(date: Date): string {
   return [
@@ -342,6 +347,43 @@ export default function HomeScreen() {
   }, [tanks, lpgTanks, dips, scopedBranchId]);
   const stockForProduct = (product: StockProduct) =>
     stockByProduct.find(item => item.prod === product)?.stock ?? 0;
+
+  const branchFuelStocks = useMemo<BranchFuelStock[]>(() => {
+    const branchIds = new Set<string | null>();
+    if (scopedBranchId) {
+      branchIds.add(scopedBranchId);
+    } else {
+      for (const tank of tanks) branchIds.add(tank.branchId ?? null);
+      for (const tank of lpgTanks) branchIds.add(tank.branchId ?? null);
+    }
+
+    return [...branchIds]
+      .map(branchId => {
+        const branchTanks = tanks.filter(tank => (tank.branchId ?? null) === branchId);
+        const branchLpgTanks = lpgTanks.filter(tank => (tank.branchId ?? null) === branchId);
+        const products = STOCK_SNAPSHOT_PRODUCTS.map(prod => {
+          const petrolStock = branchTanks
+            .filter(tank => tank.prod === prod)
+            .reduce((sum, tank) => sum + getCurrentTankStock(tank, dips), 0);
+          const lpgStock = prod === 'LPG'
+            ? branchLpgTanks.reduce((sum, tank) => sum + getCurrentTankStock(tank, dips, 'lpg'), 0)
+            : 0;
+          return { prod, stock: petrolStock + lpgStock, unit: unitForProd(prod) };
+        });
+        return {
+          branchId,
+          branchName: branchId
+            ? branches.find(branch => branch.id === branchId)?.name ?? branchId
+            : 'Unassigned assets',
+          products,
+        };
+      })
+      .filter(branch =>
+        tanks.some(tank => (tank.branchId ?? null) === branch.branchId) ||
+        lpgTanks.some(tank => (tank.branchId ?? null) === branch.branchId)
+      )
+      .sort((a, b) => a.branchName.localeCompare(b.branchName));
+  }, [branches, dips, lpgTanks, scopedBranchId, tanks]);
 
   const branchStockSnapshots = useMemo<BranchStockSnapshot[]>(() => {
     const todayKey = localDateKey(new Date());
@@ -685,23 +727,33 @@ export default function HomeScreen() {
         {/* ── Full fuel stock ──────────────────────────────────────── */}
         {canViewFuelStock ? (
           <Section label="FUEL STOCK" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
-          <View style={[s.stockCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[s.stockSummary, { backgroundColor: colors.teal + '12', borderColor: colors.teal + '30', flexWrap: 'wrap', gap: 12 }]}>
-              {stockByProduct.map(({ prod, stock, unit }) => (
-                <View key={prod} style={{ width: '42%' }}>
-                  <Text style={[s.stockSummaryLabel, { color: colors.textMuted }]}>{prod} stock</Text>
-                  <Text style={[s.stockSummaryValue, { color: colors.teal }]}>{stock.toLocaleString()} {unit}</Text>
+          {branchFuelStocks.length === 0 ? (
+            <View style={[s.stockCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 16 }]}>
+              <Text style={[s.stockProduct, { color: colors.textMuted }]}>No branch fuel tanks are configured yet.</Text>
+            </View>
+          ) : branchFuelStocks.map(branch => (
+            <View key={branch.branchId ?? 'unassigned'} style={[s.stockCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 10 }]}>
+              <View style={[s.snapshotBranchHeader, { backgroundColor: colors.teal + '10', borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+                <Ionicons name="business-outline" size={14} color={colors.teal} />
+                <Text style={[s.snapshotBranchName, { color: colors.text }]}>{branch.branchName}</Text>
+              </View>
+              <View style={[s.stockSummary, { backgroundColor: colors.teal + '12', borderColor: colors.teal + '30', flexWrap: 'wrap', gap: 12 }]}>
+                {branch.products.map(({ prod, stock, unit }) => (
+                  <View key={prod} style={{ width: '42%' }}>
+                    <Text style={[s.stockSummaryLabel, { color: colors.textMuted }]}>{prod} stock</Text>
+                    <Text style={[s.stockSummaryValue, { color: colors.teal }]}>{stock.toLocaleString()} {unit}</Text>
+                  </View>
+                ))}
+              </View>
+              {branch.products.map(({ prod, stock, unit }) => (
+                <View key={prod} style={[s.stockRow, { borderTopColor: colors.border }]}>
+                  <View style={[s.stockDot, { backgroundColor: colors.teal }]} />
+                  <Text style={[s.stockProduct, { color: colors.text }]}>{prod}</Text>
+                  <Text style={[s.stockAmount, { color: colors.text }]}>{stock.toLocaleString()} {unit}</Text>
                 </View>
               ))}
             </View>
-            {stockByProduct.map(({ prod, stock, unit }) => (
-              <View key={prod} style={[s.stockRow, { borderTopColor: colors.border }]}>
-                <View style={[s.stockDot, { backgroundColor: colors.teal }]} />
-                <Text style={[s.stockProduct, { color: colors.text }]}>{prod}</Text>
-                <Text style={[s.stockAmount, { color: colors.text }]}>{stock.toLocaleString()} {unit}</Text>
-              </View>
-            ))}
-          </View>
+          ))}
           </Section>
         ) : null}
 
