@@ -83,13 +83,6 @@ function localDateKey(date: Date): string {
   ].join('-');
 }
 
-function offsetDateKey(days: number): string {
-  const date = new Date();
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() + days);
-  return localDateKey(date);
-}
-
 function recordDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
 }
@@ -387,7 +380,6 @@ export default function HomeScreen() {
 
   const branchStockSnapshots = useMemo<BranchStockSnapshot[]>(() => {
     const todayKey = localDateKey(new Date());
-    const yesterdayKey = offsetDateKey(-1);
     const sortDips = (records: typeof dips) => records.sort((a, b) => {
       const aTime = new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime();
       const bTime = new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime();
@@ -405,24 +397,6 @@ export default function HomeScreen() {
         (petrolTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           branchLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
       ))[0];
-    const pumpById = new Map(pumps.map(pump => [pump.id, pump]));
-
-    function productFromSalesEntry(entry: typeof sales[number]): StockSnapshotProduct | null {
-      const linkedPump = entry.pumpId ? pumpById.get(entry.pumpId) : undefined;
-      if (linkedPump) return linkedPump.prod;
-
-      const entryPumpName = entry.pump.split(' (')[0].trim().toLowerCase();
-      const namedPump = pumps.find(pump => pump.name.trim().toLowerCase() === entryPumpName);
-      if (namedPump) return namedPump.prod;
-
-      const label = entry.pump.toLowerCase();
-      if (label.includes('lube oil')) return 'Lube Oil';
-      for (const product of STOCK_SNAPSHOT_PRODUCTS) {
-        if (new RegExp(`\\b${product.toLowerCase()}\\b`).test(label)) return product;
-      }
-      return null;
-    }
-
     function dipForProduct(
       record: typeof dips[number] | undefined,
       product: StockSnapshotProduct,
@@ -474,6 +448,15 @@ export default function HomeScreen() {
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
       const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks);
+      const approvedShiftReportsById = new Map<number, typeof pumpDailyReports[number]>();
+      pumpDailyReports
+        .filter(report =>
+          recordDateKey(report.date) === todayKey &&
+          report.status === 'approved' &&
+          recordInScope(report),
+        )
+        .forEach(report => approvedShiftReportsById.set(report.id, report));
+      const approvedShiftReports = [...approvedShiftReportsById.values()];
 
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
@@ -489,37 +472,18 @@ export default function HomeScreen() {
             recordInScope(delivery),
           )
           .reduce((sum, delivery) => sum + delivery.rec, 0);
-        // Shift reports are the business source for yesterday's sold quantity.
-        // Submitted reports (pending_manager/pending_accountant) must count too;
-        // only returned reports are excluded. Approved reports also create a
-        // sales entry, so manual sales are included only when they are not
-        // linked to a shift report to avoid double-counting.
-        const shiftReportSalesForProduct = pumpDailyReports
+        // Approved shift reports are the sole source for today's sold quantity.
+        // Their approval also creates a SalesEntry, so this calculation reads
+        // only the report liters and never adds the linked sales record.
+        const shiftReportSalesForProduct = approvedShiftReports
           .filter(report =>
-            recordDateKey(report.date) === yesterdayKey &&
-            report.status !== 'returned' &&
-            recordInScope(report) &&
             report.product === product,
           )
           .reduce((sum, report) => {
             const liters = Number(report.liters);
             return sum + (Number.isFinite(liters) ? liters : 0);
           }, 0);
-        const shiftReportIds = new Set(
-          pumpDailyReports
-            .filter(report => recordDateKey(report.date) === yesterdayKey && recordInScope(report))
-            .map(report => report.id),
-        );
-        const manualSalesForProduct = sales
-          .filter(sale =>
-            recordDateKey(sale.dt) === yesterdayKey &&
-            recordInScope(sale) &&
-            !sale.shiftReportId &&
-            !shiftReportIds.has(sale.id) &&
-            productFromSalesEntry(sale) === product,
-          )
-          .reduce((sum, sale) => sum + sale.L, 0);
-        const salesForProduct = shiftReportSalesForProduct + manualSalesForProduct;
+        const salesForProduct = shiftReportSalesForProduct;
          const startupStock = startupStocks.find(stock =>
            stock.product === product &&
            stock.branchId === scope.branchId
@@ -544,7 +508,7 @@ export default function HomeScreen() {
 
       return { ...scope, products };
     });
-  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, sales, scopedBranchId, startupStocks, stockSnapshotConfig, tanks]);
+  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, scopedBranchId, startupStocks, stockSnapshotConfig, tanks]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
