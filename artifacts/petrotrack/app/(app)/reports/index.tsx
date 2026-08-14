@@ -8,7 +8,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
-import { Branch, ROLE_COLORS, fmt, fmtDate, useApp } from '@/context/AppContext';
+import { Branch, getPriceForProduct, ROLE_COLORS, fmt, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import {
   PERIODS, PROD_COLORS, REPORT_META,
@@ -197,7 +197,7 @@ export default function ReportsScreen() {
     const vol = pe.reduce((sum: number, e: any) => sum + e.L, 0);
     const rev = pe.reduce((sum: number, e: any) => sum + e.L * e.price, 0);
     const sr  = Math.round(rev);
-    const avg = vol > 0 ? Math.round(rev / vol) : ((prices as any)[prod] ?? 0);
+    const avg = vol > 0 ? Math.round(rev / vol) : getPriceForProduct(prices, prod, selBranch);
     const dv  = fDelvs.filter((d: any) => d.prod === prod && d.costPrice && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
     const vr  = dv.reduce((sum: number, d: any) => sum + d.rec, 0);
     const ct  = dv.reduce((sum: number, d: any) => sum + d.rec * (d.costPrice ?? 0), 0);
@@ -328,10 +328,13 @@ export default function ReportsScreen() {
     } else if (reportType === 'prices') {
       html = buildPdf({ ...common, title: 'Price Report',
         sections: [{ heading: 'Current Prices', rows: (['PMS','AGO','DPK','LPG','Lube Oil'] as const).map(prod => ({
-          label: prod, value: (prices as any)[prod] > 0 ? `${nfmt((prices as any)[prod])}/L` : 'Not set',
+          label: prod, value: getPriceForProduct(prices, prod, selBranch) > 0 ? `${nfmt(getPriceForProduct(prices, prod, selBranch))}/L` : 'Not set',
         }))}],
         tables: [{ heading: 'Price Change History', headers: ['Product','Old Price','New Price','Change','By','Date'],
-          rows: [...priceHistory].sort((a,b) => b.id-a.id).map(h => [h.prod, nfmt(h.oldPrice), nfmt(h.newPrice), `${h.newPrice>h.oldPrice?'+':''}${nfmt(h.newPrice-h.oldPrice)}`, h.by, fmtDate(h.dt)]) }],
+          rows: [...priceHistory]
+            .filter(h => selBranch === null || !h.branchId || h.branchId === selBranch)
+            .sort((a,b) => b.id-a.id)
+            .map(h => [h.prod, nfmt(h.oldPrice), nfmt(h.newPrice), `${h.newPrice>h.oldPrice?'+':''}${nfmt(h.newPrice-h.oldPrice)}`, h.by, fmtDate(h.dt)]) }],
       });
     } else if (reportType === 'maintenance') {
       html = buildPdf({ ...common, title: 'Maintenance Report',
@@ -659,9 +662,11 @@ export default function ReportsScreen() {
           <>
             <SecTitle label="Current Selling Prices" colors={colors} />
             {(['PMS','AGO','DPK','LPG','Lube Oil'] as const).map(prod => {
-              const price = (prices as any)[prod] ?? 0;
+              const price = getPriceForProduct(prices, prod, selBranch);
               const pc = PROD_COLORS[prod] || rc;
-              const last = priceHistory.filter(h => h.prod === prod).sort((a,b) => b.id-a.id)[0];
+              const last = priceHistory
+                .filter(h => h.prod === prod && (selBranch === null || !h.branchId || h.branchId === selBranch))
+                .sort((a,b) => b.id-a.id)[0];
               return (
                 <View key={prod} style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={[s.prodDot, { backgroundColor: pc }]} />

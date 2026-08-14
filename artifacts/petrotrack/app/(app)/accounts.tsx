@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FinancialStatusCard } from '@/components/FinancialStatusCard';
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
+import { getPriceForProduct, ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
 import { computeCOGS } from '@/lib/report-helpers';
 import { useColors } from '@/hooks/useColors';
 
@@ -151,11 +151,11 @@ export default function AccountsScreen() {
           <Text style={[styles.todaySub, { color: colors.textMuted }]}>Today's total sales</Text>
           <View style={styles.prodBreakdown}>
             {[
-              { label: 'PMS',      amount: pmsRev,  color: colors.primary, price: prices.PMS,      unit: '/L' },
-              { label: 'AGO',      amount: agoRev,  color: colors.blue,    price: prices.AGO,      unit: '/L' },
-              { label: 'DPK',      amount: dkpRev,  color: colors.amber,   price: prices.DPK,      unit: '/L' },
-              { label: 'LPG',      amount: lpgRev,  color: colors.teal,    price: prices.LPG,      unit: '/kg' },
-              { label: 'Lube Oil', amount: lubeRev, color: colors.purple,  price: prices['Lube Oil'], unit: '/L' },
+              { label: 'PMS',      amount: pmsRev,  color: colors.primary, price: getPriceForProduct(prices, 'PMS', branchId),      unit: '/L' },
+              { label: 'AGO',      amount: agoRev,  color: colors.blue,    price: getPriceForProduct(prices, 'AGO', branchId),      unit: '/L' },
+              { label: 'DPK',      amount: dkpRev,  color: colors.amber,   price: getPriceForProduct(prices, 'DPK', branchId),      unit: '/L' },
+              { label: 'LPG',      amount: lpgRev,  color: colors.teal,    price: getPriceForProduct(prices, 'LPG_Single', branchId) || getPriceForProduct(prices, 'LPG', branchId),      unit: '/kg' },
+              { label: 'Lube Oil', amount: lubeRev, color: colors.purple,  price: getPriceForProduct(prices, 'Lube Oil', branchId), unit: '/L' },
             ].filter(p => p.amount > 0 || p.price > 0).map(p => (
               <View key={p.label} style={[styles.prodItem, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
                 <Text style={[styles.prodLabel, { color: p.color }]}>{p.label}</Text>

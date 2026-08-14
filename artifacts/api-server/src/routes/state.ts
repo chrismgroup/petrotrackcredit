@@ -27,8 +27,8 @@ const ADMIN_WRITE_KEYS = new Set([
   "companyInfo", "departments", "branches", "startupStocks", "stockSnapshotConfig",
 ]);
 
-// Selling prices are operational but affect the whole station network.
-// CEO, MD, admin, and station managers may update them directly.
+// Selling prices are operational. Managers may update only their own branch
+// override; CEO, MD, and admin may update the network fallback.
 const PRICE_WRITE_ROLES = new Set(["admin", "ceo", "md", "mgr"]);
 
 const OPERATIONAL_KEYS = [
@@ -38,6 +38,15 @@ const OPERATIONAL_KEYS = [
   "hrHandbooks", "hrRecommendations", "priceProposals", "legalMatters",
   "corpProjects", "meetingMinutes", "broadcasts", "callLog", "priceHistory",
 ];
+
+async function resolveManagerBranchId(username?: string): Promise<string | undefined> {
+  if (!username) return undefined;
+  const [manager] = await db
+    .select({ branchId: staffUsersTable.branchId })
+    .from(staffUsersTable)
+    .where(eq(staffUsersTable.username, username));
+  return manager?.branchId ?? undefined;
+}
 
 router.get("/state", async (_req, res): Promise<void> => {
   const rows = await db.select().from(appStateTable);
@@ -250,6 +259,65 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Body required" });
     return;
   }
+
+  // A manager sends the full client-side state blob on every sync. Never let
+  // that blob replace the network fallback or another branch's override.
+  // Merge only this manager's branch into the server-authoritative prices.
+  if (key === "prices" && req.auth?.role === "mgr") {
+    const managerBranchId = req.auth.branchId ?? await resolveManagerBranchId(req.auth.username);
+    if (!managerBranchId) {
+      res.status(403).json({ error: "A branch assignment is required to update prices" });
+      return;
+    }
+    const [existingRow] = await db
+      .select()
+      .from(appStateTable)
+      .where(eq(appStateTable.key, "prices"));
+    const existing = existingRow?.data && typeof existingRow.data === "object"
+      ? existingRow.data as Record<string, unknown>
+      : {};
+    const incoming = typeof data === "object" ? data as Record<string, unknown> : {};
+    const existingBranchPrices = existing.branchPrices && typeof existing.branchPrices === "object"
+      ? existing.branchPrices as Record<string, unknown>
+      : {};
+    const incomingBranchPrices = incoming.branchPrices && typeof incoming.branchPrices === "object"
+      ? incoming.branchPrices as Record<string, unknown>
+      : {};
+    const existingBranch = existingBranchPrices[managerBranchId] && typeof existingBranchPrices[managerBranchId] === "object"
+      ? existingBranchPrices[managerBranchId] as Record<string, unknown>
+      : {};
+    const incomingBranch = incomingBranchPrices[managerBranchId] && typeof incomingBranchPrices[managerBranchId] === "object"
+      ? incomingBranchPrices[managerBranchId] as Record<string, unknown>
+      : {};
+    data = {
+      ...existing,
+      branchPrices: {
+        ...existingBranchPrices,
+        [managerBranchId]: { ...existingBranch, ...incomingBranch },
+      },
+    };
+  }
+
+  // History is also a shared state blob. Preserve every other branch's
+  // entries and accept only entries explicitly tagged for this manager's
+  // branch.
+  if (key === "priceHistory" && req.auth?.role === "mgr") {
+    const managerBranchId = req.auth.branchId ?? await resolveManagerBranchId(req.auth.username);
+    if (!managerBranchId) {
+      res.status(403).json({ error: "A branch assignment is required to update price history" });
+      return;
+    }
+    const [existingRow] = await db
+      .select()
+      .from(appStateTable)
+      .where(eq(appStateTable.key, "priceHistory"));
+    const existingHistory = Array.isArray(existingRow?.data) ? existingRow.data as Record<string, unknown>[] : [];
+    const incomingHistory = Array.isArray(data) ? data as Record<string, unknown>[] : [];
+    const incomingOwn = incomingHistory.filter(entry => entry.branchId === managerBranchId);
+    const existingOtherBranches = existingHistory.filter(entry => entry.branchId !== managerBranchId);
+    data = [...incomingOwn, ...existingOtherBranches];
+  }
+
   // Server-side cap: keep only the newest audit entries (entries are prepended),
   // so older app builds without the client-side cap can't grow the log unbounded.
   if (key === "audit" && Array.isArray(data) && data.length > 500) {

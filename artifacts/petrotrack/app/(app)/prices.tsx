@@ -7,10 +7,10 @@ import {
 
 import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { PriceProposal, Prices, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
+import { getPriceForProduct, PriceProduct, PriceProposal, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const PRODUCTS: (keyof Prices)[] = ['PMS', 'AGO', 'DPK', 'LPG_Single', 'LPG_Distributor', 'Lube Oil'];
+const PRODUCTS: PriceProduct[] = ['PMS', 'AGO', 'DPK', 'LPG_Single', 'LPG_Distributor', 'Lube Oil'];
 
 const PROD_META: Record<string, { color: string; icon: string; unit: string; label: string }> = {
   PMS:             { color: '#1a6e3c', icon: 'flame',       unit: '/L', label: 'PMS' },
@@ -37,7 +37,7 @@ function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () =
 ═══════════════════════════════════════════════════════════ */
 export default function PricesScreen() {
   const {
-    role, userName,
+    role, userName, branchId, branches,
     prices, priceHistory, priceProposals, deliveries,
     updatePrice, addPriceProposal,
     approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
@@ -46,12 +46,17 @@ export default function PricesScreen() {
   // Last approved delivery cost price per product — gives MD market context
   function lastCostPrice(prod: string): number | null {
     const approved = deliveries
-      .filter(d => d.prod === prod && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') && d.costPrice)
+      .filter(d => d.prod === prod
+        && (!branchId || !d.branchId || d.branchId === branchId)
+        && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved')
+        && d.costPrice)
       .sort((a, b) => b.id - a.id);
     return approved[0]?.costPrice ?? null;
   }
   const colors = useColors();
   const rc = ROLE_COLORS[role || 'md'] || colors.primary;
+  const branchName = branchId ? branches.find(b => b.id === branchId)?.name ?? branchId : null;
+  const currentPriceFor = (prod: string) => getPriceForProduct(prices, prod, branchId);
 
   /* Role capabilities */
   const canSetDirect = role === 'ceo' || role === 'admin' || role === 'md' || role === 'mgr';
@@ -59,15 +64,16 @@ export default function PricesScreen() {
   const canPropose   = !canSetDirect;
 
   /* ── Set-price sheet (CEO / MD / admin / station manager) ── */
-  const [setProd,   setSetProd]   = useState<keyof Prices | null>(null);
+  const [setProd,   setSetProd]   = useState<PriceProduct | null>(null);
   const [setDraft,  setSetDraft]  = useState('');
   const [setReason, setSetReason] = useState('');
 
   const REASON_PRESETS = ['Market price increase', 'Market price decrease', 'NNPC directive', 'Depot price change', 'Seasonal adjustment', 'Other'];
 
-  function openSet(prod: keyof Prices) {
+  function openSet(prod: PriceProduct) {
     setSetProd(prod);
-    setSetDraft(((prices as any)[prod] ?? 0) > 0 ? String((prices as any)[prod]) : '');
+    const current = currentPriceFor(prod);
+    setSetDraft(current > 0 ? String(current) : '');
     setSetReason('');
   }
   function handleSet() {
@@ -77,7 +83,7 @@ export default function PricesScreen() {
       Alert.alert('Invalid price', 'Enter a valid price greater than 0.');
       return;
     }
-    const current = (prices as any)[setProd] ?? 0;
+    const current = currentPriceFor(setProd);
     if (val === current) {
       Alert.alert('No change', 'The new price is the same as the current price.');
       return;
@@ -86,14 +92,17 @@ export default function PricesScreen() {
     setSetProd(null);
     setSetReason('');
     const unit = PROD_META[setProd || 'PMS']?.unit ?? '/L';
-    Alert.alert('Price updated', `${setProd} price set to ₦${val.toLocaleString()}${unit}`);
+    Alert.alert(
+      'Price updated',
+      `${setProd} price set to ₦${val.toLocaleString()}${unit}${branchName ? ` at ${branchName}. Other branches were not changed.` : '.'}`,
+    );
   }
 
   /* ── Propose sheet (other roles) ── */
-  const [proposeProd,  setProposeProd]  = useState<keyof Prices | null>(null);
+  const [proposeProd,  setProposeProd]  = useState<PriceProduct | null>(null);
   const [proposeDraft, setProposeDraft] = useState('');
 
-  function openPropose(prod: keyof Prices) { setProposeProd(prod); setProposeDraft(''); }
+  function openPropose(prod: PriceProduct) { setProposeProd(prod); setProposeDraft(''); }
   function handlePropose() {
     if (!proposeProd) return;
     const val = parseFloat(proposeDraft);
@@ -101,7 +110,7 @@ export default function PricesScreen() {
       Alert.alert('Invalid price', 'Enter a valid price greater than 0.');
       return;
     }
-    const current = (prices as any)[proposeProd] ?? 0;
+    const current = currentPriceFor(proposeProd);
     if (val === current) {
       Alert.alert('No change', 'Proposed price is the same as the current price.');
       return;
@@ -153,7 +162,10 @@ export default function PricesScreen() {
   const history  = [...priceHistory].sort((a, b) => b.id - a.id).slice(0, 15);
 
   function myPending(prod: string) {
-    return priceProposals.find(p => p.prod === prod && p.status === 'pending' && p.proposedBy === userName);
+    return priceProposals.find(p => p.prod === prod
+      && p.status === 'pending'
+      && p.proposedBy === userName
+      && (!branchId || !p.branchId || p.branchId === branchId));
   }
 
   /* ════════════════════════════════════════════════════════
@@ -176,8 +188,16 @@ export default function PricesScreen() {
 
         {/* ── Current prices ── */}
         <Text style={[s.secLabel, { color: colors.textMuted }]}>Current Selling Prices</Text>
+        <View style={[s.scopeBanner, { backgroundColor: branchId ? '#EAF3DE' : '#E6F1FB', borderColor: branchId ? '#27500A55' : '#185FA555' }]}>
+          <Ionicons name={branchId ? 'location-outline' : 'globe-outline'} size={16} color={branchId ? '#27500A' : '#185FA5'} />
+          <Text style={[s.scopeBannerText, { color: branchId ? '#27500A' : '#185FA5' }]}>
+            {branchId
+              ? `Branch price list: ${branchName}. Changes here apply only to this branch.`
+              : 'Network fallback prices. Branch-specific manager overrides remain separate.'}
+          </Text>
+        </View>
         {PRODUCTS.map(prod => {
-          const price = (prices as any)[prod] ?? 0;
+          const price = currentPriceFor(prod);
           const meta  = PROD_META[prod];
           const mp    = myPending(prod);
           return (
@@ -335,7 +355,9 @@ export default function PricesScreen() {
                       <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
                       <Text style={[s.propNew, { color: colors.text }]}>₦{h.newPrice.toLocaleString()}</Text>
                     </View>
-                    <Text style={[s.prodUnit, { color: colors.textSubtle }]}>{h.prod} · by {h.by} · {fmtDateTime(h.dt)}</Text>
+                     <Text style={[s.prodUnit, { color: colors.textSubtle }]}>
+                       {h.prod}{h.branchId ? ` · ${branches.find(b => b.id === h.branchId)?.name ?? h.branchId}` : ' · Network fallback'} · by {h.by} · {fmtDateTime(h.dt)}
+                     </Text>
                     {h.reason ? <Text style={[s.prodUnit, { color: colors.textMuted, fontStyle: 'italic' }]}>{h.reason}</Text> : null}
                   </View>
                   <View style={[s.diffBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB', borderWidth: 1, borderColor: up ? '#27500A30' : '#791F1F30' }]}>
@@ -370,7 +392,7 @@ export default function PricesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Set {setProd} Price</Text>
               <Text style={[s.sheetSub, { color: colors.textMuted }]}>
-                Current: {setProd ? (((prices as any)[setProd] ?? 0) > 0 ? `₦${((prices as any)[setProd]).toLocaleString()}${PROD_META[setProd]?.unit ?? '/L'}` : 'Not set') : '—'}
+                Current: {setProd ? (currentPriceFor(setProd) > 0 ? `₦${currentPriceFor(setProd)}${PROD_META[setProd]?.unit ?? '/L'}` : 'Not set') : '—'}
               </Text>
             </View>
           </View>
@@ -383,13 +405,13 @@ export default function PricesScreen() {
                   <Text style={[s.contextLabel, { color: colors.textMuted }]}>Last Cost Price</Text>
                   <Text style={[s.contextVal, { color: colors.text }]}>{'₦'}{lastCostPrice(setProd)!.toLocaleString()}{PROD_META[setProd]?.unit ?? '/L'}</Text>
                 </View>
-                {(prices as any)[setProd] > 0 ? (
+                {currentPriceFor(setProd) > 0 ? (
                   <>
                     <View style={[s.contextDivider, { backgroundColor: colors.border }]} />
                     <View style={{ flex: 1, alignItems: 'center' }}>
                       <Text style={[s.contextLabel, { color: colors.textMuted }]}>Current Margin</Text>
-                      <Text style={[s.contextVal, { color: (prices as any)[setProd] > lastCostPrice(setProd)! ? '#27500A' : '#791F1F' }]}>
-                        {Math.round((((prices as any)[setProd] - lastCostPrice(setProd)!) / (prices as any)[setProd]) * 100)}{'%'}
+                      <Text style={[s.contextVal, { color: currentPriceFor(setProd) > lastCostPrice(setProd)! ? '#27500A' : '#791F1F' }]}>
+                        {Math.round(((currentPriceFor(setProd) - lastCostPrice(setProd)!) / currentPriceFor(setProd)) * 100)}{'%'}
                       </Text>
                     </View>
                   </>
@@ -472,7 +494,7 @@ export default function PricesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Propose {proposeProd} Price</Text>
               <Text style={[s.sheetSub, { color: colors.textMuted }]}>
-                Current: {proposeProd ? (((prices as any)[proposeProd] ?? 0) > 0 ? `₦${((prices as any)[proposeProd]).toLocaleString()}${PROD_META[proposeProd]?.unit ?? '/L'}` : 'Not set') : '—'} · Requires approval
+                Current: {proposeProd ? (currentPriceFor(proposeProd) > 0 ? `₦${currentPriceFor(proposeProd)}${PROD_META[proposeProd]?.unit ?? '/L'}` : 'Not set') : '—'} · Requires approval
               </Text>
             </View>
           </View>
@@ -594,6 +616,8 @@ const s = StyleSheet.create({
   banner:        { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 16 },
   bannerTxt:     { fontSize: 13, fontWeight: '600', flex: 1 },
   secLabel:      { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10, marginTop: 8 },
+  scopeBanner:   { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 12 },
+  scopeBannerText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: '600' },
 
   priceRow:      { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
   prodIconWrap:  { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },

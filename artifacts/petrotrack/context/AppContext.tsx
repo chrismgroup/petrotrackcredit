@@ -53,6 +53,7 @@ export interface PriceProposal {
   id: number; prod: string; currentPrice: number; proposedPrice: number;
   proposedBy: string; proposedAt: string;
   status: 'pending' | 'approved' | 'rejected';
+  branchId?: string;
   reviewedBy?: string; reviewedAt?: string; note?: string;
 }
 export interface Expense { id: number; dt: string; submittedAt?: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId?: string; }
@@ -157,13 +158,29 @@ export const MGR_BRANCH_NAMES: Record<string, string> = {
   HQ: 'HQ — Abuja CBD', B1: 'Maitama Branch', B2: 'Lugbe Branch',
 };
 export interface Department { id: string; name: string; icon: string; col: { bg: string; fg: string }; roles: string[]; sys: boolean; }
-export interface Prices { PMS: number; AGO: number; DPK: number; LPG: number; LPG_Single: number; LPG_Distributor: number; 'Lube Oil': number; }
-export type FuelProduct = keyof Prices;
-export const lpgPriceKey = (cat?: 'single' | 'distributor'): keyof Prices => cat === 'distributor' ? 'LPG_Distributor' : 'LPG_Single';
+export type PriceProduct = 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'LPG_Single' | 'LPG_Distributor' | 'Lube Oil';
+export interface Prices {
+  PMS: number; AGO: number; DPK: number; LPG: number;
+  LPG_Single: number; LPG_Distributor: number; 'Lube Oil': number;
+  /** Branch overrides take precedence over the network fallback prices. */
+  branchPrices?: Record<string, Partial<Record<PriceProduct, number>>>;
+}
+export type FuelProduct = PriceProduct;
+export const lpgPriceKey = (cat?: 'single' | 'distributor'): PriceProduct => cat === 'distributor' ? 'LPG_Distributor' : 'LPG_Single';
 export const unitForProd = (p: string) => p === 'LPG' ? 'kg' : 'L';
-export const getPriceForPump = (pump: Pump, prices: Prices): number =>
-  pump.prod === 'LPG' ? (prices[lpgPriceKey(pump.lpgCategory)] ?? prices.LPG) : (prices as any)[pump.prod] ?? 0;
-export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; reason?: string; }
+export function getPriceForProduct(prices: Prices, prod: string, branchId?: string | null): number {
+  const branchPrice = branchId ? prices.branchPrices?.[branchId]?.[prod as PriceProduct] : undefined;
+  if (typeof branchPrice === 'number' && branchPrice > 0) return branchPrice;
+  return typeof (prices as any)[prod] === 'number' ? (prices as any)[prod] : 0;
+}
+export const getPriceForPump = (pump: Pump, prices: Prices): number => {
+  if (pump.prod === 'LPG') {
+    return getPriceForProduct(prices, lpgPriceKey(pump.lpgCategory), pump.branchId)
+      || getPriceForProduct(prices, 'LPG', pump.branchId);
+  }
+  return getPriceForProduct(prices, pump.prod, pump.branchId);
+};
+export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; branchId?: string; reason?: string; }
 export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media' | 'call'; body: string; ts: string; read: boolean; archivedBy?: string[]; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; call?: { callId: string; kind: 'audio' | 'video'; roomUrl: string }; }
 export type { AppNotification };
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
@@ -586,7 +603,7 @@ interface AppContextType {
   mgrResubmitPumpReport: (id: number, mgrNote: string) => void;
   deletePumpReport: (id: number) => void;
   updatePumpReport: (id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => void;
-  updatePrice: (prod: string, price: number, by?: string, reason?: string) => void;
+  updatePrice: (prod: string, price: number, by?: string, reason?: string, targetBranchId?: string) => void;
   priceProposals: PriceProposal[];
   addPriceProposal: (prod: string, proposedPrice: number) => void;
   approvePriceProposal: (id: number) => void;
@@ -1244,30 +1261,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Manager permissions updated', user: userName, detail: `Branch ${bid}: ${JSON.stringify(perms)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updatePrice = useCallback((prod: string, price: number, by?: string, reason?: string) => {
+  const updatePrice = useCallback((prod: string, price: number, by?: string, reason?: string, targetBranchId?: string) => {
     if (!['admin', 'ceo', 'md', 'mgr'].includes(role ?? '')) return;
-    const oldPrice = (prices as any)[prod] ?? 0;
+    const scopedBranchId = targetBranchId ?? (role === 'mgr' ? branchId ?? undefined : undefined);
+    if (role === 'mgr' && !scopedBranchId) return;
+    const oldPrice = getPriceForProduct(prices, prod, scopedBranchId);
     const actor = by ?? userName;
-    setPrices(p => ({ ...p, [prod]: price }));
-    setPriceHistory(h => [{ id: genId(), prod, oldPrice, newPrice: price, by: actor, dt: nowTs(), reason }, ...h]);
+    setPrices(p => {
+      if (!scopedBranchId) return { ...p, [prod]: price };
+      return {
+        ...p,
+        branchPrices: {
+          ...(p.branchPrices ?? {}),
+          [scopedBranchId]: {
+            ...(p.branchPrices?.[scopedBranchId] ?? {}),
+            [prod as PriceProduct]: price,
+          },
+        },
+      };
+    });
+    setPriceHistory(h => [{
+      id: genId(), prod, oldPrice, newPrice: price, by: actor, dt: nowTs(),
+      branchId: scopedBranchId, reason,
+    }, ...h]);
     const unit = prod === 'LPG' || prod.startsWith('LPG') ? 'kg' : 'L';
-    setAudit(a => [{ id: genId(), action: 'Price update', user: actor, detail: `${prod}: ₦${oldPrice} → ₦${price}/${unit}${reason ? ' — ' + reason : ''}`, ts: nowTs() }, ...a]);
-  }, [userName, prices, role]);
+    const scopeLabel = scopedBranchId ? ` at branch ${scopedBranchId}` : ' network-wide';
+    setAudit(a => [{ id: genId(), action: 'Price update', user: actor, detail: `${prod}: ₦${oldPrice} → ₦${price}/${unit}${scopeLabel}${reason ? ' — ' + reason : ''}`, ts: nowTs() }, ...a]);
+  }, [userName, prices, role, branchId]);
 
   const addPriceProposal = useCallback((prod: string, proposedPrice: number) => {
-    const currentPrice = (prices as any)[prod] ?? 0;
+    const proposalBranchId = branchId ?? undefined;
+    const currentPrice = getPriceForProduct(prices, prod, proposalBranchId);
     setPriceProposals(ps => [
-      { id: genId(), prod, currentPrice, proposedPrice, proposedBy: userName, proposedAt: nowTs(), status: 'pending' },
+      { id: genId(), prod, currentPrice, proposedPrice, proposedBy: userName, proposedAt: nowTs(), status: 'pending', branchId: proposalBranchId },
       ...ps,
     ]);
     const unit = prod === 'LPG' || prod.startsWith('LPG') ? 'kg' : 'L';
-    setAudit(a => [{ id: genId(), action: 'Price proposal submitted', user: userName, detail: `${prod}: ₦${currentPrice} → ₦${proposedPrice}/${unit} (awaiting CEO approval)`, ts: nowTs() }, ...a]);
-  }, [userName, prices]);
+    const scopeLabel = proposalBranchId ? ` at branch ${proposalBranchId}` : '';
+    setAudit(a => [{ id: genId(), action: 'Price proposal submitted', user: userName, detail: `${prod}: ₦${currentPrice} → ₦${proposedPrice}/${unit}${scopeLabel} (awaiting CEO approval)`, ts: nowTs() }, ...a]);
+  }, [userName, prices, branchId]);
 
   const approvePriceProposal = useCallback((id: number) => {
     const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
     if (!proposal) return;
-    updatePrice(proposal.prod, proposal.proposedPrice, userName);
+    updatePrice(proposal.prod, proposal.proposedPrice, userName, undefined, proposal.branchId);
     setPriceProposals(ps => ps.map(p =>
       p.id === id ? { ...p, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
     ));
@@ -1286,7 +1323,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateAndApprovePriceProposal = useCallback((id: number, updatedPrice: number) => {
     const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
     if (!proposal) return;
-    updatePrice(proposal.prod, updatedPrice, userName);
+    updatePrice(proposal.prod, updatedPrice, userName, undefined, proposal.branchId);
     setPriceProposals(ps => ps.map(p =>
       p.id === id ? { ...p, proposedPrice: updatedPrice, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
     ));
@@ -1573,11 +1610,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const ids = new Set(matching.map(t => t.id));
       return ts.map(t => ids.has(t.id) ? { ...t, rv: t.rv + share } : t);
     });
-    // Update global selling price for this product
-    updatePrice(d.prod, sellingPrice, userName);
-    // For LPG, seed both category prices if they are unset so pumps have a price until admin sets specific ones
+    // A delivery price belongs to the delivery's branch. Keep other branches
+    // independent, while the global fallback remains available for branches
+    // without a local override.
+    updatePrice(d.prod, sellingPrice, userName, undefined, d.branchId);
+    // For LPG, seed both category prices in the same branch if they are unset
+    // so single-buyer and distributor pumps inherit this delivery price.
     if (d.prod === 'LPG') {
-      setPrices(p => ({ ...p, LPG_Single: p.LPG_Single || sellingPrice, LPG_Distributor: p.LPG_Distributor || sellingPrice }));
+      setPrices(p => {
+        if (d.branchId) {
+          const branch = p.branchPrices?.[d.branchId] ?? {};
+          return {
+            ...p,
+            branchPrices: {
+              ...(p.branchPrices ?? {}),
+              [d.branchId]: {
+                ...branch,
+                LPG_Single: branch.LPG_Single || sellingPrice,
+                LPG_Distributor: branch.LPG_Distributor || sellingPrice,
+              },
+            },
+          };
+        }
+        return {
+          ...p,
+          LPG_Single: p.LPG_Single || sellingPrice,
+          LPG_Distributor: p.LPG_Distributor || sellingPrice,
+        };
+      });
     }
     const unit = unitForProd(d.prod);
     setAudit(a => [{ id: genId(), action: 'Delivery MD-approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}${unit} · Cost ₦${d.costPrice}/${unit} · Sell ₦${sellingPrice}/${unit} · permanently locked`, ts: nowTs() }, ...a]);
