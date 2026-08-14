@@ -284,7 +284,7 @@ export default function HomeScreen() {
     pumpDailyReports, userAccounts, messages, notifications,
     unreadCount, approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
-    sales, stockSnapshotConfig,
+    sales, startupStocks, stockSnapshotConfig,
   } = useApp();
 
   const colors = useColors();
@@ -473,7 +473,6 @@ export default function HomeScreen() {
       const recordInScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
-      const yesterdayApprovedDip = latestDipForBranch(yesterdayKey, branchTanks, branchLpgTanks, true);
       const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks);
 
       const enabledProducts = scope.branchId
@@ -521,7 +520,10 @@ export default function HomeScreen() {
           )
           .reduce((sum, sale) => sum + sale.L, 0);
         const salesForProduct = shiftReportSalesForProduct + manualSalesForProduct;
-        const startupStock = dipForProduct(yesterdayApprovedDip, product, branchTanks, branchLpgTanks);
+         const startupStock = startupStocks.find(stock =>
+           stock.product === product &&
+           stock.branchId === scope.branchId
+         )?.quantity ?? null;
         const bookStock = startupStock === null ? null : startupStock + deliveriesForProduct - salesForProduct;
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const variance = startupStock === null || submittedTankDip === null || bookStock === null
@@ -542,7 +544,7 @@ export default function HomeScreen() {
 
       return { ...scope, products };
     });
-  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, sales, scopedBranchId, stockSnapshotConfig, tanks]);
+  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, sales, scopedBranchId, startupStocks, stockSnapshotConfig, tanks]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -764,7 +766,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                 <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                  Live data · yesterday&apos;s approved tank dip and shift reports + today&apos;s deliveries versus today&apos;s submitted tank dip
+                   Live data · admin-set branch start-up quantity and shift reports + today&apos;s deliveries versus today&apos;s submitted tank dip
                 </Text>
               </View>
               {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (
@@ -780,7 +782,7 @@ export default function HomeScreen() {
                     ? colors.textMuted
                   : snapshot.variance < 0 ? colors.error : colors.success;
                 const statusLabel = snapshot.startupStock === null
-                  ? 'Awaiting approved baseline'
+                  ? 'Awaiting admin baseline'
                   : snapshot.variance === null
                     ? 'Awaiting dip'
                   : snapshot.variance < 0 ? 'Shortage' : snapshot.variance > 0 ? 'Excess' : 'Balanced';
@@ -791,7 +793,7 @@ export default function HomeScreen() {
                         <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
                         {stockSnapshotConfig.metrics.bookStock ? (
                           <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                            Book stock = start-up + delivered − sold: {snapshot.bookStock === null ? 'Awaiting yesterday approved dip' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
+                            Book stock = start-up + delivered − sold: {snapshot.bookStock === null ? 'Awaiting admin baseline' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
                           </Text>
                         ) : null}
                       </View>

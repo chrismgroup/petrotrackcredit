@@ -197,7 +197,7 @@ export default function ReceivingScreen() {
   const {
     role, userName, branchId,
     tanks, lpgTanks, dips, deliveries, prices, branches,
-    pumpDailyReports, sales, pumps,
+    pumpDailyReports, sales, pumps, startupStocks,
     deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery,
@@ -388,7 +388,6 @@ export default function ReceivingScreen() {
   ): StockProdRow[] {
     const todayKey = localDateKey(new Date());
     const yesterdayKey = offsetDateKey(-1);
-    const yesterdayApprovedDip = latestDipForBranch(yesterdayKey, scopeTanks, scopeLpgTanks, true);
     const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, false);
     const inBranch = (item: { branchId?: string }) => item.branchId === scopeBranchId;
     const pumpReportSales = scopeReports
@@ -425,7 +424,10 @@ export default function ReceivingScreen() {
           manualSales
             .filter(sale => productFromSalesEntry(sale) === prod)
             .reduce((sum, sale) => sum + sale.L, 0);
-        const startupStock = dipForProduct(yesterdayApprovedDip, prod, scopeTanks, scopeLpgTanks);
+        const startupStock = startupStocks.find(stock =>
+          stock.product === prod &&
+          stock.branchId === scopeBranchId
+        )?.quantity ?? null;
         const bookStock = startupStock === null ? null : startupStock + delivered - sold;
         const submittedTankDip = dipForProduct(todaySubmittedDip, prod, scopeTanks, scopeLpgTanks);
         const variance = bookStock === null || submittedTankDip === null
@@ -856,7 +858,7 @@ export default function ReceivingScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Snapshot (Book Stock + Variance)</Text>
             <Text style={[styles.stockFormulaText, { color: colors.textMuted }]}>
-              Book stock = yesterday&apos;s approved dip + today&apos;s approved deliveries − yesterday&apos;s eligible sales. Variance = book stock − today&apos;s submitted dip.
+              Book stock = admin-set start-up quantity + today&apos;s approved deliveries − yesterday&apos;s eligible sales. Variance = book stock − today&apos;s submitted dip.
             </Text>
             {branchStockReports.map(bsr => (
               <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>

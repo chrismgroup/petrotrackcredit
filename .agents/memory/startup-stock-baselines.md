@@ -3,17 +3,17 @@ name: Start-up stock baselines
 description: Business rules for configured opening inventory used by the Home Stock Snapshot
 ---
 
-Start-up stock in the Home Snapshot is derived from the previous business day’s approved tank dip. LPG uses kilograms while other products use litres.
+Start-up stock in the Home Snapshot is explicitly set by an admin for each product and branch. LPG uses kilograms while other products use litres.
 
-**Why:** The operational opening balance must follow the approved tank-dip record and remain live with the app’s business-date data, rather than relying on a separate manually configured value.
+**Why:** Operations need a controlled, auditable opening quantity for each branch and product; yesterday’s tank dip must not silently replace the admin-approved baseline.
 
-**How to apply:** Calculate `yesterday’s approved dip + current-day approved deliveries − yesterday’s non-returned shift-report sales` independently per product. Submitted and approved shift reports count; returned reports do not. Preserve unrelated manual sales without double-counting auto-created shift-report sales. Compare that book stock with the current business day’s submitted tank dip; negative variance is shortage and positive variance is excess. If yesterday has no approved dip, show the baseline as unavailable rather than treating it as zero.
+**How to apply:** Calculate `admin-set branch/product startup quantity + current-day approved deliveries − yesterday’s non-returned shift-report sales` independently per product. Submitted and approved shift reports count; returned reports do not. Preserve unrelated manual sales without double-counting auto-created shift-report sales. Compare that book stock with the current business day’s submitted tank dip; negative variance is shortage and positive variance is excess. If the admin has not configured a branch/product baseline, show the baseline as unavailable rather than treating it as zero.
 
 Dip aggregation must normalize stored readings to finite numbers and use the same branch rule as Tank Dipping: explicitly assigned tanks are scoped, while unassigned tanks remain visible to branch users.
 
 Home Stock Snapshot uses strict branch ownership: only branches with assigned tanks and pumps render; branch users see their branch, while CEO, MD, Accountant, CSM, and admin see all eligible branches.
 
-Admins control Stock Snapshot display density through persisted global metric toggles and per-branch product toggles; disabled products/metrics are omitted from Home without changing calculations or source records.
+Admins control Stock Snapshot display density through persisted global metric toggles and per-branch product toggles; disabled products/metrics are omitted from Home without changing calculations or source records. Startup quantity records must be branch-specific; legacy all-branch records are not used for branch calculations.
 
 Inventory display aggregates physical stock by product within the visible branch scope; PMS, AGO, DPK, and Lube Oil remain independent, while tank-by-tank readings are reserved for Tank Dip views.
 

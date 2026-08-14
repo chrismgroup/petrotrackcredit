@@ -37,7 +37,7 @@ const PROD_COLORS: Record<string, string> = {
 };
 const STARTUP_PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const STOCK_METRIC_LABELS: Record<(typeof STOCK_SNAPSHOT_METRICS)[number], { label: string; description: string }> = {
-  startupStock: { label: 'Start-up quantity', description: 'Yesterday’s approved tank dip' },
+  startupStock: { label: 'Start-up quantity', description: 'Admin-set opening quantity per branch' },
   deliveries: { label: 'Delivered quantity', description: 'Approved or MD-approved deliveries' },
   sales: { label: 'Quantity sold', description: 'Current sales records' },
   submittedTankDip: { label: 'Tank dip quantity', description: 'Today’s submitted tank dip' },
@@ -380,14 +380,18 @@ export default function SystemSettingsScreen() {
       Alert.alert('Error', 'Start-up stock must be a valid quantity of 0 or more.');
       return;
     }
-    if (startupStocks.some(stock => stock.product === newStartup.product && (stock.branchId || '') === newStartup.branchId)) {
+    if (!newStartup.branchId) {
+      Alert.alert('Branch required', 'Select the branch this product quantity applies to.');
+      return;
+    }
+    if (startupStocks.some(stock => stock.product === newStartup.product && stock.branchId === newStartup.branchId)) {
       Alert.alert('Already set', `${newStartup.product} already has start-up stock for this branch. Edit the existing locked record instead.`);
       return;
     }
-    addStartupStock({ product: newStartup.product, quantity, branchId: newStartup.branchId || undefined });
+    addStartupStock({ product: newStartup.product, quantity, branchId: newStartup.branchId });
     setNewStartup({ product: 'PMS', quantity: '', branchId: '' });
     setShowNewStartup(false);
-    Alert.alert('Start-up stock set', 'The baseline is now locked for non-admin users and will be used in the Home Stock Snapshot.');
+    Alert.alert('Start-up stock set', 'The branch opening quantity is now locked for non-admin users and will be used in the Home Stock Snapshot.');
   }
 
   async function createStaff() {
@@ -843,8 +847,8 @@ export default function SystemSettingsScreen() {
               <View style={[styles.banner, { backgroundColor: '#12304a' }]}>
                 <Ionicons name="lock-closed" size={22} color="#8ec5ff" />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.bannerTitle}>Locked start-up stock</Text>
-                  <Text style={styles.bannerSub}>Set the opening quantity for each product before daily deliveries and sales are recorded. Only System Admin can edit or delete these values.</Text>
+                  <Text style={styles.bannerTitle}>Branch start-up stock</Text>
+                  <Text style={styles.bannerSub}>Set the opening quantity for each product and branch before daily deliveries and sales are recorded. These admin-set quantities are the authoritative baseline; tank dipping is not used to create them.</Text>
                 </View>
               </View>
               <View style={styles.sectionRow}>
@@ -931,12 +935,8 @@ export default function SystemSettingsScreen() {
                     placeholder={newStartup.product === 'LPG' ? 'e.g. 5000' : 'e.g. 25000'}
                   />
                   <View style={{ marginBottom: 10 }}>
-                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment *</Text>
                     <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
-                      <TouchableOpacity onPress={() => setNewStartup(prev => ({ ...prev, branchId: '' }))}
-                        style={[styles.roleChip, { borderColor: !newStartup.branchId ? roleColor : colors.border, backgroundColor: !newStartup.branchId ? roleColor + '18' : colors.surface }]}>
-                        <Text style={[styles.roleChipText, { color: !newStartup.branchId ? roleColor : colors.textMuted }]}>All Branches</Text>
-                      </TouchableOpacity>
                       {branches.map(branch => (
                         <TouchableOpacity key={branch.id} onPress={() => setNewStartup(prev => ({ ...prev, branchId: branch.id }))}
                           style={[styles.roleChip, { borderColor: newStartup.branchId === branch.id ? roleColor : colors.border, backgroundColor: newStartup.branchId === branch.id ? roleColor + '18' : colors.surface }]}>
