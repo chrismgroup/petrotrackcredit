@@ -635,7 +635,7 @@ interface AppContextType {
   pumpLockedMeters: Record<string, number>;
   inventoryLog: InventoryLogEntry[];
   startupStocks: StartupStock[];
-  addStartupStock: (stock: { product: StockProduct; quantity: number; branchId?: string }) => void;
+  addStartupStock: (stock: { product: StockProduct; quantity: number; branchId: string }) => void;
   updateStartupStock: (id: string, quantity: number) => void;
   deleteStartupStock: (id: string) => void;
   stockSnapshotConfig: StockSnapshotConfig;
@@ -2337,9 +2337,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, ...a]);
   }, [userName]);
 
-  const addStartupStock = useCallback((stock: { product: StockProduct; quantity: number; branchId?: string }) => {
-    if (role !== 'admin' || !Number.isFinite(stock.quantity) || stock.quantity < 0) return;
-    const branchId = stock.branchId || undefined;
+  const addStartupStock = useCallback((stock: { product: StockProduct; quantity: number; branchId: string }) => {
+    if (role !== 'admin' || !Number.isFinite(stock.quantity) || stock.quantity < 0 || !stock.branchId) return;
+    const branchId = stock.branchId;
     setStartupStocks(prev => {
       if (prev.some(item => item.product === stock.product && item.branchId === branchId)) return prev;
       return [...prev, {
@@ -2356,7 +2356,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id: genId(),
       action: 'Start-up stock set',
       user: userName,
-      detail: `${stock.product} · ${stock.quantity.toLocaleString()} ${unitForProd(stock.product)}${branchId ? ` · branch ${branchId}` : ' · all branches'}`,
+      detail: `${stock.product} · ${stock.quantity.toLocaleString()} ${unitForProd(stock.product)} · branch ${branchId}`,
       ts: nowTs(),
     }, ...a]);
   }, [role, userName]);
