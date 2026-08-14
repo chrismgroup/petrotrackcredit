@@ -16,11 +16,25 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 const fmtL = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  pending_manager:    { label: 'Awaiting Manager',    color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline' },
-  pending_accountant: { label: 'Awaiting Accountant', color: '#185FA5', bg: '#E6F1FB', icon: 'hourglass-outline' },
+  pending_manager:    { label: "Awaiting Manager's Approval",    color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline' },
+  pending_accountant: { label: "Awaiting Accountant's Approval", color: '#185FA5', bg: '#E6F1FB', icon: 'hourglass-outline' },
   returned:           { label: 'Returned',             color: '#791F1F', bg: '#FCEBEB', icon: 'return-down-back-outline' },
   approved:           { label: 'Approved',             color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle-outline' },
 };
+
+const REPORT_STATUS_ORDER: Record<PumpDailyReport['status'], number> = {
+  returned: 0,
+  approved: 1,
+  pending_manager: 2,
+  pending_accountant: 3,
+};
+
+function sortShiftReports(a: PumpDailyReport, b: PumpDailyReport): number {
+  return REPORT_STATUS_ORDER[a.status] - REPORT_STATUS_ORDER[b.status]
+    || b.date.localeCompare(a.date)
+    || b.submittedAt.localeCompare(a.submittedAt)
+    || b.id - a.id;
+}
 
 /* ── sub-components (module-scope — iOS keyboard safe) ──────── */
 interface StatusBadgeProps { status: string }
@@ -352,43 +366,43 @@ export default function ShiftReportScreen() {
   const myReports = useMemo(() =>
      [...pumpDailyReports]
        .filter(r => (isGlobalOverview || inMyBranch(r)) && (isGlobalOverview || r.submittedBy === userName || r.branchId === branchId))
-      .sort((a, b) => b.date.localeCompare(a.date)),
+       .sort(sortShiftReports),
     [pumpDailyReports, userName, branchId, isGlobalOverview]
   );
 
   const pendingMgr = useMemo(() =>
     pumpDailyReports.filter(r => r.status === 'pending_manager' && (isGlobalOverview || inMyBranch(r)))
-      .sort((a, b) => b.date.localeCompare(a.date)),
+      .sort(sortShiftReports),
     [pumpDailyReports, branchId, isGlobalOverview]
   );
   const returnedMgr = useMemo(() =>
     pumpDailyReports.filter(r => r.status === 'returned' && (isGlobalOverview || inMyBranch(r)))
-      .sort((a, b) => b.date.localeCompare(a.date)),
+      .sort(sortShiftReports),
     [pumpDailyReports, branchId]
   );
   const pendingAcc = useMemo(() =>
     pumpDailyReports.filter(r => r.status === 'pending_accountant')
-      .sort((a, b) => b.date.localeCompare(a.date)),
+      .sort(sortShiftReports),
     [pumpDailyReports]
   );
   const pendingAccMgr = useMemo(() =>
     pumpDailyReports.filter(r => r.status === 'pending_accountant' && (isGlobalOverview || inMyBranch(r)))
-      .sort((a, b) => b.date.localeCompare(a.date)),
+      .sort(sortShiftReports),
     [pumpDailyReports, branchId, isGlobalOverview]
   );
   const approvedAll = useMemo(() =>
     pumpDailyReports.filter(r => r.status === 'approved')
-      .sort((a, b) => b.date.localeCompare(a.date)),
+      .sort(sortShiftReports),
     [pumpDailyReports]
   );
   const allReports = useMemo(() =>
-    [...pumpDailyReports].sort((a, b) => b.date.localeCompare(a.date) || b.submittedAt.localeCompare(a.submittedAt)),
+    [...pumpDailyReports].sort(sortShiftReports),
     [pumpDailyReports]
   );
 
   /* ── attendant dashboard stats ── */
   const attReports = useMemo(() =>
-    [...pumpDailyReports].filter(r => r.submittedBy === userName).sort((a, b) => b.date.localeCompare(a.date)),
+    [...pumpDailyReports].filter(r => r.submittedBy === userName).sort(sortShiftReports),
     [pumpDailyReports, userName]
   );
   const monthKey = today.slice(0, 7);
@@ -891,7 +905,7 @@ export default function ShiftReportScreen() {
           )}
           {allReports.length > 0 && (
             <>
-              {(['approved', 'pending_accountant', 'pending_manager', 'returned'] as const).map(st => {
+              {(['returned', 'approved', 'pending_manager', 'pending_accountant'] as const).map(st => {
                 const group = allReports.filter(r => r.status === st);
                 if (group.length === 0) return null;
                 const meta = STATUS_META[st] ?? STATUS_META.pending_manager;
