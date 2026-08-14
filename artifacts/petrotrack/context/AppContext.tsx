@@ -266,6 +266,13 @@ export interface PumpDailyReport {
   rejectionReason?: string;
 }
 
+/** Timestamp of the latest completed workflow step for meter carry-forward. */
+export function getPumpReportWorkflowAt(
+  report: Pick<PumpDailyReport, 'submittedAt' | 'mgrAt' | 'accAt'>,
+): string {
+  return report.accAt ?? report.mgrAt ?? report.submittedAt;
+}
+
 const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   pending_manager: 1,
   returned: 2,
@@ -2403,7 +2410,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       const sorted = [...pumpDailyReports]
         .filter(r => r.pumpId === pumpId && (r.status === 'approved' || r.status === 'pending_accountant'))
-        .sort((a, b) => b.date.localeCompare(a.date) || b.submittedAt.localeCompare(a.submittedAt));
+        .sort((a, b) =>
+          getPumpReportWorkflowAt(b).localeCompare(getPumpReportWorkflowAt(a))
+          || b.date.localeCompare(a.date)
+          || b.id - a.id
+        );
       if (sorted.length > 0) {
         localSeedMeters[pumpId] = Number(sorted[0].closingMeter);
         continue;
