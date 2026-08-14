@@ -57,11 +57,6 @@ function localDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 function todayIso() { return localDateKey(new Date()); }
-function offsetDateKey(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return localDateKey(date);
-}
 function recordDateKey(value?: string) {
   return value ? value.slice(0, 10) : '';
 }
@@ -197,7 +192,7 @@ export default function ReceivingScreen() {
   const {
     role, userName, branchId,
     tanks, lpgTanks, dips, deliveries, prices, branches,
-    pumpDailyReports, sales, pumps, startupStocks,
+    pumpDailyReports, pumps, startupStocks,
     deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery,
@@ -366,19 +361,6 @@ export default function ReceivingScreen() {
       : null;
   }
 
-  function productFromSalesEntry(entry: typeof sales[number]): string | null {
-    const linkedPump = entry.pumpId ? pumps.find(pump => pump.id === entry.pumpId) : undefined;
-    if (linkedPump) return linkedPump.prod;
-
-    const entryPumpName = entry.pump.split(' (')[0].trim().toLowerCase();
-    const namedPump = pumps.find(pump => pump.name.trim().toLowerCase() === entryPumpName);
-    if (namedPump) return namedPump.prod;
-
-    const label = entry.pump.toLowerCase();
-    if (label.includes('lube oil')) return 'Lube Oil';
-    return ALL_PRODS.find(product => new RegExp(`\\b${product.toLowerCase()}\\b`).test(label)) ?? null;
-  }
-
   function buildStockRows(
     scopeBranchId: string | null,
     scopeTanks: Tank[],
@@ -387,26 +369,17 @@ export default function ReceivingScreen() {
     scopeReports: typeof pumpDailyReports,
   ): StockProdRow[] {
     const todayKey = localDateKey(new Date());
-    const yesterdayKey = offsetDateKey(-1);
     const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, false);
     const inBranch = (item: { branchId?: string }) => item.branchId === scopeBranchId;
-    const pumpReportSales = scopeReports
+    const approvedShiftReportsById = new Map<number, typeof scopeReports[number]>();
+    scopeReports
       .filter(report =>
-        recordDateKey(report.date) === yesterdayKey &&
-        report.status !== 'returned' &&
+        recordDateKey(report.date) === todayKey &&
+        report.status === 'approved' &&
         inBranch(report),
-      );
-    const shiftReportIds = new Set(
-      scopeReports
-        .filter(report => recordDateKey(report.date) === yesterdayKey && inBranch(report))
-        .map(report => report.id),
-    );
-    const manualSales = sales.filter(sale =>
-      recordDateKey(sale.dt) === yesterdayKey &&
-      inBranch(sale) &&
-      !sale.shiftReportId &&
-      !shiftReportIds.has(sale.id),
-    );
+      )
+      .forEach(report => approvedShiftReportsById.set(report.id, report));
+    const approvedShiftReports = [...approvedShiftReportsById.values()];
 
     return ALL_PRODS
       .map(prod => {
@@ -418,12 +391,9 @@ export default function ReceivingScreen() {
             inBranch(d),
           )
           .reduce((s, d) => s + d.rec, 0);
-        const sold = pumpReportSales
+        const sold = approvedShiftReports
           .filter(report => report.product === prod)
-          .reduce((sum, report) => sum + report.liters, 0) +
-          manualSales
-            .filter(sale => productFromSalesEntry(sale) === prod)
-            .reduce((sum, sale) => sum + sale.L, 0);
+          .reduce((sum, report) => sum + report.liters, 0);
         const startupStock = startupStocks.find(stock =>
           stock.product === prod &&
           stock.branchId === scopeBranchId
@@ -858,7 +828,7 @@ export default function ReceivingScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Snapshot (Book Stock + Variance)</Text>
             <Text style={[styles.stockFormulaText, { color: colors.textMuted }]}>
-              Book stock = admin-set start-up quantity + today&apos;s approved deliveries − yesterday&apos;s eligible sales. Variance = book stock − today&apos;s submitted dip.
+              Book stock = admin-set start-up quantity + today&apos;s approved deliveries − today&apos;s approved shift-report sales. Variance = book stock − today&apos;s submitted dip.
             </Text>
             {branchStockReports.map(bsr => (
               <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>
