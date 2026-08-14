@@ -358,7 +358,11 @@ export function calculateStockBook(
   }
 
   for (const report of approvedReportsById.values()) {
+    // The applied/business date on the shift report is authoritative. Approval
+    // timestamps only determine whether the report was approved after the
+    // admin seed; they must never replace or shift the report's business date.
     const businessDate = recordBusinessDate(report.date);
+    if (!businessDate) continue;
     if (!isInSeedWindow(businessDate, getPumpReportWorkflowAt(report))) continue;
     if (businessDate === asOfDate) sold += report.liters;
     else if (businessDate < asOfDate) priorSold += report.liters;
