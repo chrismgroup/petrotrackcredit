@@ -125,7 +125,7 @@ export const DEFAULT_MGR_PERMS: MgrPermissions = {
   canPetrolTanks: true, canLpgTanks: true,
 };
 
-export type AccountStatus = 'pending' | 'pending_md' | 'pending_admin' | 'active' | 'suspended' | 'rejected';
+export type AccountStatus = 'pending' | 'pending_md' | 'pending_admin' | 'active' | 'suspended' | 'inactive' | 'rejected';
 export interface UserAccount {
   id: number;
   empId?: string;
@@ -1851,8 +1851,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // leave the UI looking deleted while the account can still sign in.
     const linkedAccount = userAccounts.find(account =>
       (member.accountId !== undefined && account.id === member.accountId) ||
-      (account.status === 'active' &&
-        account.empName.trim().toLowerCase() === member.name.trim().toLowerCase() &&
+      (account.empName.trim().toLowerCase() === member.name.trim().toLowerCase() &&
         (!member.email || !account.username || `${account.username}@petrotrack.com`.toLowerCase() === member.email.trim().toLowerCase()))
     );
     if (linkedAccount) {
@@ -2139,13 +2138,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteUserAccount = useCallback(async (id: number): Promise<boolean> => {
     const account = userAccounts.find(a => a.id === id);
+    // Admin may remove any record; HR retains its existing rejected-enrollment
+    // cleanup permission, which the API enforces independently.
+    if (role !== 'admin' && !(role === 'csm' && account?.status === 'rejected')) return false;
     const removed = await usersApi.remove(id);
     if (!removed) return false;
     setUserAccounts(prev => prev.filter(a => a.id !== id));
     setStaff(prev => prev.filter(member =>
       member.accountId !== id &&
       !(account && member.name.trim().toLowerCase() === account.empName.trim().toLowerCase() &&
-        account.status === 'active' &&
         (!member.email || !account.username || `${account.username}@petrotrack.com`.toLowerCase() === member.email.trim().toLowerCase()))
     ));
     setUserAccess(prev => {
@@ -2156,7 +2157,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     setAudit(a => [{ id: genId(), action: 'Account deleted', user: userName, detail: `User account #${id} permanently removed`, ts: nowTs() }, ...a]);
     return true;
-  }, [userAccounts, userName]);
+  }, [role, userAccounts, userName]);
 
   const validateCredentials = useCallback(async (username: string, password: string): Promise<UserAccount | null> => {
     const candidates = userAccounts.filter(a => a.username === username && a.status === 'active');
@@ -2546,8 +2547,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const removeHREmployee = useCallback((id: number) => {
+    if (role !== 'admin') return;
     setHrEmployees(prev => prev.filter(e => e.id !== id));
-  }, []);
+  }, [role]);
 
   const addHRUpload = useCallback((empId: number, doc: Omit<HREmployeeDoc, 'id' | 'dt' | 'approved'>) => {
     setHrEmployees(prev => prev.map(emp =>

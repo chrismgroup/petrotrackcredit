@@ -365,6 +365,22 @@ export default function HRScreen() {
     ]);
   }
 
+  async function handleDeleteInactiveEmployee(emp: HREmployee) {
+    if (!isAdmin || emp.status === 'active') return;
+    const linkedAccount = userAccounts.find(account =>
+      account.empName.trim().toLowerCase() === emp.name.trim().toLowerCase()
+    );
+    if (linkedAccount) {
+      const removed = await deleteUserAccount(linkedAccount.id);
+      if (!removed) {
+        Alert.alert('Delete Failed', 'The linked user account could not be removed. Check your connection and try again.');
+        return;
+      }
+    }
+    removeHREmployee(emp.id);
+    Alert.alert('Staff Removed', `${emp.name} was removed from HR records${linkedAccount ? ' and the linked user account' : ''}.`);
+  }
+
   function openEditModal(acc: UserAccount) {
     setEditingEnrollment(acc);
     setEEmpName(acc.empName ?? '');
@@ -843,7 +859,18 @@ export default function HRScreen() {
             <Text style={[styles.empName, { color: colors.text }]}>{emp.name}</Text>
             <Text style={[styles.empSub,  { color: colors.textMuted }]}>{emp.role} · {emp.dept}</Text>
           </View>
-          <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
+          <View style={{ alignItems: 'center', gap: 6 }}>
+            {isAdmin && emp.status !== 'active' && (
+              <TouchableOpacity
+                onPress={event => { event.stopPropagation(); handleDeleteInactiveEmployee(emp); }}
+                style={[styles.iconBtn, { borderColor: '#E74C3C55', backgroundColor: '#FCEBEB' }]}
+                accessibilityLabel={`Delete ${emp.name}`}
+              >
+                <Ionicons name="trash-outline" size={14} color="#E74C3C" />
+              </TouchableOpacity>
+            )}
+            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
+          </View>
         </TouchableOpacity>
 
         {total > 0 && (
@@ -1750,6 +1777,7 @@ const styles = StyleSheet.create({
 
   empCard:         { borderRadius: 12, borderWidth: 1, marginBottom: 10, overflow: 'hidden' },
   empHeader:       { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13 },
+  iconBtn:         { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   avatar:          { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   avatarText:      { color: '#fff', fontWeight: '800', fontSize: 14 },
   empName:         { fontSize: 14, fontWeight: '700' },

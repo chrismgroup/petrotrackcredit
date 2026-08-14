@@ -204,7 +204,7 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
     }
   }
 
-  const adminAllowed = ["active", "suspended", "rejected", "pending", "pending_md", "pending_admin"];
+  const adminAllowed = ["active", "suspended", "inactive", "rejected", "pending", "pending_md", "pending_admin"];
   if (callerRole === "admin" && !adminAllowed.includes(status)) {
     res.status(400).json({ error: `status must be one of: ${adminAllowed.join(", ")}` });
     return;
