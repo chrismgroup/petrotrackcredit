@@ -398,14 +398,14 @@ export default function ShiftReportScreen() {
 
   function handleDelete() {
     if (!viewing) return;
-    if (viewing.status === 'approved') {
+    if (viewing.status === 'approved' && !isAdmin) {
       Alert.alert('Locked', 'This report was approved by the accountant and cannot be deleted or edited.');
       return;
     }
     if (viewing.status === 'pending_accountant' && !isAdmin && !isMd) { Alert.alert('In Review', 'This report is with the accountant and cannot be deleted.'); return; }
     Alert.alert(
       'Delete Report',
-      `Delete the shift report for ${viewing.pumpName} on ${fmtDate(viewing.date)}? This cannot be undone.`,
+      `Delete the shift report for ${viewing.pumpName} on ${fmtDate(viewing.date)}? This cannot be undone.${viewing.status === 'approved' ? ' The linked sales record will also be removed.' : ''}`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => { deletePumpReport(viewing.id); closeModal(); } },
@@ -1220,14 +1220,16 @@ export default function ShiftReportScreen() {
               </View>
               {((isAtt && viewing.submittedBy === userName &&
                 (viewing.status === 'pending_manager' || viewing.status === 'returned')) ||
-                ((isAdmin || isMd || isCeo) && viewing.status !== 'approved')) && !isEditing && (
+                isAdmin ||
+                ((isMd || isCeo) && viewing.status !== 'approved')) && !isEditing && (
                 <TouchableOpacity onPress={startEdit} style={{ marginRight: 10 }}>
                   <Ionicons name="create-outline" size={22} color={roleColor} />
                 </TouchableOpacity>
               )}
               {((isAtt && viewing.submittedBy === userName &&
                 (viewing.status === 'pending_manager' || viewing.status === 'returned')) ||
-                ((isAdmin || isMd) && viewing.status !== 'approved')) && !isEditing && (
+                isAdmin ||
+                (isMd && viewing.status !== 'approved')) && !isEditing && (
                 <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10 }}>
                   <Ionicons name="trash-outline" size={22} color="#E74C3C" />
                 </TouchableOpacity>
