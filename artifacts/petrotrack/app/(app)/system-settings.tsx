@@ -13,6 +13,7 @@ type Tab = 'company' | 'tanks' | 'startup' | 'pumps' | 'staff' | 'access' | 'sna
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'company', label: 'Company', icon: 'business' },
   { id: 'tanks',   label: 'Tanks',   icon: 'water' },
+  { id: 'startup', label: 'Start-up Stock', icon: 'cube' },
   { id: 'pumps',   label: 'Pumps',   icon: 'speedometer' },
   { id: 'staff',   label: 'Staff',   icon: 'people' },
   { id: 'access',  label: 'Access',  icon: 'lock-closed' },
