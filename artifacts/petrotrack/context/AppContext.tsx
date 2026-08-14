@@ -266,6 +266,48 @@ export interface PumpDailyReport {
   rejectionReason?: string;
 }
 
+const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
+  pending_manager: 1,
+  returned: 2,
+  pending_accountant: 3,
+  approved: 4,
+};
+
+function pumpReportActivityMs(report: PumpDailyReport): number {
+  const timestamps = [report.submittedAt, report.mgrAt, report.accAt]
+    .map(value => Date.parse(value ?? ''))
+    .filter(value => Number.isFinite(value));
+  return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+}
+
+function mergePumpDailyReports(current: PumpDailyReport[], incoming: PumpDailyReport[]): PumpDailyReport[] {
+  const merged = new Map<number, PumpDailyReport>();
+
+  const add = (report: PumpDailyReport) => {
+    const existing = merged.get(report.id);
+    if (!existing) {
+      merged.set(report.id, report);
+      return;
+    }
+
+    const currentActivity = pumpReportActivityMs(existing);
+    const incomingActivity = pumpReportActivityMs(report);
+    const currentRank = PUMP_REPORT_STATUS_RANK[existing.status] ?? 0;
+    const incomingRank = PUMP_REPORT_STATUS_RANK[report.status] ?? 0;
+
+    if (
+      incomingActivity > currentActivity ||
+      (incomingActivity === currentActivity && incomingRank >= currentRank)
+    ) {
+      merged.set(report.id, report);
+    }
+  };
+
+  current.forEach(add);
+  incoming.forEach(add);
+  return Array.from(merged.values());
+}
+
 export type HRDocType = 'biodata' | 'contract' | 'guarantor' | 'nin' | 'passport_photo' | 'certificate' | 'nysc' | 'medical' | 'reference' | 'bank_details' | 'tin' | 'pension';
 export type HRDocStatus = 'pending' | 'submitted' | 'approved' | 'n/a';
 export interface HRDoc { type: HRDocType; status: HRDocStatus; date?: string; note?: string; fileName?: string; }
@@ -1009,7 +1051,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!p.has('callLog'))           setCallLog(safeArray<CallRecord>(s.callLog));
       if (!p.has('marketCompetitors')) setMarketCompetitors(safeArray<MarketCompetitor>(s.marketCompetitors));
       if (!p.has('meetingMinutes'))    setMeetingMinutes(safeArray<MeetingMinutes>(s.meetingMinutes));
-      if (!p.has('pumpDailyReports'))  setPumpDailyReports(safeArray<PumpDailyReport>(s.pumpDailyReports));
+      if (!p.has('pumpDailyReports') && Array.isArray(s.pumpDailyReports)) {
+        setPumpDailyReports(prev => mergePumpDailyReports(prev, s.pumpDailyReports as PumpDailyReport[]));
+      }
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
       if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(s.financialEntry as FinancialEntry);

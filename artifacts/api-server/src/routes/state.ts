@@ -39,6 +39,61 @@ const OPERATIONAL_KEYS = [
   "corpProjects", "meetingMinutes", "broadcasts", "callLog", "priceHistory",
 ];
 
+type JsonRecord = Record<string, unknown>;
+
+const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
+  pending_manager: 1,
+  returned: 2,
+  pending_accountant: 3,
+  approved: 4,
+};
+
+function pumpReportActivityMs(report: JsonRecord): number {
+  const timestamps = ["submittedAt", "mgrAt", "accAt"]
+    .map(key => Date.parse(String(report[key] ?? "")))
+    .filter(value => Number.isFinite(value));
+  return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+}
+
+/**
+ * Pump reports are edited by attendants, managers, and accountants on separate
+ * devices. A client PUT contains its complete local array, so replacing the
+ * server array would let an older device erase a newly submitted report.
+ * Merge by report ID and keep the version with the latest workflow activity.
+ */
+function mergePumpDailyReports(existing: unknown, incoming: unknown): JsonRecord[] {
+  const merged = new Map<string, JsonRecord>();
+
+  const add = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const report = value as JsonRecord;
+    const id = String(report.id ?? "");
+    if (!id) return;
+
+    const current = merged.get(id);
+    if (!current) {
+      merged.set(id, report);
+      return;
+    }
+
+    const currentActivity = pumpReportActivityMs(current);
+    const candidateActivity = pumpReportActivityMs(report);
+    const currentRank = PUMP_REPORT_STATUS_RANK[String(current.status ?? "")] ?? 0;
+    const candidateRank = PUMP_REPORT_STATUS_RANK[String(report.status ?? "")] ?? 0;
+
+    if (
+      candidateActivity > currentActivity ||
+      (candidateActivity === currentActivity && candidateRank >= currentRank)
+    ) {
+      merged.set(id, report);
+    }
+  };
+
+  if (Array.isArray(existing)) existing.forEach(add);
+  if (Array.isArray(incoming)) incoming.forEach(add);
+  return Array.from(merged.values());
+}
+
 async function resolveManagerBranchId(username?: string): Promise<string | undefined> {
   if (!username) return undefined;
   const [manager] = await db
@@ -316,6 +371,17 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     const incomingOwn = incomingHistory.filter(entry => entry.branchId === managerBranchId);
     const existingOtherBranches = existingHistory.filter(entry => entry.branchId !== managerBranchId);
     data = [...incomingOwn, ...existingOtherBranches];
+  }
+
+  // Reports are shared workflow records. Merge instead of replacing the full
+  // array so a stale attendant/manager/accountant client cannot erase reports
+  // submitted by another device between its initial sync and its next PUT.
+  if (key === "pumpDailyReports" && Array.isArray(data)) {
+    const [existingRow] = await db
+      .select()
+      .from(appStateTable)
+      .where(eq(appStateTable.key, "pumpDailyReports"));
+    data = mergePumpDailyReports(existingRow?.data, data);
   }
 
   // Server-side cap: keep only the newest audit entries (entries are prepended),
