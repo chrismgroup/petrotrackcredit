@@ -7,7 +7,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { Delivery, LPGTank, Tank, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForProduct, useApp } from '@/context/AppContext';
+import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForProduct, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
@@ -59,11 +59,6 @@ function localDateKey(date: Date) {
 function todayIso() { return localDateKey(new Date()); }
 function recordDateKey(value?: string) {
   return value ? value.slice(0, 10) : '';
-}
-function stockProductFromDelivery(product: string): string | null {
-  if (product === 'LPG' || product === 'LPG_Single' || product === 'LPG_Distributor') return 'LPG';
-  if (product === 'PMS' || product === 'AGO' || product === 'DPK' || product === 'Lube Oil') return product;
-  return null;
 }
 function unitForProd(p: string) { return p === 'LPG' ? 'kg' : 'L'; }
 function blankMgrForm(): MgrFormState {
@@ -192,7 +187,7 @@ export default function ReceivingScreen() {
   const {
     role, userName, branchId,
     tanks, lpgTanks, dips, deliveries, prices, branches,
-    pumpDailyReports, pumps, startupStocks,
+    pumpDailyReports, startupStocks,
     deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery,
@@ -370,41 +365,31 @@ export default function ReceivingScreen() {
   ): StockProdRow[] {
     const todayKey = localDateKey(new Date());
     const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, false);
-    const inBranch = (item: { branchId?: string }) => item.branchId === scopeBranchId;
-    const approvedShiftReportsById = new Map<number, typeof scopeReports[number]>();
-    scopeReports
-      .filter(report =>
-        recordDateKey(report.date) === todayKey &&
-        report.status === 'approved' &&
-        inBranch(report),
-      )
-      .forEach(report => approvedShiftReportsById.set(report.id, report));
-    const approvedShiftReports = [...approvedShiftReportsById.values()];
-
     return ALL_PRODS
       .map(prod => {
-        const delivered = scopeDeliveries
-          .filter(d =>
-            recordDateKey(d.dt) === todayKey &&
-            stockProductFromDelivery(d.prod) === prod &&
-            (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
-            inBranch(d),
-          )
-          .reduce((s, d) => s + d.rec, 0);
-        const sold = approvedShiftReports
-          .filter(report => report.product === prod)
-          .reduce((sum, report) => sum + report.liters, 0);
-        const startupStock = startupStocks.find(stock =>
-          stock.product === prod &&
-          stock.branchId === scopeBranchId
-        )?.quantity ?? null;
-        const bookStock = startupStock === null ? null : startupStock + delivered - sold;
+        const stockBook = calculateStockBook(
+          startupStocks.find(stock => stock.product === prod && stock.branchId === scopeBranchId),
+          prod as 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil',
+          scopeBranchId,
+          scopeDeliveries,
+          scopeReports,
+          todayKey,
+        );
         const submittedTankDip = dipForProduct(todaySubmittedDip, prod, scopeTanks, scopeLpgTanks);
-        const variance = bookStock === null || submittedTankDip === null
+        const variance = stockBook.bookStock === null || submittedTankDip === null
           ? null
-          : bookStock - submittedTankDip;
-        if (startupStock === null && delivered === 0 && sold === 0 && submittedTankDip === null) return null;
-        return { prod, unit: PROD_UNIT[prod] ?? 'L', startupStock, delivered, sold, bookStock, submittedTankDip, variance };
+          : stockBook.bookStock - submittedTankDip;
+        if (stockBook.startupStock === null && stockBook.delivered === 0 && stockBook.sold === 0 && submittedTankDip === null) return null;
+        return {
+          prod,
+          unit: PROD_UNIT[prod] ?? 'L',
+          startupStock: stockBook.startupStock,
+          delivered: stockBook.delivered,
+          sold: stockBook.sold,
+          bookStock: stockBook.bookStock,
+          submittedTankDip,
+          variance,
+        };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
   }
@@ -828,7 +813,7 @@ export default function ReceivingScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Snapshot (Book Stock + Variance)</Text>
             <Text style={[styles.stockFormulaText, { color: colors.textMuted }]}>
-              Book stock = admin-set start-up quantity + today&apos;s approved deliveries − today&apos;s approved shift-report sales. Variance = book stock − today&apos;s submitted dip.
+              Admin seed quantity is applied once. Book stock = carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales. Variance = book stock − today&apos;s submitted dip.
             </Text>
             {branchStockReports.map(bsr => (
               <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>
@@ -842,7 +827,7 @@ export default function ReceivingScreen() {
                   <View style={[styles.stockTable, { minWidth: 720, backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={[styles.stockTableHeader, { borderBottomColor: colors.border }]}>
                       <Text style={[styles.stockColProd, styles.stockHeaderText, { color: colors.textMuted }]}>Product</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Start-up</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Seed</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Delivered</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Sold</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Book Stock</Text>

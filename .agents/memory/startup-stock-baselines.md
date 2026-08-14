@@ -7,7 +7,7 @@ Start-up stock in the Home Snapshot is explicitly set by an admin for each produ
 
 **Why:** Operations need a controlled, auditable opening quantity for each branch and product; yesterday’s tank dip must not silently replace the admin-approved baseline.
 
-**How to apply:** Calculate `admin-set branch/product startup quantity + current-day approved deliveries − yesterday’s non-returned shift-report sales` independently per product. Submitted and approved shift reports count; returned reports do not. Preserve unrelated manual sales without double-counting auto-created shift-report sales. Compare that book stock with the current business day’s submitted tank dip; negative variance is shortage and positive variance is excess. If the admin has not configured a branch/product baseline, show the baseline as unavailable rather than treating it as zero.
+**How to apply:** Treat the admin-set branch/product quantity as a one-time seed. Carry prior approved book stock forward, then apply the current business day’s approved deliveries and approved shift-report sales exactly once per report ID: `carried-forward book stock + today’s deliveries − today’s approved shift-report sales`. Do not add auto-created SalesEntry records again. Compare that book stock with today’s submitted tank dip; negative variance is shortage and positive variance is excess. If the admin has not configured a branch/product seed, show the baseline as unavailable rather than treating it as zero.
 
 Dip aggregation must normalize stored readings to finite numbers and use the same branch rule as Tank Dipping: explicitly assigned tanks are scoped, while unassigned tanks remain visible to branch users.
 
@@ -19,4 +19,4 @@ Inventory display aggregates physical stock by product within the visible branch
 
 Dip history must filter each record’s tank readings to the viewer’s visible branch assets; a dip record can contain readings beyond the current branch scope.
 
-The confirmed stock rule is: branch Fuel Stock sums each product across that branch’s assigned tanks, and Book Stock is that product’s Fuel Stock less its quantity sold; never combine PMS and AGO.
+The confirmed stock rule is: branch Fuel Stock sums each product across that branch’s assigned tanks, and Book Stock is the carried-forward ledger balance for that product plus today’s approved deliveries minus today’s approved shift-report sales; never combine PMS and AGO.
