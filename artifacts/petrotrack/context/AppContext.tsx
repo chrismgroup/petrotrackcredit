@@ -2666,18 +2666,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deletePumpReport = useCallback((id: number) => {
     const report = pumpDailyReports.find(r => r.id === id);
-    // Accountant approval is a permanent lock. Keep this guard in the shared
-    // state layer as well as the screen so no caller can bypass the workflow.
-    if (!report || report.status === 'approved') return;
+    // Approved reports remain locked for normal workflow users, but Admin may
+    // remove an incorrect report. Keep this guard in the shared state layer so
+    // the admin permission cannot be bypassed or granted to other callers.
+    if (!report || (report.status === 'approved' && role !== 'admin')) return;
     setPumpDailyReports(rs => rs.filter(r => r.id !== id));
     setSales(s => s.filter(e => e.shiftReportId !== id));
-    setAudit(a => [{ id: genId(), action: 'Pump report deleted', user: userName, detail: `Report #${id} deleted`, ts: nowTs() }, ...a]);
-  }, [userName, pumpDailyReports]);
+    setAudit(a => [{
+      id: genId(),
+      action: report.status === 'approved' ? 'Approved pump report deleted by Admin' : 'Pump report deleted',
+      user: userName,
+      detail: `Report #${id} deleted${report.status === 'approved' ? ' by Admin; linked sales record removed' : ''}`,
+      ts: nowTs(),
+    }, ...a]);
+  }, [role, userName, pumpDailyReports]);
 
   const updatePumpReport = useCallback((id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => {
     const prev = pumpDailyReports.find(r => r.id === id);
-    // Accountant-approved reports are immutable, including for admin/MD/CEO.
-    if (!prev || prev.status === 'approved') return;
+    // Accountant-approved reports remain immutable for normal workflow users,
+    // but Admin may correct an incorrect report.
+    if (!prev || (prev.status === 'approved' && role !== 'admin')) return;
     const merged = { ...prev, ...updates } as PumpDailyReport;
     // Recalculate derived values when meter or price values change.
     const liters = merged.closingMeter > merged.openingMeter ? parseFloat((merged.closingMeter - merged.openingMeter).toFixed(4)) : 0;
@@ -2686,8 +2694,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const variance = totalCollected + merged.creditAmount - grossAmount;
     const next: PumpDailyReport = { ...merged, liters, grossAmount, totalCollected, variance };
     setPumpDailyReports(rs => rs.map(r => r.id === id ? next : r));
-    setAudit(a => [{ id: genId(), action: 'Pump report updated', user: userName, detail: `Report #${id} edited`, ts: nowTs() }, ...a]);
-  }, [userName, pumpDailyReports]);
+    // Accountant approval creates a linked sales record. Keep it synchronized
+    // when Admin corrects the approved shift report.
+    setSales(current => current.map(entry => entry.shiftReportId === id
+      ? {
+          ...entry,
+          L: next.liters,
+          price: next.unitPrice,
+          dt: next.date,
+          pos: next.posAmount,
+          branchId: next.branchId,
+        }
+      : entry
+    ));
+    setAudit(a => [{
+      id: genId(),
+      action: prev.status === 'approved' ? 'Approved pump report updated by Admin' : 'Pump report updated',
+      user: userName,
+      detail: `Report #${id} edited${prev.status === 'approved' ? ' by Admin; linked sales record synchronized' : ''}`,
+      ts: nowTs(),
+    }, ...a]);
+  }, [role, userName, pumpDailyReports]);
 
   const addHREmployee = useCallback((e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => {
     setHrEmployees(prev => {
