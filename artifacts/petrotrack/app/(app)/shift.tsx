@@ -251,8 +251,10 @@ export default function ShiftReportScreen() {
 
   function handleDelete() {
     if (!viewing) return;
-    const canDeleteApproved = isAdmin || isMd;
-    if (viewing.status === 'approved' && !canDeleteApproved) { Alert.alert('Locked', 'Approved reports cannot be deleted.'); return; }
+    if (viewing.status === 'approved') {
+      Alert.alert('Locked', 'This report was approved by the accountant and cannot be deleted or edited.');
+      return;
+    }
     if (viewing.status === 'pending_accountant' && !isAdmin && !isMd) { Alert.alert('In Review', 'This report is with the accountant and cannot be deleted.'); return; }
     Alert.alert(
       'Delete Report',
@@ -1043,14 +1045,14 @@ export default function ShiftReportScreen() {
               </View>
               {((isAtt && viewing.submittedBy === userName &&
                 (viewing.status === 'pending_manager' || viewing.status === 'returned')) ||
-                isAdmin || isMd || isCeo) && !isEditing && (
+                ((isAdmin || isMd || isCeo) && viewing.status !== 'approved')) && !isEditing && (
                 <TouchableOpacity onPress={startEdit} style={{ marginRight: 10 }}>
                   <Ionicons name="create-outline" size={22} color={roleColor} />
                 </TouchableOpacity>
               )}
               {((isAtt && viewing.submittedBy === userName &&
                 (viewing.status === 'pending_manager' || viewing.status === 'returned')) ||
-                isAdmin || isMd) && !isEditing && (
+                ((isAdmin || isMd) && viewing.status !== 'approved')) && !isEditing && (
                 <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10 }}>
                   <Ionicons name="trash-outline" size={22} color="#E74C3C" />
                 </TouchableOpacity>
@@ -1066,6 +1068,15 @@ export default function ShiftReportScreen() {
             </View>
 
             <StatusBadge status={viewing.status} />
+
+            {viewing.status === 'approved' && (
+              <View style={[c.lockedNotice, { backgroundColor: '#EAF3DE', borderColor: '#27500A44' }]}>
+                <Ionicons name="lock-closed-outline" size={14} color="#27500A" />
+                <Text style={{ flex: 1, fontSize: 12, color: '#27500A' }}>
+                  Approved by the accountant. This shift report is permanently locked.
+                </Text>
+              </View>
+            )}
 
             {viewing.rejectionReason && (
               <View style={[c.rejectionCard, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C44', marginTop: 12 }]}>
@@ -1288,6 +1299,7 @@ const c = StyleSheet.create({
   fieldLabel:    { fontSize: 12 },
   fieldValue:    { fontSize: 13, fontWeight: '600', maxWidth: '55%', textAlign: 'right' },
   varCard:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 8 },
+  lockedNotice:  { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 12 },
   rejectionCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
   alertBanner:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 14 },
   todayCard:     { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1.5, marginBottom: 8 },
