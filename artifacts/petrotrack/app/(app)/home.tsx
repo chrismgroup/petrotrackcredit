@@ -17,6 +17,7 @@ import {
   salesRevenueByBranch,
   ROLE_LABELS,
   SCREEN_ROUTES,
+  calculateStockBook,
   unitForProd,
   useApp,
   type Budget,
@@ -85,12 +86,6 @@ function localDateKey(date: Date): string {
 
 function recordDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
-}
-
-function stockProductFromDelivery(product: string): StockSnapshotProduct | null {
-  if (product === 'LPG' || product === 'LPG_Single' || product === 'LPG_Distributor') return 'LPG';
-  if (product === 'PMS' || product === 'AGO' || product === 'DPK' || product === 'Lube Oil') return product;
-  return null;
 }
 
 function formatQuantity(value: number | null): string {
@@ -444,62 +439,38 @@ export default function HomeScreen() {
       // Only explicitly assigned assets and records belong in a branch
       // snapshot. Unassigned data is intentionally excluded.
       const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
-      const recordInScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
       const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks);
-      const approvedShiftReportsById = new Map<number, typeof pumpDailyReports[number]>();
-      pumpDailyReports
-        .filter(report =>
-          recordDateKey(report.date) === todayKey &&
-          report.status === 'approved' &&
-          recordInScope(report),
-        )
-        .forEach(report => approvedShiftReportsById.set(report.id, report));
-      const approvedShiftReports = [...approvedShiftReportsById.values()];
-
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
         : undefined;
       const products = STOCK_SNAPSHOT_PRODUCTS
         .filter(product => enabledProducts?.[product] !== false)
         .map(product => {
-        const deliveriesForProduct = deliveries
-          .filter(delivery =>
-            recordDateKey(delivery.dt) === todayKey &&
-            stockProductFromDelivery(delivery.prod) === product &&
-            (delivery.approvalStatus === 'approved' || delivery.approvalStatus === 'md_approved') &&
-            recordInScope(delivery),
-          )
-          .reduce((sum, delivery) => sum + delivery.rec, 0);
-        // Approved shift reports are the sole source for today's sold quantity.
-        // Their approval also creates a SalesEntry, so this calculation reads
-        // only the report liters and never adds the linked sales record.
-        const shiftReportSalesForProduct = approvedShiftReports
-          .filter(report =>
-            report.product === product,
-          )
-          .reduce((sum, report) => {
-            const liters = Number(report.liters);
-            return sum + (Number.isFinite(liters) ? liters : 0);
-          }, 0);
-        const salesForProduct = shiftReportSalesForProduct;
-         const startupStock = startupStocks.find(stock =>
+        const startupStock = startupStocks.find(stock =>
            stock.product === product &&
            stock.branchId === scope.branchId
          )?.quantity ?? null;
-        const bookStock = startupStock === null ? null : startupStock + deliveriesForProduct - salesForProduct;
+        const stockBook = calculateStockBook(
+          startupStocks.find(stock => stock.product === product && stock.branchId === scope.branchId),
+          product,
+          scope.branchId,
+          deliveries,
+          pumpDailyReports,
+          todayKey,
+        );
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
-        const variance = startupStock === null || submittedTankDip === null || bookStock === null
+        const variance = stockBook.bookStock === null || submittedTankDip === null
           ? null
-          : bookStock - submittedTankDip;
+          : stockBook.bookStock - submittedTankDip;
 
         return {
           product,
           startupStock,
-          deliveries: deliveriesForProduct,
-          sales: salesForProduct,
-          bookStock,
+          deliveries: stockBook.delivered,
+          sales: stockBook.sold,
+          bookStock: stockBook.bookStock,
           submittedTankDip,
           variance,
           unit: unitForProd(product),
@@ -730,7 +701,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                 <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                   Live data · admin-set branch start-up quantity and shift reports + today&apos;s deliveries versus today&apos;s submitted tank dip
+                   Admin seed quantity is applied once; carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales versus today&apos;s submitted tank dip
                 </Text>
               </View>
               {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (
@@ -757,7 +728,7 @@ export default function HomeScreen() {
                         <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
                         {stockSnapshotConfig.metrics.bookStock ? (
                           <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                            Book stock = start-up + delivered − sold: {snapshot.bookStock === null ? 'Awaiting admin baseline' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
+                            Book stock = carried-forward + delivered − sold: {snapshot.bookStock === null ? 'Awaiting admin seed' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
                           </Text>
                         ) : null}
                       </View>
@@ -771,7 +742,7 @@ export default function HomeScreen() {
                     <View style={s.snapshotValues}>
                       {stockSnapshotConfig.metrics.startupStock ? (
                         <View style={s.snapshotValue}>
-                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Start-up qty.</Text>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Seed qty.</Text>
                           <Text style={[s.snapshotValueText, { color: colors.text }]}>{snapshot.startupStock === null ? '—' : `${formatQuantity(snapshot.startupStock)} ${snapshot.unit}`}</Text>
                         </View>
                       ) : null}

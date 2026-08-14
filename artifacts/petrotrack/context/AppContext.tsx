@@ -273,6 +273,106 @@ export function getPumpReportWorkflowAt(
   return report.accAt ?? report.mgrAt ?? report.submittedAt;
 }
 
+export interface StockBookCalculation {
+  startupStock: number | null;
+  delivered: number;
+  sold: number;
+  bookStock: number | null;
+}
+
+function stockProductFromDelivery(product: string): StockProduct | null {
+  if (product === 'LPG' || product === 'LPG_Single' || product === 'LPG_Distributor') return 'LPG';
+  if (product === 'PMS' || product === 'AGO' || product === 'DPK' || product === 'Lube Oil') return product;
+  return null;
+}
+
+function recordBusinessDate(value?: string): string {
+  return value?.slice(0, 10) ?? '';
+}
+
+function timestampMs(value?: string): number {
+  const parsed = Date.parse(value ?? '');
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Calculates a branch/product book stock from the admin seed and the
+ * subsequent approved ledger events. The seed is only applied once: prior
+ * business days are carried into the opening book stock, then today's
+ * approved deliveries and shift-report sales are applied to it.
+ */
+export function calculateStockBook(
+  startupStock: StartupStock | undefined,
+  product: StockProduct,
+  branchId: string | null,
+  deliveries: Delivery[],
+  reports: PumpDailyReport[],
+  asOfDate: string,
+): StockBookCalculation {
+  if (!startupStock || startupStock.branchId !== branchId) {
+    return { startupStock: null, delivered: 0, sold: 0, bookStock: null };
+  }
+
+  const seedAt = timestampMs(startupStock.setAt);
+  const seedDate = recordBusinessDate(startupStock.setAt);
+  const isAfterSeed = (eventAt: string | undefined, businessDate: string) => {
+    const eventAtMs = timestampMs(eventAt);
+    if (seedAt > 0 && eventAtMs > 0) return eventAtMs >= seedAt;
+    return !seedDate || businessDate >= seedDate;
+  };
+  const isInSeedWindow = (businessDate: string, eventAt: string | undefined) =>
+    Boolean(businessDate) &&
+    businessDate >= seedDate &&
+    businessDate <= asOfDate &&
+    isAfterSeed(eventAt, businessDate);
+
+  const approvedDeliveriesById = new Map<number, Delivery>();
+  deliveries
+    .filter(delivery =>
+      delivery.branchId === branchId &&
+      stockProductFromDelivery(delivery.prod) === product &&
+      (delivery.approvalStatus === 'approved' || delivery.approvalStatus === 'md_approved'),
+    )
+    .forEach(delivery => approvedDeliveriesById.set(delivery.id, delivery));
+
+  const approvedReportsById = new Map<number, PumpDailyReport>();
+  reports
+    .filter(report =>
+      report.branchId === branchId &&
+      report.product === product &&
+      report.status === 'approved',
+    )
+    .forEach(report => approvedReportsById.set(report.id, report));
+
+  let priorDelivered = 0;
+  let priorSold = 0;
+  let delivered = 0;
+  let sold = 0;
+
+  for (const delivery of approvedDeliveriesById.values()) {
+    const businessDate = recordBusinessDate(delivery.dt);
+    const approvedAt = delivery.approvedAt ?? delivery.mdAt ?? delivery.accAt ?? delivery.submittedAt ?? delivery.dt;
+    if (!isInSeedWindow(businessDate, approvedAt)) continue;
+    if (businessDate === asOfDate) delivered += delivery.rec;
+    else if (businessDate < asOfDate) priorDelivered += delivery.rec;
+  }
+
+  for (const report of approvedReportsById.values()) {
+    const businessDate = recordBusinessDate(report.date);
+    if (!isInSeedWindow(businessDate, getPumpReportWorkflowAt(report))) continue;
+    if (businessDate === asOfDate) sold += report.liters;
+    else if (businessDate < asOfDate) priorSold += report.liters;
+  }
+
+  const openingBookStock = startupStock.quantity + priorDelivered - priorSold;
+  return {
+    startupStock: startupStock.quantity,
+    delivered,
+    sold,
+    bookStock: openingBookStock + delivered - sold,
+  };
+}
+
 const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   pending_manager: 1,
   returned: 2,
