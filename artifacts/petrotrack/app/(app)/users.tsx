@@ -10,12 +10,12 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { GLOBAL_OVERVIEW_ROLES, ROLE_COLORS, ROLE_LABELS, UserAccount, useApp, type Role } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab = 'pending' | 'active';
+type Tab = 'pending' | 'active' | 'staff';
 
 const ROLE_OPTS: Role[] = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'];
 
 const STATUS_COLORS: Record<string, string> = {
-  active: '#1a6e3c', pending: '#BA7517', suspended: '#c0392b', rejected: '#888',
+  active: '#1a6e3c', pending: '#BA7517', suspended: '#c0392b', inactive: '#7f8c8d', rejected: '#888',
   pending_md: '#7B3FA5', pending_admin: '#BA7517',
 };
 
@@ -25,19 +25,20 @@ const STATUS_LABELS: Record<string, string> = {
   pending:       'Pending',
   active:        'Active',
   suspended:     'Suspended',
+  inactive:      'Inactive',
   rejected:      'Rejected',
 };
 
 export default function UsersScreen() {
   const {
     role, userName,
-    userAccounts, branches,
+    userAccounts, branches, staff,
     addActiveUserAccount, enrollStaff,
     mdApproveEnrollment, mdRejectEnrollment,
     approveUserAccount, updateUserAccount,
     updateEnrollmentData,
     suspendUserAccount, reactivateUserAccount,
-    rejectUserAccount, deleteUserAccount,
+    rejectUserAccount, deleteUserAccount, deleteStaff,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -123,9 +124,17 @@ export default function UsersScreen() {
         ? pendingMdRecs
         : [];
   const active   = userAccounts.filter(a => ['active', 'suspended'].includes(a.status));
-  const filtered = (tab === 'pending' ? pendingForRole : active).filter(a =>
+  const registeredUsers = isAdmin ? userAccounts : active;
+  const filtered = (tab === 'pending' ? pendingForRole : registeredUsers).filter(a =>
     !search || a.empName.toLowerCase().includes(search.toLowerCase()) ||
     a.username.toLowerCase().includes(search.toLowerCase())
+  );
+  const filteredStaff = staff.filter(member =>
+    !search ||
+    member.name.toLowerCase().includes(search.toLowerCase()) ||
+    member.email.toLowerCase().includes(search.toLowerCase()) ||
+    member.role.toLowerCase().includes(search.toLowerCase()) ||
+    (member.branchId ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
   /* ─── approve helpers (legacy flow for direct activation) ─── */
@@ -411,12 +420,22 @@ export default function UsersScreen() {
     name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
   const phoneOk = (v: string) => /^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(v.replace(/\s/g, ''));
+  const tabs: { id: Tab; label: string; count: number }[] = isAdmin
+    ? [
+        { id: 'pending', label: 'Pending Approval', count: pendingForRole.length },
+        { id: 'active', label: 'All Registered Users', count: userAccounts.length },
+        { id: 'staff', label: 'All Staff', count: staff.length },
+      ]
+    : [
+        { id: 'pending', label: 'Pending Approval', count: pendingForRole.length },
+        { id: 'active', label: 'Active Users', count: active.length },
+      ];
 
   return (
     <ScreenLayout title="User Accounts">
       {/* Tab bar */}
       <View style={[styles.tabRow, { borderBottomColor: colors.border }]}>
-        {([['pending', 'Pending Approval', pendingForRole.length], ['active', 'Active Users', active.length]] as const).map(([id, label, cnt]) => (
+        {tabs.map(({ id, label, count: cnt }) => (
           <TouchableOpacity
             key={id}
             onPress={() => setTab(id)}
@@ -551,9 +570,11 @@ export default function UsersScreen() {
           <>
             <View style={styles.statsRow}>
               {[
-                { label: 'Active',    val: active.filter(a => a.status === 'active').length,    color: '#1a6e3c' },
-                { label: 'Suspended', val: active.filter(a => a.status === 'suspended').length, color: colors.error },
-                { label: 'Total',     val: active.length,                                        color: colors.text },
+                { label: 'Active',    val: registeredUsers.filter(a => a.status === 'active').length,    color: '#1a6e3c' },
+                { label: 'Suspended', val: registeredUsers.filter(a => a.status === 'suspended').length, color: colors.error },
+                { label: 'Inactive',  val: registeredUsers.filter(a => a.status === 'inactive').length,  color: colors.textMuted },
+                { label: 'Rejected',  val: registeredUsers.filter(a => a.status === 'rejected').length,  color: '#888' },
+                { label: 'Total',     val: registeredUsers.length,                                         color: colors.text },
               ].map(s => (
                 <View key={s.label} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <Text style={[styles.statNum, { color: s.color }]}>{s.val}</Text>
@@ -574,7 +595,7 @@ export default function UsersScreen() {
             {filtered.length === 0 && (
               <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Ionicons name="people-outline" size={36} color={colors.textMuted} />
-                <Text style={[styles.emptyTitle, { color: colors.text }]}>No accounts yet</Text>
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>No registered users yet</Text>
                 <Text style={[styles.emptySub, { color: colors.textMuted }]}>Admin can create accounts directly using the + button</Text>
               </View>
             )}
@@ -582,6 +603,7 @@ export default function UsersScreen() {
             {filtered.map(acc => {
               const rc = ROLE_COLORS[acc.role || 'att'] || roleColor;
               const isSuspended = acc.status === 'suspended';
+              const canToggleStatus = acc.status === 'active' || acc.status === 'suspended';
               return (
                 <TouchableOpacity
                   key={acc.id}
@@ -608,12 +630,12 @@ export default function UsersScreen() {
                     </View>
                     {isAdmin && (
                       <View style={{ flexDirection: 'row', gap: 5 }}>
-                        <TouchableOpacity
+                        {canToggleStatus && <TouchableOpacity
                           onPress={e => { e.stopPropagation(); handleSuspend(acc); }}
                           style={[styles.iconBtn, { borderColor: colors.border }]}
                         >
                           <Ionicons name={isSuspended ? 'play' : 'pause'} size={12} color={colors.textMuted} />
-                        </TouchableOpacity>
+                        </TouchableOpacity>}
                         <TouchableOpacity
                           onPress={e => { e.stopPropagation(); handleDelete(acc); }}
                           style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
@@ -624,6 +646,77 @@ export default function UsersScreen() {
                     )}
                   </View>
                 </TouchableOpacity>
+              );
+            })}
+          </>
+        )}
+
+        {/* ── ALL STAFF TAB ── */}
+        {tab === 'staff' && isAdmin && (
+          <>
+            <View style={styles.statsRow}>
+              {[
+                { label: 'Active', val: staff.filter(member => member.st === 'Active').length, color: '#1a6e3c' },
+                { label: 'Suspended', val: staff.filter(member => member.st === 'Suspended').length, color: colors.error },
+                { label: 'Total', val: staff.length, color: colors.text },
+              ].map(stat => (
+                <View key={stat.label} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Text style={[styles.statNum, { color: stat.color }]}>{stat.val}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textMuted }]}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={[styles.infoBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="people-outline" size={16} color={roleColor} />
+              <Text style={[styles.infoBannerText, { color: colors.textMuted }]}>
+                All staff directory records are shown here. Admin can remove suspended or inactive staff and their linked login account.
+              </Text>
+            </View>
+
+            {filteredStaff.length === 0 ? (
+              <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="people-outline" size={36} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>No staff records found</Text>
+                <Text style={[styles.emptySub, { color: colors.textMuted }]}>Try a different search term.</Text>
+              </View>
+            ) : filteredStaff.map(member => {
+              const stCol = member.st === 'Active' ? '#1a6e3c' : colors.error;
+              const branchName = branches.find(branch => branch.id === member.branchId)?.name ?? member.branchId ?? 'Head Office / Global';
+              return (
+                <View key={member.id} style={[styles.accCard, { backgroundColor: colors.surface, borderColor: member.st === 'Active' ? colors.border : colors.errorBorder }]}>
+                  <View style={[styles.avatar, { backgroundColor: stCol + '18' }]}>
+                    <Text style={[styles.avatarText, { color: stCol }]}>{initials(member.name)}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.accName, { color: colors.text }]}>{member.name}</Text>
+                    <Text style={[styles.accSub, { color: colors.textMuted }]}>
+                      {ROLE_LABELS[member.role] ?? member.role} · {branchName}
+                    </Text>
+                    <Text style={[styles.accId, { color: colors.textSubtle }]}>
+                      {member.email || 'No login email'}{member.dept ? ` · ${member.dept}` : ''}
+                    </Text>
+                    <View style={[styles.stBadge, { backgroundColor: stCol + '22', alignSelf: 'flex-start', marginTop: 5 }]}>
+                      <Text style={[styles.stText, { color: stCol }]}>{member.st}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => Alert.alert('Delete Staff', `Permanently remove ${member.name} from staff and remove the linked login account if present? This cannot be undone.`, [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Delete', style: 'destructive', onPress: async () => {
+                        const removed = await deleteStaff(member.id);
+                        Alert.alert(
+                          removed ? 'Staff Removed' : 'Delete Failed',
+                          removed ? `${member.name} was removed from staff and user records.` : 'The staff record could not be removed. Check your connection and try again.',
+                        );
+                      }},
+                    ])}
+                    style={[styles.iconBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg }]}
+                    accessibilityLabel={`Delete ${member.name}`}
+                  >
+                    <Ionicons name="trash-outline" size={14} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
               );
             })}
           </>
