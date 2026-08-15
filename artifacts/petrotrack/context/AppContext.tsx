@@ -969,6 +969,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
   const [callLog, setCallLog] = useState<CallRecord[]>([]);
   const [pumpDailyReports, setPumpDailyReports] = useState<PumpDailyReport[]>([]);
+  // Approval side effects must be idempotent even if an accountant taps
+  // approve twice before the state update causes a re-render.
+  const appliedPumpReportApprovals = useRef<Set<number>>(new Set());
   const [pumpInitialMeters, setPumpInitialMeters] = useState<Record<string, number>>({});
   const [pumpLockedMeters, setPumpLockedMeters] = useState<Record<string, number>>({});
   const [inventoryLog, setInventoryLog] = useState<InventoryLogEntry[]>(INIT_INVENTORY_LOG);
@@ -2641,8 +2644,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const accApprovePumpReport = useCallback((report: PumpDailyReport, accNote: string) => {
     const id = report.id;
-    const pump = pumps.find(p => p.id === report.pumpId);
-    const resolvedBranchId = report.branchId || pump?.branchId || '';
+    const currentReport = pumpDailyReports.find(candidate => candidate.id === id);
+    if (
+      !currentReport ||
+      currentReport.status !== 'pending_accountant' ||
+      appliedPumpReportApprovals.current.has(id)
+    ) return;
+    appliedPumpReportApprovals.current.add(id);
+    const pump = pumps.find(p => p.id === currentReport.pumpId);
+    const resolvedBranchId = currentReport.branchId || pump?.branchId || '';
     setPumpDailyReports(rs => rs.map(r => r.id === id
       ? { ...r, branchId: r.branchId || resolvedBranchId, status: 'approved', accNote, accBy: userName, accAt: nowTs() }
       : r
@@ -2652,44 +2662,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return [...s, {
         id: genId(),
         shiftReportId: id,
-        pump: `${report.pumpName} (${report.product})`,
-        pumpId: report.pumpId,
-        lpgCategory: report.product === 'LPG' ? pump?.lpgCategory ?? 'single' : undefined,
-        by: report.submittedBy,
-        L: report.liters,
-        price: report.unitPrice,
-        dt: report.date,
-        pos: report.posAmount,
+        pump: `${currentReport.pumpName} (${currentReport.product})`,
+        pumpId: currentReport.pumpId,
+        lpgCategory: currentReport.product === 'LPG' ? pump?.lpgCategory ?? 'single' : undefined,
+        by: currentReport.submittedBy,
+        L: currentReport.liters,
+        price: currentReport.unitPrice,
+        dt: currentReport.date,
+        pos: currentReport.posAmount,
           branchId: resolvedBranchId,
       }];
     });
-    if (report.product === 'LPG') {
+    if (currentReport.product === 'LPG') {
       setLpgTanks(ts => {
         const matching = ts.filter(t => !resolvedBranchId || !t.branchId || t.branchId === resolvedBranchId);
         if (matching.length === 0) return ts;
-        const share = report.liters / matching.length;
+        const share = currentReport.liters / matching.length;
         const ids = new Set(matching.map(t => t.id));
         return ts.map(t => ids.has(t.id) ? { ...t, sl: t.sl + share } : t);
       });
     } else {
       setTanks(ts => {
-        const matching = ts.filter(t => t.prod === report.product && (!resolvedBranchId || !t.branchId || t.branchId === resolvedBranchId));
+        const matching = ts.filter(t => t.prod === currentReport.product && (!resolvedBranchId || !t.branchId || t.branchId === resolvedBranchId));
         if (matching.length === 0) return ts;
-        const share = report.liters / matching.length;
+        const share = currentReport.liters / matching.length;
         const ids = new Set(matching.map(t => t.id));
         return ts.map(t => ids.has(t.id) ? { ...t, sl: t.sl + share } : t);
       });
     }
-    const unit = report.product === 'LPG' ? 'kg' : 'L';
-    setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} — ${report.pumpName} · ${report.liters}${unit} · sales record auto-created`, ts: nowTs() }, ...a]);
+    const unit = currentReport.product === 'LPG' ? 'kg' : 'L';
+    setAudit(a => [{ id: genId(), action: 'Pump report approved', user: userName, detail: `Report #${id} — ${currentReport.pumpName} · ${currentReport.liters}${unit} · sales record auto-created`, ts: nowTs() }, ...a]);
     void notificationsApi.send({
-      target: report.submittedBy,
+      target: currentReport.submittedBy,
       type: 'report_update',
       title: 'Pump Report Approved',
-      body: `${report.pumpName} · ${report.date} was approved by the accountant.`,
+      body: `${currentReport.pumpName} · ${currentReport.date} was approved by the accountant.`,
       data: { route: SCREEN_ROUTES.shift, reportId: id },
     });
-  }, [userName, pumps]);
+  }, [userName, pumps, pumpDailyReports]);
 
   const accRejectPumpReport = useCallback((id: number, rejectionReason: string) => {
     const report = pumpDailyReports.find(r => r.id === id);
