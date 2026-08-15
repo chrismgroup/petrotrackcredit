@@ -166,8 +166,9 @@ router.post("/state/reset-operational", async (req, res): Promise<void> => {
       )
       .sort(
         (a: any, b: any) =>
-          b.date.localeCompare(a.date) ||
-          b.submittedAt.localeCompare(a.submittedAt),
+          String(b.date ?? "").localeCompare(String(a.date ?? "")) ||
+          pumpReportActivityMs(b) - pumpReportActivityMs(a) ||
+          Number(b.id ?? 0) - Number(a.id ?? 0),
       );
     if (sorted.length > 0) {
       seedMeters[pumpId] = Number(sorted[0].closingMeter);
