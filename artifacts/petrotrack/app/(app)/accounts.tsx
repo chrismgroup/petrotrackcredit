@@ -4,7 +4,16 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FinancialStatusCard } from '@/components/FinancialStatusCard';
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { getPriceForProduct, ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
+import {
+  businessDateKey,
+  calculateBusinessMonthRevenue,
+  calendarMonthBusinessDateRange,
+  getPriceForProduct,
+  isRevenueReportStatus,
+  ROLE_COLORS,
+  fmt,
+  useApp,
+} from '@/context/AppContext';
 import { computeCOGS } from '@/lib/report-helpers';
 import { useColors } from '@/hooks/useColors';
 
@@ -14,6 +23,8 @@ export default function AccountsScreen() {
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
 
   const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'admin';
+  const scopedBranchId = isGlobal ? null : branchId;
+  const currentMonthRange = calendarMonthBusinessDateRange();
   const visibleBranches = isGlobal ? branches : branches.filter(b => !branchId || !b.id || b.id === branchId);
 
   // One branch scope applied to every input so branch-locked users never mix
@@ -21,26 +32,36 @@ export default function AccountsScreen() {
   // treated as company-level and only visible to global roles.
   const inScope = (bid?: string) => isGlobal || !branchId || bid === branchId;
   const num = (n: number) => (Number.isFinite(n) ? n : 0);
-  const scopedSales      = sales.filter(e => inScope(e.branchId));
-  const scopedDeliveries = deliveries.filter(d => inScope(d.branchId));
-  const scopedExpenses   = expenses.filter(e => e.status === 'approved' && inScope(e.branchId));
+  const inCurrentMonth = (value?: string) => {
+    const businessDate = businessDateKey(value);
+    return businessDate >= currentMonthRange.from && businessDate <= currentMonthRange.to;
+  };
+  const monthlyReports = pumpDailyReports.filter(report =>
+    isRevenueReportStatus(report.status) &&
+    inCurrentMonth(report.date) &&
+    (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+  );
+  const scopedSales      = sales.filter(e => inScope(e.branchId) && inCurrentMonth(e.dt));
+  const scopedDeliveries = deliveries.filter(d => inScope(d.branchId) && inCurrentMonth(d.dt));
+  const scopedExpenses   = expenses.filter(e => e.status === 'approved' && inScope(e.branchId) && inCurrentMonth(e.dt));
 
-  // Revenue and COGS both derive from the same sales records (auto-created
-  // when pump reports are approved) so the P&L is internally consistent.
+  // Revenue follows the same business-date shift-report ledger as Home.
+  // Do not sum auto-created SalesEntry rows here: accountant approval creates
+  // those rows for downstream accounting, which would double count reports
+  // already present in the live report feed.
   const branchRev = (bid: string) =>
-    Math.round(scopedSales.filter(e => e.branchId === bid).reduce((s, e) => s + num(e.L * e.price), 0));
-  const totalRevenue  = Math.round(scopedSales.reduce((s, e) => s + num(e.L * e.price), 0));
+    Math.round(monthlyReports.filter(report => report.branchId === bid).reduce((s, report) => s + num(report.grossAmount), 0));
+  const totalRevenue  = calculateBusinessMonthRevenue(pumpDailyReports, scopedBranchId, currentMonthRange);
   const totalExpenses = Math.round(scopedExpenses.reduce((s, e) => s + num(e.amt), 0));
   const totalCOGS     = computeCOGS(scopedSales, scopedDeliveries);
   const grossProfit   = totalRevenue - totalCOGS;
   const operatingProfit = grossProfit - totalExpenses;
 
-  const todaySales = scopedSales.reduce((s, e) => s + num(e.L * e.price), 0);
-  const pmsRev     = scopedSales.filter(s => s.pump.includes('PMS')).reduce((sum, s) => sum + num(s.L * s.price), 0);
-  const agoRev     = scopedSales.filter(s => s.pump.includes('AGO')).reduce((sum, s) => sum + num(s.L * s.price), 0);
-  const dkpRev     = scopedSales.filter(s => s.pump.includes('DPK')).reduce((sum, s) => sum + num(s.L * s.price), 0);
-  const lpgRev     = scopedSales.filter(s => s.pump.includes('LPG')).reduce((sum, s) => sum + num(s.L * s.price), 0);
-  const lubeRev    = scopedSales.filter(s => s.pump.includes('Lube Oil')).reduce((sum, s) => sum + num(s.L * s.price), 0);
+  const pmsRev     = monthlyReports.filter(report => report.product === 'PMS').reduce((sum, report) => sum + num(report.grossAmount), 0);
+  const agoRev     = monthlyReports.filter(report => report.product === 'AGO').reduce((sum, report) => sum + num(report.grossAmount), 0);
+  const dkpRev     = monthlyReports.filter(report => report.product === 'DPK').reduce((sum, report) => sum + num(report.grossAmount), 0);
+  const lpgRev     = monthlyReports.filter(report => report.product === 'LPG').reduce((sum, report) => sum + num(report.grossAmount), 0);
+  const lubeRev    = monthlyReports.filter(report => report.product === 'Lube Oil').reduce((sum, report) => sum + num(report.grossAmount), 0);
 
   // Tax computations
   const vatRate    = parseFloat(companyInfo.vatRate  || '7.5') / 100;
@@ -85,7 +106,7 @@ export default function AccountsScreen() {
           <Text style={styles.sumValue}>{fmt(netProfit)}</Text>
           <View style={styles.sumRow}>
             <View style={styles.sumItem}>
-              <Text style={styles.sumItemLabel}>Revenue</Text>
+                <Text style={styles.sumItemLabel}>Revenue This Month</Text>
               <Text style={styles.sumItemValue} numberOfLines={1} adjustsFontSizeToFit>{fmt(totalRevenue)}</Text>
             </View>
             <View style={styles.sumDivider} />
@@ -144,11 +165,11 @@ export default function AccountsScreen() {
           ))}
         </View>
 
-        {/* Today's sales */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Today's Sales Revenue</Text>
+        {/* Current month's sales */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>This Month's Sales Revenue</Text>
         <View style={[styles.todayCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.todayTotal, { color: roleColor }]}>{fmt(todaySales)}</Text>
-          <Text style={[styles.todaySub, { color: colors.textMuted }]}>Today's total sales</Text>
+          <Text style={[styles.todayTotal, { color: roleColor }]}>{fmt(totalRevenue)}</Text>
+          <Text style={[styles.todaySub, { color: colors.textMuted }]}>Business dates {currentMonthRange.from} to {currentMonthRange.to}</Text>
           <View style={styles.prodBreakdown}>
             {[
               { label: 'PMS',      amount: pmsRev,  color: colors.primary, price: getPriceForProduct(prices, 'PMS', branchId),      unit: '/L' },

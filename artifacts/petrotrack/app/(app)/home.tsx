@@ -14,6 +14,10 @@ import {
   fmt,
   GLOBAL_OVERVIEW_ROLES,
   salesRevenueByBranch,
+  businessDateKey,
+  calculateBusinessMonthRevenue,
+  calendarMonthBusinessDateRange,
+  isRevenueReportStatus,
   ROLE_LABELS,
   SCREEN_ROUTES,
   calculateStockBook,
@@ -80,10 +84,6 @@ function localDateKey(date: Date): string {
 }
 
 function recordDateKey(value?: string): string {
-  return value?.slice(0, 10) ?? '';
-}
-
-function businessDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
 }
 
@@ -296,25 +296,9 @@ export default function HomeScreen() {
 
   // ── KPIs ──────────────────────────────────────────────────────────────
   const { byBranch: branchRev } = useMemo(() => salesRevenueByBranch(sales), [sales]);
-  const currentMonthRange = (() => {
-    const now = new Date();
-    return {
-      from: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`,
-      to: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`,
-    };
-  })();
+  const currentMonthRange = calendarMonthBusinessDateRange();
   const monthlyRevenue = useMemo(
-    () => Math.round(pumpDailyReports
-      .filter(report => {
-        const businessDate = businessDateKey(report.date);
-        return (
-          (report.status === 'pending_accountant' || report.status === 'approved') &&
-          businessDate >= currentMonthRange.from &&
-          businessDate <= currentMonthRange.to &&
-          (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId)
-        );
-      })
-      .reduce((sum, report) => sum + (Number.isFinite(report.grossAmount) ? report.grossAmount : 0), 0)),
+    () => calculateBusinessMonthRevenue(pumpDailyReports, scopedBranchId, currentMonthRange),
     [pumpDailyReports, scopedBranchId, currentMonthRange.from, currentMonthRange.to],
   );
 
@@ -505,7 +489,7 @@ export default function HomeScreen() {
       const dayLabel = d.toLocaleDateString('en-NG', { weekday: 'short' }).slice(0, 2);
       const rev = pumpDailyReports
         .filter(report =>
-           (report.status === 'pending_accountant' || report.status === 'approved') &&
+           isRevenueReportStatus(report.status) &&
            businessDateKey(report.date) === iso &&
           (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
         )
