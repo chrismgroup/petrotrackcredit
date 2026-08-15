@@ -125,6 +125,22 @@ export function computeCOGS(
   return Math.round(total);
 }
 
+/** COGS for a shift-report revenue feed using the report's business-month
+ * volume and the same weighted-average approved delivery costs as computeCOGS.
+ */
+export function computePumpReportCOGS(
+  reports: Array<{ pumpName: string; product: string; liters: number }>,
+  deliveries: Array<{ prod: string; rec: number; costPrice?: number; approvalStatus?: string }>,
+): number {
+  return computeCOGS(
+    reports.map(report => ({
+      pump: `${report.pumpName} ${report.product}`,
+      L: report.liters,
+    })),
+    deliveries,
+  );
+}
+
 export function nfmt(n: number): string {
   return '₦' + n.toLocaleString('en-NG', { maximumFractionDigits: 0 });
 }

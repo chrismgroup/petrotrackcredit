@@ -14,11 +14,11 @@ import {
   fmt,
   useApp,
 } from '@/context/AppContext';
-import { computeCOGS } from '@/lib/report-helpers';
+import { computePumpReportCOGS } from '@/lib/report-helpers';
 import { useColors } from '@/hooks/useColors';
 
 export default function AccountsScreen() {
-  const { role, branchId, prices, tanks, sales, branches, expenses, companyInfo, pumpDailyReports, deliveries } = useApp();
+  const { role, branchId, prices, branches, expenses, companyInfo, pumpDailyReports, deliveries } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
 
@@ -41,7 +41,6 @@ export default function AccountsScreen() {
     inCurrentMonth(report.date) &&
     (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
   );
-  const scopedSales      = sales.filter(e => inScope(e.branchId) && inCurrentMonth(e.dt));
   const scopedDeliveries = deliveries.filter(d => inScope(d.branchId) && inCurrentMonth(d.dt));
   const scopedExpenses   = expenses.filter(e => e.status === 'approved' && inScope(e.branchId) && inCurrentMonth(e.dt));
 
@@ -53,7 +52,7 @@ export default function AccountsScreen() {
     Math.round(monthlyReports.filter(report => report.branchId === bid).reduce((s, report) => s + num(report.grossAmount), 0));
   const totalRevenue  = calculateBusinessMonthRevenue(pumpDailyReports, scopedBranchId, currentMonthRange);
   const totalExpenses = Math.round(scopedExpenses.reduce((s, e) => s + num(e.amt), 0));
-  const totalCOGS     = computeCOGS(scopedSales, scopedDeliveries);
+  const totalCOGS     = computePumpReportCOGS(monthlyReports, scopedDeliveries);
   const grossProfit   = totalRevenue - totalCOGS;
   const operatingProfit = grossProfit - totalExpenses;
 

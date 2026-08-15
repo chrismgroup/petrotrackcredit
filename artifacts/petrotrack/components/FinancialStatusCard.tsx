@@ -16,7 +16,7 @@ import {
   useApp,
   type BankLoan,
 } from '@/context/AppContext';
-import { computeCOGS } from '@/lib/report-helpers';
+import { computePumpReportCOGS } from '@/lib/report-helpers';
 import { useColors } from '@/hooks/useColors';
 
 const PROD_COLOR: Record<string, string> = {
@@ -180,6 +180,8 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   };
   const inRevenueScope = (recordBranchId?: string) =>
     !scopedBranchId || recordBranchId === scopedBranchId || !recordBranchId;
+  const inFinancialScope = (recordBranchId?: string) =>
+    isGlobal || !branchId || recordBranchId === branchId;
 
   /* ── last cost price per product from approved deliveries ── */
   const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
@@ -228,18 +230,15 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     inRevenueScope(r.branchId),
   );
   const monthRevenue = calculateBusinessMonthRevenue(pumpDailyReports, scopedBranchId, currentMonthRange);
-  const monthCOGS = computeCOGS(
-    monthlyRevenueReports.map(report => ({
-      pump: `${report.pumpName} ${report.product}`,
-      L: report.liters,
-    })),
+  const monthCOGS = computePumpReportCOGS(
+    monthlyRevenueReports,
     deliveries.filter(delivery =>
       inCurrentMonth(delivery.dt) &&
-      inRevenueScope(delivery.branchId),
+      inFinancialScope(delivery.branchId),
     ),
   );
   const monthExpenses = expenses
-    .filter(e => e.status === 'approved' && inCurrentMonth(e.dt) && inRevenueScope(e.branchId))
+    .filter(e => e.status === 'approved' && inCurrentMonth(e.dt) && inFinancialScope(e.branchId))
     .reduce((s, e) => s + e.amt, 0);
   const citaRate = parseFloat(companyInfo.citaRate || '30') / 100;
   const monthlyOperatingProfit = monthRevenue - monthCOGS - monthExpenses;
