@@ -11,7 +11,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import { DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-const TABS = ['Dip Form', 'Log & Delivery', 'Inventory', 'History'];
+const TABS = ['Dip Form', 'Log & Delivery', 'Inventory'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
@@ -19,7 +19,7 @@ const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', 
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, sales, addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms, sendMessage, inventoryLog } = useApp();
+  const { role, tanks, lpgTanks, dips, deliveries, sales, addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms, sendMessage } = useApp();
 
   async function pickCameraEvidence(delivId: number) {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -808,73 +808,6 @@ export default function TanksScreen() {
         </ScrollView>
       )}
 
-      {activeTab === 3 && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Inventory Dip History</Text>
-          {inventoryLog.length === 0 ? (
-            <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="analytics-outline" size={16} color={colors.textMuted} />
-              <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No approved dips yet — history will appear here after each dip approval.</Text>
-            </View>
-          ) : (
-            [...inventoryLog]
-              .filter(e => !branchId || !e.branchId || e.branchId === branchId)
-              .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime())
-              .map(entry => {
-                const hasDisc = Math.abs(entry.discrepancy) > 50;
-                const discColor = entry.discrepancy < 0 ? '#A32D2D' : entry.discrepancy > 50 ? '#BA7517' : colors.primary;
-                return (
-                  <View key={entry.id} style={[styles.histCard, { backgroundColor: colors.surface, borderColor: hasDisc ? (entry.discrepancy < 0 ? '#A32D2D' : '#BA7517') : colors.border }]}>
-                    <View style={styles.histHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.histTank, { color: colors.text }]}>{entry.tankName}</Text>
-                        <Text style={[styles.histMeta, { color: colors.textMuted }]}>{entry.product} · Approved by {entry.approvedBy}</Text>
-                        <Text style={[styles.histMeta, { color: colors.textMuted }]}>{fmtDateTime(entry.dt)}</Text>
-                      </View>
-                      {hasDisc && (
-                        <View style={[styles.discBadge, { backgroundColor: entry.discrepancy < 0 ? '#FCEBEB' : '#FFF3CD' }]}>
-                          <Ionicons name="warning" size={11} color={entry.discrepancy < 0 ? '#A32D2D' : '#BA7517'} />
-                          <Text style={[styles.discBadgeText, { color: entry.discrepancy < 0 ? '#A32D2D' : '#BA7517' }]}>
-                            {entry.discrepancy < 0 ? 'Shortage' : 'Overage'}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={[styles.histGrid, { borderTopColor: colors.border }]}>
-                      <View style={styles.histCell}>
-                        <Text style={[styles.histCellLabel, { color: colors.textMuted }]}>Opening</Text>
-                        <Text style={[styles.histCellVal, { color: colors.text }]}>{entry.opening.toLocaleString()}L</Text>
-                      </View>
-                      <View style={styles.histCell}>
-                        <Text style={[styles.histCellLabel, { color: colors.textMuted }]}>+ Received</Text>
-                        <Text style={[styles.histCellVal, { color: '#27500A' }]}>+{entry.received.toLocaleString()}L</Text>
-                      </View>
-                      <View style={styles.histCell}>
-                        <Text style={[styles.histCellLabel, { color: colors.textMuted }]}>− Sold</Text>
-                        <Text style={[styles.histCellVal, { color: '#A32D2D' }]}>−{entry.sold.toLocaleString()}L</Text>
-                      </View>
-                      <View style={styles.histCell}>
-                        <Text style={[styles.histCellLabel, { color: colors.textMuted }]}>Expected</Text>
-                        <Text style={[styles.histCellVal, { color: colors.text }]}>{entry.expected.toLocaleString()}L</Text>
-                      </View>
-                      <View style={styles.histCell}>
-                        <Text style={[styles.histCellLabel, { color: colors.textMuted }]}>Actual Dip</Text>
-                        <Text style={[styles.histCellVal, { color: colors.text }]}>{entry.actual.toLocaleString()}L</Text>
-                      </View>
-                      <View style={styles.histCell}>
-                        <Text style={[styles.histCellLabel, { color: colors.textMuted }]}>Discrepancy</Text>
-                        <Text style={[styles.histCellVal, { color: discColor, fontWeight: '700' }]}>
-                          {entry.discrepancy >= 0 ? '+' : ''}{entry.discrepancy.toLocaleString()}L
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })
-          )}
-          <View style={{ height: 16 }} />
-        </ScrollView>
-      )}
     </ScreenLayout>
   );
 }

@@ -1025,7 +1025,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           });
         }
       }
-      if (s.companyInfo)       setCompanyInfo(s.companyInfo);
+       if (s.companyInfo)       setCompanyInfo(s.companyInfo);
       if (s.tanks)             setTanks(s.tanks);
       if (s.lpgTanks)          setLpgTanks(s.lpgTanks);
       if (s.pumps)             setPumps(s.pumps);
@@ -1052,7 +1052,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.companyFiles)      setCompanyFiles(s.companyFiles);
       if (s.myFolders)         setMyFolders(s.myFolders);
       if (s.myFolderFiles)     setMyFolderFiles(s.myFolderFiles);
-      if (s.startupStocks)     setStartupStocks(s.startupStocks);
+       if (s.startupStocks)     setStartupStocks(s.startupStocks);
+       // Inventory discrepancy logs were retired. Do not restore stale local
+       // or server history, but keep dips/tank balances for Stock Snapshot.
+       AsyncStorage.removeItem('inventoryLog');
       if (s.stockSnapshotConfig) {
         setStockSnapshotConfig({
           ...DEFAULT_STOCK_SNAPSHOT_CONFIG,
@@ -1080,6 +1083,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   /* ── Pending-writes tracker: keys with in-flight PUTs are skipped by syncFromServer ── */
   // Prevents the 3-second poll from overwriting data whose PUT hasn't landed yet.
   const pendingWritesRef = useRef<Set<string>>(new Set());
+  const inventoryPurgeRequestedRef = useRef(false);
 
   /* ── Initial-sync gate: block all server PUTs until the first syncFromServer completes ──
      On startup React fires every syncSlice effect the moment `loaded` becomes true.
@@ -1175,7 +1179,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return changed ? merged : prev;
         });
       }
-      if (!p.has('inventoryLog'))      setInventoryLog(safeArray<InventoryLogEntry>(s.inventoryLog));
+       if (!p.has('inventoryLog')) {
+         setInventoryLog([]);
+         if (!inventoryPurgeRequestedRef.current && Array.isArray(s.inventoryLog) && s.inventoryLog.length > 0) {
+           inventoryPurgeRequestedRef.current = true;
+           pendingWritesRef.current.add('inventoryLog');
+           stateApi.put('inventoryLog', []).finally(() => pendingWritesRef.current.delete('inventoryLog'));
+         }
+       }
       if (!p.has('tasks'))             setTasks(safeArray<Task>(s.tasks));
       if (!p.has('kpis'))              setKpis(safeArray<KPI>(s.kpis));
       if (!p.has('companyFiles'))      setCompanyFiles(safeArray<CompanyFile>(s.companyFiles));
@@ -1661,8 +1672,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }));
 
       if (logEntries.length > 0) {
-        setInventoryLog(log => [...log, ...logEntries]);
-
         // Send notifications for discrepancies > 50L
         const notifRoles: Role[] = ['md', 'ceo', 'acc', 'csm'];
         for (const entry of logEntries) {
