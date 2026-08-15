@@ -26,7 +26,7 @@ type TopTab = 'dip';
 export default function OperationsScreen() {
   const {
     role, userName, branchId, branches, mgrPerms,
-    tanks, lpgTanks, dips, inventoryLog,
+    tanks, lpgTanks, dips,
     addDip, approveDip, rejectDip,
     prices,
   } = useApp();
@@ -59,8 +59,6 @@ export default function OperationsScreen() {
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
   const [appliesOn, setAppliesOn]     = useState('');
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'variance'>('all');
-  const [historyDate, setHistoryDate] = useState('');
 
   const perms           = isMgr ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
@@ -90,13 +88,6 @@ export default function OperationsScreen() {
   }
 
 
-  const visibleInventoryLog = inventoryLog
-    .filter(entry => !branchId || !entry.branchId || entry.branchId === branchId)
-    .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
-  const filteredInventoryLog = visibleInventoryLog
-    .filter(entry => !historyDate || dips.find(dip => dip.id === entry.dipId)?.dt.slice(0, 10) === historyDate)
-    .filter(entry => historyFilter === 'variance' ? Math.abs(entry.discrepancy) > 50 : true);
-  const varianceCount = visibleInventoryLog.filter(entry => Math.abs(entry.discrepancy) > 50).length;
   const branchStockGroups = (() => {
     const unassignedAssets = tanks.some(tank => !tank.branchId) || lpgTanks.some(tank => !tank.branchId);
     const scopes: { id?: string; name: string }[] = canSeeAllTanks
@@ -589,8 +580,8 @@ export default function OperationsScreen() {
                 </View>
                 <View style={styles.inventoryMetricGrid}>
                   <View style={styles.inventoryMetric}>
-                    <Text style={[styles.inventoryMetricValue, { color: varianceCount > 0 ? colors.error : colors.success }]}>{visibleInventoryLog.length} / {varianceCount}</Text>
-                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Checks / flags</Text>
+                    <Text style={[styles.inventoryMetricValue, { color: colors.success }]}>Live</Text>
+                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Stock Snapshot</Text>
                   </View>
                 </View>
                 <Text style={[styles.inventoryUnitNote, { color: colors.textMuted }]}>
@@ -640,96 +631,6 @@ export default function OperationsScreen() {
                 </View>
               ))}
 
-              <View style={styles.historyHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 2 }]}>Historical inventory log</Text>
-                  <Text style={[styles.historySubtitle, { color: colors.textMuted }]}>Branch-scoped physical checks compared with expected stock</Text>
-                </View>
-                <View style={[styles.historyToggle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  {(['all', 'variance'] as const).map(filter => (
-                    <TouchableOpacity
-                      key={filter}
-                      onPress={() => setHistoryFilter(filter)}
-                      style={[styles.historyToggleBtn, historyFilter === filter && { backgroundColor: colors.primary }]}
-                    >
-                      <Text style={[styles.historyToggleText, { color: historyFilter === filter ? '#fff' : colors.textMuted }]}>
-                        {filter === 'all' ? 'All' : 'Flags'}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-              <AppliedDateField
-                value={historyDate}
-                onChange={setHistoryDate}
-                label="View approved checks for a date"
-                accent={roleColor}
-                helper="Filter by the date the tank dip applies to."
-              />
-
-              {filteredInventoryLog.length === 0 ? (
-                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Ionicons name={historyFilter === 'variance' ? 'checkmark-circle-outline' : 'time-outline'} size={16} color={colors.textMuted} />
-                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>
-                    {historyFilter === 'variance'
-                      ? 'No material stock variances found.'
-                      : 'No approved inventory checks yet. History will appear after a tank dip is approved.'}
-                  </Text>
-                </View>
-              ) : (
-                filteredInventoryLog.slice(0, 50).map(entry => {
-                  const previous = visibleInventoryLog.find(candidate =>
-                    candidate.tankId === entry.tankId
-                    && new Date(candidate.dt).getTime() < new Date(entry.dt).getTime()
-                  );
-                  const unit = unitForProd(entry.product);
-                  const change = previous ? entry.actual - previous.actual : null;
-                  const hasVariance = Math.abs(entry.discrepancy) > 50;
-                  const varianceColor = entry.discrepancy < 0 ? colors.error : entry.discrepancy > 0 ? colors.warning : colors.success;
-                  return (
-                    <View key={entry.id} style={[styles.historyCard, { backgroundColor: colors.surface, borderColor: hasVariance ? varianceColor : colors.border }]}>
-                      <View style={styles.historyCardHeader}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.historyTankName, { color: colors.text }]}>{entry.tankName}</Text>
-                          <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{entry.product} · {fmtDateTime(entry.dt)}</Text>
-                          <Text style={[styles.historyMeta, { color: colors.textMuted }]}>Approved by {entry.approvedBy}</Text>
-                        </View>
-                        <View style={[styles.historyStatus, { backgroundColor: hasVariance ? varianceColor + '18' : colors.success + '18' }]}>
-                          <Ionicons name={hasVariance ? 'warning-outline' : 'checkmark-circle-outline'} size={12} color={hasVariance ? varianceColor : colors.success} />
-                          <Text style={[styles.historyStatusText, { color: hasVariance ? varianceColor : colors.success }]}>
-                            {hasVariance ? (entry.discrepancy < 0 ? 'Shortage' : 'Overage') : 'Matched'}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={[styles.historyGrid, { borderTopColor: colors.border }]}>
-                        <View style={styles.historyCell}>
-                          <Text style={[styles.historyCellLabel, { color: colors.textMuted }]}>Expected</Text>
-                          <Text style={[styles.historyCellValue, { color: colors.text }]}>{entry.expected.toLocaleString()}{unit}</Text>
-                        </View>
-                        <View style={styles.historyCell}>
-                          <Text style={[styles.historyCellLabel, { color: colors.textMuted }]}>Actual</Text>
-                          <Text style={[styles.historyCellValue, { color: colors.text }]}>{entry.actual.toLocaleString()}{unit}</Text>
-                        </View>
-                        <View style={styles.historyCell}>
-                          <Text style={[styles.historyCellLabel, { color: colors.textMuted }]}>Variance</Text>
-                          <Text style={[styles.historyCellValue, { color: varianceColor }]}>
-                            {entry.discrepancy >= 0 ? '+' : ''}{entry.discrepancy.toLocaleString()}{unit}
-                          </Text>
-                        </View>
-                        <View style={styles.historyCell}>
-                          <Text style={[styles.historyCellLabel, { color: colors.textMuted }]}>Vs previous</Text>
-                          <Text style={[styles.historyCellValue, { color: change === null ? colors.textMuted : change < 0 ? colors.error : colors.success }]}>
-                            {change === null ? '—' : `${change >= 0 ? '+' : ''}${change.toLocaleString()}${unit}`}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={[styles.historyBreakdown, { color: colors.textMuted }]}>
-                        Opening {entry.opening.toLocaleString()}{unit} · Received +{entry.received.toLocaleString()}{unit} · Sold −{entry.sold.toLocaleString()}{unit}
-                      </Text>
-                    </View>
-                  );
-                })
-              )}
               <View style={{ height: 16 }} />
             </ScrollView>
           )}
