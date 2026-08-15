@@ -202,7 +202,8 @@ export default function ReportsScreen() {
     const vr  = dv.reduce((sum: number, d: any) => sum + d.rec, 0);
     const ct  = dv.reduce((sum: number, d: any) => sum + d.rec * (d.costPrice ?? 0), 0);
     const ac  = vr > 0 ? ct / vr : 0;
-    const cogs = Math.round(ac * vol);
+    const cogs = Math.round(pe.reduce((sum: number, sale: any) =>
+      sum + ((sale.price ?? 0) - ac) * sale.L, 0));
     const gp   = sr - cogs;
     return {
       prod, totalVolumeSold: vol, avgSellPrice: avg,
