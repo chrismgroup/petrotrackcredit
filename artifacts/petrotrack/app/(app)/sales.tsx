@@ -25,20 +25,95 @@ const SHIFT_STATUS_ICON: Record<string, string> = {
   approved:            'checkmark-circle',
 };
 
+type SalesFeedEntry = {
+  branchId?: string;
+  product: string;
+  lpgCategory?: 'single' | 'distributor';
+  volume: number;
+  revenue: number;
+  cash: number;
+  pos: number;
+  transfer: number;
+  credit: number;
+};
+
+function localDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function saleProductFromPump(pumpName: string): string {
+  if (pumpName.includes('LPG')) return 'LPG';
+  if (pumpName.includes('PMS')) return 'PMS';
+  if (pumpName.includes('AGO')) return 'AGO';
+  if (pumpName.includes('DPK')) return 'DPK';
+  if (pumpName.includes('Lube Oil')) return 'Lube Oil';
+  return pumpName;
+}
+
 export default function SalesScreen() {
-  const { role, branchId, sales, pumpDailyReports, pumps } = useApp();
+  const { role, branchId, branches, sales, pumpDailyReports, pumps } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
 
-  const isGlobal   = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm';
+  const isGlobal   = role === 'admin' || role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm';
   const inMyBranch = (bId?: string) => isGlobal || !branchId || !bId || bId === branchId;
 
-  const today      = new Date().toISOString().slice(0, 10);
-  const todaySales = sales.filter(s => s.dt.startsWith(today) && inMyBranch(s.branchId));
-  const totalL     = todaySales.reduce((s, e) => s + e.L, 0);
-  const totalAmt   = todaySales.reduce((s, e) => s + e.L * e.price, 0);
-  const totalPOS   = todaySales.reduce((s, e) => s + (e.pos || 0), 0);
-  const totalCash  = totalAmt - totalPOS;
+  const today = localDateKey(new Date());
+  const reportBranchId = (report: typeof pumpDailyReports[number]) =>
+    report.branchId || pumps.find(pump => pump.id === report.pumpId)?.branchId;
+  const liveTodayReports = pumpDailyReports.filter(report =>
+    report.date.slice(0, 10) === today &&
+    report.status !== 'returned' &&
+    inMyBranch(reportBranchId(report)),
+  );
+  // Approved shift reports also create SalesEntry records. Keep manual sales
+  // entries, but use the report itself for every shift-report sale so pending
+  // submissions are visible before the approval workflow completes.
+  const manualTodaySales = sales.filter(sale =>
+    !sale.shiftReportId &&
+    sale.dt.slice(0, 10) === today &&
+    inMyBranch(sale.branchId),
+  );
+  const todayFeed: SalesFeedEntry[] = [
+    ...liveTodayReports.map(report => ({
+      branchId: reportBranchId(report),
+      product: report.product,
+      lpgCategory: report.product === 'LPG'
+        ? pumps.find(pump => pump.id === report.pumpId)?.lpgCategory
+        : undefined,
+      volume: Number.isFinite(report.liters) ? report.liters : 0,
+      revenue: Number.isFinite(report.grossAmount) ? report.grossAmount : 0,
+      cash: Number.isFinite(report.cashAmount) ? report.cashAmount : 0,
+      pos: Number.isFinite(report.posAmount) ? report.posAmount : 0,
+      transfer: Number.isFinite(report.transferAmount) ? report.transferAmount : 0,
+      credit: Number.isFinite(report.creditAmount) ? report.creditAmount : 0,
+    })),
+    ...manualTodaySales.map(sale => {
+      const revenue = Number.isFinite(sale.L * sale.price) ? sale.L * sale.price : 0;
+      const pos = Number.isFinite(sale.pos) ? sale.pos ?? 0 : 0;
+      return {
+        branchId: sale.branchId,
+        product: saleProductFromPump(sale.pump),
+        lpgCategory: sale.lpgCategory,
+        volume: Number.isFinite(sale.L) ? sale.L : 0,
+        revenue,
+        cash: Math.max(0, revenue - pos),
+        pos,
+        transfer: 0,
+        credit: 0,
+      };
+    }),
+  ];
+  const totalL = todayFeed.reduce((sum, entry) => sum + entry.volume, 0);
+  const totalAmt = todayFeed.reduce((sum, entry) => sum + entry.revenue, 0);
+  const totalPOS = todayFeed.reduce((sum, entry) => sum + entry.pos + entry.transfer, 0);
+  const totalCash = todayFeed.reduce((sum, entry) => sum + entry.cash, 0);
+  const totalCredit = todayFeed.reduce((sum, entry) => sum + entry.credit, 0);
+  const paymentTotal = totalCash + totalPOS + totalCredit;
 
   const PROD_DEF = [
     { key: 'PMS',             color: '#185FA5', unit: 'L', label: 'PMS' },
@@ -50,15 +125,37 @@ export default function SalesScreen() {
   ] as const;
 
   const prodBreakdown = PROD_DEF.map(({ key, color, unit, label }) => {
-    const entries = todaySales.filter(s => {
-      if (key === 'LPG_Single')      return s.pump.includes('LPG') && s.lpgCategory === 'single';
-      if (key === 'LPG_Distributor') return s.pump.includes('LPG') && s.lpgCategory === 'distributor';
-      return s.pump.includes(key);
+    const entries = todayFeed.filter(entry => {
+      if (key === 'LPG_Single')      return entry.product === 'LPG' && entry.lpgCategory === 'single';
+      if (key === 'LPG_Distributor') return entry.product === 'LPG' && entry.lpgCategory === 'distributor';
+      return entry.product === key;
     });
-    const vol = entries.reduce((s, e) => s + e.L, 0);
-    const rev = entries.reduce((s, e) => s + e.L * e.price, 0);
+    const vol = entries.reduce((sum, entry) => sum + entry.volume, 0);
+    const rev = entries.reduce((sum, entry) => sum + entry.revenue, 0);
     return { key, color, unit, label: label ?? key, vol, rev };
   });
+
+  const branchBreakdown = [
+    ...branches
+      .filter(branch => isGlobal || !branchId || branch.id === branchId)
+      .map(branch => {
+        const entries = todayFeed.filter(entry => entry.branchId === branch.id);
+        return {
+          id: branch.id,
+          name: branch.name,
+          volume: entries.reduce((sum, entry) => sum + entry.volume, 0),
+          revenue: entries.reduce((sum, entry) => sum + entry.revenue, 0),
+        };
+      }),
+    ...(isGlobal && todayFeed.some(entry => !entry.branchId)
+      ? [{
+          id: 'unassigned',
+          name: 'Unassigned branch',
+          volume: todayFeed.filter(entry => !entry.branchId).reduce((sum, entry) => sum + entry.volume, 0),
+          revenue: todayFeed.filter(entry => !entry.branchId).reduce((sum, entry) => sum + entry.revenue, 0),
+        }]
+      : []),
+  ].sort((a, b) => b.revenue - a.revenue);
 
   const sortedReports = [...pumpDailyReports]
     .filter(r => inMyBranch(r.branchId))
@@ -78,7 +175,7 @@ export default function SalesScreen() {
             <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Volume Sold</Text>
           </View>
           <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.metricValue, { color: colors.text }]}>{todaySales.length}</Text>
+            <Text style={[styles.metricValue, { color: colors.text }]}>{liveTodayReports.length}</Text>
             <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Reports</Text>
           </View>
         </View>
@@ -97,15 +194,23 @@ export default function SalesScreen() {
                 <Text style={[styles.cashPosValue, { color: '#185FA5' }]}>{fmt(totalPOS)}</Text>
                 <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>POS / Transfer</Text>
               </View>
+              {totalCredit > 0 && (
+                <View style={[styles.cashPosItem, { backgroundColor: '#A85E1A12', borderColor: '#A85E1A33' }]}>
+                  <Ionicons name="time-outline" size={16} color="#A85E1A" />
+                  <Text style={[styles.cashPosValue, { color: '#A85E1A' }]}>{fmt(totalCredit)}</Text>
+                  <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>Credit</Text>
+                </View>
+              )}
             </View>
-            {totalPOS > 0 && (
+            {paymentTotal > 0 && (
               <>
                 <View style={[styles.posBar, { backgroundColor: colors.border }]}>
-                  <View style={[styles.posBarFill, { flex: totalCash, backgroundColor: '#27500A' }]} />
-                  <View style={[styles.posBarFill, { flex: totalPOS, backgroundColor: '#185FA5' }]} />
+                  {totalCash > 0 && <View style={[styles.posBarFill, { flex: totalCash, backgroundColor: '#27500A' }]} />}
+                  {totalPOS > 0 && <View style={[styles.posBarFill, { flex: totalPOS, backgroundColor: '#185FA5' }]} />}
+                  {totalCredit > 0 && <View style={[styles.posBarFill, { flex: totalCredit, backgroundColor: '#A85E1A' }]} />}
                 </View>
                 <Text style={[styles.posBarLabel, { color: colors.textSubtle }]}>
-                  Cash {totalAmt > 0 ? Math.round((totalCash / totalAmt) * 100) : 0}% · POS {totalAmt > 0 ? Math.round((totalPOS / totalAmt) * 100) : 0}%
+                  Cash {Math.round((totalCash / paymentTotal) * 100)}% · POS/Transfer {Math.round((totalPOS / paymentTotal) * 100)}% · Credit {Math.round((totalCredit / paymentTotal) * 100)}%
                 </Text>
               </>
             )}
@@ -127,20 +232,35 @@ export default function SalesScreen() {
           ))}
         </View>
 
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Revenue & Volume by Branch</Text>
+        <View style={styles.branchGrid}>
+          {branchBreakdown.map(branch => (
+            <View key={branch.id} style={[styles.branchCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.branchCardHeader}>
+                <Ionicons name="business-outline" size={15} color={roleColor} />
+                <Text style={[styles.branchName, { color: colors.text }]} numberOfLines={1}>{branch.name}</Text>
+              </View>
+              <Text style={[styles.branchRevenue, { color: roleColor }]}>{fmt(branch.revenue)}</Text>
+              <Text style={[styles.branchVolume, { color: colors.textMuted }]}>{branch.volume.toLocaleString()} L/kg</Text>
+            </View>
+          ))}
+        </View>
+
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Shift Reports</Text>
 
         {sortedReports.length === 0 && (
           <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="document-outline" size={32} color={colors.textMuted} />
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>No shift reports yet</Text>
-            <Text style={[styles.emptyHint, { color: colors.textSubtle }]}>Shift reports submitted by attendants appear here once approved by the accountant</Text>
+          <Text style={[styles.emptyHint, { color: colors.textSubtle }]}>Submitted shift reports appear here while they move through review</Text>
           </View>
         )}
 
         {sortedReports.map(r => {
           const sc         = SHIFT_STATUS_COLOR[r.status] || '#888';
-          const isApproved = r.status === 'approved';
+           const isApproved = r.status === 'approved';
           const isReturned = r.status === 'returned';
+           const hasLiveDetails = !isReturned;
           return (
             <View
               key={r.id}
@@ -167,7 +287,7 @@ export default function SalesScreen() {
                 </View>
               </View>
 
-              {isApproved && (
+              {hasLiveDetails && (
                 <View style={[styles.reportDetails, { borderTopColor: colors.border }]}>
                   <View style={styles.detailRow}>
                     <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Opening → Closing</Text>
@@ -250,6 +370,12 @@ const styles = StyleSheet.create({
   prodLabel:      { fontSize: 12, fontWeight: '800' },
   prodVol:        { fontSize: 15, fontWeight: '700' },
   prodRev:        { fontSize: 11 },
+  branchGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  branchCard:     { width: '48%', padding: 12, borderRadius: 12, borderWidth: 1, gap: 4 },
+  branchCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  branchName:     { flex: 1, fontSize: 11, fontWeight: '800' },
+  branchRevenue:  { fontSize: 14, fontWeight: '800', marginTop: 4 },
+  branchVolume:   { fontSize: 11 },
   sectionTitle:   { fontSize: 15, fontWeight: '700', marginBottom: 10 },
   emptyCard:      { padding: 32, borderRadius: 14, borderWidth: 1, alignItems: 'center', gap: 8, marginBottom: 8 },
   emptyText:      { fontSize: 14, fontWeight: '600' },
