@@ -8,13 +8,15 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
-  DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmtDate, fmtDateTime, unitForProd, useApp,
+  DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, calculateStockBook, getCurrentTankStock, mmToLiters,
+  ROLE_COLORS, fmtDate, fmtDateTime, unitForProd, useApp, type StockProduct,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const DIP_SUBTABS_MGR  = ['Dip Form', 'Awaiting Approval', 'History'];
 const DIP_SUBTABS_APPR = ['Awaiting Approval', 'History'];
 const DIP_SUBTABS_VIEWER = ['History'];
+const STOCK_SNAPSHOT_PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
@@ -22,10 +24,26 @@ const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', 
 const DIP_STATUS_ICON: Record<string, string>  = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 type TopTab = 'dip';
 
+function localDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function recordDateKey(value?: string): string {
+  return value?.slice(0, 10) ?? '';
+}
+
+function formatStockQuantity(value: number | null): string {
+  return value === null ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
 export default function OperationsScreen() {
   const {
     role, userName, branchId, branches, mgrPerms,
-    tanks, lpgTanks, dips,
+    tanks, lpgTanks, pumps, dips, deliveries, pumpDailyReports, startupStocks, stockSnapshotConfig,
     addDip, approveDip, rejectDip,
     prices,
   } = useApp();
@@ -66,6 +84,7 @@ export default function OperationsScreen() {
   const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : canSeeAllTanks ? tanks : tanks.filter(inMyBranch);
   const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : canSeeAllTanks ? lpgTanks : lpgTanks.filter(inMyBranch);
   const canDip          = isMgr;
+  const isGlobalStockViewer = role === 'admin' || (role ? GLOBAL_OVERVIEW_ROLES.has(role) : false);
   const hasPendingDip   = canDip && dips.some(d => d.by === userName && d.status === 'pending');
   const visiblePetrolTankIds = new Set(visibleTanks.map(tank => tank.id));
   const visibleLpgTankIds = new Set(visibleLpgTanks.map(tank => tank.id));
@@ -119,6 +138,101 @@ export default function OperationsScreen() {
     else groups.push({ ...branch, dips: [dip] });
     return groups;
   }, []).sort((a, b) => a.name.localeCompare(b.name));
+
+  const stockSnapshotBranches = (() => {
+    const todayKey = localDateKey(new Date());
+    const latestDipForBranch = (
+      scopeTanks: typeof tanks,
+      scopeLpgTanks: typeof lpgTanks,
+    ) => dips
+      .filter(dip =>
+        recordDateKey(dip.dt) === todayKey &&
+        dip.status === 'approved' &&
+        (scopeTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
+          scopeLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
+      )
+      .sort((a, b) =>
+        new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() -
+        new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime() ||
+        b.id - a.id
+      )[0];
+
+    const dipForProduct = (
+      record: typeof dips[number] | undefined,
+      product: StockProduct,
+      scopeTanks: typeof tanks,
+      scopeLpgTanks: typeof lpgTanks,
+    ): number | null => {
+      if (!record) return null;
+      if (product === 'LPG') {
+        const readings = scopeLpgTanks
+          .map(tank => record.lpg?.[tank.id])
+          .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+        return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
+      }
+      const readings = scopeTanks
+        .filter(tank => tank.prod === product)
+        .map(tank => {
+          const reading = record.rd?.[tank.id];
+          return typeof reading === 'number' && Number.isFinite(reading) ? mmToLiters(tank, reading) : null;
+        })
+        .filter((value): value is number => value !== null);
+      return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
+    };
+
+    const hasAssignedStockAssets = (candidateBranchId: string | null | undefined) =>
+      Boolean(candidateBranchId) &&
+      (tanks.some(tank => tank.branchId === candidateBranchId) ||
+        lpgTanks.some(tank => tank.branchId === candidateBranchId)) &&
+      pumps.some(pump => pump.branchId === candidateBranchId);
+
+    const scopes = isGlobalStockViewer
+      ? branches
+        .filter(branch => hasAssignedStockAssets(branch.id))
+        .map(branch => ({ branchId: branch.id, branchName: branch.name }))
+      : branchId && hasAssignedStockAssets(branchId)
+        ? [{ branchId, branchName: branches.find(branch => branch.id === branchId)?.name ?? 'My branch' }]
+        : [];
+
+    return scopes.map(scope => {
+      const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
+      const branchTanks = tanks.filter(inScope);
+      const branchLpgTanks = lpgTanks.filter(inScope);
+      const todayDip = latestDipForBranch(branchTanks, branchLpgTanks);
+      const enabledProducts = stockSnapshotConfig.productsByBranch[scope.branchId];
+
+      return {
+        ...scope,
+        products: STOCK_SNAPSHOT_PRODUCTS
+          .filter(product => enabledProducts?.[product] !== false)
+          .map(product => {
+            const stockBook = calculateStockBook(
+              startupStocks.find(stock => stock.product === product && stock.branchId === scope.branchId),
+              product,
+              scope.branchId,
+              deliveries,
+              pumpDailyReports,
+              todayKey,
+              pumps,
+            );
+            const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
+            const variance = stockBook.bookStock === null || submittedTankDip === null
+              ? null
+              : stockBook.bookStock - submittedTankDip;
+            return {
+              product,
+              startupStock: stockBook.startupStock,
+              deliveries: stockBook.delivered,
+              sales: stockBook.sold,
+              bookStock: stockBook.bookStock,
+              submittedTankDip,
+              variance,
+              unit: unitForProd(product),
+            };
+          }),
+      };
+    });
+  })();
 
   return (
     <ScreenLayout title={params.tab === 'inventory' ? 'Inventory' : 'Operations'}>
@@ -542,30 +656,109 @@ export default function OperationsScreen() {
               <View style={[styles.inventorySummary, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.inventorySummaryHeader}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.inventorySummaryTitle, { color: colors.text }]}>Current stock overview</Text>
-                    <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>Live balance across your visible tanks</Text>
+                    <Text style={[styles.inventorySummaryTitle, { color: colors.text }]}>Stock Snapshot</Text>
+                    <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>Book Stock + Variance</Text>
                   </View>
                   <View style={[styles.inventorySummaryIcon, { backgroundColor: colors.primary + '18' }]}>
                     <Ionicons name="analytics-outline" size={20} color={colors.primary} />
                   </View>
                 </View>
-                <View style={styles.inventoryMetricGrid}>
-                  <View style={styles.inventoryMetric}>
-                    <Text style={[styles.inventoryMetricValue, { color: colors.success }]}>Live</Text>
-                    <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>Stock Snapshot</Text>
-                  </View>
+                <View style={[styles.stockSnapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
+                  <Ionicons name="information-circle-outline" size={16} color={colors.info} />
+                  <Text style={[styles.stockSnapshotIntroText, { color: colors.textMuted }]}>
+                    Carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales versus today&apos;s approved tank dip.
+                  </Text>
                 </View>
-                <Text style={[styles.inventoryUnitNote, { color: colors.textMuted }]}>
-                  Petroleum is measured in litres; LPG is measured in kilograms.
-                </Text>
               </View>
 
-              {visibleTanks.length === 0 && visibleLpgTanks.length === 0 && (
+              {stockSnapshotBranches.length === 0 && (
                 <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
-                  <Ionicons name="cube-outline" size={16} color={colors.textMuted} />
-                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No tanks found. Add tanks in System Settings.</Text>
+                  <Ionicons name="analytics-outline" size={16} color={colors.textMuted} />
+                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No stock snapshot branches are configured yet.</Text>
                 </View>
               )}
+              {stockSnapshotBranches.map(snapshotBranch => (
+                <View key={snapshotBranch.branchId} style={[styles.stockSnapshotBranch, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[styles.stockSnapshotBranchHeader, { borderBottomColor: colors.border }]}>
+                    <Ionicons name="business-outline" size={14} color={roleColor} />
+                    <Text style={[styles.stockSnapshotBranchName, { color: colors.text }]}>{snapshotBranch.branchName}</Text>
+                  </View>
+                  {snapshotBranch.products.map(snapshot => {
+                    const statusColor = snapshot.startupStock === null
+                      ? colors.amber
+                      : snapshot.variance === null
+                        ? colors.textMuted
+                        : snapshot.variance < 0 ? colors.error : colors.success;
+                    const statusLabel = snapshot.startupStock === null
+                      ? 'Awaiting baseline'
+                      : snapshot.variance === null
+                        ? 'Awaiting dip'
+                        : snapshot.variance < 0 ? 'Shortage' : snapshot.variance > 0 ? 'Excess' : 'Balanced';
+                    return (
+                      <View key={snapshot.product} style={[styles.stockSnapshotRow, { borderTopColor: colors.border }]}>
+                        <View style={styles.stockSnapshotRowHeader}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={[styles.stockSnapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
+                            {stockSnapshotConfig.metrics.bookStock ? (
+                              <Text style={[styles.stockSnapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
+                                Book stock = carried-forward + delivered − sold: {formatStockQuantity(snapshot.bookStock)} {snapshot.unit}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {stockSnapshotConfig.metrics.variance ? (
+                            <View style={[styles.stockSnapshotStatus, { backgroundColor: statusColor + '18' }]}>
+                              <View style={[styles.stockSnapshotStatusDot, { backgroundColor: statusColor }]} />
+                              <Text style={[styles.stockSnapshotStatusText, { color: statusColor }]}>{statusLabel}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <View style={styles.stockSnapshotValues}>
+                          {stockSnapshotConfig.metrics.startupStock ? (
+                            <View style={styles.stockSnapshotValue}>
+                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Seed qty.</Text>
+                              <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
+                                {formatStockQuantity(snapshot.startupStock)} {snapshot.unit}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {stockSnapshotConfig.metrics.deliveries ? (
+                            <View style={styles.stockSnapshotValue}>
+                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Delivered qty.</Text>
+                              <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
+                                {formatStockQuantity(snapshot.deliveries)} {snapshot.unit}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {stockSnapshotConfig.metrics.sales ? (
+                            <View style={styles.stockSnapshotValue}>
+                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
+                              <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
+                                {formatStockQuantity(snapshot.sales)} {snapshot.unit}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {stockSnapshotConfig.metrics.submittedTankDip ? (
+                            <View style={styles.stockSnapshotValue}>
+                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Tank dip qty.</Text>
+                              <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
+                                {formatStockQuantity(snapshot.submittedTankDip)} {snapshot.unit}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {stockSnapshotConfig.metrics.variance ? (
+                            <View style={[styles.stockSnapshotValue, styles.stockSnapshotVarianceValue]}>
+                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Variance</Text>
+                              <Text style={[styles.stockSnapshotValueText, { color: statusColor }]}>
+                                {snapshot.variance === null ? '—' : `${snapshot.variance > 0 ? '+' : ''}${formatStockQuantity(snapshot.variance)} ${snapshot.unit}`}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
               <View style={{ height: 16 }} />
             </ScrollView>
           )}
@@ -670,6 +863,23 @@ const styles = StyleSheet.create({
   branchStockHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
   branchStockTitle: { fontSize: 14, fontWeight: '800' },
   inventoryUnitNote: { fontSize: 10, marginTop: 10 },
+  stockSnapshotIntro: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingHorizontal: 11, paddingVertical: 9, borderRadius: 11, borderWidth: 1 },
+  stockSnapshotIntroText: { flex: 1, fontSize: 10, fontWeight: '600' },
+  stockSnapshotBranch: { borderRadius: 14, borderWidth: 1, overflow: 'hidden', marginTop: 12 },
+  stockSnapshotBranchHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  stockSnapshotBranchName: { fontSize: 13, fontWeight: '800' },
+  stockSnapshotRow: { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  stockSnapshotRowHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stockSnapshotProduct: { fontSize: 12, fontWeight: '800' },
+  stockSnapshotFormula: { fontSize: 9, marginTop: 3 },
+  stockSnapshotStatus: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 99 },
+  stockSnapshotStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  stockSnapshotStatusText: { fontSize: 9, fontWeight: '800' },
+  stockSnapshotValues: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  stockSnapshotValue: { width: '48%', minWidth: 0 },
+  stockSnapshotVarianceValue: { width: '100%', alignItems: 'flex-start' },
+  stockSnapshotValueLabel: { fontSize: 9, fontWeight: '600' },
+  stockSnapshotValueText: { fontSize: 11, fontWeight: '800', marginTop: 3 },
   historyHeader: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8, marginBottom: 10 },
   historySubtitle: { fontSize: 10 },
   branchHistoryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 4, marginBottom: 8 },
