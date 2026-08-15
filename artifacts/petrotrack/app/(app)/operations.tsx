@@ -19,8 +19,6 @@ const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517',
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
 const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 const DIP_STATUS_ICON: Record<string, string>  = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
-const STOCK_PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
-type StockProduct = typeof STOCK_PRODUCTS[number];
 type TopTab = 'dip';
 
 export default function OperationsScreen() {
@@ -88,43 +86,6 @@ export default function OperationsScreen() {
   }
 
 
-  const branchStockGroups = (() => {
-    const unassignedAssets = tanks.some(tank => !tank.branchId) || lpgTanks.some(tank => !tank.branchId);
-    const scopes: { id?: string; name: string }[] = canSeeAllTanks
-      ? [
-          ...branches.map(branch => ({ id: branch.id, name: branch.name })),
-          ...(unassignedAssets ? [{ name: 'Unassigned assets' }] : []),
-        ]
-      : [{
-          id: branchId ?? undefined,
-          name: branches.find(branch => branch.id === branchId)?.name ?? 'My branch',
-        }];
-
-    const assetBelongsToScope = (asset: { branchId?: string }, scopeId?: string) =>
-      scopeId ? asset.branchId === scopeId : !asset.branchId;
-
-    return scopes.map(scope => {
-      const scopeTanks = tanks.filter(tank => assetBelongsToScope(tank, scope.id));
-      const scopeLpgTanks = lpgTanks.filter(tank => assetBelongsToScope(tank, scope.id));
-      const products = STOCK_PRODUCTS.map((product: StockProduct) => {
-        const productTanks = product === 'LPG'
-          ? scopeLpgTanks
-          : scopeTanks.filter(tank => tank.prod === product);
-        const capacity = productTanks.reduce((sum, tank) => sum + tank.cap, 0);
-        const stock = productTanks.reduce(
-          (sum, tank) => sum + getCurrentTankStock(tank, dips, product === 'LPG' ? 'lpg' : 'petrol'),
-          0,
-        );
-        return {
-          product,
-          capacity,
-          stock,
-          fill: capacity > 0 ? Math.round((stock / capacity) * 100) : 0,
-        };
-      });
-      return { ...scope, products, hasAssets: scopeTanks.length > 0 || scopeLpgTanks.length > 0 };
-    }).filter(group => group.hasAssets || !canSeeAllTanks);
-  })();
   const pendingDips = dips.filter(dip => dip.status === 'pending' && dipHasVisibleReading(dip));
   const approvedDips = dips
     .filter(dip => dip.status === 'approved' && dipHasVisibleReading(dip))
@@ -425,37 +386,6 @@ export default function OperationsScreen() {
                 </View>
               </View>
 
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Product quantities by branch</Text>
-              {branchStockGroups.length === 0 ? (
-                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Ionicons name="business-outline" size={16} color={colors.textMuted} />
-                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No branch fuel tanks are configured yet.</Text>
-                </View>
-              ) : branchStockGroups.map(group => (
-                <View key={group.id ?? 'unassigned'} style={[styles.branchStockCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={styles.branchStockHeader}>
-                    <Ionicons name="business-outline" size={16} color={roleColor} />
-                    <Text style={[styles.branchStockTitle, { color: colors.text }]}>{group.name}</Text>
-                  </View>
-                  <View style={styles.inventoryMetricGrid}>
-                    {group.products.map(({ product, stock, capacity }) => {
-                      const isLpg = product === 'LPG';
-                      return (
-                        <View key={product} style={styles.inventoryMetric}>
-                          <Text style={[styles.inventoryMetricValue, { color: isLpg ? colors.teal : colors.text }]}>
-                            {stock.toLocaleString()} {unitForProd(product)}
-                          </Text>
-                          <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>{product} stock</Text>
-                          <Text style={[styles.inventoryMetricCapacity, { color: colors.textSubtle }]}>
-                            Capacity: {capacity.toLocaleString()} {unitForProd(product)}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              ))}
-
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Current tank levels</Text>
               {visibleTanks.map(tank => {
                 const stock = getCurrentTankStock(tank, dips);
@@ -595,42 +525,6 @@ export default function OperationsScreen() {
                   <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No tanks found. Add tanks in System Settings.</Text>
                 </View>
               )}
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Product quantities by branch</Text>
-              {branchStockGroups.length === 0 ? (
-                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Ionicons name="business-outline" size={16} color={colors.textMuted} />
-                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No branch fuel tanks are configured yet.</Text>
-                </View>
-              ) : branchStockGroups.map(group => (
-                <View key={group.id ?? 'unassigned'} style={[styles.branchStockCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={styles.branchStockHeader}>
-                    <Ionicons name="business-outline" size={16} color={roleColor} />
-                    <Text style={[styles.branchStockTitle, { color: colors.text }]}>{group.name}</Text>
-                  </View>
-                  <View style={styles.inventoryMetricGrid}>
-                    {group.products.map(({ product, stock, capacity, fill }) => {
-                      const pct = Math.max(0, Math.min(100, fill));
-                      const isLpg = product === 'LPG';
-                      const barCol = pct < 30 ? colors.error : pct < 60 ? (isLpg ? colors.amber : colors.primary) : (isLpg ? colors.teal : colors.success);
-                      return (
-                        <View key={product} style={styles.inventoryMetric}>
-                          <Text style={[styles.inventoryMetricValue, { color: isLpg ? colors.teal : colors.text }]}>
-                            {stock.toLocaleString()} {unitForProd(product)}
-                          </Text>
-                          <Text style={[styles.inventoryMetricLabel, { color: colors.textMuted }]}>{product} stock</Text>
-                          <Text style={[styles.inventoryMetricCapacity, { color: colors.textSubtle }]}>
-                            Capacity: {capacity.toLocaleString()} {unitForProd(product)}
-                          </Text>
-                          <View style={[styles.progressBg, { backgroundColor: colors.border, marginTop: 7 }]}>
-                            <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: barCol }]} />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              ))}
-
               <View style={{ height: 16 }} />
             </ScrollView>
           )}
