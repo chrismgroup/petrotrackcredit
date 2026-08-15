@@ -57,7 +57,8 @@ export default function TanksScreen() {
   }
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
-  const [activeTab, setActiveTab] = useState(0);
+  const canEdit = role === 'mgr';
+  const [activeTab, setActiveTab] = useState(canEdit ? 0 : 1);
   const [readings, setReadings] = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs] = useState('');
@@ -70,7 +71,6 @@ export default function TanksScreen() {
   const [editDipLpg, setEditDipLpg] = useState<Record<string, string>>({});
   const [editDipObs, setEditDipObs] = useState('');
 
-  const canEdit = role === 'mgr';
   const isMD = role === 'md';
   const isAdmin = role === 'admin';
   // Pending dips are independent submissions. Do not block a manager from
@@ -242,6 +242,7 @@ export default function TanksScreen() {
     <ScreenLayout title="Tank Dipping">
       <View style={styles.tabBar}>
         {TABS.map((t, i) => {
+          if (i === 0 && !canEdit) return null;
           const showBadge = i === 1 && (isMD || isAdmin) && pendingDips.length > 0;
           return (
             <TouchableOpacity key={t} onPress={() => setActiveTab(i)} style={[styles.tabBtn, { borderBottomColor: i === activeTab ? roleColor : 'transparent', borderBottomWidth: 2 }]}>
@@ -258,7 +259,7 @@ export default function TanksScreen() {
         })}
       </View>
 
-      {activeTab === 0 && (
+      {activeTab === 0 && canEdit && (
         <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
