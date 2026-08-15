@@ -126,7 +126,18 @@ export default function JobsScreen() {
   const openMaintenance = maintenance.filter(item => item.st === 'Open').length;
   const pendingDeliveries = deliveries.filter(item => item.approvalStatus === 'pending' || item.approvalStatus === 'pending_acc' || item.approvalStatus === 'pending_md').length;
   const pendingExpenses = expenses.filter(item => item.status === 'pending' || item.status === 'acc_forwarded').length;
-  const taskCount = tasks.filter(item => item.status !== 'completed').length;
+  const taskCount = tasks.filter(item => item.assignedTo === role && item.status !== 'completed').length;
+
+  function openNeedsReview() {
+    // Tank dip approvals and maintenance both contribute to this summary.
+    // Open the most directly actionable queue first; if there are no pending
+    // dips, take the user straight to the maintenance action list.
+    if (pending > 0) {
+      router.push(`${SCREEN_ROUTES.ops}?tab=dip` as never);
+      return;
+    }
+    router.push(SCREEN_ROUTES.maint as never);
+  }
 
   function openJob(item: JobItem) {
     if (item.id === 'dips') {
@@ -153,10 +164,46 @@ export default function JobsScreen() {
           <Text style={styles.heroTitle}>Everything that needs your attention.</Text>
           <Text style={styles.heroSubtitle}>Your operational work is organized by department, with each action one tap away.</Text>
           <View style={styles.snapshotRow}>
-            <View><Text style={styles.snapshotNumber}>{openMaintenance + pending}</Text><Text style={styles.snapshotLabel}>Needs review</Text></View>
-            <View><Text style={styles.snapshotNumber}>{pendingDeliveries}</Text><Text style={styles.snapshotLabel}>Deliveries</Text></View>
-            <View><Text style={styles.snapshotNumber}>{pendingExpenses}</Text><Text style={styles.snapshotLabel}>Finance queue</Text></View>
-            <View><Text style={styles.snapshotNumber}>{taskCount}</Text><Text style={styles.snapshotLabel}>Open tasks</Text></View>
+            <TouchableOpacity
+              style={styles.snapshotMetric}
+              onPress={openNeedsReview}
+              activeOpacity={0.72}
+              accessibilityRole="button"
+              accessibilityLabel={`${openMaintenance + pending} items need review`}
+            >
+              <Text style={styles.snapshotNumber}>{openMaintenance + pending}</Text>
+              <Text style={styles.snapshotLabel}>Needs review</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.snapshotMetric}
+              onPress={() => router.push(SCREEN_ROUTES.recv as never)}
+              activeOpacity={0.72}
+              accessibilityRole="button"
+              accessibilityLabel={`${pendingDeliveries} deliveries pending review`}
+            >
+              <Text style={styles.snapshotNumber}>{pendingDeliveries}</Text>
+              <Text style={styles.snapshotLabel}>Deliveries</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.snapshotMetric}
+              onPress={() => router.push(SCREEN_ROUTES.exp as never)}
+              activeOpacity={0.72}
+              accessibilityRole="button"
+              accessibilityLabel={`${pendingExpenses} finance items pending review`}
+            >
+              <Text style={styles.snapshotNumber}>{pendingExpenses}</Text>
+              <Text style={styles.snapshotLabel}>Finance queue</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.snapshotMetric}
+              onPress={() => router.push(SCREEN_ROUTES.tasks as never)}
+              activeOpacity={0.72}
+              accessibilityRole="button"
+              accessibilityLabel={`${taskCount} open tasks assigned to you`}
+            >
+              <Text style={styles.snapshotNumber}>{taskCount}</Text>
+              <Text style={styles.snapshotLabel}>Open tasks</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -200,6 +247,7 @@ const styles = StyleSheet.create({
   heroTitle: { color: '#fff', fontSize: 23, lineHeight: 28, fontWeight: '800', marginTop: 8, maxWidth: 320 },
   heroSubtitle: { color: 'rgba(255,255,255,0.78)', fontSize: 13, lineHeight: 19, marginTop: 7, maxWidth: 340 },
   snapshotRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 22, paddingTop: 15, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.16)' },
+  snapshotMetric: { flex: 1, minWidth: 0 },
   snapshotNumber: { color: '#fff', fontSize: 20, fontWeight: '800' },
   snapshotLabel: { color: 'rgba(255,255,255,0.68)', fontSize: 10, marginTop: 3 },
   section: { gap: 11 },
