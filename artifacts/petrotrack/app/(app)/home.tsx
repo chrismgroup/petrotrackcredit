@@ -73,7 +73,7 @@ interface BranchStockSnapshot {
 interface BranchFuelStock {
   branchId: string | null;
   branchName: string;
-  products: { prod: StockSnapshotProduct; stock: number; unit: string }[];
+  products: { prod: StockSnapshotProduct; stock: number | null; unit: string }[];
 }
 
 function localDateKey(date: Date): string {
@@ -317,62 +317,6 @@ export default function HomeScreen() {
     [pumpDailyReports, scopedBranchId, currentMonthRange.from, currentMonthRange.to],
   );
 
-  const stockByProduct = useMemo(() => {
-    const totals: Record<string, number> = {};
-    for (const tank of tanks) {
-      if (scopedBranchId && tank.branchId !== scopedBranchId) continue;
-      totals[tank.prod] = (totals[tank.prod] ?? 0) + getCurrentTankStock(tank, dips);
-    }
-    for (const tank of lpgTanks) {
-      if (scopedBranchId && tank.branchId !== scopedBranchId) continue;
-      totals.LPG = (totals.LPG ?? 0) + getCurrentTankStock(tank, dips, 'lpg');
-    }
-    return ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'].map(prod => ({
-      prod,
-      stock: totals[prod] ?? 0,
-      unit: unitForProd(prod),
-    }));
-  }, [tanks, lpgTanks, dips, scopedBranchId]);
-  const stockForProduct = (product: StockProduct) =>
-    stockByProduct.find(item => item.prod === product)?.stock ?? 0;
-
-  const branchFuelStocks = useMemo<BranchFuelStock[]>(() => {
-    const branchIds = new Set<string | null>();
-    if (scopedBranchId) {
-      branchIds.add(scopedBranchId);
-    } else {
-      for (const tank of tanks) branchIds.add(tank.branchId ?? null);
-      for (const tank of lpgTanks) branchIds.add(tank.branchId ?? null);
-    }
-
-    return [...branchIds]
-      .map(branchId => {
-        const branchTanks = tanks.filter(tank => (tank.branchId ?? null) === branchId);
-        const branchLpgTanks = lpgTanks.filter(tank => (tank.branchId ?? null) === branchId);
-        const products = STOCK_SNAPSHOT_PRODUCTS.map(prod => {
-          const petrolStock = branchTanks
-            .filter(tank => tank.prod === prod)
-            .reduce((sum, tank) => sum + getCurrentTankStock(tank, dips), 0);
-          const lpgStock = prod === 'LPG'
-            ? branchLpgTanks.reduce((sum, tank) => sum + getCurrentTankStock(tank, dips, 'lpg'), 0)
-            : 0;
-          return { prod, stock: petrolStock + lpgStock, unit: unitForProd(prod) };
-        });
-        return {
-          branchId,
-          branchName: branchId
-            ? branches.find(branch => branch.id === branchId)?.name ?? branchId
-            : 'Unassigned assets',
-          products,
-        };
-      })
-      .filter(branch =>
-        tanks.some(tank => (tank.branchId ?? null) === branch.branchId) ||
-        lpgTanks.some(tank => (tank.branchId ?? null) === branch.branchId)
-      )
-      .sort((a, b) => a.branchName.localeCompare(b.branchName));
-  }, [branches, dips, lpgTanks, scopedBranchId, tanks]);
-
   const branchStockSnapshots = useMemo<BranchStockSnapshot[]>(() => {
     const todayKey = localDateKey(new Date());
     const sortDips = (records: typeof dips) => records.sort((a, b) => {
@@ -480,6 +424,41 @@ export default function HomeScreen() {
       return { ...scope, products };
     });
   }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, scopedBranchId, startupStocks, stockSnapshotConfig, tanks]);
+
+  // Fuel Stock, the PMS/AGO KPI tiles, and Stock Snapshot must all show the
+  // same approved book-stock ledger. Tank dips remain visible as the physical
+  // comparison value inside Stock Snapshot.
+  const branchFuelStocks = useMemo<BranchFuelStock[]>(() =>
+    branchStockSnapshots.map(snapshot => ({
+      branchId: snapshot.branchId,
+      branchName: snapshot.branchName,
+      products: snapshot.products.map(product => ({
+        prod: product.product,
+        stock: product.bookStock,
+        unit: product.unit,
+      })),
+    })),
+    [branchStockSnapshots],
+  );
+
+  const stockByProduct = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const branch of branchStockSnapshots) {
+      for (const product of branch.products) {
+        if (product.bookStock !== null) {
+          totals[product.product] = (totals[product.product] ?? 0) + product.bookStock;
+        }
+      }
+    }
+    return STOCK_SNAPSHOT_PRODUCTS.map(prod => ({
+      prod,
+      stock: totals[prod] ?? 0,
+      unit: unitForProd(prod),
+    }));
+  }, [branchStockSnapshots]);
+
+  const stockForProduct = (product: StockProduct) =>
+    stockByProduct.find(item => item.prod === product)?.stock ?? 0;
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -678,7 +657,9 @@ export default function HomeScreen() {
                 {branch.products.map(({ prod, stock, unit }) => (
                   <View key={prod} style={{ width: '42%' }}>
                     <Text style={[s.stockSummaryLabel, { color: colors.textMuted }]}>{prod} stock</Text>
-                    <Text style={[s.stockSummaryValue, { color: colors.teal }]}>{stock.toLocaleString()} {unit}</Text>
+                    <Text style={[s.stockSummaryValue, { color: colors.teal }]}>
+                      {stock === null ? '—' : `${formatQuantity(stock)} ${unit}`}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -686,7 +667,9 @@ export default function HomeScreen() {
                 <View key={prod} style={[s.stockRow, { borderTopColor: colors.border }]}>
                   <View style={[s.stockDot, { backgroundColor: colors.teal }]} />
                   <Text style={[s.stockProduct, { color: colors.text }]}>{prod}</Text>
-                  <Text style={[s.stockAmount, { color: colors.text }]}>{stock.toLocaleString()} {unit}</Text>
+                  <Text style={[s.stockAmount, { color: colors.text }]}>
+                    {stock === null ? '—' : `${formatQuantity(stock)} ${unit}`}
+                  </Text>
                 </View>
               ))}
             </View>
