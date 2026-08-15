@@ -5,7 +5,18 @@ import {
   TextInput, TouchableOpacity, View,
 } from 'react-native';
 
-import { fmt, fmtDateTime, getCurrentTankStock, useApp, type BankLoan } from '@/context/AppContext';
+import {
+  businessDateKey,
+  calculateBusinessMonthRevenue,
+  calendarMonthBusinessDateRange,
+  fmt,
+  fmtDateTime,
+  getCurrentTankStock,
+  isRevenueReportStatus,
+  useApp,
+  type BankLoan,
+} from '@/context/AppContext';
+import { computeCOGS } from '@/lib/report-helpers';
 import { useColors } from '@/hooks/useColors';
 
 const PROD_COLOR: Record<string, string> = {
@@ -152,15 +163,23 @@ function EditModal({
 ═══════════════════════════════════════ */
 export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const {
-    role, tanks, lpgTanks, dips, deliveries, branches, pumpDailyReports,
-    expenses, financialEntry, updateFinancialEntry,
+    role, branchId, tanks, lpgTanks, dips, deliveries, branches, pumpDailyReports,
+    expenses, companyInfo, financialEntry, updateFinancialEntry,
   } = useApp();
   const colors = useColors();
   const [expanded, setExpanded] = useState(false);
   const [showEdit, setShowEdit]  = useState(false);
 
   const isAcc = role === 'acc' || role === 'admin';
-  const monthKey = new Date().toISOString().slice(0, 7);
+  const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'admin';
+  const scopedBranchId = isGlobal ? null : branchId;
+  const currentMonthRange = calendarMonthBusinessDateRange();
+  const inCurrentMonth = (value?: string) => {
+    const businessDate = businessDateKey(value);
+    return businessDate >= currentMonthRange.from && businessDate <= currentMonthRange.to;
+  };
+  const inRevenueScope = (recordBranchId?: string) =>
+    !scopedBranchId || recordBranchId === scopedBranchId || !recordBranchId;
 
   /* ── last cost price per product from approved deliveries ── */
   const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
@@ -203,13 +222,31 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   }
 
   /* ── monthly net profit ── */
-  const monthRevenue = pumpDailyReports
-    .filter(r => r.status === 'approved' && r.date.startsWith(monthKey))
-    .reduce((s, r) => s + r.grossAmount, 0);
+  const monthlyRevenueReports = pumpDailyReports.filter(r =>
+    isRevenueReportStatus(r.status) &&
+    inCurrentMonth(r.date) &&
+    inRevenueScope(r.branchId),
+  );
+  const monthRevenue = calculateBusinessMonthRevenue(pumpDailyReports, scopedBranchId, currentMonthRange);
+  const monthCOGS = computeCOGS(
+    monthlyRevenueReports.map(report => ({
+      pump: `${report.pumpName} ${report.product}`,
+      L: report.liters,
+    })),
+    deliveries.filter(delivery =>
+      inCurrentMonth(delivery.dt) &&
+      inRevenueScope(delivery.branchId),
+    ),
+  );
   const monthExpenses = expenses
-    .filter(e => e.status === 'approved' && e.dt.startsWith(monthKey))
+    .filter(e => e.status === 'approved' && inCurrentMonth(e.dt) && inRevenueScope(e.branchId))
     .reduce((s, e) => s + e.amt, 0);
-  const netProfit = monthRevenue - monthExpenses;
+  const citaRate = parseFloat(companyInfo.citaRate || '30') / 100;
+  const monthlyOperatingProfit = monthRevenue - monthCOGS - monthExpenses;
+  const monthCita = monthlyOperatingProfit > 0
+    ? Math.round(monthlyOperatingProfit * citaRate)
+    : 0;
+  const netProfit = monthlyOperatingProfit - monthCita;
 
   /* ── operating capital formula ── */
   const fe = financialEntry;
@@ -335,7 +372,9 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
             {/* Net profit breakdown */}
             <Text style={[fStyles.subSection, { color: colors.text, marginTop: 14 }]}>📈 Net Profit Breakdown</Text>
             <Row label="Monthly Revenue" value={fmt(monthRevenue)} color="#27500A" />
+            <Row label="− Monthly Cost of Goods" value={fmt(monthCOGS)} color="#791F1F" />
             <Row label="− Monthly Expenses" value={fmt(monthExpenses)} color="#791F1F" />
+            <Row label={`− CITA (${(citaRate * 100).toFixed(0)}%)`} value={fmt(monthCita)} color="#BA7517" />
             <Row label="= Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? '#27500A' : '#791F1F'} bold />
           </View>
         )}
