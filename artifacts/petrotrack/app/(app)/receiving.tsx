@@ -7,7 +7,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForProduct, useApp } from '@/context/AppContext';
+import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForProduct, mmToLiters, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
@@ -186,7 +186,7 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
 export default function ReceivingScreen() {
   const {
     role, userName, branchId,
-    tanks, lpgTanks, dips, deliveries, prices, branches,
+    tanks, lpgTanks, dips, deliveries, prices, branches, pumps,
     pumpDailyReports, startupStocks,
     deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
@@ -331,11 +331,11 @@ export default function ReceivingScreen() {
         (scopeTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           scopeLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
       )
-      .sort((a, b) => {
-        const aTime = new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime();
-        const bTime = new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime();
-        return bTime - aTime || b.id - a.id;
-      })[0];
+      .sort((a, b) =>
+        recordDateKey(b.dt).localeCompare(recordDateKey(a.dt))
+        || new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime()
+        || b.id - a.id
+      )[0];
   }
 
   function dipForProduct(
@@ -347,7 +347,12 @@ export default function ReceivingScreen() {
     if (!record) return null;
     const readings = product === 'LPG'
       ? scopeLpgTanks.map(tank => record.lpg?.[tank.id])
-      : scopeTanks.filter(tank => tank.prod === product).map(tank => record.rd?.[tank.id]);
+      : scopeTanks
+          .filter(tank => tank.prod === product)
+          .map(tank => {
+            const reading = record.rd?.[tank.id];
+            return reading === undefined ? undefined : mmToLiters(tank, reading);
+          });
     const numericReadings = readings
       .map(value => typeof value === 'number' ? value : Number(value))
       .filter((value): value is number => Number.isFinite(value));
@@ -364,7 +369,7 @@ export default function ReceivingScreen() {
     scopeReports: typeof pumpDailyReports,
   ): StockProdRow[] {
     const todayKey = localDateKey(new Date());
-    const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, false);
+    const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, true);
     return ALL_PRODS
       .map(prod => {
         const stockBook = calculateStockBook(
@@ -374,6 +379,7 @@ export default function ReceivingScreen() {
           scopeDeliveries,
           scopeReports,
           todayKey,
+          pumps,
         );
         const submittedTankDip = dipForProduct(todaySubmittedDip, prod, scopeTanks, scopeLpgTanks);
         const variance = stockBook.bookStock === null || submittedTankDip === null
@@ -813,7 +819,7 @@ export default function ReceivingScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Snapshot (Book Stock + Variance)</Text>
             <Text style={[styles.stockFormulaText, { color: colors.textMuted }]}>
-              Admin seed quantity is applied once. Book stock = carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales. Variance = book stock − today&apos;s submitted dip.
+               Admin seed quantity is applied once. Book stock = carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales. Variance = book stock − today&apos;s approved dip.
             </Text>
             {branchStockReports.map(bsr => (
               <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>

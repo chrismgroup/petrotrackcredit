@@ -18,6 +18,7 @@ import {
   ROLE_LABELS,
   SCREEN_ROUTES,
   calculateStockBook,
+  mmToLiters,
   unitForProd,
   useApp,
   type Budget,
@@ -335,7 +336,12 @@ export default function HomeScreen() {
         (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
         (petrolTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           branchLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
-      ))[0];
+      ))
+      .sort((a, b) =>
+        recordDateKey(b.dt).localeCompare(recordDateKey(a.dt))
+        || new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime()
+        || b.id - a.id
+      )[0];
     function dipForProduct(
       record: typeof dips[number] | undefined,
       product: StockSnapshotProduct,
@@ -355,7 +361,10 @@ export default function HomeScreen() {
       }
       const readings = petrolTanks
         .filter(tank => tank.prod === product)
-        .map(tank => numericReading(record.rd?.[tank.id]))
+        .map(tank => {
+          const reading = numericReading(record.rd?.[tank.id]);
+          return reading === null ? null : mmToLiters(tank, reading);
+        })
         .filter((reading): reading is number => reading !== null);
       return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
     }
@@ -385,7 +394,7 @@ export default function HomeScreen() {
       const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
-      const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks);
+      const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks, true);
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
         : undefined;
@@ -403,6 +412,7 @@ export default function HomeScreen() {
           deliveries,
           pumpDailyReports,
           todayKey,
+          pumps,
         );
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const variance = stockBook.bookStock === null || submittedTankDip === null
@@ -684,7 +694,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                 <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                   Admin seed quantity is applied once; carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales versus today&apos;s submitted tank dip
+                   Admin seed quantity is applied once; carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales versus today&apos;s approved tank dip
                 </Text>
               </View>
               {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (

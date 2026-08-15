@@ -322,7 +322,7 @@ export default function ShiftReportScreen() {
     submitPumpReport({
        date: appliesOn,
       pumpId: pump.id, pumpName: pump.name, product: pump.prod,
-      branchId: branchId ?? '',
+      branchId: branchId ?? pump.branchId ?? '',
       openingMeter, closingMeter: closeVal, liters,
       unitPrice, grossAmount: grossAmt,
       posAmount: posVal, cashAmount: cashVal, transferAmount: xferVal, creditAmount: creditVal,
