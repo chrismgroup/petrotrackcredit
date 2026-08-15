@@ -7,7 +7,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  PumpDailyReport, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForPump, getPumpReportWorkflowAt, unitForProd, useApp,
+  PumpDailyReport, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getLatestValidatedPumpReport, getPriceForPump, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { AppliedDateField } from '@/components/AppliedDateField';
@@ -256,14 +256,8 @@ export default function ShiftReportScreen() {
     if (pumpLockedMeters[pumpId] !== undefined) return pumpLockedMeters[pumpId];
     // Only use reports that have passed manager review (pending_accountant or approved).
     // pending_manager and returned reports have not been validated yet and must not roll over.
-    const sorted = [...pumpDailyReports]
-      .filter(r => r.pumpId === pumpId && (r.status === 'approved' || r.status === 'pending_accountant'))
-      .sort((a, b) =>
-        getPumpReportWorkflowAt(b).localeCompare(getPumpReportWorkflowAt(a))
-        || b.date.localeCompare(a.date)
-        || b.id - a.id
-      );
-    if (sorted.length > 0) return sorted[0].closingMeter;
+    const latestValidatedReport = getLatestValidatedPumpReport(pumpDailyReports, pumpId);
+    if (latestValidatedReport) return latestValidatedReport.closingMeter;
     return pumpInitialMeters[pumpId] ?? 0;
   }, [pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
 

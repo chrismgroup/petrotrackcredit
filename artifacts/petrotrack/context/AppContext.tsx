@@ -301,6 +301,28 @@ function timestampMs(value?: string): number {
 }
 
 /**
+ * Returns the latest validated closing meter for a pump.
+ *
+ * Business date is authoritative for rollover. Workflow timestamps are only a
+ * tie-breaker because an older report can be approved after a newer report.
+ */
+export function getLatestValidatedPumpReport(
+  reports: PumpDailyReport[],
+  pumpId: string,
+): PumpDailyReport | undefined {
+  return reports
+    .filter(report =>
+      report.pumpId === pumpId &&
+      (report.status === 'approved' || report.status === 'pending_accountant'),
+    )
+    .sort((a, b) =>
+      recordBusinessDate(b.date).localeCompare(recordBusinessDate(a.date))
+      || timestampMs(getPumpReportWorkflowAt(b)) - timestampMs(getPumpReportWorkflowAt(a))
+      || b.id - a.id
+    )[0];
+}
+
+/**
  * Calculates a branch/product book stock from the admin seed and the
  * subsequent approved ledger events. The seed is only applied once: prior
  * business days are carried into the opening book stock, then today's
@@ -2520,15 +2542,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         localSeedMeters[pumpId] = Number(pumpLockedMeters[pumpId]);
         continue;
       }
-      const sorted = [...pumpDailyReports]
-        .filter(r => r.pumpId === pumpId && (r.status === 'approved' || r.status === 'pending_accountant'))
-        .sort((a, b) =>
-          getPumpReportWorkflowAt(b).localeCompare(getPumpReportWorkflowAt(a))
-          || b.date.localeCompare(a.date)
-          || b.id - a.id
-        );
-      if (sorted.length > 0) {
-        localSeedMeters[pumpId] = Number(sorted[0].closingMeter);
+      const latestValidatedReport = getLatestValidatedPumpReport(pumpDailyReports, pumpId);
+      if (latestValidatedReport) {
+        localSeedMeters[pumpId] = Number(latestValidatedReport.closingMeter);
         continue;
       }
       if (pumpInitialMeters[pumpId] !== undefined) {
