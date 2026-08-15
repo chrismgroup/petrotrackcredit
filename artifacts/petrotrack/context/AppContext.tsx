@@ -2532,19 +2532,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const resetOperationalData = useCallback(async () => {
     // Compute seed meters locally BEFORE we clear anything, using the same logic as the
-    // shift report screen: locked meter wins, then most recent approved/pending_accountant
-    // report closing meter, then the existing pumpInitialMeters value.
+    // shift report screen: the latest manager-approved closing meter wins, then a
+    // configured lock, then the existing pumpInitialMeters value.
     const localSeedMeters: Record<string, number> = {};
     for (const pump of pumps) {
       if (!pump?.id) continue;
       const pumpId = pump.id;
-      if (pumpLockedMeters[pumpId] !== undefined) {
-        localSeedMeters[pumpId] = Number(pumpLockedMeters[pumpId]);
-        continue;
-      }
       const latestValidatedReport = getLatestValidatedPumpReport(pumpDailyReports, pumpId);
       if (latestValidatedReport) {
         localSeedMeters[pumpId] = Number(latestValidatedReport.closingMeter);
+        continue;
+      }
+      if (pumpLockedMeters[pumpId] !== undefined) {
+        localSeedMeters[pumpId] = Number(pumpLockedMeters[pumpId]);
         continue;
       }
       if (pumpInitialMeters[pumpId] !== undefined) {

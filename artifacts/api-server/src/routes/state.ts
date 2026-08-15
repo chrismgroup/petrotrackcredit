@@ -154,10 +154,6 @@ router.post("/state/reset-operational", async (req, res): Promise<void> => {
   for (const pump of pumps) {
     if (!pump?.id) continue;
     const pumpId = pump.id as string;
-    if (pumpLockedMeters[pumpId] !== undefined) {
-      seedMeters[pumpId] = Number(pumpLockedMeters[pumpId]);
-      continue;
-    }
     const sorted = [...pumpDailyReports]
       .filter(
         (r: any) =>
@@ -174,6 +170,10 @@ router.post("/state/reset-operational", async (req, res): Promise<void> => {
       seedMeters[pumpId] = Number(sorted[0].closingMeter);
       continue;
     }
+      if (pumpLockedMeters[pumpId] !== undefined) {
+        seedMeters[pumpId] = Number(pumpLockedMeters[pumpId]);
+        continue;
+      }
     if (pumpInitialMeters[pumpId] !== undefined) {
       seedMeters[pumpId] = Number(pumpInitialMeters[pumpId]);
     }
