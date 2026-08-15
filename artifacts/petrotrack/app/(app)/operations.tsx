@@ -70,6 +70,26 @@ export default function OperationsScreen() {
   const dipHasVisibleReading = (dip: (typeof dips)[number]) =>
     Object.keys(dip.rd).some(tankId => visiblePetrolTankIds.has(tankId)) ||
     Object.keys(dip.lpg).some(tankId => visibleLpgTankIds.has(tankId));
+  const getDipBranch = (dip: (typeof dips)[number]) => {
+    if (dip.branchId) {
+      return {
+        id: dip.branchId,
+        name: branches.find(branch => branch.id === dip.branchId)?.name ?? 'Unknown branch',
+      };
+    }
+    const branchIds = Array.from(new Set([
+      ...Object.keys(dip.rd).map(tankId => tanks.find(tank => tank.id === tankId)?.branchId),
+      ...Object.keys(dip.lpg).map(tankId => lpgTanks.find(tank => tank.id === tankId)?.branchId),
+    ].filter((id): id is string => Boolean(id))));
+    if (branchIds.length === 1) {
+      return {
+        id: branchIds[0],
+        name: branches.find(branch => branch.id === branchIds[0])?.name ?? 'Unknown branch',
+      };
+    }
+    if (branchIds.length > 1) return { id: 'multiple', name: 'Multiple branches' };
+    return { id: 'unassigned', name: 'Unassigned branch' };
+  };
 
   function handleDipSubmit() {
     if (!appliesOn) {
@@ -90,6 +110,13 @@ export default function OperationsScreen() {
   const approvedDips = dips
     .filter(dip => dip.status === 'approved' && dipHasVisibleReading(dip))
     .sort((a, b) => new Date(b.approvedDt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.dt).getTime());
+  const approvedDipGroups = approvedDips.reduce<Array<{ id: string; name: string; dips: typeof approvedDips }>>((groups, dip) => {
+    const branch = getDipBranch(dip);
+    const group = groups.find(item => item.id === branch.id);
+    if (group) group.dips.push(dip);
+    else groups.push({ ...branch, dips: [dip] });
+    return groups;
+  }, []).sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <ScreenLayout title={params.tab === 'inventory' ? 'Inventory' : 'Operations'}>
@@ -430,67 +457,78 @@ export default function OperationsScreen() {
                   <Ionicons name="time-outline" size={16} color={colors.textMuted} />
                   <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No approved dippings yet. Approved readings will appear here for comparison.</Text>
                 </View>
-              ) : approvedDips.map(dip => {
-                const dipTime = new Date(dip.approvedDt ?? dip.dt).getTime();
-                return (
-                  <View key={dip.id} style={[styles.historyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={styles.historyCardHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.historyTankName, { color: colors.text }]}>Tank Dip #{dip.id}</Text>
-                        <Text style={[styles.historyMeta, { color: colors.textMuted }]}>Applies on {fmtDate(dip.dt)} · Submitted {fmtDateTime(dip.submittedAt ?? dip.dt)} · by {dip.by}</Text>
+              ) : approvedDipGroups.map(group => (
+                <View key={group.id}>
+                  <View style={[styles.branchHistoryHeader, { backgroundColor: roleColor + '10', borderColor: roleColor + '35' }]}>
+                    <View style={styles.branchHistoryTitleRow}>
+                      <Ionicons name="business-outline" size={15} color={roleColor} />
+                      <Text style={[styles.branchHistoryName, { color: colors.text }]}>{group.name}</Text>
                       </View>
-                      <View style={[styles.historyStatus, { backgroundColor: colors.success + '18' }]}>
-                        <Ionicons name="checkmark-circle-outline" size={12} color={colors.success} />
-                        <Text style={[styles.historyStatusText, { color: colors.success }]}>Approved</Text>
-                      </View>
-                    </View>
-                    <View style={styles.dipHistoryReadingList}>
-                      {Object.entries(dip.rd).filter(([tankId]) => visiblePetrolTankIds.has(tankId)).map(([tankId, litres]) => {
-                        const tank = tanks.find(item => item.id === tankId);
-                        const previous = approvedDips.find(candidate =>
-                          candidate.id !== dip.id
-                          && new Date(candidate.approvedDt ?? candidate.dt).getTime() < dipTime
-                          && candidate.rd[tankId] !== undefined
-                        );
-                        const change = previous ? Number(litres) - Number(previous.rd[tankId]) : null;
-                        return (
-                          <View key={tankId} style={[styles.dipHistoryReading, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{tank?.name ?? tankId}</Text>
-                              <Text style={[styles.historyReadingValue, { color: roleColor }]}>{Number(litres).toLocaleString()} L</Text>
-                            </View>
-                            <Text style={[styles.historyChange, { color: change === null ? colors.textMuted : change < 0 ? colors.error : colors.success }]}>
-                              {change === null ? 'First reading' : `${change >= 0 ? '+' : ''}${change.toLocaleString()} L vs prior`}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                      {Object.entries(dip.lpg).filter(([tankId]) => visibleLpgTankIds.has(tankId)).map(([tankId, kg]) => {
-                        const tank = lpgTanks.find(item => item.id === tankId);
-                        const previous = approvedDips.find(candidate =>
-                          candidate.id !== dip.id
-                          && new Date(candidate.approvedDt ?? candidate.dt).getTime() < dipTime
-                          && candidate.lpg[tankId] !== undefined
-                        );
-                        const change = previous ? Number(kg) - Number(previous.lpg[tankId]) : null;
-                        return (
-                          <View key={tankId} style={[styles.dipHistoryReading, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{tank?.name ?? tankId}</Text>
-                              <Text style={[styles.historyReadingValue, { color: colors.teal }]}>{Number(kg).toLocaleString()} kg</Text>
-                            </View>
-                            <Text style={[styles.historyChange, { color: change === null ? colors.textMuted : change < 0 ? colors.error : colors.success }]}>
-                              {change === null ? 'First reading' : `${change >= 0 ? '+' : ''}${change.toLocaleString()} kg vs prior`}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                    {dip.obs ? <Text style={[styles.historyBreakdown, { color: colors.warning }]}>⚠ {dip.obs}</Text> : null}
-                    <Text style={[styles.historyMeta, { color: colors.textMuted, marginTop: 8 }]}>Approved by {dip.approvedBy ?? '—'}</Text>
+                    <Text style={[styles.branchHistoryCount, { color: colors.textMuted }]}>{group.dips.length} dip record{group.dips.length === 1 ? '' : 's'}</Text>
                   </View>
-                );
-              })}
+                  {group.dips.map(dip => {
+                    const dipTime = new Date(dip.approvedDt ?? dip.dt).getTime();
+                    return (
+                      <View key={dip.id} style={[styles.historyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <View style={styles.historyCardHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.historyTankName, { color: colors.text }]}>Tank Dip #{dip.id}</Text>
+                            <Text style={[styles.historyMeta, { color: colors.textMuted }]}>Applies on {fmtDate(dip.dt)} · Submitted {fmtDateTime(dip.submittedAt ?? dip.dt)} · by {dip.by}</Text>
+                          </View>
+                          <View style={[styles.historyStatus, { backgroundColor: colors.success + '18' }]}>
+                            <Ionicons name="checkmark-circle-outline" size={12} color={colors.success} />
+                            <Text style={[styles.historyStatusText, { color: colors.success }]}>Approved</Text>
+                          </View>
+                        </View>
+                        <View style={styles.dipHistoryReadingList}>
+                          {Object.entries(dip.rd).filter(([tankId]) => visiblePetrolTankIds.has(tankId)).map(([tankId, litres]) => {
+                            const tank = tanks.find(item => item.id === tankId);
+                            const previous = group.dips.find(candidate =>
+                              candidate.id !== dip.id
+                              && new Date(candidate.approvedDt ?? candidate.dt).getTime() < dipTime
+                              && candidate.rd[tankId] !== undefined
+                            );
+                            const change = previous ? Number(litres) - Number(previous.rd[tankId]) : null;
+                            return (
+                              <View key={tankId} style={[styles.dipHistoryReading, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{tank?.name ?? tankId}</Text>
+                                  <Text style={[styles.historyReadingValue, { color: roleColor }]}>{Number(litres).toLocaleString()} L</Text>
+                                </View>
+                                <Text style={[styles.historyChange, { color: change === null ? colors.textMuted : change < 0 ? colors.error : colors.success }]}>
+                                  {change === null ? 'First reading' : `${change >= 0 ? '+' : ''}${change.toLocaleString()} L vs prior`}
+                                </Text>
+                              </View>
+                            );
+                          })}
+                          {Object.entries(dip.lpg).filter(([tankId]) => visibleLpgTankIds.has(tankId)).map(([tankId, kg]) => {
+                            const tank = lpgTanks.find(item => item.id === tankId);
+                            const previous = group.dips.find(candidate =>
+                              candidate.id !== dip.id
+                              && new Date(candidate.approvedDt ?? candidate.dt).getTime() < dipTime
+                              && candidate.lpg[tankId] !== undefined
+                            );
+                            const change = previous ? Number(kg) - Number(previous.lpg[tankId]) : null;
+                            return (
+                              <View key={tankId} style={[styles.dipHistoryReading, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={[styles.historyMeta, { color: colors.textMuted }]}>{tank?.name ?? tankId}</Text>
+                                  <Text style={[styles.historyReadingValue, { color: colors.teal }]}>{Number(kg).toLocaleString()} kg</Text>
+                                </View>
+                                <Text style={[styles.historyChange, { color: change === null ? colors.textMuted : change < 0 ? colors.error : colors.success }]}>
+                                  {change === null ? 'First reading' : `${change >= 0 ? '+' : ''}${change.toLocaleString()} kg vs prior`}
+                                </Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                        {dip.obs ? <Text style={[styles.historyBreakdown, { color: colors.warning }]}>⚠ {dip.obs}</Text> : null}
+                        <Text style={[styles.historyMeta, { color: colors.textMuted, marginTop: 8 }]}>Approved by {dip.approvedBy ?? '—'}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
               <View style={{ height: 16 }} />
             </ScrollView>
           )}
@@ -631,6 +669,10 @@ const styles = StyleSheet.create({
   inventoryUnitNote: { fontSize: 10, marginTop: 10 },
   historyHeader: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8, marginBottom: 10 },
   historySubtitle: { fontSize: 10 },
+  branchHistoryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 4, marginBottom: 8 },
+  branchHistoryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  branchHistoryName: { fontSize: 13, fontWeight: '800' },
+  branchHistoryCount: { fontSize: 10, fontWeight: '600' },
   historyToggle: { flexDirection: 'row', borderRadius: 8, borderWidth: 1, padding: 2 },
   historyToggleBtn: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6 },
   historyToggleText: { fontSize: 10, fontWeight: '700' },

@@ -19,7 +19,7 @@ const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', 
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, sales, addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms, sendMessage } = useApp();
+  const { role, tanks, lpgTanks, dips, deliveries, sales, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms, sendMessage } = useApp();
 
   async function pickCameraEvidence(delivId: number) {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -88,6 +88,34 @@ export default function TanksScreen() {
   const dipHasVisibleReading = (dip: (typeof dips)[number]) =>
     Object.keys(dip.rd).some(tankId => visiblePetrolTankIds.has(tankId)) ||
     Object.keys(dip.lpg).some(tankId => visibleLpgTankIds.has(tankId));
+  const getDipBranch = (dip: (typeof dips)[number]) => {
+    if (dip.branchId) {
+      return {
+        id: dip.branchId,
+        name: branches.find(branch => branch.id === dip.branchId)?.name ?? 'Unknown branch',
+      };
+    }
+    const branchIds = Array.from(new Set([
+      ...Object.keys(dip.rd).map(tankId => tanks.find(tank => tank.id === tankId)?.branchId),
+      ...Object.keys(dip.lpg).map(tankId => lpgTanks.find(tank => tank.id === tankId)?.branchId),
+    ].filter((id): id is string => Boolean(id))));
+    if (branchIds.length === 1) {
+      return {
+        id: branchIds[0],
+        name: branches.find(branch => branch.id === branchIds[0])?.name ?? 'Unknown branch',
+      };
+    }
+    if (branchIds.length > 1) return { id: 'multiple', name: 'Multiple branches' };
+    return { id: 'unassigned', name: 'Unassigned branch' };
+  };
+  const visibleDipRecords = dips.filter(dipHasVisibleReading);
+  const dipHistoryGroups = visibleDipRecords.reduce<Array<{ id: string; name: string; dips: typeof visibleDipRecords }>>((groups, dip) => {
+    const branch = getDipBranch(dip);
+    const group = groups.find(item => item.id === branch.id);
+    if (group) group.dips.push(dip);
+    else groups.push({ ...branch, dips: [dip] });
+    return groups;
+  }, []).sort((a, b) => a.name.localeCompare(b.name));
   const pendingDips = dips.filter(d => d.status === 'pending' && dipHasVisibleReading(d));
 
   function computeDipAnalysis(rdMap: Record<string, number>) {
@@ -432,11 +460,20 @@ export default function TanksScreen() {
             </View>
           )}
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Records</Text>
-          {dips.filter(dipHasVisibleReading).map(dip => {
-            const sc = DIP_STATUS_COLOR[dip.status] || '#888';
-            const isPending = dip.status === 'pending';
-            return (
-              <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: isPending ? sc + '66' : colors.border, borderWidth: isPending ? 1.5 : 1 }]}>
+          {dipHistoryGroups.map(group => (
+            <View key={group.id}>
+              <View style={[styles.branchHistoryHeader, { backgroundColor: roleColor + '10', borderColor: roleColor + '35' }]}>
+                <View style={styles.branchHistoryTitleRow}>
+                  <Ionicons name="business-outline" size={15} color={roleColor} />
+                  <Text style={[styles.branchHistoryName, { color: colors.text }]}>{group.name}</Text>
+                </View>
+                <Text style={[styles.branchHistoryCount, { color: colors.textMuted }]}>{group.dips.length} dip record{group.dips.length === 1 ? '' : 's'}</Text>
+              </View>
+              {group.dips.map(dip => {
+                const sc = DIP_STATUS_COLOR[dip.status] || '#888';
+                const isPending = dip.status === 'pending';
+                return (
+                <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: isPending ? sc + '66' : colors.border, borderWidth: isPending ? 1.5 : 1 }]}>
                 <View style={styles.logHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.logDate, { color: colors.text }]}>Applies on {fmtDate(dip.dt)}</Text>
@@ -586,8 +623,10 @@ export default function TanksScreen() {
                   </View>
                 )}
               </View>
-            );
-          })}
+                );
+              })}
+            </View>
+          ))}
 
           <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>Delivery Records</Text>
           {deliveries.filter(d => !branchId || !d.branchId || d.branchId === branchId).map(rec => {
@@ -875,6 +914,10 @@ const styles = StyleSheet.create({
   prodRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   prodBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
   logCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
+  branchHistoryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 4, marginBottom: 8 },
+  branchHistoryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  branchHistoryName: { fontSize: 13, fontWeight: '800' },
+  branchHistoryCount: { fontSize: 10, fontWeight: '600' },
   logHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
   logDate: { fontSize: 14, fontWeight: '600' },
   logBy: { fontSize: 11, marginTop: 2 },

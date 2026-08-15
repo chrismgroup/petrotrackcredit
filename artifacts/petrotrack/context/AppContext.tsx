@@ -12,7 +12,7 @@ export interface Tank {
 }
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; branchId?: string; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil'; active: boolean; branchId?: string; lpgCategory?: 'single' | 'distributor'; }
-export interface DipRecord { id: number; dt: string; submittedAt?: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; }
+export interface DipRecord { id: number; dt: string; submittedAt?: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; branchId?: string; }
 export interface Delivery { id: number; dt: string; submittedAt?: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
 export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; submittedAt?: string; st: 'Open' | 'Done'; cost?: number; }
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
@@ -1606,9 +1606,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addDip = useCallback((dip: Omit<DipRecord, 'id'>) => {
     const status = dip.status ?? 'pending';
-    setDips(d => [{ ...dip, id: genId(), status, submittedAt: dip.submittedAt ?? nowTs() }, ...d]);
+    setDips(d => [{ ...dip, id: genId(), status, branchId: dip.branchId ?? branchId ?? undefined, submittedAt: dip.submittedAt ?? nowTs() }, ...d]);
     setAudit(a => [{ id: genId(), action: 'Dip submitted', user: userName, detail: 'All tanks dipped — awaiting MD approval.', ts: nowTs() }, ...a]);
-  }, [userName]);
+  }, [userName, branchId]);
 
   const approveDip = useCallback((id: number) => {
     const rec = dips.find(r => r.id === id);
