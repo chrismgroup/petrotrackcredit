@@ -14,6 +14,7 @@ import { useColors } from '@/hooks/useColors';
 
 const DIP_SUBTABS_MGR  = ['Dip Form', 'Awaiting Approval', 'History'];
 const DIP_SUBTABS_APPR = ['Awaiting Approval', 'History'];
+const DIP_SUBTABS_VIEWER = ['History'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
@@ -49,9 +50,10 @@ export default function OperationsScreen() {
   const [topTab, setTopTab] = useState<TopTab>(defaultTab);
 
   // ── Dip state ────────────────────────────────────────────────────────────
-  // MD/Admin start on Approvals (content index 1); mgr starts on Dip Form (index 0)
+  // MD/Admin start on Approvals; station managers start on Dip Form; other
+  // roles start on history because they do not submit or approve tank dips.
   const [dipSubTab, setDipSubTab]     = useState(
-    params.tab === 'inventory' ? 2 : params.tab === 'dip-history' ? 3 : canApprove ? 1 : 0
+    params.tab === 'inventory' ? 2 : params.tab === 'dip-history' ? 3 : canApprove ? 1 : isMgr ? 0 : 3
   );
   const [readings, setReadings]       = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
@@ -138,8 +140,9 @@ export default function OperationsScreen() {
       {topTab === 'dip' && (
         <>
           {(() => {
-            // MD/Admin see the awaiting-approval queue; managers see the Dip Form.
-            const dipTabItems = (canApprove ? DIP_SUBTABS_APPR : DIP_SUBTABS_MGR).map(
+            // MD/Admin see the awaiting-approval queue; station managers see
+            // the Dip Form; all other roles see history only.
+            const dipTabItems = (canApprove ? DIP_SUBTABS_APPR : isMgr ? DIP_SUBTABS_MGR : DIP_SUBTABS_VIEWER).map(
               (label, vi) => ({
                 label,
                 contentIdx: label === 'History' ? 3 : label === 'Awaiting Approval' ? 1 : 0,
