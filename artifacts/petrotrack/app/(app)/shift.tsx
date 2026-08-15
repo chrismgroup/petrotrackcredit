@@ -252,12 +252,13 @@ export default function ShiftReportScreen() {
 
   /* ── derive opening meter from last closing or admin initial ── */
   const getOpeningMeter = useCallback((pumpId: string) => {
-    // Admin-locked value always wins
-    if (pumpLockedMeters[pumpId] !== undefined) return pumpLockedMeters[pumpId];
     // Only use reports that have passed manager review (pending_accountant or approved).
     // pending_manager and returned reports have not been validated yet and must not roll over.
     const latestValidatedReport = getLatestValidatedPumpReport(pumpDailyReports, pumpId);
     if (latestValidatedReport) return latestValidatedReport.closingMeter;
+    // A lock is a fallback before the pump has a manager-approved report. It
+    // must not block the mandatory manager-approval rollover above.
+    if (pumpLockedMeters[pumpId] !== undefined) return pumpLockedMeters[pumpId];
     return pumpInitialMeters[pumpId] ?? 0;
   }, [pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
 
