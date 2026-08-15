@@ -147,7 +147,7 @@ export default function OperationsScreen() {
     ) => dips
       .filter(dip =>
         recordDateKey(dip.dt) === todayKey &&
-        dip.status === 'approved' &&
+        dip.status !== 'rejected' &&
         (scopeTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
           scopeLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
       )
@@ -657,7 +657,7 @@ export default function OperationsScreen() {
                 <View style={styles.inventorySummaryHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.inventorySummaryTitle, { color: colors.text }]}>Stock Snapshot</Text>
-                    <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>Book Stock + Variance</Text>
+                    <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>Live Book Stock + Variance</Text>
                   </View>
                   <View style={[styles.inventorySummaryIcon, { backgroundColor: colors.primary + '18' }]}>
                     <Ionicons name="analytics-outline" size={20} color={colors.primary} />
@@ -666,7 +666,7 @@ export default function OperationsScreen() {
                 <View style={[styles.stockSnapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                   <Ionicons name="information-circle-outline" size={16} color={colors.info} />
                   <Text style={[styles.stockSnapshotIntroText, { color: colors.textMuted }]}>
-                    Carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales versus today&apos;s approved tank dip.
+                    Live inputs: carried-forward book stock + submitted/approved deliveries − submitted shift-report sales versus the latest submitted tank dip.
                   </Text>
                 </View>
               </View>

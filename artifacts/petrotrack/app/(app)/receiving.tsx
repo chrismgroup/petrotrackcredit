@@ -369,7 +369,7 @@ export default function ReceivingScreen() {
     scopeReports: typeof pumpDailyReports,
   ): StockProdRow[] {
     const todayKey = localDateKey(new Date());
-    const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, true);
+    const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, false);
     return ALL_PRODS
       .map(prod => {
         const stockBook = calculateStockBook(
@@ -819,7 +819,7 @@ export default function ReceivingScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Snapshot (Book Stock + Variance)</Text>
             <Text style={[styles.stockFormulaText, { color: colors.textMuted }]}>
-               Admin seed quantity is applied once. Book stock = carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales. Variance = book stock − today&apos;s approved dip.
+               Live inputs: admin seed quantity is applied once. Book stock = carried-forward book stock + submitted/approved deliveries − submitted shift-report sales. Variance = book stock − the latest submitted dip.
             </Text>
             {branchStockReports.map(bsr => (
               <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>

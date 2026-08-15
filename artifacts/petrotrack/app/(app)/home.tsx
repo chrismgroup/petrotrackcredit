@@ -387,7 +387,7 @@ export default function HomeScreen() {
       const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
-      const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks, true);
+      const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks, false);
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
         : undefined;
@@ -592,7 +592,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                 <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                   Admin seed quantity is applied once; carried-forward book stock + today&apos;s approved deliveries − today&apos;s approved shift-report sales versus today&apos;s approved tank dip
+                   Live inputs: carried-forward book stock + submitted/approved deliveries − submitted shift-report sales versus the latest submitted tank dip
                 </Text>
               </View>
               {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (

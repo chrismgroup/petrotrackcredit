@@ -323,10 +323,12 @@ export function getLatestValidatedPumpReport(
 }
 
 /**
- * Calculates a branch/product book stock from the admin seed and the
- * subsequent approved ledger events. The seed is only applied once: prior
+ * Calculates a live branch/product book stock from the admin seed and the
+ * submitted operational ledger events. The seed is only applied once: prior
  * business days are carried into the opening book stock, then today's
- * approved deliveries and shift-report sales are applied to it.
+ * submitted deliveries and shift-report sales are applied to it. Rejected
+ * records are excluded; pending records remain visible as live inputs until
+ * they are approved or rejected.
  */
 export function calculateStockBook(
   startupStock: StartupStock | undefined,
@@ -354,40 +356,41 @@ export function calculateStockBook(
     businessDate <= asOfDate &&
     isAfterSeed(eventAt, businessDate);
 
-  const approvedDeliveriesById = new Map<number, Delivery>();
+  const liveDeliveriesById = new Map<number, Delivery>();
   deliveries
     .filter(delivery =>
       delivery.branchId === branchId &&
       stockProductFromDelivery(delivery.prod) === product &&
-      (delivery.approvalStatus === 'approved' || delivery.approvalStatus === 'md_approved'),
+      delivery.approvalStatus !== 'draft' &&
+      delivery.approvalStatus !== 'rejected',
     )
-    .forEach(delivery => approvedDeliveriesById.set(delivery.id, delivery));
+    .forEach(delivery => liveDeliveriesById.set(delivery.id, delivery));
 
-  const approvedReportsById = new Map<number, PumpDailyReport>();
+  const liveReportsById = new Map<number, PumpDailyReport>();
   reports
     .filter(report =>
       (report.branchId || pumps.find(pump => pump.id === report.pumpId)?.branchId) === branchId &&
       report.product === product &&
-      report.status === 'approved',
+      report.status !== 'returned',
     )
-    .forEach(report => approvedReportsById.set(report.id, report));
+    .forEach(report => liveReportsById.set(report.id, report));
 
   let priorDelivered = 0;
   let priorSold = 0;
   let delivered = 0;
   let sold = 0;
 
-  for (const delivery of approvedDeliveriesById.values()) {
+  for (const delivery of liveDeliveriesById.values()) {
     const businessDate = recordBusinessDate(delivery.dt);
-    const approvedAt = delivery.approvedAt ?? delivery.mdAt ?? delivery.accAt ?? delivery.submittedAt ?? delivery.dt;
-    if (!isInSeedWindow(businessDate, approvedAt)) continue;
+    const eventAt = delivery.approvedAt ?? delivery.mdAt ?? delivery.accAt ?? delivery.submittedAt ?? delivery.dt;
+    if (!isInSeedWindow(businessDate, eventAt)) continue;
     if (businessDate === asOfDate) delivered += delivery.rec;
     else if (businessDate < asOfDate) priorDelivered += delivery.rec;
   }
 
-  for (const report of approvedReportsById.values()) {
-    // The applied/business date on the shift report is authoritative. Approval
-    // timestamps only determine whether the report was approved after the
+  for (const report of liveReportsById.values()) {
+    // The applied/business date on the shift report is authoritative. Workflow
+    // timestamps only determine whether the report was submitted after the
     // admin seed; they must never replace or shift the report's business date.
     const businessDate = recordBusinessDate(report.date);
     if (!businessDate) continue;
