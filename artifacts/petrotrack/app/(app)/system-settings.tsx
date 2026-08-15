@@ -212,7 +212,6 @@ export default function SystemSettingsScreen() {
   );
   const homeAccessModules = [
     { id: 'revenue', label: 'Total Revenue', icon: 'cash-outline' },
-    { id: 'fuelStock', label: 'Fuel Stock', icon: 'water-outline' },
   ] as const;
 
   function headOfficeModuleEnabled(moduleId: string): boolean {
