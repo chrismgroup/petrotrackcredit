@@ -363,7 +363,6 @@ const styles = StyleSheet.create({
   wfSign:        { width: 18, fontSize: 16, fontWeight: '700' },
   wfLabel:       { flex: 1, fontSize: 13 },
   wfAmt:         { fontSize: 14, fontWeight: '700' },
-
   todayCard:     { padding: 16, borderRadius: 14, borderWidth: 1, marginBottom: 16 },
   todayTotal:    { fontSize: 28, fontWeight: '700' },
   todaySub:      { fontSize: 12, marginBottom: 12 },
