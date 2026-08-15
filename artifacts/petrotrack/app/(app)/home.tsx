@@ -83,6 +83,10 @@ function recordDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
 }
 
+function businessDateKey(value?: string): string {
+  return value?.slice(0, 10) ?? '';
+}
+
 function formatQuantity(value: number | null): string {
   if (value === null) return '—';
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -301,12 +305,15 @@ export default function HomeScreen() {
   })();
   const monthlyRevenue = useMemo(
     () => Math.round(pumpDailyReports
-      .filter(report =>
-        report.status === 'approved' &&
-        report.date >= currentMonthRange.from &&
-        report.date <= currentMonthRange.to &&
-        (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
-      )
+      .filter(report => {
+        const businessDate = businessDateKey(report.date);
+        return (
+          (report.status === 'pending_accountant' || report.status === 'approved') &&
+          businessDate >= currentMonthRange.from &&
+          businessDate <= currentMonthRange.to &&
+          (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId)
+        );
+      })
       .reduce((sum, report) => sum + (Number.isFinite(report.grossAmount) ? report.grossAmount : 0), 0)),
     [pumpDailyReports, scopedBranchId, currentMonthRange.from, currentMonthRange.to],
   );
@@ -498,8 +505,8 @@ export default function HomeScreen() {
       const dayLabel = d.toLocaleDateString('en-NG', { weekday: 'short' }).slice(0, 2);
       const rev = pumpDailyReports
         .filter(report =>
-          report.status === 'approved' &&
-          report.date === iso &&
+           (report.status === 'pending_accountant' || report.status === 'approved') &&
+           businessDateKey(report.date) === iso &&
           (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
         )
         .reduce((sum, report) => sum + report.grossAmount, 0);

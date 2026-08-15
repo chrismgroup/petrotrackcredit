@@ -45,6 +45,10 @@ function localDateKey(date: Date): string {
   ].join('-');
 }
 
+function businessDateKey(value?: string): string {
+  return value?.slice(0, 10) ?? '';
+}
+
 function saleProductFromPump(pumpName: string): string {
   if (pumpName.includes('LPG')) return 'LPG';
   if (pumpName.includes('PMS')) return 'PMS';
@@ -66,7 +70,7 @@ export default function SalesScreen() {
   const reportBranchId = (report: typeof pumpDailyReports[number]) =>
     report.branchId || pumps.find(pump => pump.id === report.pumpId)?.branchId;
   const liveTodayReports = pumpDailyReports.filter(report =>
-    report.date.slice(0, 10) === today &&
+    businessDateKey(report.date) === today &&
     (report.status === 'pending_accountant' || report.status === 'approved') &&
     inMyBranch(reportBranchId(report)),
   );
@@ -75,7 +79,7 @@ export default function SalesScreen() {
   // submissions are visible before the approval workflow completes.
   const manualTodaySales = sales.filter(sale =>
     !sale.shiftReportId &&
-    sale.dt.slice(0, 10) === today &&
+    businessDateKey(sale.dt) === today &&
     inMyBranch(sale.branchId),
   );
   const todayFeed: SalesFeedEntry[] = [
