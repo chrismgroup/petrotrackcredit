@@ -536,7 +536,6 @@ export const NAVDEF: Record<string, NavItem[]> = {
 export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'home',     icon: 'home',             label: 'Home'       },
   { id: 'revenue',  icon: 'cash',              label: 'Total Revenue' },
-  { id: 'fuelStock',icon: 'water',             label: 'Fuel Stock'  },
   { id: 'ops',      icon: 'construct',        label: 'Operations' },
   { id: 'tasks',    icon: 'checkmark-circle', label: 'Tasks'      },
   { id: 'hr',       icon: 'people-circle',    label: 'HR'         },

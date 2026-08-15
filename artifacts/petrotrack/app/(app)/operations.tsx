@@ -417,7 +417,7 @@ export default function OperationsScreen() {
               <View style={[styles.inventorySummary, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.inventorySummaryHeader}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.inventorySummaryTitle, { color: colors.text }]}>Fuel stock by branch</Text>
+                    <Text style={[styles.inventorySummaryTitle, { color: colors.text }]}>Approved dip quantities by branch</Text>
                     <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>
                       Each product is calculated inside its own branch. Branch stock is never combined.
                     </Text>

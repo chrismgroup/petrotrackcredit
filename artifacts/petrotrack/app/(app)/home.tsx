@@ -13,7 +13,6 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   fmt,
   GLOBAL_OVERVIEW_ROLES,
-  getCurrentTankStock,
   salesRevenueByBranch,
   ROLE_LABELS,
   SCREEN_ROUTES,
@@ -70,11 +69,6 @@ interface BranchStockSnapshot {
   branchId: string | null;
   branchName: string;
   products: ProductStockSnapshot[];
-}
-interface BranchFuelStock {
-  branchId: string | null;
-  branchName: string;
-  products: { prod: StockSnapshotProduct; stock: number | null; unit: string }[];
 }
 
 function localDateKey(date: Date): string {
@@ -286,7 +280,6 @@ export default function HomeScreen() {
 
   const isApprover = role === 'md' || role === 'admin' || role === 'ceo';
   const canViewRevenue = role === 'admin' || navItems.some(item => item.id === 'revenue');
-  const canViewFuelStock = role === 'admin' || navItems.some(item => item.id === 'fuelStock');
   // CEO, MD, Accountant and CSM are company-wide overview roles. Their
   // account may still contain a legacy branchId, but it must not narrow
   // their Home KPIs to one branch.
@@ -434,41 +427,6 @@ export default function HomeScreen() {
       return { ...scope, products };
     });
   }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, scopedBranchId, startupStocks, stockSnapshotConfig, tanks]);
-
-  // Fuel Stock, the PMS/AGO KPI tiles, and Stock Snapshot must all show the
-  // same approved book-stock ledger. Tank dips remain visible as the physical
-  // comparison value inside Stock Snapshot.
-  const branchFuelStocks = useMemo<BranchFuelStock[]>(() =>
-    branchStockSnapshots.map(snapshot => ({
-      branchId: snapshot.branchId,
-      branchName: snapshot.branchName,
-      products: snapshot.products.map(product => ({
-        prod: product.product,
-        stock: product.bookStock,
-        unit: product.unit,
-      })),
-    })),
-    [branchStockSnapshots],
-  );
-
-  const stockByProduct = useMemo(() => {
-    const totals: Record<string, number> = {};
-    for (const branch of branchStockSnapshots) {
-      for (const product of branch.products) {
-        if (product.bookStock !== null) {
-          totals[product.product] = (totals[product.product] ?? 0) + product.bookStock;
-        }
-      }
-    }
-    return STOCK_SNAPSHOT_PRODUCTS.map(prod => ({
-      prod,
-      stock: totals[prod] ?? 0,
-      unit: unitForProd(prod),
-    }));
-  }, [branchStockSnapshots]);
-
-  const stockForProduct = (product: StockProduct) =>
-    stockByProduct.find(item => item.prod === product)?.stock ?? 0;
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');
@@ -626,70 +584,10 @@ export default function HomeScreen() {
               onPress={() => router.push(SCREEN_ROUTES.acct as never)}
             />
           ) : null}
-          {canViewFuelStock ? (
-            <KpiTile
-              icon="water-outline"
-              label="PMS Stock"
-              value={`${stockForProduct('PMS').toLocaleString()} L`}
-              sub="PMS only"
-              accent={colors.teal}
-              colors={colors}
-              onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=inventory` as never)}
-            />
-          ) : null}
-          {canViewFuelStock ? (
-            <KpiTile
-              icon="water-outline"
-              label="AGO Stock"
-              value={`${stockForProduct('AGO').toLocaleString()} L`}
-              sub="AGO only"
-              accent={colors.primary}
-              colors={colors}
-              onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=inventory` as never)}
-            />
-          ) : null}
         </View>
 
-        {/* ── Full fuel stock ──────────────────────────────────────── */}
-        {canViewFuelStock ? (
-          <Section label="FUEL STOCK" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
-          {branchFuelStocks.length === 0 ? (
-            <View style={[s.stockCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 16 }]}>
-              <Text style={[s.stockProduct, { color: colors.textMuted }]}>No branch fuel tanks are configured yet.</Text>
-            </View>
-          ) : branchFuelStocks.map(branch => (
-            <View key={branch.branchId ?? 'unassigned'} style={[s.stockCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 10 }]}>
-              <View style={[s.snapshotBranchHeader, { backgroundColor: colors.teal + '10', borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
-                <Ionicons name="business-outline" size={14} color={colors.teal} />
-                <Text style={[s.snapshotBranchName, { color: colors.text }]}>{branch.branchName}</Text>
-              </View>
-              <View style={[s.stockSummary, { backgroundColor: colors.teal + '12', borderColor: colors.teal + '30', flexWrap: 'wrap', gap: 12 }]}>
-                {branch.products.map(({ prod, stock, unit }) => (
-                  <View key={prod} style={{ width: '42%' }}>
-                    <Text style={[s.stockSummaryLabel, { color: colors.textMuted }]}>{prod} stock</Text>
-                    <Text style={[s.stockSummaryValue, { color: colors.teal }]}>
-                      {stock === null ? '—' : `${formatQuantity(stock)} ${unit}`}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              {branch.products.map(({ prod, stock, unit }) => (
-                <View key={prod} style={[s.stockRow, { borderTopColor: colors.border }]}>
-                  <View style={[s.stockDot, { backgroundColor: colors.teal }]} />
-                  <Text style={[s.stockProduct, { color: colors.text }]}>{prod}</Text>
-                  <Text style={[s.stockAmount, { color: colors.text }]}>
-                    {stock === null ? '—' : `${formatQuantity(stock)} ${unit}`}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ))}
-          </Section>
-        ) : null}
-
         {/* ── Daily stock snapshot ───────────────────────────────────── */}
-        {canViewFuelStock ? (
-          <Section label="STOCK SNAPSHOT" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
+        <Section label="STOCK SNAPSHOT" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
             <View style={[s.snapshotCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
@@ -778,8 +676,7 @@ export default function HomeScreen() {
                 </View>
               ))}
             </View>
-          </Section>
-        ) : null}
+        </Section>
 
         {/* ── Approvals Inbox ─────────────────────────────────────── */}
         <Section label="APPROVALS & ACTIONS" colors={colors}>
@@ -1162,21 +1059,6 @@ const s = StyleSheet.create({
 
   // card wrapper
   card: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
-  stockCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
-  stockSummary: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
-    margin: 10, padding: 12, borderRadius: 12, borderWidth: 1,
-  },
-  stockSummaryLabel: { fontSize: 10, fontWeight: '600' },
-  stockSummaryValue: { fontSize: 17, fontWeight: '800', marginTop: 3 },
-  stockRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 9,
-    paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  stockDot: { width: 8, height: 8, borderRadius: 4 },
-  stockProduct: { flex: 1, fontSize: 12, fontWeight: '700' },
-  stockAmount: { fontSize: 13, fontWeight: '800' },
-
   // stock snapshot
   snapshotCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
   snapshotIntro: {
