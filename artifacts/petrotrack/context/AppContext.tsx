@@ -78,7 +78,7 @@ export interface UserInfo { name: string; color: string; initials: string; role:
  * dashboards from showing zero while the tank inventory screen shows stock.
  */
 export function getCurrentTankStock(
-  tank: Pick<Tank | LPGTank, 'op' | 'rv' | 'sl' | 'id'>,
+  tank: Pick<Tank | LPGTank, 'op' | 'rv' | 'sl' | 'id'> & Partial<Pick<Tank, 'cap' | 'dip'>>,
   dips: DipRecord[],
   productKind: 'petrol' | 'lpg' = 'petrol',
 ): number {
@@ -97,7 +97,12 @@ export function getCurrentTankStock(
   const reading = productKind === 'lpg'
     ? latestDip?.lpg[tank.id]
     : latestDip?.rd[tank.id];
-  return reading === undefined ? balance : Math.max(0, reading);
+  if (reading === undefined) return balance;
+  if (productKind === 'lpg') return Math.max(0, reading);
+  if (typeof tank.cap === 'number' && typeof tank.dip === 'number' && tank.cap > 0 && tank.dip > 0) {
+    return mmToLiters({ cap: tank.cap, dip: tank.dip }, reading);
+  }
+  return Math.max(0, reading);
 }
 /** Live revenue derived from actual sales records (auto-created when pump
  *  reports are approved, plus any manual entries). Replaces the static
@@ -308,6 +313,7 @@ export function calculateStockBook(
   deliveries: Delivery[],
   reports: PumpDailyReport[],
   asOfDate: string,
+  pumps: Pick<Pump, 'id' | 'branchId'>[] = [],
 ): StockBookCalculation {
   if (!startupStock || startupStock.branchId !== branchId) {
     return { startupStock: null, delivered: 0, sold: 0, bookStock: null };
@@ -338,7 +344,7 @@ export function calculateStockBook(
   const approvedReportsById = new Map<number, PumpDailyReport>();
   reports
     .filter(report =>
-      report.branchId === branchId &&
+      (report.branchId || pumps.find(pump => pump.id === report.pumpId)?.branchId) === branchId &&
       report.product === product &&
       report.status === 'approved',
     )
@@ -596,7 +602,10 @@ export const SCREEN_ROUTES: Record<string, string> = {
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
-export function mmToLiters(tank: Tank, mm: number) { if (!mm || !tank.dip) return 0; return Math.round((mm / tank.dip) * tank.cap); }
+export function mmToLiters(tank: Pick<Tank, 'cap' | 'dip'>, mm: number) {
+  if (!mm || !tank.dip) return 0;
+  return Math.round((mm / tank.dip) * tank.cap);
+}
 export function pctToKg(lpg: LPGTank, pct: number) { return Math.round((pct / 100) * lpg.cap); }
 export function fmt(n: number) { return '₦' + n.toLocaleString(); }
 export function fmtDate(dt: string) {
@@ -1578,7 +1587,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const lvl = rec.rd[tank.id];
         if (lvl !== undefined) {
           const expected = tank.op + tank.rv - tank.sl;
-          const actual = lvl;
+          const actual = mmToLiters(tank, lvl);
           logEntries.push({
             id: genId(),
             dipId: id,
@@ -1623,7 +1632,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       setTanks(ts => ts.map(tank => {
         const lvl = rec.rd[tank.id];
-        return lvl !== undefined ? { ...tank, op: lvl, rv: 0, sl: 0 } : tank;
+        return lvl !== undefined ? { ...tank, op: mmToLiters(tank, lvl), rv: 0, sl: 0 } : tank;
       }));
       setLpgTanks(ts => ts.map(lt => {
         const lvl = rec.lpg[lt.id];
@@ -2606,7 +2615,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const accApprovePumpReport = useCallback((report: PumpDailyReport, accNote: string) => {
     const id = report.id;
     const pump = pumps.find(p => p.id === report.pumpId);
-    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'approved', accNote, accBy: userName, accAt: nowTs() } : r));
+    const resolvedBranchId = report.branchId || pump?.branchId || '';
+    setPumpDailyReports(rs => rs.map(r => r.id === id
+      ? { ...r, branchId: r.branchId || resolvedBranchId, status: 'approved', accNote, accBy: userName, accAt: nowTs() }
+      : r
+    ));
     setSales(s => {
       if (s.some(e => e.shiftReportId === id)) return s;
       return [...s, {
@@ -2620,12 +2633,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         price: report.unitPrice,
         dt: report.date,
         pos: report.posAmount,
-        branchId: report.branchId,
+          branchId: resolvedBranchId,
       }];
     });
     if (report.product === 'LPG') {
       setLpgTanks(ts => {
-        const matching = ts.filter(t => !report.branchId || !t.branchId || t.branchId === report.branchId);
+        const matching = ts.filter(t => !resolvedBranchId || !t.branchId || t.branchId === resolvedBranchId);
         if (matching.length === 0) return ts;
         const share = report.liters / matching.length;
         const ids = new Set(matching.map(t => t.id));
@@ -2633,7 +2646,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
     } else {
       setTanks(ts => {
-        const matching = ts.filter(t => t.prod === report.product && (!report.branchId || !t.branchId || t.branchId === report.branchId));
+        const matching = ts.filter(t => t.prod === report.product && (!resolvedBranchId || !t.branchId || t.branchId === resolvedBranchId));
         if (matching.length === 0) return ts;
         const share = report.liters / matching.length;
         const ids = new Set(matching.map(t => t.id));

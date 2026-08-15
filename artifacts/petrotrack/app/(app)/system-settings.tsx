@@ -41,7 +41,7 @@ const STOCK_METRIC_LABELS: Record<(typeof STOCK_SNAPSHOT_METRICS)[number], { lab
   startupStock: { label: 'Start-up quantity', description: 'Admin-set opening quantity per branch' },
   deliveries: { label: 'Delivered quantity', description: 'Approved or MD-approved deliveries' },
   sales: { label: 'Quantity sold', description: 'Current sales records' },
-  submittedTankDip: { label: 'Tank dip quantity', description: 'Today’s submitted tank dip' },
+  submittedTankDip: { label: 'Tank dip quantity', description: 'Today’s approved tank dip' },
   bookStock: { label: 'Book stock formula', description: 'Start-up + delivered − sold' },
   variance: { label: 'Variance and status', description: 'Book stock compared with tank dip' },
 };
