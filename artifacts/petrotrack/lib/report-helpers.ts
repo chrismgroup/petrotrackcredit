@@ -101,20 +101,18 @@ export function matchesProd(pump: string, prod: string): boolean {
   return p.includes(prod.toLowerCase());
 }
 
-/** Cost of goods sold using the accounting formula requested by the business:
- *  (selling price - weighted-average cost price) × volume sold.
- *  Selling prices come from the sale/report record and cost prices come from
- *  MD-approved deliveries. Products with no approved cost data contribute 0. */
+/** Cost of goods sold: the total cost price of the products sold.
+ *  Uses weighted-average cost from MD-approved deliveries multiplied by the
+ *  volume sold. Products with no approved cost data contribute 0. */
 export function computeCOGS(
-  sales: Array<{ pump: string; L: number; price: number }>,
+  sales: Array<{ pump: string; L: number }>,
   deliveries: Array<{ prod: string; rec: number; costPrice?: number; approvalStatus?: string }>,
 ): number {
   const PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil', 'Others'];
   let total = 0;
   const num = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : 0);
   for (const prod of PRODS) {
-    const productSales = sales.filter(s => matchesProd(s.pump, prod));
-    const vol = productSales.reduce((sum, e) => sum + num(e.L), 0);
+    const vol = sales.filter(s => matchesProd(s.pump, prod)).reduce((sum, e) => sum + num(e.L), 0);
     if (vol <= 0) continue;
     const dv = deliveries.filter(d =>
       d.prod === prod && num(d.costPrice) > 0 &&
@@ -122,24 +120,22 @@ export function computeCOGS(
     const vr = dv.reduce((sum, d) => sum + num(d.rec), 0);
     const ct = dv.reduce((sum, d) => sum + num(d.rec) * num(d.costPrice), 0);
     const avgCost = vr > 0 ? ct / vr : 0;
-    if (avgCost <= 0) continue;
-    total += productSales.reduce((sum, sale) => sum + (num(sale.price) - avgCost) * num(sale.L), 0);
+    total += avgCost * vol;
   }
   return Math.round(total);
 }
 
-/** COGS for a shift-report revenue feed using each report's historical selling
- * price and the same weighted-average approved delivery costs as computeCOGS.
+/** COGS for a shift-report revenue feed using its sold volume and the same
+ * weighted-average approved delivery costs as computeCOGS.
  */
 export function computePumpReportCOGS(
-  reports: Array<{ pumpName: string; product: string; liters: number; unitPrice: number }>,
+  reports: Array<{ pumpName: string; product: string; liters: number }>,
   deliveries: Array<{ prod: string; rec: number; costPrice?: number; approvalStatus?: string }>,
 ): number {
   return computeCOGS(
     reports.map(report => ({
       pump: `${report.pumpName} ${report.product}`,
       L: report.liters,
-      price: report.unitPrice,
     })),
     deliveries,
   );
