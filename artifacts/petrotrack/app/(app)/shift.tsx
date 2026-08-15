@@ -294,26 +294,11 @@ export default function ShiftReportScreen() {
   const variance  = totalColl + creditVal - grossAmt;
   const varColor  = variance === 0 ? '#27500A' : variance > 0 ? '#185FA5' : '#791F1F';
 
-  const blockingReport = useMemo(() =>
-    pumpDailyReports.find(
-      r => r.pumpId === selPump && !!appliesOn && r.date === appliesOn &&
-           (r.status === 'pending_manager' || r.status === 'returned')
-    ) ?? null,
-    [pumpDailyReports, selPump, appliesOn]
-  );
-
   function handleSubmit() {
     if (!pump) { Alert.alert('Error', 'No active pump selected.'); return; }
     if (!appliesOn) { Alert.alert('Date required', 'Select the date this shift report applies to.'); return; }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
     if (totalColl + creditVal <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, transfer, or credit).'); return; }
-    if (blockingReport) {
-      const label = blockingReport.status === 'returned'
-        ? 'was returned and must be re-forwarded by the manager'
-        : 'is awaiting manager review';
-      Alert.alert('Manager Approval Required', `Your earlier report for ${pump.name} today ${label}. You can submit another shift report once the manager approves it.`);
-      return;
-    }
     submitPumpReport({
        date: appliesOn,
       pumpId: pump.id, pumpName: pump.name, product: pump.prod,
@@ -808,27 +793,7 @@ export default function ShiftReportScreen() {
                 helper="Select the date the shift report was generated. Submission time is recorded separately."
               />
 
-              {blockingReport ? (
-                <View style={[c.alreadyCard, {
-                   backgroundColor: blockingReport.status === 'returned' ? '#FFF3E0' : '#FFF8E1',
-                   borderColor: blockingReport.status === 'returned' ? '#E65100AA' : '#BA751744',
-                }]}>
-                  <Ionicons
-                    name={blockingReport.status === 'returned' ? 'arrow-undo-circle' : 'time-outline'}
-                    size={22}
-                    color={blockingReport.status === 'returned' ? '#E65100' : '#BA7517'}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: blockingReport.status === 'returned' ? '#E65100' : '#7A4F00' }}>
-                       {blockingReport.status === 'returned' ? 'Report returned — awaiting re-forward' : 'Awaiting manager review'}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: blockingReport.status === 'returned' ? '#BF360C' : '#6D4C00', marginTop: 2 }}>
-                       Your earlier report for {pump?.name} on {appliesOn} must be approved by the manager before you can submit another shift report.
-                    </Text>
-                  </View>
-                </View>
-              ) : (
-                <>
+              <>
                   {/* Meter readings */}
                   <View style={[c.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <Text style={[c.formTitle, { color: colors.text }]}>Meter Readings</Text>
@@ -930,8 +895,7 @@ export default function ShiftReportScreen() {
                     <Ionicons name="send" size={16} color="#fff" />
                     <Text style={c.submitBtnTxt}>Submit to Manager</Text>
                   </TouchableOpacity>
-                </>
-              )}
+              </>
             </>
           )}
           <View style={{ height: 24 }} />

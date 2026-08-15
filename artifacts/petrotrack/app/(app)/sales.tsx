@@ -67,7 +67,7 @@ export default function SalesScreen() {
     report.branchId || pumps.find(pump => pump.id === report.pumpId)?.branchId;
   const liveTodayReports = pumpDailyReports.filter(report =>
     report.date.slice(0, 10) === today &&
-    report.status !== 'returned' &&
+    (report.status === 'pending_accountant' || report.status === 'approved') &&
     inMyBranch(reportBranchId(report)),
   );
   // Approved shift reports also create SalesEntry records. Keep manual sales
