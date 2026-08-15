@@ -291,8 +291,43 @@ function stockProductFromDelivery(product: string): StockProduct | null {
   return null;
 }
 
-function recordBusinessDate(value?: string): string {
+export function businessDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
+}
+
+export function calendarMonthBusinessDateRange(anchor = new Date()): { from: string; to: string } {
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth();
+  return {
+    from: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+    to: `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`,
+  };
+}
+
+export function isRevenueReportStatus(status: PumpReportStatus): boolean {
+  return status === 'pending_accountant' || status === 'approved';
+}
+
+export function calculateBusinessMonthRevenue(
+  reports: PumpDailyReport[],
+  scopedBranchId: string | null,
+  range = calendarMonthBusinessDateRange(),
+): number {
+  return Math.round(reports
+    .filter(report => {
+      const businessDate = businessDateKey(report.date);
+      return (
+        isRevenueReportStatus(report.status) &&
+        businessDate >= range.from &&
+        businessDate <= range.to &&
+        (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId)
+      );
+    })
+    .reduce((sum, report) => sum + (Number.isFinite(report.grossAmount) ? report.grossAmount : 0), 0));
+}
+
+function recordBusinessDate(value?: string): string {
+  return businessDateKey(value);
 }
 
 function timestampMs(value?: string): number {
