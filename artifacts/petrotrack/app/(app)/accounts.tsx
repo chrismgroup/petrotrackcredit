@@ -17,6 +17,22 @@ import {
 import { computePumpReportCOGS } from '@/lib/report-helpers';
 import { useColors } from '@/hooks/useColors';
 
+function localDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function formatBusinessDate(value: string): string {
+  return new Date(`${value}T12:00:00`).toLocaleDateString('en-NG', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 export default function AccountsScreen() {
   const { role, branchId, prices, branches, expenses, companyInfo, pumpDailyReports, deliveries } = useApp();
   const colors = useColors();
@@ -41,6 +57,35 @@ export default function AccountsScreen() {
     inCurrentMonth(report.date) &&
     (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
   );
+  const todayBusinessDate = localDateKey(new Date());
+  const todayReports = pumpDailyReports.filter(report =>
+    isRevenueReportStatus(report.status) &&
+    businessDateKey(report.date) === todayBusinessDate &&
+    (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+  );
+  const todayRevenue = Math.round(todayReports.reduce((sum, report) => sum + num(report.grossAmount), 0));
+  const todayPmsRev = todayReports.filter(report => report.product === 'PMS').reduce((sum, report) => sum + num(report.grossAmount), 0);
+  const todayAgoRev = todayReports.filter(report => report.product === 'AGO').reduce((sum, report) => sum + num(report.grossAmount), 0);
+  const todayDpkRev = todayReports.filter(report => report.product === 'DPK').reduce((sum, report) => sum + num(report.grossAmount), 0);
+  const todayLpgRev = todayReports.filter(report => report.product === 'LPG').reduce((sum, report) => sum + num(report.grossAmount), 0);
+  const todayLubeRev = todayReports.filter(report => report.product === 'Lube Oil').reduce((sum, report) => sum + num(report.grossAmount), 0);
+  const dailyRevenueLog = Array.from(
+    pumpDailyReports
+      .filter(report =>
+        isRevenueReportStatus(report.status) &&
+        (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+      )
+      .reduce((log, report) => {
+        const date = businessDateKey(report.date);
+        if (!date) return log;
+        const current = log.get(date) ?? { date, revenue: 0, reports: 0 };
+        current.revenue += num(report.grossAmount);
+        current.reports += 1;
+        log.set(date, current);
+        return log;
+      }, new Map<string, { date: string; revenue: number; reports: number }>())
+      .values(),
+  ).sort((a, b) => b.date.localeCompare(a.date));
   const scopedDeliveries = deliveries.filter(d => inScope(d.branchId) && inCurrentMonth(d.dt));
   const scopedExpenses   = expenses.filter(e => e.status === 'approved' && inScope(e.branchId) && inCurrentMonth(e.dt));
 
@@ -55,12 +100,6 @@ export default function AccountsScreen() {
   const totalCOGS     = computePumpReportCOGS(monthlyReports, scopedDeliveries);
   const grossProfit   = totalRevenue - totalCOGS;
   const operatingProfit = grossProfit - totalExpenses;
-
-  const pmsRev     = monthlyReports.filter(report => report.product === 'PMS').reduce((sum, report) => sum + num(report.grossAmount), 0);
-  const agoRev     = monthlyReports.filter(report => report.product === 'AGO').reduce((sum, report) => sum + num(report.grossAmount), 0);
-  const dkpRev     = monthlyReports.filter(report => report.product === 'DPK').reduce((sum, report) => sum + num(report.grossAmount), 0);
-  const lpgRev     = monthlyReports.filter(report => report.product === 'LPG').reduce((sum, report) => sum + num(report.grossAmount), 0);
-  const lubeRev    = monthlyReports.filter(report => report.product === 'Lube Oil').reduce((sum, report) => sum + num(report.grossAmount), 0);
 
   // Tax computations
   const vatRate    = parseFloat(companyInfo.vatRate  || '7.5') / 100;
@@ -164,18 +203,18 @@ export default function AccountsScreen() {
           ))}
         </View>
 
-        {/* Current month's sales */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>This Month's Sales Revenue</Text>
+        {/* Today's business-date sales */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Today's Sales Revenue</Text>
         <View style={[styles.todayCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.todayTotal, { color: roleColor }]}>{fmt(totalRevenue)}</Text>
-          <Text style={[styles.todaySub, { color: colors.textMuted }]}>Business dates {currentMonthRange.from} to {currentMonthRange.to}</Text>
+          <Text style={[styles.todayTotal, { color: roleColor }]}>{fmt(todayRevenue)}</Text>
+          <Text style={[styles.todaySub, { color: colors.textMuted }]}>Business date {formatBusinessDate(todayBusinessDate)}</Text>
           <View style={styles.prodBreakdown}>
             {[
-              { label: 'PMS',      amount: pmsRev,  color: colors.primary, price: getPriceForProduct(prices, 'PMS', branchId),      unit: '/L' },
-              { label: 'AGO',      amount: agoRev,  color: colors.blue,    price: getPriceForProduct(prices, 'AGO', branchId),      unit: '/L' },
-              { label: 'DPK',      amount: dkpRev,  color: colors.amber,   price: getPriceForProduct(prices, 'DPK', branchId),      unit: '/L' },
-              { label: 'LPG',      amount: lpgRev,  color: colors.teal,    price: getPriceForProduct(prices, 'LPG_Single', branchId) || getPriceForProduct(prices, 'LPG', branchId),      unit: '/kg' },
-              { label: 'Lube Oil', amount: lubeRev, color: colors.purple,  price: getPriceForProduct(prices, 'Lube Oil', branchId), unit: '/L' },
+              { label: 'PMS',      amount: todayPmsRev,  color: colors.primary, price: getPriceForProduct(prices, 'PMS', branchId),      unit: '/L' },
+              { label: 'AGO',      amount: todayAgoRev,  color: colors.blue,    price: getPriceForProduct(prices, 'AGO', branchId),      unit: '/L' },
+              { label: 'DPK',      amount: todayDpkRev,  color: colors.amber,   price: getPriceForProduct(prices, 'DPK', branchId),      unit: '/L' },
+              { label: 'LPG',      amount: todayLpgRev,  color: colors.teal,    price: getPriceForProduct(prices, 'LPG_Single', branchId) || getPriceForProduct(prices, 'LPG', branchId),      unit: '/kg' },
+              { label: 'Lube Oil', amount: todayLubeRev, color: colors.purple,  price: getPriceForProduct(prices, 'Lube Oil', branchId), unit: '/L' },
             ].filter(p => p.amount > 0 || p.price > 0).map(p => (
               <View key={p.label} style={[styles.prodItem, { backgroundColor: p.color + '12', borderColor: p.color + '33' }]}>
                 <Text style={[styles.prodLabel, { color: p.color }]}>{p.label}</Text>
@@ -184,6 +223,29 @@ export default function AccountsScreen() {
               </View>
             ))}
           </View>
+        </View>
+
+        {/* Business-date revenue log */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Daily Business-Date Revenue Log</Text>
+        <View style={[styles.dailyLogCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.dailyLogHint, { color: colors.textMuted }]}>
+            Each row is grouped by the shift report business date, not submission time.
+          </Text>
+          {dailyRevenueLog.length === 0 ? (
+            <Text style={[styles.dailyLogEmpty, { color: colors.textMuted }]}>No business-date revenue recorded yet.</Text>
+          ) : (
+            dailyRevenueLog.map(entry => (
+              <View key={entry.date} style={[styles.dailyLogRow, { borderTopColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.dailyLogDate, { color: colors.text }]}>{formatBusinessDate(entry.date)}</Text>
+                  <Text style={[styles.dailyLogMeta, { color: colors.textMuted }]}>
+                    {entry.reports} shift report{entry.reports === 1 ? '' : 's'}
+                  </Text>
+                </View>
+                <Text style={[styles.dailyLogRevenue, { color: roleColor }]}>{fmt(Math.round(entry.revenue))}</Text>
+              </View>
+            ))
+          )}
         </View>
 
         {/* Branch revenue */}
@@ -263,6 +325,14 @@ const styles = StyleSheet.create({
   prodLabel:     { fontSize: 12, fontWeight: '700' },
   prodAmt:       { fontSize: 13, fontWeight: '600', marginTop: 2 },
   prodPrice:     { fontSize: 10, marginTop: 1 },
+
+  dailyLogCard:  { borderRadius: 14, borderWidth: 1, marginBottom: 16, overflow: 'hidden' },
+  dailyLogHint:  { fontSize: 12, lineHeight: 17, padding: 14, paddingBottom: 8 },
+  dailyLogEmpty: { fontSize: 13, padding: 14, paddingTop: 4 },
+  dailyLogRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: StyleSheet.hairlineWidth },
+  dailyLogDate:  { fontSize: 14, fontWeight: '600' },
+  dailyLogMeta:  { fontSize: 11, marginTop: 2 },
+  dailyLogRevenue: { fontSize: 15, fontWeight: '700' },
 
   branchRow:     { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
   branchIcon:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
