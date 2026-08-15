@@ -52,17 +52,13 @@ export default function AccountsScreen() {
     const businessDate = businessDateKey(value);
     return businessDate >= currentMonthRange.from && businessDate <= currentMonthRange.to;
   };
-  const monthlyReports = pumpDailyReports.filter(report =>
+  const scopedRevenueReports = pumpDailyReports.filter(report =>
     isRevenueReportStatus(report.status) &&
-    inCurrentMonth(report.date) &&
     (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
   );
+  const monthlyReports = scopedRevenueReports.filter(report => inCurrentMonth(report.date));
   const todayBusinessDate = localDateKey(new Date());
-  const todayReports = pumpDailyReports.filter(report =>
-    isRevenueReportStatus(report.status) &&
-    businessDateKey(report.date) === todayBusinessDate &&
-    (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
-  );
+  const todayReports = scopedRevenueReports.filter(report => businessDateKey(report.date) === todayBusinessDate);
   const todayRevenue = Math.round(todayReports.reduce((sum, report) => sum + num(report.grossAmount), 0));
   const todayPmsRev = todayReports.filter(report => report.product === 'PMS').reduce((sum, report) => sum + num(report.grossAmount), 0);
   const todayAgoRev = todayReports.filter(report => report.product === 'AGO').reduce((sum, report) => sum + num(report.grossAmount), 0);
@@ -70,11 +66,7 @@ export default function AccountsScreen() {
   const todayLpgRev = todayReports.filter(report => report.product === 'LPG').reduce((sum, report) => sum + num(report.grossAmount), 0);
   const todayLubeRev = todayReports.filter(report => report.product === 'Lube Oil').reduce((sum, report) => sum + num(report.grossAmount), 0);
   const dailyRevenueLog = Array.from(
-    pumpDailyReports
-      .filter(report =>
-        isRevenueReportStatus(report.status) &&
-        (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
-      )
+    scopedRevenueReports
       .reduce((log, report) => {
         const date = businessDateKey(report.date);
         if (!date) return log;
@@ -86,6 +78,32 @@ export default function AccountsScreen() {
       }, new Map<string, { date: string; revenue: number; reports: number }>())
       .values(),
   ).sort((a, b) => b.date.localeCompare(a.date));
+  const dailyBranchRevenueLog = Array.from(
+    scopedRevenueReports
+      .reduce((log, report) => {
+        const date = businessDateKey(report.date);
+        if (!date) return log;
+        const branchId = report.branchId || 'unassigned';
+        const current = log.get(date) ?? { date, total: 0, byBranch: new Map<string, number>() };
+        current.total += num(report.grossAmount);
+        current.byBranch.set(branchId, (current.byBranch.get(branchId) || 0) + num(report.grossAmount));
+        log.set(date, current);
+        return log;
+      }, new Map<string, { date: string; total: number; byBranch: Map<string, number> }>())
+      .values(),
+  )
+    .map(entry => ({
+      date: entry.date,
+      total: Math.round(entry.total),
+      branches: Array.from(entry.byBranch.entries())
+        .map(([id, revenue]) => ({
+          id,
+          name: id === 'unassigned' ? 'Unassigned / Company-level' : branches.find(branch => branch.id === id)?.name || 'Unknown branch',
+          revenue: Math.round(revenue),
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
   const scopedDeliveries = deliveries.filter(d => inScope(d.branchId) && inCurrentMonth(d.dt));
   const scopedExpenses   = expenses.filter(e => e.status === 'approved' && inScope(e.branchId) && inCurrentMonth(e.dt));
 
@@ -248,6 +266,35 @@ export default function AccountsScreen() {
           )}
         </View>
 
+        {/* Branch revenue by business date */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Branch Revenue by Business Date</Text>
+        <View style={[styles.dailyBranchCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.dailyLogHint, { color: colors.textMuted }]}>
+            Compare each branch’s revenue for every recorded business date.
+          </Text>
+          {dailyBranchRevenueLog.length === 0 ? (
+            <Text style={[styles.dailyLogEmpty, { color: colors.textMuted }]}>No branch revenue recorded yet.</Text>
+          ) : (
+            dailyBranchRevenueLog.map(entry => (
+              <View key={entry.date} style={[styles.dailyBranchDay, { borderTopColor: colors.border }]}>
+                <View style={styles.dailyBranchHeader}>
+                  <Text style={[styles.dailyLogDate, { color: colors.text }]}>{formatBusinessDate(entry.date)}</Text>
+                  <Text style={[styles.dailyLogRevenue, { color: roleColor }]}>{fmt(entry.total)}</Text>
+                </View>
+                {entry.branches.map(branch => (
+                  <View key={`${entry.date}-${branch.id}`} style={styles.dailyBranchRow}>
+                    <View style={[styles.dailyBranchDot, { backgroundColor: roleColor }]} />
+                    <Text style={[styles.dailyBranchName, { color: colors.text }]} numberOfLines={1}>
+                      {branch.name}
+                    </Text>
+                    <Text style={[styles.dailyBranchRevenue, { color: colors.text }]}>{fmt(branch.revenue)}</Text>
+                  </View>
+                ))}
+              </View>
+            ))
+          )}
+        </View>
+
         {/* Branch revenue */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Branches Revenue</Text>
         {visibleBranches.map(b => (
@@ -333,6 +380,14 @@ const styles = StyleSheet.create({
   dailyLogDate:  { fontSize: 14, fontWeight: '600' },
   dailyLogMeta:  { fontSize: 11, marginTop: 2 },
   dailyLogRevenue: { fontSize: 15, fontWeight: '700' },
+
+  dailyBranchCard: { borderRadius: 14, borderWidth: 1, marginBottom: 16, overflow: 'hidden' },
+  dailyBranchDay:  { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  dailyBranchHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  dailyBranchRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, paddingLeft: 4 },
+  dailyBranchDot:   { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
+  dailyBranchName:  { flex: 1, fontSize: 13 },
+  dailyBranchRevenue: { fontSize: 13, fontWeight: '600', marginLeft: 8 },
 
   branchRow:     { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
   branchIcon:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
