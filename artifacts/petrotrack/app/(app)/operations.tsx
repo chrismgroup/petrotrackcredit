@@ -717,11 +717,18 @@ export default function OperationsScreen() {
                         <View style={styles.stockSnapshotRowHeader}>
                           <View style={{ flex: 1, minWidth: 0 }}>
                             <Text style={[styles.stockSnapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
-                            {stockSnapshotConfig.metrics.bookStock ? (
+                            <View>
                               <Text style={[styles.stockSnapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                                Book stock = carried-forward + delivered − sold: {formatStockQuantity(snapshot.bookStock)} {snapshot.unit}
+                                {snapshot.startupStock === null
+                                  ? 'Book stock: awaiting baseline'
+                                  : `Book stock: ${formatStockQuantity(snapshot.startupStock)} + ${formatStockQuantity(snapshot.deliveries)} − ${formatStockQuantity(snapshot.sales)} = ${formatStockQuantity(snapshot.bookStock)} ${snapshot.unit}`}
                               </Text>
-                            ) : null}
+                              <Text style={[styles.stockSnapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
+                                {snapshot.bookStock === null || snapshot.submittedTankDip === null
+                                  ? 'Variance: awaiting book stock and tank dip'
+                                  : `Variance: ${formatStockQuantity(snapshot.bookStock)} − ${formatStockQuantity(snapshot.submittedTankDip)} = ${formatStockQuantity(snapshot.variance ?? 0)} ${snapshot.unit}`}
+                              </Text>
+                            </View>
                           </View>
                           {stockSnapshotConfig.metrics.variance ? (
                             <View style={[styles.stockSnapshotStatus, { backgroundColor: statusColor + '18' }]}>

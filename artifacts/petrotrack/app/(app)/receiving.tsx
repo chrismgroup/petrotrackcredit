@@ -820,7 +820,7 @@ export default function ReceivingScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Snapshot (Book Stock + Variance)</Text>
             <Text style={[styles.stockFormulaText, { color: colors.textMuted }]}>
-               Live inputs: admin seed quantity is applied once. Book stock = carried-forward book stock + submitted/approved deliveries − submitted shift-report sales. Variance = book stock − the latest submitted dip.
+               Metrics: Seed · Delivered to date · Sold to date · Book Stock · Dip · Variance. Book Stock = Seed + Delivered to date − Sold to date. Variance = Book Stock − Dip.
             </Text>
             {branchStockReports.map(bsr => (
               <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>
