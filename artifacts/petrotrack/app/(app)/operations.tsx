@@ -747,14 +747,12 @@ export default function OperationsScreen() {
                               </Text>
                             </View>
                           ) : null}
-                          {stockSnapshotConfig.metrics.sales ? (
-                            <View style={styles.stockSnapshotValue}>
-                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
-                              <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
-                                {formatStockQuantity(snapshot.sales)} {snapshot.unit}
-                              </Text>
-                            </View>
-                          ) : null}
+                          <View style={styles.stockSnapshotValue}>
+                            <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
+                            <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
+                              {formatStockQuantity(snapshot.sales)} {snapshot.unit}
+                            </Text>
+                          </View>
                           {stockSnapshotConfig.metrics.submittedTankDip ? (
                             <View style={styles.stockSnapshotValue}>
                               <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Tank dip qty.</Text>

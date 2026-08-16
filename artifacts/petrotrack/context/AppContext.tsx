@@ -1108,10 +1108,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        // or server history, but keep dips/tank balances for Stock Snapshot.
        AsyncStorage.removeItem('inventoryLog');
       if (s.stockSnapshotConfig) {
-        setStockSnapshotConfig({
+         setStockSnapshotConfig({
           ...DEFAULT_STOCK_SNAPSHOT_CONFIG,
           ...s.stockSnapshotConfig,
-          metrics: { ...DEFAULT_STOCK_SNAPSHOT_CONFIG.metrics, ...(s.stockSnapshotConfig.metrics ?? {}) },
+           metrics: { ...DEFAULT_STOCK_SNAPSHOT_CONFIG.metrics, ...(s.stockSnapshotConfig.metrics ?? {}), sales: true },
           productsByBranch: s.stockSnapshotConfig.productsByBranch ?? {},
         });
       }
@@ -1178,7 +1178,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setStockSnapshotConfig({
           ...DEFAULT_STOCK_SNAPSHOT_CONFIG,
           ...incoming,
-          metrics: { ...DEFAULT_STOCK_SNAPSHOT_CONFIG.metrics, ...(incoming.metrics ?? {}) },
+          metrics: { ...DEFAULT_STOCK_SNAPSHOT_CONFIG.metrics, ...(incoming.metrics ?? {}), sales: true },
           productsByBranch: incoming.productsByBranch ?? {},
         });
       }
@@ -2972,7 +2972,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateStockSnapshotMetric = useCallback((metric: StockSnapshotMetric, enabled: boolean) => {
-    if (role !== 'admin') return;
+    if (role !== 'admin' || metric === 'sales') return;
     setStockSnapshotConfig(prev => ({
       ...prev,
       metrics: { ...prev.metrics, [metric]: enabled },
