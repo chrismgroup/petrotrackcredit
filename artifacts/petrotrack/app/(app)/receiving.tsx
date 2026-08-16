@@ -326,7 +326,8 @@ export default function ReceivingScreen() {
   ) {
     return dips
       .filter(d =>
-        recordDateKey(d.dt) === dateKey &&
+        recordDateKey(d.dt) !== '' &&
+        recordDateKey(d.dt) <= dateKey &&
         (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
         (scopeTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           scopeLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
