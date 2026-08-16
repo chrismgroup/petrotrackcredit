@@ -83,7 +83,6 @@ export function getCurrentTankStock(
   productKind: 'petrol' | 'lpg' = 'petrol',
 ): number {
   const balance = Math.max(0, tank.op + tank.rv - tank.sl);
-  if (balance > 0) return balance;
 
   const latestDip = dips
     .filter(d => d.status === 'approved')
@@ -97,12 +96,23 @@ export function getCurrentTankStock(
   const reading = productKind === 'lpg'
     ? latestDip?.lpg[tank.id]
     : latestDip?.rd[tank.id];
-  if (reading === undefined) return balance;
-  if (productKind === 'lpg') return Math.max(0, reading);
-  if (typeof tank.cap === 'number' && typeof tank.dip === 'number' && tank.cap > 0 && tank.dip > 0) {
-    return mmToLiters({ cap: tank.cap, dip: tank.dip }, reading);
+  if (reading !== undefined) {
+    // Older approvals stored litre readings as millimetres and inflated the
+    // tank opening by cap / dip. Correct that legacy opening transparently,
+    // while preserving normal post-dip deliveries and sales.
+    if (
+      productKind === 'petrol' &&
+      typeof tank.cap === 'number' &&
+      typeof tank.dip === 'number' &&
+      tank.cap > 0 &&
+      tank.dip > 0 &&
+      Math.abs(tank.op - Math.round((reading / tank.dip) * tank.cap)) <= 0.01
+    ) {
+      return Math.max(0, dipReadingToLiters(reading) + tank.rv - tank.sl);
+    }
+    return Math.max(0, (productKind === 'lpg' ? reading : dipReadingToLiters(reading)) + tank.rv - tank.sl);
   }
-  return Math.max(0, reading);
+  return balance;
 }
 /** Live revenue derived from actual sales records (auto-created when pump
  *  reports are approved, plus any manual entries). Replaces the static
@@ -661,9 +671,10 @@ export const SCREEN_ROUTES: Record<string, string> = {
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
-export function mmToLiters(tank: Pick<Tank, 'cap' | 'dip'>, mm: number) {
-  if (!mm || !tank.dip) return 0;
-  return Math.round((mm / tank.dip) * tank.cap);
+/** Petrol dip readings are entered as litres; LPG readings are entered as kg. */
+export function dipReadingToLiters(reading: number) {
+  if (!Number.isFinite(reading) || reading <= 0) return 0;
+  return Math.round(reading * 100) / 100;
 }
 export function pctToKg(lpg: LPGTank, pct: number) { return Math.round((pct / 100) * lpg.cap); }
 export function fmt(n: number) { return '₦' + n.toLocaleString(); }
@@ -1659,8 +1670,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       for (const tank of tanks) {
         const lvl = rec.rd[tank.id];
         if (lvl !== undefined) {
-          const expected = tank.op + tank.rv - tank.sl;
-          const actual = mmToLiters(tank, lvl);
+          const expected = getCurrentTankStock(tank, dips);
+          const actual = dipReadingToLiters(lvl);
           logEntries.push({
             id: genId(),
             dipId: id,
@@ -1682,7 +1693,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       for (const tank of lpgTanks) {
         const lvl = rec.lpg[tank.id];
         if (lvl !== undefined) {
-          const expected = tank.op + tank.rv - tank.sl;
+          const expected = getCurrentTankStock(tank, dips, 'lpg');
           const actual = lvl;
           logEntries.push({
             id: genId(),
@@ -1705,7 +1716,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       setTanks(ts => ts.map(tank => {
         const lvl = rec.rd[tank.id];
-        return lvl !== undefined ? { ...tank, op: mmToLiters(tank, lvl), rv: 0, sl: 0 } : tank;
+        return lvl !== undefined ? { ...tank, op: dipReadingToLiters(lvl), rv: 0, sl: 0 } : tank;
       }));
       setLpgTanks(ts => ts.map(lt => {
         const lvl = rec.lpg[lt.id];
