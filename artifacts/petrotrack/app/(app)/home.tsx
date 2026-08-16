@@ -316,7 +316,8 @@ export default function HomeScreen() {
       approvedOnly = false,
     ) => sortDips(dips
       .filter(d =>
-        recordDateKey(d.dt) === dateKey &&
+        recordDateKey(d.dt) !== '' &&
+        recordDateKey(d.dt) <= dateKey &&
         (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
         (petrolTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           branchLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),

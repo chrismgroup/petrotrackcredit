@@ -146,14 +146,16 @@ export default function OperationsScreen() {
       scopeLpgTanks: typeof lpgTanks,
     ) => dips
       .filter(dip =>
-        recordDateKey(dip.dt) === todayKey &&
+        recordDateKey(dip.dt) !== '' &&
+        recordDateKey(dip.dt) <= todayKey &&
         dip.status !== 'rejected' &&
         (scopeTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
           scopeLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
       )
       .sort((a, b) =>
+        recordDateKey(b.dt).localeCompare(recordDateKey(a.dt)) ||
         new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() -
-        new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime() ||
+          new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime() ||
         b.id - a.id
       )[0];
 
