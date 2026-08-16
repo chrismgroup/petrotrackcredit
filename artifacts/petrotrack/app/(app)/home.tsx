@@ -609,11 +609,18 @@ export default function HomeScreen() {
                     <View style={s.snapshotRowHead}>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
-                        {stockSnapshotConfig.metrics.bookStock ? (
+                        <View>
                           <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                            Book stock = carried-forward + delivered − sold: {snapshot.bookStock === null ? 'Awaiting admin seed' : `${formatQuantity(snapshot.bookStock)} ${snapshot.unit}`}
+                            {snapshot.startupStock === null
+                              ? 'Book stock: awaiting admin baseline'
+                              : `Book stock: ${formatQuantity(snapshot.startupStock)} + ${formatQuantity(snapshot.deliveries)} − ${formatQuantity(snapshot.sales)} = ${formatQuantity(snapshot.bookStock ?? 0)} ${snapshot.unit}`}
                           </Text>
-                        ) : null}
+                          <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
+                            {snapshot.bookStock === null || snapshot.submittedTankDip === null
+                              ? 'Variance: awaiting book stock and tank dip'
+                              : `Variance: ${formatQuantity(snapshot.bookStock)} − ${formatQuantity(snapshot.submittedTankDip)} = ${formatQuantity(snapshot.variance ?? 0)} ${snapshot.unit}`}
+                          </Text>
+                        </View>
                       </View>
                       {stockSnapshotConfig.metrics.variance ? (
                         <View style={[s.snapshotStatus, { backgroundColor: statusColor + '18' }]}>
