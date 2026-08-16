@@ -741,7 +741,7 @@ export default function OperationsScreen() {
                           ) : null}
                           {stockSnapshotConfig.metrics.deliveries ? (
                             <View style={styles.stockSnapshotValue}>
-                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Delivered qty.</Text>
+                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Delivered to date</Text>
                               <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
                                 {formatStockQuantity(snapshot.deliveries)} {snapshot.unit}
                               </Text>

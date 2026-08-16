@@ -368,11 +368,11 @@ export function getLatestValidatedPumpReport(
 
 /**
  * Calculates a live branch/product book stock from the admin seed and the
- * submitted operational ledger events. The seed is only applied once: prior
- * business days are carried into the opening book stock, then today's
- * submitted deliveries and shift-report sales are applied to it. Rejected
- * records are excluded; pending records remain visible as live inputs until
- * they are approved or rejected.
+ * submitted operational ledger events. The seed is only applied once, and
+ * records are carried forward through the requested business date. Delivered
+ * and sold totals are returned cumulatively so snapshot details reconcile
+ * visibly to book stock. Rejected records are excluded; pending records remain
+ * visible as live inputs until they are approved or rejected.
  */
 export function calculateStockBook(
   startupStock: StartupStock | undefined,
@@ -446,8 +446,8 @@ export function calculateStockBook(
   const openingBookStock = startupStock.quantity + priorDelivered - priorSold;
   return {
     startupStock: startupStock.quantity,
-    delivered,
-    sold,
+    delivered: priorDelivered + delivered,
+    sold: priorSold + sold,
     bookStock: openingBookStock + delivered - sold,
   };
 }

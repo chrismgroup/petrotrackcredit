@@ -835,8 +835,8 @@ export default function ReceivingScreen() {
                     <View style={[styles.stockTableHeader, { borderBottomColor: colors.border }]}>
                       <Text style={[styles.stockColProd, styles.stockHeaderText, { color: colors.textMuted }]}>Product</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Seed</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Delivered</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Sold</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Delivered to date</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Sold to date</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Book Stock</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Dip</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Variance</Text>
