@@ -103,6 +103,72 @@ async function resolveManagerBranchId(username?: string): Promise<string | undef
   return manager?.branchId ?? undefined;
 }
 
+/**
+ * Tank dips use direct quantities: litres for petroleum and kilograms for LPG.
+ * Validate on the API as well as in the mobile form so another client cannot
+ * reintroduce millimetre readings or values above tank capacity.
+ */
+async function validateDipPayload(data: unknown): Promise<string | null> {
+  if (!Array.isArray(data)) return "Tank dips must be an array";
+
+  const [tanksRow, lpgTanksRow] = await Promise.all([
+    db.select().from(appStateTable).where(eq(appStateTable.key, "tanks")),
+    db.select().from(appStateTable).where(eq(appStateTable.key, "lpgTanks")),
+  ]);
+  const petrolCaps = new Map<string, number>();
+  const lpgCaps = new Map<string, number>();
+
+  const addCaps = (row: typeof tanksRow[number] | undefined, target: Map<string, number>) => {
+    if (!row || !Array.isArray(row.data)) return;
+    for (const value of row.data) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const record = value as JsonRecord;
+      const id = String(record.id ?? "");
+      const cap = Number(record.cap);
+      if (id && Number.isFinite(cap) && cap > 0) target.set(id, cap);
+    }
+  };
+  addCaps(tanksRow[0], petrolCaps);
+  addCaps(lpgTanksRow[0], lpgCaps);
+
+  const validateReadings = (
+    record: JsonRecord,
+    field: "rd" | "lpg",
+    caps: Map<string, number>,
+    unit: "L" | "kg",
+  ): string | null => {
+    const readings = record[field];
+    if (readings === undefined) return null;
+    if (!readings || typeof readings !== "object" || Array.isArray(readings)) {
+      return `${field} readings must be an object`;
+    }
+    for (const [tankId, rawValue] of Object.entries(readings as JsonRecord)) {
+      const value = rawValue;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        return `${field} reading for ${tankId} must be a non-negative number in ${unit}`;
+      }
+      const cap = caps.get(tankId);
+      if (cap !== undefined && value > cap) {
+        return `${field} reading for ${tankId} exceeds tank capacity of ${cap} ${unit}`;
+      }
+    }
+    return null;
+  };
+
+  for (let index = 0; index < data.length; index += 1) {
+    const value = data[index];
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return `Tank dip ${index + 1} must be an object`;
+    }
+    const record = value as JsonRecord;
+    const petrolError = validateReadings(record, "rd", petrolCaps, "L");
+    if (petrolError) return `Tank dip ${index + 1}: ${petrolError}`;
+    const lpgError = validateReadings(record, "lpg", lpgCaps, "kg");
+    if (lpgError) return `Tank dip ${index + 1}: ${lpgError}`;
+  }
+  return null;
+}
+
 router.get("/state", async (_req, res): Promise<void> => {
   const rows = await db.select().from(appStateTable);
   const result: Record<string, unknown> = {};
@@ -314,6 +380,13 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   if (data === undefined || data === null) {
     res.status(400).json({ error: "Body required" });
     return;
+  }
+  if (key === "dips") {
+    const dipError = await validateDipPayload(data);
+    if (dipError) {
+      res.status(400).json({ error: dipError });
+      return;
+    }
   }
 
   // A manager sends the full client-side state blob on every sync. Never let
