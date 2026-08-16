@@ -609,18 +609,6 @@ export default function HomeScreen() {
                     <View style={s.snapshotRowHead}>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
-                        <View>
-                          <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                            {snapshot.startupStock === null
-                              ? 'Book stock: awaiting admin baseline'
-                              : `Book stock: ${formatQuantity(snapshot.startupStock)} + ${formatQuantity(snapshot.deliveries)} − ${formatQuantity(snapshot.sales)} = ${formatQuantity(snapshot.bookStock ?? 0)} ${snapshot.unit}`}
-                          </Text>
-                          <Text style={[s.snapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                            {snapshot.bookStock === null || snapshot.submittedTankDip === null
-                              ? 'Variance: awaiting book stock and tank dip'
-                              : `Variance: ${formatQuantity(snapshot.bookStock)} − ${formatQuantity(snapshot.submittedTankDip)} = ${formatQuantity(snapshot.variance ?? 0)} ${snapshot.unit}`}
-                          </Text>
-                        </View>
                       </View>
                       {stockSnapshotConfig.metrics.variance ? (
                         <View style={[s.snapshotStatus, { backgroundColor: statusColor + '18' }]}>
@@ -1073,7 +1061,6 @@ const s = StyleSheet.create({
   snapshotRow: { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
   snapshotRowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   snapshotProduct: { fontSize: 12, fontWeight: '800' },
-  snapshotFormula: { fontSize: 9, marginTop: 3 },
   snapshotStatus: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 8, paddingVertical: 5, borderRadius: 99,

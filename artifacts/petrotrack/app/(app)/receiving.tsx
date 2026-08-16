@@ -819,9 +819,6 @@ export default function ReceivingScreen() {
         {canSeeStock && branchStockReports.length > 0 ? (
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Snapshot (Book Stock + Variance)</Text>
-            <Text style={[styles.stockFormulaText, { color: colors.textMuted }]}>
-               Metrics: Seed · Delivered to date · Sold to date · Book Stock · Dip · Variance. Book Stock = Seed + Delivered to date − Sold to date. Variance = Book Stock − Dip.
-            </Text>
             {branchStockReports.map(bsr => (
               <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>
                 {isGlobalViewer ? (
@@ -1459,7 +1456,6 @@ const styles = StyleSheet.create({
   mismatchProdName: { fontSize: 13, fontWeight: '700', minWidth: 52 },
   mismatchBranch: { fontSize: 12, flex: 1, opacity: 0.8 },
   mismatchDiff: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
-  stockFormulaText: { fontSize: 11, lineHeight: 16, marginTop: -6, marginBottom: 10 },
   stockTable: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 14 },
   stockTableHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1 },
   stockHeaderText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
