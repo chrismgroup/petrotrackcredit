@@ -73,9 +73,8 @@ export interface UserInfo { name: string; color: string; initials: string; role:
  * Returns the current physical stock for a tank.
  *
  * Tank balances are normally maintained as opening + receipts - sales. An
- * approved dip is the physical source of truth when that balance has not yet
- * been materialized (all three balance fields are zero), which prevents
- * dashboards from showing zero while the tank inventory screen shows stock.
+ * approved dip is also used as the physical source of truth when a previous
+ * approval stored the direct litre reading as a millimetre-converted opening.
  */
 export function getCurrentTankStock(
   tank: Pick<Tank | LPGTank, 'op' | 'rv' | 'sl' | 'id'> & Partial<Pick<Tank, 'cap' | 'dip'>>,
@@ -1282,6 +1281,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loaded && isServerAuthenticated) syncFromServer();
   }, [loaded, isServerAuthenticated, syncFromServer]);
+
+  /* ── One-time repair for openings written by the removed mm conversion ── */
+  useEffect(() => {
+    if (!loaded || !isServerAuthenticated || !initialSyncDoneRef.current || dips.length === 0) return;
+    let changed = false;
+    const repaired = tanks.map(tank => {
+      const latestDip = dips
+        .filter(d => d.status === 'approved' && d.rd[tank.id] !== undefined)
+        .sort((a, b) => new Date(b.approvedDt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.dt).getTime())[0];
+      const reading = latestDip?.rd[tank.id];
+      if (
+        reading === undefined ||
+        !Number.isFinite(reading) ||
+        reading < 0 ||
+        tank.cap <= 0 ||
+        tank.dip <= 0 ||
+        Math.abs(tank.op - Math.round((reading / tank.dip) * tank.cap)) > 0.01
+      ) {
+        return tank;
+      }
+      const correctedOpening = dipReadingToLiters(reading);
+      if (Math.abs(tank.op - correctedOpening) <= 0.01) return tank;
+      changed = true;
+      return { ...tank, op: correctedOpening };
+    });
+    if (changed) setTanks(repaired);
+  }, [dips, isServerAuthenticated, loaded, tanks]);
 
   useEffect(() => {
     if (!loaded || !isServerAuthenticated) return;
