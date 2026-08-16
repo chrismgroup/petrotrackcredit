@@ -637,14 +637,12 @@ export default function HomeScreen() {
                           </Text>
                         </View>
                       ) : null}
-                      {stockSnapshotConfig.metrics.sales ? (
-                        <View style={s.snapshotValue}>
-                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
-                          <Text style={[s.snapshotValueText, { color: colors.text }]}>
-                            {formatQuantity(snapshot.sales)} {snapshot.unit}
-                          </Text>
-                        </View>
-                      ) : null}
+                      <View style={s.snapshotValue}>
+                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
+                        <Text style={[s.snapshotValueText, { color: colors.text }]}>
+                          {formatQuantity(snapshot.sales)} {snapshot.unit}
+                        </Text>
+                      </View>
                       {stockSnapshotConfig.metrics.submittedTankDip ? (
                         <View style={s.snapshotValue}>
                           <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Tank dip qty.</Text>

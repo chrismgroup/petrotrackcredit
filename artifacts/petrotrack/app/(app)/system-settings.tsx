@@ -40,7 +40,7 @@ const STARTUP_PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'
 const STOCK_METRIC_LABELS: Record<(typeof STOCK_SNAPSHOT_METRICS)[number], { label: string; description: string }> = {
   startupStock: { label: 'Start-up quantity', description: 'Admin-set opening quantity per branch' },
   deliveries: { label: 'Delivered quantity', description: 'Approved or MD-approved deliveries' },
-  sales: { label: 'Quantity sold', description: 'Current sales records' },
+  sales: { label: 'Quantity sold', description: 'Always shown for every product' },
   submittedTankDip: { label: 'Tank dip quantity', description: 'Latest non-rejected dip dated today or earlier' },
   bookStock: { label: 'Book stock formula', description: 'Start-up + delivered − sold' },
   variance: { label: 'Variance and status', description: 'Book stock compared with tank dip' },
@@ -1529,7 +1529,7 @@ export default function SystemSettingsScreen() {
                 </View>
                 {STOCK_SNAPSHOT_METRICS.map((metric, idx) => {
                   const option = STOCK_METRIC_LABELS[metric];
-                  const enabled = stockSnapshotConfig.metrics[metric];
+                  const enabled = metric === 'sales' ? true : stockSnapshotConfig.metrics[metric];
                   return (
                     <View key={metric} style={[styles.permRow, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
                       <View style={[styles.permIcon, { backgroundColor: enabled ? roleColor + '22' : colors.border + '55' }]}>
@@ -1544,7 +1544,7 @@ export default function SystemSettingsScreen() {
                         onValueChange={value => updateStockSnapshotMetric(metric, value)}
                         thumbColor={enabled ? roleColor : '#aaa'}
                         trackColor={{ false: colors.border, true: roleColor + '55' }}
-                        disabled={!isAdmin}
+                        disabled={!isAdmin || metric === 'sales'}
                       />
                     </View>
                   );
