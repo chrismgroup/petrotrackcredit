@@ -7,7 +7,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForProduct, mmToLiters, useApp } from '@/context/AppContext';
+import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
@@ -246,7 +246,7 @@ export default function ReceivingScreen() {
   const myLpgTanks = canSeeAllTanks ? lpgTanks : lpgTanks.filter(l => !branchId || !l.branchId || l.branchId === branchId);
 
   // ── Dip-based inventory ─────────────────────────────────────────────────────
-  // Inventory = latest approved dip reading per tank, summed per product per branch.
+  // Inventory = latest available non-rejected dip reading per tank, summed per product per branch.
   // Multiple PMS tanks are summed. LPG uses its own tank array.
   // Lube Oil falls back to net approved deliveries if no tanks are configured.
 
@@ -352,7 +352,7 @@ export default function ReceivingScreen() {
           .filter(tank => tank.prod === product)
           .map(tank => {
             const reading = record.rd?.[tank.id];
-            return reading === undefined ? undefined : mmToLiters(tank, reading);
+            return reading === undefined ? undefined : dipReadingToLiters(reading);
           });
     const numericReadings = readings
       .map(value => typeof value === 'number' ? value : Number(value))

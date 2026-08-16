@@ -8,7 +8,7 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
-  DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, calculateStockBook, getCurrentTankStock, mmToLiters,
+  DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, calculateStockBook, dipReadingToLiters, getCurrentTankStock,
   ROLE_COLORS, fmtDate, fmtDateTime, unitForProd, useApp, type StockProduct,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -117,6 +117,22 @@ export default function OperationsScreen() {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
       return;
     }
+    const invalidPetrolTank = visibleTanks.find(tank => {
+      const value = parseFloat(readings[tank.id] || '');
+      return Number.isFinite(value) && (value < 0 || value > tank.cap);
+    });
+    if (invalidPetrolTank) {
+      Alert.alert('Invalid tank quantity', `${invalidPetrolTank.name} must be between 0 and ${invalidPetrolTank.cap.toLocaleString()} L.`);
+      return;
+    }
+    const invalidLpgTank = visibleLpgTanks.find(tank => {
+      const value = parseFloat(lpgReadings[tank.id] || '');
+      return Number.isFinite(value) && (value < 0 || value > tank.cap);
+    });
+    if (invalidLpgTank) {
+      Alert.alert('Invalid LPG quantity', `${invalidLpgTank.name} must be between 0 and ${invalidLpgTank.cap.toLocaleString()} kg.`);
+      return;
+    }
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
     for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
@@ -176,7 +192,7 @@ export default function OperationsScreen() {
         .filter(tank => tank.prod === product)
         .map(tank => {
           const reading = record.rd?.[tank.id];
-          return typeof reading === 'number' && Number.isFinite(reading) ? mmToLiters(tank, reading) : null;
+          return typeof reading === 'number' && Number.isFinite(reading) ? dipReadingToLiters(reading) : null;
         })
         .filter((value): value is number => value !== null);
       return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
@@ -300,8 +316,8 @@ export default function OperationsScreen() {
                 </View>
               )}
               {visibleTanks.map(t => {
-                const mm = parseFloat(readings[t.id] || '');
-                const L  = !isNaN(mm) ? mm : null;
+                const liters = parseFloat(readings[t.id] || '');
+                const L  = !isNaN(liters) ? liters : null;
                 return (
                   <View key={t.id} style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={styles.dipCardHeader}>
@@ -313,7 +329,7 @@ export default function OperationsScreen() {
                     <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Cap: {t.cap.toLocaleString()}L · Stock: {getCurrentTankStock(t, dips).toLocaleString()}L</Text>
                     <TextInput
                       style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                      placeholder={`Reading in mm (max ${t.dip}mm)`}
+                       placeholder={`Quantity in litres (max ${t.cap.toLocaleString()} L)`}
                       placeholderTextColor={colors.textSubtle}
                       keyboardType="numeric"
                       value={readings[t.id] || ''}

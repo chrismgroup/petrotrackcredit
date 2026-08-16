@@ -21,7 +21,7 @@ import {
   ROLE_LABELS,
   SCREEN_ROUTES,
   calculateStockBook,
-  mmToLiters,
+  dipReadingToLiters,
   unitForProd,
   useApp,
   type Budget,
@@ -348,7 +348,7 @@ export default function HomeScreen() {
         .filter(tank => tank.prod === product)
         .map(tank => {
           const reading = numericReading(record.rd?.[tank.id]);
-          return reading === null ? null : mmToLiters(tank, reading);
+          return reading === null ? null : dipReadingToLiters(reading);
         })
         .filter((reading): reading is number => reading !== null);
       return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
