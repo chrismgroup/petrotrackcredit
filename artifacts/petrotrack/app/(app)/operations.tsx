@@ -717,18 +717,6 @@ export default function OperationsScreen() {
                         <View style={styles.stockSnapshotRowHeader}>
                           <View style={{ flex: 1, minWidth: 0 }}>
                             <Text style={[styles.stockSnapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
-                            <View>
-                              <Text style={[styles.stockSnapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                                {snapshot.startupStock === null
-                                  ? 'Book stock: awaiting baseline'
-                                  : `Book stock: ${formatStockQuantity(snapshot.startupStock)} + ${formatStockQuantity(snapshot.deliveries)} − ${formatStockQuantity(snapshot.sales)} = ${formatStockQuantity(snapshot.bookStock)} ${snapshot.unit}`}
-                              </Text>
-                              <Text style={[styles.stockSnapshotFormula, { color: colors.textMuted }]} numberOfLines={1}>
-                                {snapshot.bookStock === null || snapshot.submittedTankDip === null
-                                  ? 'Variance: awaiting book stock and tank dip'
-                                  : `Variance: ${formatStockQuantity(snapshot.bookStock)} − ${formatStockQuantity(snapshot.submittedTankDip)} = ${formatStockQuantity(snapshot.variance ?? 0)} ${snapshot.unit}`}
-                              </Text>
-                            </View>
                           </View>
                           {stockSnapshotConfig.metrics.variance ? (
                             <View style={[styles.stockSnapshotStatus, { backgroundColor: statusColor + '18' }]}>
@@ -894,7 +882,6 @@ const styles = StyleSheet.create({
   stockSnapshotRow: { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
   stockSnapshotRowHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   stockSnapshotProduct: { fontSize: 12, fontWeight: '800' },
-  stockSnapshotFormula: { fontSize: 9, marginTop: 3 },
   stockSnapshotStatus: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 99 },
   stockSnapshotStatusDot: { width: 6, height: 6, borderRadius: 3 },
   stockSnapshotStatusText: { fontSize: 9, fontWeight: '800' },
