@@ -631,7 +631,7 @@ export default function HomeScreen() {
                       ) : null}
                       {stockSnapshotConfig.metrics.deliveries ? (
                         <View style={s.snapshotValue}>
-                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Delivered qty.</Text>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Delivered to date</Text>
                           <Text style={[s.snapshotValueText, { color: colors.text }]}>
                             {formatQuantity(snapshot.deliveries)} {snapshot.unit}
                           </Text>
