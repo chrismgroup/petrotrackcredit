@@ -68,6 +68,7 @@ export default function OperationsScreen() {
 
   const defaultTab: TopTab = 'dip';
   const [topTab, setTopTab] = useState<TopTab>(defaultTab);
+  const [selectedHistoryBranchId, setSelectedHistoryBranchId] = useState<string | null>(null);
 
   // ── Dip state ────────────────────────────────────────────────────────────
   // MD/Admin start on Approvals; station managers start on Dip Form; other
@@ -156,6 +157,28 @@ export default function OperationsScreen() {
     else groups.push({ ...branch, dips: [dip] });
     return groups;
   }, []).sort((a, b) => a.name.localeCompare(b.name));
+  const historyBranchGroups = (() => {
+    const groups = new Map<string, { id: string; name: string; dips: typeof approvedDips }>();
+    if (isGlobalStockViewer) {
+      branches.forEach(branch => groups.set(branch.id, { id: branch.id, name: branch.name, dips: [] }));
+    } else if (branchId) {
+      const branch = branches.find(item => item.id === branchId);
+      groups.set(branchId, { id: branchId, name: branch?.name ?? 'This Branch', dips: [] });
+    }
+    approvedDipGroups.forEach(group => {
+      const existing = groups.get(group.id);
+      if (existing) existing.dips.push(...group.dips);
+      else groups.set(group.id, { ...group, dips: [...group.dips] });
+    });
+    return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+  })();
+  const activeHistoryBranchId = selectedHistoryBranchId && historyBranchGroups.some(group => group.id === selectedHistoryBranchId)
+    ? selectedHistoryBranchId
+    : null;
+  const displayedApprovedDipGroups = historyBranchGroups.filter(group =>
+    activeHistoryBranchId ? group.id === activeHistoryBranchId : group.dips.length > 0,
+  );
+  const hasDisplayedHistory = displayedApprovedDipGroups.some(group => group.dips.length > 0);
 
   const stockSnapshotBranches = (() => {
     const latestDipForBranch = (
@@ -592,13 +615,50 @@ export default function OperationsScreen() {
                 );
               })}
 
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>All approved tank dippings</Text>
-              {approvedDips.length === 0 ? (
+               <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>Inventory history by branch</Text>
+               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyBranchRail}>
+                 {isGlobalStockViewer && (
+                   <TouchableOpacity
+                     style={[
+                       styles.historyBranchTile,
+                       { backgroundColor: activeHistoryBranchId === null ? roleColor : colors.surface, borderColor: activeHistoryBranchId === null ? roleColor : colors.border },
+                     ]}
+                     onPress={() => setSelectedHistoryBranchId(null)}
+                     activeOpacity={0.85}
+                   >
+                     <Ionicons name="layers-outline" size={18} color={activeHistoryBranchId === null ? '#fff' : roleColor} />
+                     <Text style={[styles.historyBranchTileName, { color: activeHistoryBranchId === null ? '#fff' : colors.text }]} numberOfLines={1}>All branches</Text>
+                     <Text style={[styles.historyBranchTileCount, { color: activeHistoryBranchId === null ? '#ffffffcc' : colors.textMuted }]}>
+                       {approvedDips.length} report{approvedDips.length === 1 ? '' : 's'}
+                     </Text>
+                   </TouchableOpacity>
+                 )}
+                 {historyBranchGroups.map(group => {
+                   const selected = activeHistoryBranchId === group.id;
+                   return (
+                     <TouchableOpacity
+                       key={group.id}
+                       style={[styles.historyBranchTile, { backgroundColor: selected ? roleColor : colors.surface, borderColor: selected ? roleColor : colors.border }]}
+                       onPress={() => setSelectedHistoryBranchId(group.id)}
+                       activeOpacity={0.85}
+                     >
+                       <Ionicons name="business-outline" size={18} color={selected ? '#fff' : roleColor} />
+                       <Text style={[styles.historyBranchTileName, { color: selected ? '#fff' : colors.text }]} numberOfLines={1}>{group.name}</Text>
+                       <Text style={[styles.historyBranchTileCount, { color: selected ? '#ffffffcc' : colors.textMuted }]}>
+                         {group.dips.length} report{group.dips.length === 1 ? '' : 's'}
+                       </Text>
+                     </TouchableOpacity>
+                   );
+                 })}
+               </ScrollView>
+               {!hasDisplayedHistory ? (
                 <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <Ionicons name="time-outline" size={16} color={colors.textMuted} />
-                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No approved dippings yet. Approved readings will appear here for comparison.</Text>
+                   <Text style={[styles.noBannerText, { color: colors.textMuted }]}>
+                     {activeHistoryBranchId ? 'No approved dip reports for this branch yet.' : 'No approved dippings yet. Approved readings will appear here for comparison.'}
+                   </Text>
                 </View>
-              ) : approvedDipGroups.map(group => (
+               ) : displayedApprovedDipGroups.map(group => (
                 <View key={group.id}>
                   <View style={[styles.branchHistoryHeader, { backgroundColor: roleColor + '10', borderColor: roleColor + '35' }]}>
                     <View style={styles.branchHistoryTitleRow}>
@@ -902,6 +962,10 @@ const styles = StyleSheet.create({
   branchHistoryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
   branchHistoryName: { fontSize: 13, fontWeight: '800' },
   branchHistoryCount: { fontSize: 10, fontWeight: '600' },
+  historyBranchRail: { gap: 8, paddingBottom: 4 },
+  historyBranchTile: { width: 132, minHeight: 92, padding: 11, borderRadius: 13, borderWidth: 1, justifyContent: 'space-between' },
+  historyBranchTileName: { fontSize: 12, fontWeight: '800', marginTop: 8 },
+  historyBranchTileCount: { fontSize: 10, fontWeight: '600', marginTop: 4 },
   historyToggle: { flexDirection: 'row', borderRadius: 8, borderWidth: 1, padding: 2 },
   historyToggleBtn: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6 },
   historyToggleText: { fontSize: 10, fontWeight: '700' },

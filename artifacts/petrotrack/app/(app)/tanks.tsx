@@ -70,6 +70,7 @@ export default function TanksScreen() {
   const [editDipReadings, setEditDipReadings] = useState<Record<string, string>>({});
   const [editDipLpg, setEditDipLpg] = useState<Record<string, string>>({});
   const [editDipObs, setEditDipObs] = useState('');
+  const [selectedHistoryBranchId, setSelectedHistoryBranchId] = useState<string | null>(null);
 
   const isMD = role === 'md';
   const isAdmin = role === 'admin';
@@ -116,6 +117,28 @@ export default function TanksScreen() {
     else groups.push({ ...branch, dips: [dip] });
     return groups;
   }, []).sort((a, b) => a.name.localeCompare(b.name));
+  const historyBranchGroups = (() => {
+    const groups = new Map<string, { id: string; name: string; dips: typeof visibleDipRecords }>();
+    if (canSeeAllTanks) {
+      branches.forEach(branch => groups.set(branch.id, { id: branch.id, name: branch.name, dips: [] }));
+    } else if (branchId) {
+      const branch = branches.find(item => item.id === branchId);
+      groups.set(branchId, { id: branchId, name: branch?.name ?? 'This Branch', dips: [] });
+    }
+    dipHistoryGroups.forEach(group => {
+      const existing = groups.get(group.id);
+      if (existing) existing.dips.push(...group.dips);
+      else groups.set(group.id, { ...group, dips: [...group.dips] });
+    });
+    return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+  })();
+  const activeHistoryBranchId = selectedHistoryBranchId && historyBranchGroups.some(group => group.id === selectedHistoryBranchId)
+    ? selectedHistoryBranchId
+    : null;
+  const displayedDipHistoryGroups = historyBranchGroups.filter(group =>
+    activeHistoryBranchId ? group.id === activeHistoryBranchId : group.dips.length > 0,
+  );
+  const hasDisplayedHistory = displayedDipHistoryGroups.some(group => group.dips.length > 0);
   const pendingDips = dips.filter(d => d.status === 'pending' && dipHasVisibleReading(d));
 
   function computeDipAnalysis(rdMap: Record<string, number>) {
@@ -460,8 +483,50 @@ export default function TanksScreen() {
               </Text>
             </View>
           )}
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Records</Text>
-          {dipHistoryGroups.map(group => (
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Inventory history by branch</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyBranchRail}>
+            {canSeeAllTanks && (
+              <TouchableOpacity
+                style={[
+                  styles.historyBranchTile,
+                  { backgroundColor: activeHistoryBranchId === null ? roleColor : colors.surface, borderColor: activeHistoryBranchId === null ? roleColor : colors.border },
+                ]}
+                onPress={() => setSelectedHistoryBranchId(null)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="layers-outline" size={18} color={activeHistoryBranchId === null ? '#fff' : roleColor} />
+                <Text style={[styles.historyBranchTileName, { color: activeHistoryBranchId === null ? '#fff' : colors.text }]} numberOfLines={1}>All branches</Text>
+                <Text style={[styles.historyBranchTileCount, { color: activeHistoryBranchId === null ? '#ffffffcc' : colors.textMuted }]}>
+                  {visibleDipRecords.length} report{visibleDipRecords.length === 1 ? '' : 's'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {historyBranchGroups.map(group => {
+              const selected = activeHistoryBranchId === group.id;
+              return (
+                <TouchableOpacity
+                  key={group.id}
+                  style={[styles.historyBranchTile, { backgroundColor: selected ? roleColor : colors.surface, borderColor: selected ? roleColor : colors.border }]}
+                  onPress={() => setSelectedHistoryBranchId(group.id)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="business-outline" size={18} color={selected ? '#fff' : roleColor} />
+                  <Text style={[styles.historyBranchTileName, { color: selected ? '#fff' : colors.text }]} numberOfLines={1}>{group.name}</Text>
+                  <Text style={[styles.historyBranchTileCount, { color: selected ? '#ffffffcc' : colors.textMuted }]}>
+                    {group.dips.length} report{group.dips.length === 1 ? '' : 's'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          {!hasDisplayedHistory ? (
+            <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="time-outline" size={16} color={colors.textMuted} />
+              <Text style={[styles.noBannerText, { color: colors.textMuted }]}>
+                {activeHistoryBranchId ? 'No dip reports for this branch yet.' : 'No dip reports yet. Submitted readings will appear here.'}
+              </Text>
+            </View>
+          ) : displayedDipHistoryGroups.map(group => (
             <View key={group.id}>
               <View style={[styles.branchHistoryHeader, { backgroundColor: roleColor + '10', borderColor: roleColor + '35' }]}>
                 <View style={styles.branchHistoryTitleRow}>
@@ -890,6 +955,10 @@ const styles = StyleSheet.create({
   dipStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   dipStatusText: { fontSize: 10, fontWeight: '700' },
   approvedByText: { fontSize: 11, marginTop: 4 },
+  historyBranchRail: { gap: 8, paddingBottom: 4 },
+  historyBranchTile: { width: 132, minHeight: 92, padding: 11, borderRadius: 13, borderWidth: 1, justifyContent: 'space-between' },
+  historyBranchTileName: { fontSize: 12, fontWeight: '800', marginTop: 8 },
+  historyBranchTileCount: { fontSize: 10, fontWeight: '600', marginTop: 4 },
   mdActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   approveBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10 },
   rejectBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, borderWidth: 1.5 },
