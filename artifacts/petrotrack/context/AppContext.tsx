@@ -634,6 +634,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'depts',    icon: 'grid',             label: 'Depts'    },
     { id: 'branches', icon: 'business',         label: 'Branches' },
     { id: 'audit',    icon: 'list',             label: 'Audit'    },
+    { id: 'exprpt',   icon: 'analytics',        label: 'Reports'  },
     { id: 'settings', icon: 'settings',         label: 'Settings' },
   ],
 };
@@ -679,12 +680,15 @@ export const ROLE_FULL_NAV: Record<string, NavItem[]> = {
 // excludes admin-only system management panels (users, settings, audit).
 export const GLOBAL_OVERVIEW_ROLES = new Set(['ceo', 'md', 'acc', 'csm']);
 
-// Every module starts enabled for every role — admin restricts from here
+// Reports are opt-in for non-admin users. Admin grants the module by role or
+// by individual user through System Settings > Access Control.
+const REPORT_ACCESS_POLICY_VERSION = 1;
+
 function defaultRoleAccess(): Record<string, Record<string, boolean>> {
   const result: Record<string, Record<string, boolean>> = {};
   const roles = ['ceo','md','acc','csm','mktg','mgr','att'];
   for (const r of roles) {
-    result[r] = Object.fromEntries(FULL_NAV_CATALOG.map(i => [i.id, true]));
+    result[r] = Object.fromEntries(FULL_NAV_CATALOG.map(i => [i.id, i.id !== 'exprpt']));
   }
   return result;
 }
@@ -1016,6 +1020,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [mgrPerms, setMgrPerms] = useState<Record<string, MgrPermissions>>(INIT_MGR_PERMS);
   const [roleAccess, setRoleAccess] = useState<Record<string, Record<string, boolean>>>(defaultRoleAccess);
   const [userAccess, setUserAccess] = useState<Record<number, Record<string, boolean>>>({});
+  const [reportAccessPolicyVersion, setReportAccessPolicyVersion] = useState(0);
   const [prices, setPrices] = useState<Prices>({ PMS: 0, AGO: 0, DPK: 0, LPG: 0, LPG_Single: 0, LPG_Distributor: 0, 'Lube Oil': 0 });
   const [priceHistory, setPriceHistory] = useState<PriceChange[]>(INIT_PRICE_HISTORY);
   const [tanks, setTanks] = useState<Tank[]>(INIT_TANKS);
@@ -1094,7 +1099,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const KEYS = [
       'auth', 'companyInfo', 'tanks', 'lpgTanks', 'pumps', 'staff', 'branches',
       'departments', 'userAccounts', 'prices', 'priceHistory', 'mgrPerms',
-      'roleAccess', 'userAccess', 'expenses', 'budgets', 'sales', 'dips',
+      'roleAccess', 'userAccess', 'reportAccessPolicyVersion', 'expenses', 'budgets', 'sales', 'dips',
       'deliveries', 'maintenance', 'audit', 'handoverNotes', 'messages', 'tasks', 'kpis',
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
@@ -1141,6 +1146,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.mgrPerms)          setMgrPerms(s.mgrPerms);
       if (s.roleAccess)        setRoleAccess(s.roleAccess);
       if (s.userAccess)        setUserAccess(s.userAccess);
+       if (typeof s.reportAccessPolicyVersion === 'number') {
+         setReportAccessPolicyVersion(s.reportAccessPolicyVersion);
+       }
       if (s.expenses)          setExpenses(s.expenses);
       if (s.budgets)           setBudgets(s.budgets);
       if (s.sales)             setSales(s.sales);
@@ -1229,6 +1237,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.mgrPerms && !p.has('mgrPerms'))                   setMgrPerms(s.mgrPerms as Record<string, MgrPermissions>);
       if (s.roleAccess && !p.has('roleAccess'))               setRoleAccess(s.roleAccess as Record<string, Record<string, boolean>>);
       if (s.userAccess && !p.has('userAccess'))               setUserAccess(s.userAccess as Record<number, Record<string, boolean>>);
+       if (!p.has('reportAccessPolicyVersion')) {
+         setReportAccessPolicyVersion(
+           typeof s.reportAccessPolicyVersion === 'number' ? s.reportAccessPolicyVersion : 0,
+         );
+       }
       if (s.stockSnapshotConfig && !p.has('stockSnapshotConfig')) {
         const incoming = s.stockSnapshotConfig as Partial<StockSnapshotConfig>;
         setStockSnapshotConfig({
@@ -1340,6 +1353,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (loaded && isServerAuthenticated) syncFromServer();
   }, [loaded, isServerAuthenticated, syncFromServer]);
 
+  // Existing installations used to give every non-admin role access to
+  // Reports by default. Revoke those role-wide defaults once, while keeping
+  // any explicit per-user override that an admin may already have set.
+  useEffect(() => {
+    if (!loaded || !initialSyncDoneRef.current || reportAccessPolicyVersion >= REPORT_ACCESS_POLICY_VERSION) return;
+
+    setRoleAccess(prev => {
+      const next = { ...prev };
+      for (const roleName of Object.keys(ROLE_FULL_NAV)) {
+        if (roleName === 'admin') continue;
+        next[roleName] = { ...(prev[roleName] ?? {}), exprpt: false };
+      }
+      return next;
+    });
+    setReportAccessPolicyVersion(REPORT_ACCESS_POLICY_VERSION);
+  }, [loaded, reportAccessPolicyVersion, stateSyncReadyTick]);
+
   /* ── One-time repair for openings written by the removed mm conversion ── */
   useEffect(() => {
     if (!loaded || !isServerAuthenticated || !initialSyncDoneRef.current || dips.length === 0) return;
@@ -1406,6 +1436,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('mgrPerms',          mgrPerms); },          [mgrPerms, loaded]);
   useEffect(() => { if (loaded) syncSlice('roleAccess',        roleAccess); },        [roleAccess, loaded]);
   useEffect(() => { if (loaded) syncSlice('userAccess',        userAccess); },        [userAccess, loaded]);
+  useEffect(() => { if (loaded) syncSlice('reportAccessPolicyVersion', reportAccessPolicyVersion); }, [reportAccessPolicyVersion, loaded]);
   useEffect(() => { if (loaded) syncSlice('expenses',          expenses); },          [expenses, loaded]);
   useEffect(() => { if (loaded) syncSlice('budgets',           budgets); },           [budgets, loaded]);
   useEffect(() => { if (loaded) syncSlice('sales',             sales); },             [sales, loaded]);
@@ -3029,11 +3060,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName, messages]);
 
   const updateRoleAccess = useCallback((targetRole: string, moduleId: string, enabled: boolean) => {
+    if (role !== 'admin') return;
     setRoleAccess(prev => ({
       ...prev,
       [targetRole]: { ...(prev[targetRole] ?? {}), [moduleId]: enabled },
     }));
-  }, []);
+  }, [role]);
 
   const updateStockSnapshotMetric = useCallback((metric: StockSnapshotMetric, enabled: boolean) => {
     if (role !== 'admin' || metric === 'sales') return;
@@ -3058,19 +3090,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [role]);
 
   const updateUserAccess = useCallback((uid: number, moduleId: string, enabled: boolean) => {
+    if (role !== 'admin') return;
     setUserAccess(prev => ({
       ...prev,
       [uid]: { ...(prev[uid] ?? {}), [moduleId]: enabled },
     }));
-  }, []);
+  }, [role]);
 
   const clearUserAccess = useCallback((uid: number) => {
+    if (role !== 'admin') return;
     setUserAccess(prev => {
       const next = { ...prev };
       delete next[uid];
       return next;
     });
-  }, []);
+  }, [role]);
 
   // Admin always sees their own fixed nav. Every other role starts from the
   // full catalog, then gets filtered by the admin-managed role defaults and
