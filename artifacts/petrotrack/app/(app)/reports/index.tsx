@@ -3,7 +3,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import React, { useMemo, useState } from 'react';
 import {
-  Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
@@ -23,6 +23,11 @@ import { useLocalSearchParams } from 'expo-router';
 ═══════════════════════════════════════════════════════════ */
 async function shareAsPdf(html: string, title: string) {
   try {
+    if (Platform.OS === 'web') {
+      await Print.printAsync({ html });
+      return;
+    }
+
     const { uri } = await Print.printToFileAsync({ html });
     const available = await Sharing.isAvailableAsync();
     if (available) {
@@ -269,10 +274,11 @@ export default function ReportsScreen() {
   async function handleExport() {
     if (exporting) return;
     setExporting(true);
-    const common = { branchName, generatedAt, generatedBy: userName, period: `${period} · ${periodStr}` };
-    let html = '';
-    if (reportType === 'summary') {
-      html = buildPdf({ ...common, title: 'Summary Report',
+    try {
+      const common = { branchName, generatedAt, generatedBy: userName, period: `${period} · ${periodStr}` };
+      let html = '';
+      if (reportType === 'summary') {
+        html = buildPdf({ ...common, title: 'Summary Report',
         sections: [
           { heading: 'Financial Overview', rows: [
             { label: 'Total Revenue',  value: nfmt(scaledRev)   },
@@ -285,9 +291,9 @@ export default function ReportsScreen() {
         ],
         tables: branchBD.length > 0 ? [{ heading: 'Branch Breakdown', headers: ['Branch','Revenue','Sales','Expenses','Net'],
           rows: branchBD.map(b => [b.name, nfmt(b.rev), nfmt(b.salesRev), nfmt(b.exp), nfmt(b.net)]) }] : [],
-      });
-    } else if (reportType === 'pnl') {
-      html = buildPdf({ ...common, title: 'P&L Report',
+        });
+      } else if (reportType === 'pnl') {
+        html = buildPdf({ ...common, title: 'P&L Report',
         sections: [{ heading: 'P&L Summary', rows: [
           { label: 'Sales Revenue',       value: nfmt(totSR)    },
           { label: 'Cost of Goods',       value: nfmt(totCOGS)  },
@@ -302,18 +308,18 @@ export default function ReportsScreen() {
             rows: pnlByProd.map(p => [p.prod, p.totalVolumeSold.toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
           { heading: 'Operating Expenses', headers: ['Category','Amount'], rows: catScaled.map(c => [c.cat, nfmt(c.total)]) },
         ],
-      });
-    } else if (reportType === 'expenses') {
-      html = buildPdf({ ...common, title: 'Expense Report',
+        });
+      } else if (reportType === 'expenses') {
+        html = buildPdf({ ...common, title: 'Expense Report',
         sections: [{ heading: 'Summary', rows: [
           { label: 'Total Approved', value: nfmt(scaledExp) },
           { label: 'Records',        value: `${approved.length}` },
         ]}],
         tables: [{ heading: 'Expense Records', headers: ['Category','Description','By','Amount','Approved By'],
           rows: [...approved].reverse().map((e: any) => [e.cat, e.desc, e.byName, nfmt(e.amt), e.approvedBy ?? '—']) }],
-      });
-    } else if (reportType === 'sales') {
-      html = buildPdf({ ...common, title: 'Sales Report',
+        });
+      } else if (reportType === 'sales') {
+        html = buildPdf({ ...common, title: 'Sales Report',
         sections: [{ heading: 'Sales Summary', rows: [
           { label: 'Gross Sales (Shift Reports)', value: nfmt(shiftGross)      },
           { label: 'Less: Manager Expenses',      value: `(${nfmt(mgrExpScaled)})` },
@@ -327,9 +333,9 @@ export default function ReportsScreen() {
           ...(mgrBranchExps.length > 0 ? [{ heading: 'Manager Expenses Deducted', headers: ['Category','Description','By','Amount','Approved By'],
             rows: mgrBranchExps.map((e: any) => [e.cat, e.desc, e.byName, nfmt(e.amt), e.approvedBy ?? '—']) }] : []),
         ],
-      });
-    } else if (reportType === 'prices') {
-      html = buildPdf({ ...common, title: 'Price Report',
+        });
+      } else if (reportType === 'prices') {
+        html = buildPdf({ ...common, title: 'Price Report',
         sections: [{ heading: 'Current Prices', rows: (['PMS','AGO','DPK','LPG','Lube Oil'] as const).map(prod => ({
           label: prod, value: getPriceForProduct(prices, prod, selBranch) > 0 ? `${nfmt(getPriceForProduct(prices, prod, selBranch))}/L` : 'Not set',
         }))}],
@@ -338,9 +344,9 @@ export default function ReportsScreen() {
             .filter(h => selBranch === null || !h.branchId || h.branchId === selBranch)
             .sort((a,b) => b.id-a.id)
             .map(h => [h.prod, nfmt(h.oldPrice), nfmt(h.newPrice), `${h.newPrice>h.oldPrice?'+':''}${nfmt(h.newPrice-h.oldPrice)}`, h.by, fmtDate(h.dt)]) }],
-      });
-    } else if (reportType === 'maintenance') {
-      html = buildPdf({ ...common, title: 'Maintenance Report',
+        });
+      } else if (reportType === 'maintenance') {
+        html = buildPdf({ ...common, title: 'Maintenance Report',
         sections: [{ heading: 'Overview', rows: [
           { label: 'Total Items',  value: `${safeMaintenance.length}` },
           { label: 'Open',         value: `${maintOpen}` },
@@ -350,9 +356,9 @@ export default function ReportsScreen() {
         ]}],
         tables: [{ heading: 'Maintenance Log', headers: ['Title','Priority','Status','Cost','By','Date'],
           rows: safeMaintenance.map((m: any) => [m.title, m.pri, m.st, m.cost ? nfmt(m.cost) : '—', m.by, fmtDate(m.date)]) }],
-      });
-    } else if (reportType === 'operations') {
-      html = buildPdf({ ...common, title: 'Operations Report',
+        });
+      } else if (reportType === 'operations') {
+        html = buildPdf({ ...common, title: 'Operations Report',
         sections: [{ heading: 'Dip Records', rows: [
           { label: 'Total Dip Records', value: `${safeDips.length}` },
           { label: 'Approved',          value: `${dipApproved}` },
@@ -361,9 +367,9 @@ export default function ReportsScreen() {
         ]}],
         tables: [{ heading: 'Recent Dip Records', headers: ['Date','By','Status','Observations'],
           rows: [...safeDips].sort((a: any, b: any) => b.id-a.id).slice(0,30).map((d: any) => [fmtDate(d.dt), d.by, d.status, d.obs || '—']) }],
-      });
-    } else if (reportType === 'hr') {
-      html = buildPdf({ ...common, title: 'HR Report',
+        });
+      } else if (reportType === 'hr') {
+        html = buildPdf({ ...common, title: 'HR Report',
         sections: [
           { heading: 'Staff Overview', rows: [
             { label: 'Total HR Records', value: `${safeHrEmployees.length}` },
@@ -376,9 +382,9 @@ export default function ReportsScreen() {
         ],
         tables: [{ heading: 'Employee Records', headers: ['Name','Role','Department','Status','Join Date'],
           rows: safeHrEmployees.map((e: any) => [e.name, e.role, e.dept, e.status, fmtDate(e.joinDate)]) }],
-      });
-    } else if (reportType === 'marketing') {
-      html = buildPdf({ ...common, title: 'Marketing Report',
+        });
+      } else if (reportType === 'marketing') {
+        html = buildPdf({ ...common, title: 'Marketing Report',
         sections: [{ heading: 'Price Proposals', rows: [
           { label: 'Total',    value: `${safeProposals.length}` },
           { label: 'Pending',  value: `${propPending}` },
@@ -398,9 +404,9 @@ export default function ReportsScreen() {
               `${h.newPrice>h.oldPrice?'+':''}${nfmt(h.newPrice-h.oldPrice)}`, h.by, fmtDate(h.dt),
             ]) },
         ],
-      });
-    } else {
-      html = buildPdf({ ...common, title: 'Full Report',
+        });
+      } else {
+        html = buildPdf({ ...common, title: 'Full Report',
         sections: [
           { heading: 'Financial Overview', rows: [
             { label: 'Total Revenue',  value: nfmt(scaledRev)   },
@@ -424,10 +430,16 @@ export default function ReportsScreen() {
           { heading: 'Product P&L', headers: ['Product','Volume','Revenue','COGS','Gross Profit','Margin'],
             rows: pnlByProd.map(p => [p.prod, p.totalVolumeSold.toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
         ],
-      });
+        });
+      }
+      await shareAsPdf(html, meta.label);
+    } catch (e: any) {
+      if (!e?.message?.toLowerCase().includes('cancel')) {
+        Alert.alert('Export failed', e?.message ?? 'Could not generate PDF');
+      }
+    } finally {
+      setExporting(false);
     }
-    await shareAsPdf(html, meta.label);
-    setExporting(false);
   }
 
   /* ════════════════════════════════════════════════════════
