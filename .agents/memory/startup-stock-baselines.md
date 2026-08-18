@@ -3,11 +3,11 @@ name: Start-up stock baselines
 description: Business rules for configured opening inventory used by the Home Stock Snapshot
 ---
 
-Start-up stock in the Home Snapshot is explicitly set by an admin for each product and branch. LPG uses kilograms while other products use litres.
+Start-up stock in the Home Snapshot is explicitly set by an admin for each product and branch and is used only on the seed business day. LPG uses kilograms while other products use litres.
 
-**Why:** Operations need a controlled, auditable opening quantity for each branch and product; yesterday’s tank dip must not silently replace the admin-approved baseline.
+**Why:** The admin seed establishes the initial opening quantity, then each subsequent day must start from the prior day’s physical tank dip so the snapshot reflects daily operational reality.
 
-**How to apply:** Treat the admin-set branch/product quantity as a one-time seed. Carry prior approved book stock forward, then apply the current business day’s approved deliveries and approved shift-report sales exactly once per report ID: `carried-forward book stock + today’s deliveries − today’s approved shift-report sales`. Do not add auto-created SalesEntry records again. Compare that book stock with today’s submitted tank dip; negative variance is shortage and positive variance is excess. If the admin has not configured a branch/product seed, show the baseline as unavailable rather than treating it as zero.
+**How to apply:** On the seed date use the admin quantity. On later dates use the previous calendar business day’s non-rejected tank dip as opening quantity, then calculate `opening dip + today’s deliveries − today’s shift-report sales`. Delivered and sold metrics are date-specific and show zero when there is no matching record. Do not add auto-created SalesEntry records again. Compare the result with today’s tank dip; negative variance is shortage and positive variance is excess. If the seed or required opening dip is unavailable, show the opening quantity as unavailable rather than treating it as zero.
 
 Dip aggregation must normalize stored readings to finite numbers and use the same branch rule as Tank Dipping: explicitly assigned tanks are scoped, while unassigned tanks remain visible to branch users.
 
@@ -19,4 +19,4 @@ Inventory display aggregates physical stock by product within the visible branch
 
 Dip history must filter each record’s tank readings to the viewer’s visible branch assets; a dip record can contain readings beyond the current branch scope.
 
-The confirmed stock rule is: branch Fuel Stock sums each product across that branch’s assigned tanks, and Book Stock is the carried-forward ledger balance for that product plus today’s approved deliveries minus today’s approved shift-report sales; never combine PMS and AGO.
+The confirmed stock rule is: branch Fuel Stock sums each product across that branch’s assigned tanks, and each daily Book Stock is the prior day’s dip opening plus that day’s deliveries minus that day’s shift-report sales; never combine PMS and AGO.

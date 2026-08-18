@@ -304,6 +304,18 @@ export function businessDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
 }
 
+export function previousBusinessDateKey(value: string): string {
+  const [year, month, day] = value.split('-').map(Number);
+  if (![year, month, day].every(Number.isFinite)) return '';
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() - 1);
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
+
 export function calendarMonthBusinessDateRange(anchor = new Date()): { from: string; to: string } {
   const year = anchor.getFullYear();
   const month = anchor.getMonth();
@@ -367,12 +379,10 @@ export function getLatestValidatedPumpReport(
 }
 
 /**
- * Calculates a live branch/product book stock from the admin seed and the
- * submitted operational ledger events. The seed is only applied once, and
- * records are carried forward through the requested business date. Delivered
- * and sold totals are returned cumulatively so snapshot details reconcile
- * visibly to book stock. Rejected records are excluded; pending records remain
- * visible as live inputs until they are approved or rejected.
+ * Calculates one business day's branch/product stock snapshot. The admin seed
+ * is used only on its own business date. On later dates, callers pass the
+ * previous day's tank dip as the opening quantity. Delivered and sold values
+ * are intentionally date-specific rather than cumulative.
  */
 export function calculateStockBook(
   startupStock: StartupStock | undefined,
@@ -382,6 +392,7 @@ export function calculateStockBook(
   reports: PumpDailyReport[],
   asOfDate: string,
   pumps: Pick<Pump, 'id' | 'branchId'>[] = [],
+  openingStockOverride?: number | null,
 ): StockBookCalculation {
   if (!startupStock || startupStock.branchId !== branchId) {
     return { startupStock: null, delivered: 0, sold: 0, bookStock: null };
@@ -419,8 +430,6 @@ export function calculateStockBook(
     )
     .forEach(report => liveReportsById.set(report.id, report));
 
-  let priorDelivered = 0;
-  let priorSold = 0;
   let delivered = 0;
   let sold = 0;
 
@@ -429,7 +438,6 @@ export function calculateStockBook(
     const eventAt = delivery.approvedAt ?? delivery.mdAt ?? delivery.accAt ?? delivery.submittedAt ?? delivery.dt;
     if (!isInSeedWindow(businessDate, eventAt)) continue;
     if (businessDate === asOfDate) delivered += delivery.rec;
-    else if (businessDate < asOfDate) priorDelivered += delivery.rec;
   }
 
   for (const report of liveReportsById.values()) {
@@ -440,15 +448,16 @@ export function calculateStockBook(
     if (!businessDate) continue;
     if (!isInSeedWindow(businessDate, getPumpReportWorkflowAt(report))) continue;
     if (businessDate === asOfDate) sold += report.liters;
-    else if (businessDate < asOfDate) priorSold += report.liters;
   }
 
-  const openingBookStock = startupStock.quantity + priorDelivered - priorSold;
+  const openingStock = asOfDate === seedDate
+    ? startupStock.quantity
+    : openingStockOverride ?? null;
   return {
-    startupStock: startupStock.quantity,
-    delivered: priorDelivered + delivered,
-    sold: priorSold + sold,
-    bookStock: openingBookStock + delivered - sold,
+    startupStock: openingStock,
+    delivered,
+    sold,
+    bookStock: openingStock === null ? null : openingStock + delivered - sold,
   };
 }
 

@@ -7,7 +7,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, useApp } from '@/context/AppContext';
+import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
@@ -327,7 +327,7 @@ export default function ReceivingScreen() {
     return dips
       .filter(d =>
         recordDateKey(d.dt) !== '' &&
-        recordDateKey(d.dt) <= dateKey &&
+        recordDateKey(d.dt) === dateKey &&
         (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
         (scopeTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           scopeLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
@@ -371,16 +371,20 @@ export default function ReceivingScreen() {
   ): StockProdRow[] {
     const todayKey = localDateKey(new Date());
     const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, false);
+    const openingDip = latestDipForBranch(previousBusinessDateKey(todayKey), scopeTanks, scopeLpgTanks, false);
     return ALL_PRODS
       .map(prod => {
+        const startupRecord = startupStocks.find(stock => stock.product === prod && stock.branchId === scopeBranchId);
+        const openingStock = dipForProduct(openingDip, prod, scopeTanks, scopeLpgTanks);
         const stockBook = calculateStockBook(
-          startupStocks.find(stock => stock.product === prod && stock.branchId === scopeBranchId),
+          startupRecord,
           prod as 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil',
           scopeBranchId,
           scopeDeliveries,
           scopeReports,
           todayKey,
           pumps,
+          openingStock,
         );
         const submittedTankDip = dipForProduct(todaySubmittedDip, prod, scopeTanks, scopeLpgTanks);
         const variance = stockBook.bookStock === null || submittedTankDip === null
@@ -831,9 +835,9 @@ export default function ReceivingScreen() {
                   <View style={[styles.stockTable, { minWidth: 720, backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={[styles.stockTableHeader, { borderBottomColor: colors.border }]}>
                       <Text style={[styles.stockColProd, styles.stockHeaderText, { color: colors.textMuted }]}>Product</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Seed</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Delivered to date</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Sold to date</Text>
+                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Opening</Text>
+                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Delivered today</Text>
+                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Sold today</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Book Stock</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Dip</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Variance</Text>
