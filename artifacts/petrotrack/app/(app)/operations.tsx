@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -8,73 +7,35 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
-  DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, calculateStockBook, dipReadingToLiters, getCurrentTankStock,
-  previousBusinessDateKey,
-  ROLE_COLORS, fmtDate, fmtDateTime, unitForProd, useBusinessDateKey, useApp, type StockProduct,
+  DEFAULT_MGR_PERMS, getCurrentTankStock,
+  ROLE_COLORS, fmtDate, fmtDateTime, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const DIP_SUBTABS_MGR  = ['Dip Form', 'Awaiting Approval'];
 const DIP_SUBTABS_APPR = ['Awaiting Approval'];
-const DIP_SUBTABS_VIEWER: string[] = [];
-const STOCK_SNAPSHOT_PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
 const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
 const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 const DIP_STATUS_ICON: Record<string, string>  = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
-type TopTab = 'dip';
-
-function localDateKey(date: Date): string {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-  ].join('-');
-}
-
-function recordDateKey(value?: string): string {
-  return value?.slice(0, 10) ?? '';
-}
-
-function formatStockQuantity(value: number | null): string {
-  return value === null ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
 export default function OperationsScreen() {
   const {
-    role, userName, branchId, branches, mgrPerms,
-    tanks, lpgTanks, pumps, dips, deliveries, pumpDailyReports, startupStocks, stockSnapshotConfig,
+    role, userName, branchId, mgrPerms,
+    tanks, lpgTanks, dips,
     addDip, approveDip, rejectDip,
-    prices,
   } = useApp();
 
   const colors    = useColors();
-  const params    = useLocalSearchParams<{ tab?: string }>();
-  const todayKey = useBusinessDateKey();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const isMgr      = role === 'mgr';
   const isMD       = role === 'md';
   const isAdmin    = role === 'admin';
   const canApprove = isMD || isAdmin;
 
-  const topTabs: { key: TopTab; label: string; icon: string }[] = [
-    {
-      key: 'dip',
-      label: params.tab === 'inventory' ? 'Inventory' : (isMgr || canApprove ? 'Tank Dip' : 'Inventory'),
-      icon: params.tab === 'inventory' ? 'cube-outline' : (isMgr || canApprove ? 'water-outline' : 'cube-outline'),
-    },
-  ];
-
-  const defaultTab: TopTab = 'dip';
-  const [topTab, setTopTab] = useState<TopTab>(defaultTab);
-
   // ── Dip state ────────────────────────────────────────────────────────────
-  // MD/Admin start on Approvals; station managers start on Dip Form; other
-  // roles start on the stock snapshot because they do not submit or approve tank dips.
-  const [dipSubTab, setDipSubTab]     = useState(
-    params.tab === 'inventory' || params.tab === 'dip-history' ? 2 : canApprove ? 1 : isMgr ? 0 : 2
-  );
+  // MD/Admin start on Approvals; station managers start on Dip Form.
+  const [dipSubTab, setDipSubTab]     = useState(canApprove ? 1 : 0);
   const [readings, setReadings]       = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
@@ -86,7 +47,6 @@ export default function OperationsScreen() {
   const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : canSeeAllTanks ? tanks : tanks.filter(inMyBranch);
   const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : canSeeAllTanks ? lpgTanks : lpgTanks.filter(inMyBranch);
   const canDip          = isMgr;
-  const isGlobalStockViewer = role === 'admin' || (role ? GLOBAL_OVERVIEW_ROLES.has(role) : false);
   const hasPendingDip   = canDip && dips.some(d => d.by === userName && d.status === 'pending');
   const visiblePetrolTankIds = new Set(visibleTanks.map(tank => tank.id));
   const visibleLpgTankIds = new Set(visibleLpgTanks.map(tank => tank.id));
@@ -126,161 +86,40 @@ export default function OperationsScreen() {
 
   const pendingDips = dips.filter(dip => dip.status === 'pending' && dipHasVisibleReading(dip));
 
-  const stockSnapshotBranches = (() => {
-    const latestDipForBranch = (
-      dateKey: string,
-      scopeTanks: typeof tanks,
-      scopeLpgTanks: typeof lpgTanks,
-    ) => dips
-      .filter(dip =>
-        recordDateKey(dip.dt) !== '' &&
-        recordDateKey(dip.dt) === dateKey &&
-        dip.status !== 'rejected' &&
-        (scopeTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
-          scopeLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
-      )
-      .sort((a, b) =>
-        recordDateKey(b.dt).localeCompare(recordDateKey(a.dt)) ||
-        new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() -
-          new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime() ||
-        b.id - a.id
-      )[0];
-
-    const dipForProduct = (
-      record: typeof dips[number] | undefined,
-      product: StockProduct,
-      scopeTanks: typeof tanks,
-      scopeLpgTanks: typeof lpgTanks,
-    ): number | null => {
-      if (!record) return null;
-      if (product === 'LPG') {
-        const readings = scopeLpgTanks
-          .map(tank => record.lpg?.[tank.id])
-          .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-        return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
-      }
-      const readings = scopeTanks
-        .filter(tank => tank.prod === product)
-        .map(tank => {
-          const reading = record.rd?.[tank.id];
-          return typeof reading === 'number' && Number.isFinite(reading) ? dipReadingToLiters(reading) : null;
-        })
-        .filter((value): value is number => value !== null);
-      return readings.length > 0 ? readings.reduce((sum, reading) => sum + reading, 0) : null;
-    };
-
-    const hasAssignedStockAssets = (candidateBranchId: string | null | undefined) =>
-      Boolean(candidateBranchId) &&
-      (tanks.some(tank => tank.branchId === candidateBranchId) ||
-        lpgTanks.some(tank => tank.branchId === candidateBranchId)) &&
-      pumps.some(pump => pump.branchId === candidateBranchId);
-
-    const scopes = isGlobalStockViewer
-      ? branches
-        .filter(branch => hasAssignedStockAssets(branch.id))
-        .map(branch => ({ branchId: branch.id, branchName: branch.name }))
-      : branchId && hasAssignedStockAssets(branchId)
-        ? [{ branchId, branchName: branches.find(branch => branch.id === branchId)?.name ?? 'My branch' }]
-        : [];
-
-    return scopes.map(scope => {
-      const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
-      const branchTanks = tanks.filter(inScope);
-      const branchLpgTanks = lpgTanks.filter(inScope);
-      const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks);
-      const openingDip = latestDipForBranch(previousBusinessDateKey(todayKey), branchTanks, branchLpgTanks);
-      const enabledProducts = stockSnapshotConfig.productsByBranch[scope.branchId];
-
-      return {
-        ...scope,
-        products: STOCK_SNAPSHOT_PRODUCTS
-          .filter(product => enabledProducts?.[product] !== false)
-          .map(product => {
-            const startupRecord = startupStocks.find(stock => stock.product === product && stock.branchId === scope.branchId);
-            const openingStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks);
-            const stockBook = calculateStockBook(
-              startupRecord,
-              product,
-              scope.branchId,
-              deliveries,
-              pumpDailyReports,
-              todayKey,
-              pumps,
-              openingStock,
-            );
-            const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
-            const variance = stockBook.bookStock === null || submittedTankDip === null
-              ? null
-              : stockBook.bookStock - submittedTankDip;
-            return {
-              product,
-              startupStock: stockBook.startupStock,
-              deliveries: stockBook.delivered,
-              sales: stockBook.sold,
-              bookStock: stockBook.bookStock,
-              submittedTankDip,
-              variance,
-              unit: unitForProd(product),
-            };
-          }),
-      };
-    });
-  })();
-
   return (
-    <ScreenLayout title={params.tab === 'inventory' ? 'Inventory' : 'Operations'}>
+    <ScreenLayout title="Operations">
+      {/* MD/Admin see the awaiting-approval queue; station managers see the Dip Form. */}
+      {(() => {
+        const dipTabItems = (canApprove ? DIP_SUBTABS_APPR : isMgr ? DIP_SUBTABS_MGR : []).map(
+          label => ({
+            label,
+            contentIdx: label === 'Awaiting Approval' ? 1 : 0,
+          })
+        );
+        return dipTabItems.length > 0 ? (
+          <View style={[styles.subTabBar, { borderBottomColor: colors.border }]}>
+            {dipTabItems.map(({ label, contentIdx }) => {
+              const isActive = contentIdx === dipSubTab;
+              const showBadge = label === 'Awaiting Approval' && pendingDips.length > 0;
+              return (
+                <TouchableOpacity key={label} onPress={() => setDipSubTab(contentIdx)}
+                  style={[styles.subTabBtn, { borderBottomColor: isActive ? roleColor : 'transparent' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Text style={[styles.subTabLabel, { color: isActive ? roleColor : colors.textMuted, fontWeight: isActive ? '700' : '400' }]}>{label}</Text>
+                    {showBadge && (
+                      <View style={[styles.subTabBadge, { backgroundColor: '#BA7517' }]}>
+                        <Text style={styles.subTabBadgeText}>{pendingDips.length}</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : null;
+      })()}
 
-      {/* ── Top-level tab bar ── */}
-      <View style={[styles.topTabBar, { borderBottomColor: colors.border }]}>
-        {topTabs.map(t => (
-          <TouchableOpacity key={t.key} onPress={() => setTopTab(t.key)}
-            style={[styles.topTabBtn, { borderBottomColor: t.key === topTab ? roleColor : 'transparent' }]}>
-            <Ionicons name={t.icon as any} size={15} color={t.key === topTab ? roleColor : colors.textMuted} />
-            <Text style={[styles.topTabLabel, { color: t.key === topTab ? roleColor : colors.textMuted, fontWeight: t.key === topTab ? '700' : '400' }]}>
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* ═══════════════════════════════════════════════════════ TANK DIP ══ */}
-      {topTab === 'dip' && (
-        <>
-          {(() => {
-            // MD/Admin see the awaiting-approval queue; station managers see
-            // the Dip Form; all other roles see the stock snapshot.
-            const dipTabItems = (canApprove ? DIP_SUBTABS_APPR : isMgr ? DIP_SUBTABS_MGR : DIP_SUBTABS_VIEWER).map(
-              (label, vi) => ({
-                label,
-                contentIdx: label === 'History' ? 3 : label === 'Awaiting Approval' ? 1 : 0,
-              })
-            );
-            return (
-              params.tab === 'inventory' ? null : (
-                <View style={[styles.subTabBar, { borderBottomColor: colors.border }]}>
-                  {dipTabItems.map(({ label, contentIdx }) => {
-                    const isActive   = contentIdx === dipSubTab;
-                    const showBadge  = label === 'Awaiting Approval' && pendingDips.length > 0;
-                    return (
-                      <TouchableOpacity key={label} onPress={() => setDipSubTab(contentIdx)}
-                        style={[styles.subTabBtn, { borderBottomColor: isActive ? roleColor : 'transparent' }]}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                          <Text style={[styles.subTabLabel, { color: isActive ? roleColor : colors.textMuted, fontWeight: isActive ? '700' : '400' }]}>{label}</Text>
-                          {showBadge && (
-                            <View style={[styles.subTabBadge, { backgroundColor: '#BA7517' }]}>
-                              <Text style={styles.subTabBadgeText}>{pendingDips.length}</Text>
-                            </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )
-            );
-          })()}
-
-          {/* Dip Form */}
+      {/* Dip Form */}
           {dipSubTab === 0 && (
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
               {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
@@ -500,122 +339,11 @@ export default function OperationsScreen() {
             </ScrollView>
           )}
 
-          {/* Inventory */}
-          {dipSubTab === 2 && (
-            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-              <View style={[styles.inventorySummary, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.inventorySummaryHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.inventorySummaryTitle, { color: colors.text }]}>Stock Snapshot</Text>
-                    <Text style={[styles.inventorySummarySub, { color: colors.textMuted }]}>Live Book Stock + Variance</Text>
-                  </View>
-                  <View style={[styles.inventorySummaryIcon, { backgroundColor: colors.primary + '18' }]}>
-                    <Ionicons name="analytics-outline" size={20} color={colors.primary} />
-                  </View>
-                </View>
-                <View style={[styles.stockSnapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
-                  <Ionicons name="information-circle-outline" size={16} color={colors.info} />
-                  <Text style={[styles.stockSnapshotIntroText, { color: colors.textMuted }]}>
-                    Live inputs: carried-forward book stock + submitted/approved deliveries − submitted shift-report sales versus the latest submitted tank dip.
-                  </Text>
-                </View>
-              </View>
-
-              {stockSnapshotBranches.length === 0 && (
-                <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
-                  <Ionicons name="analytics-outline" size={16} color={colors.textMuted} />
-                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No stock snapshot branches are configured yet.</Text>
-                </View>
-              )}
-              {stockSnapshotBranches.map(snapshotBranch => (
-                <View key={snapshotBranch.branchId} style={[styles.stockSnapshotBranch, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={[styles.stockSnapshotBranchHeader, { borderBottomColor: colors.border }]}>
-                    <Ionicons name="business-outline" size={14} color={roleColor} />
-                    <Text style={[styles.stockSnapshotBranchName, { color: colors.text }]}>{snapshotBranch.branchName}</Text>
-                  </View>
-                  {snapshotBranch.products.map(snapshot => {
-                    const statusColor = snapshot.startupStock === null
-                      ? colors.amber
-                      : snapshot.variance === null
-                        ? colors.textMuted
-                        : snapshot.variance < 0 ? colors.error : colors.success;
-                    const statusLabel = snapshot.startupStock === null
-                      ? 'Awaiting opening balance'
-                      : snapshot.variance === null
-                        ? 'Awaiting dip'
-                        : snapshot.variance < 0 ? 'Shortage' : snapshot.variance > 0 ? 'Excess' : 'Balanced';
-                    return (
-                      <View key={snapshot.product} style={[styles.stockSnapshotRow, { borderTopColor: colors.border }]}>
-                        <View style={styles.stockSnapshotRowHeader}>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={[styles.stockSnapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
-                          </View>
-                          {stockSnapshotConfig.metrics.variance ? (
-                            <View style={[styles.stockSnapshotStatus, { backgroundColor: statusColor + '18' }]}>
-                              <View style={[styles.stockSnapshotStatusDot, { backgroundColor: statusColor }]} />
-                              <Text style={[styles.stockSnapshotStatusText, { color: statusColor }]}>{statusLabel}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <View style={styles.stockSnapshotValues}>
-                          {stockSnapshotConfig.metrics.startupStock ? (
-                            <View style={styles.stockSnapshotValue}>
-                                <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Opening qty.</Text>
-                              <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
-                                {formatStockQuantity(snapshot.startupStock)} {snapshot.unit}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {stockSnapshotConfig.metrics.deliveries ? (
-                            <View style={styles.stockSnapshotValue}>
-                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Delivered today</Text>
-                              <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
-                                {formatStockQuantity(snapshot.deliveries)} {snapshot.unit}
-                              </Text>
-                            </View>
-                          ) : null}
-                          <View style={styles.stockSnapshotValue}>
-                            <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Qty sold today</Text>
-                            <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
-                              {formatStockQuantity(snapshot.sales)} {snapshot.unit}
-                            </Text>
-                          </View>
-                          {stockSnapshotConfig.metrics.submittedTankDip ? (
-                            <View style={styles.stockSnapshotValue}>
-                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Tank dip qty.</Text>
-                              <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
-                                {formatStockQuantity(snapshot.submittedTankDip)} {snapshot.unit}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {stockSnapshotConfig.metrics.variance ? (
-                            <View style={[styles.stockSnapshotValue, styles.stockSnapshotVarianceValue]}>
-                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Variance</Text>
-                              <Text style={[styles.stockSnapshotValueText, { color: statusColor }]}>
-                                {snapshot.variance === null ? '—' : `${snapshot.variance > 0 ? '+' : ''}${formatStockQuantity(snapshot.variance)} ${snapshot.unit}`}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              ))}
-              <View style={{ height: 16 }} />
-            </ScrollView>
-          )}
-        </>
-      )}
-
     </ScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  topTabBar:   { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
-  topTabBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 11, borderBottomWidth: 2 },
-  topTabLabel: { fontSize: 12 },
   subTabBar:        { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: 'transparent' },
   subTabBtn:        { flex: 1, alignItems: 'center', paddingVertical: 8, borderBottomWidth: 2 },
   subTabLabel:      { fontSize: 12 },
@@ -682,44 +410,4 @@ const styles = StyleSheet.create({
   evidenceName:    { fontSize: 11, fontWeight: '600' },
   evidenceMeta:    { fontSize: 10 },
 
-  invCard:      { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
-  invHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  invName:      { fontSize: 14, fontWeight: '700' },
-  invProd:      { fontSize: 11, marginTop: 2 },
-  progressBg:   { height: 7, borderRadius: 4, overflow: 'hidden' },
-  progressBar:  { height: '100%', borderRadius: 4 },
-  invStats:     { flexDirection: 'row' },
-  invStat:      { flex: 1, alignItems: 'center' },
-  invStatVal:   { fontSize: 16, fontWeight: '700' },
-  invStatLabel: { fontSize: 10, marginTop: 2 },
-  inventorySummary: { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 14 },
-  inventorySummaryHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  inventorySummaryTitle: { fontSize: 15, fontWeight: '700' },
-  inventorySummarySub: { fontSize: 11, marginTop: 2 },
-  inventorySummaryIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  inventoryMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  inventoryMetric: { width: '47%', padding: 10, borderRadius: 10, backgroundColor: 'rgba(127, 127, 127, 0.08)' },
-  inventoryMetricValue: { fontSize: 18, fontWeight: '800' },
-  inventoryMetricLabel: { fontSize: 10, marginTop: 2 },
-  inventoryMetricCapacity: { fontSize: 9, marginTop: 4 },
-  branchStockCard: { padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
-  branchStockHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
-  branchStockTitle: { fontSize: 14, fontWeight: '800' },
-  inventoryUnitNote: { fontSize: 10, marginTop: 10 },
-  stockSnapshotIntro: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingHorizontal: 11, paddingVertical: 9, borderRadius: 11, borderWidth: 1 },
-  stockSnapshotIntroText: { flex: 1, fontSize: 10, fontWeight: '600' },
-  stockSnapshotBranch: { borderRadius: 14, borderWidth: 1, overflow: 'hidden', marginTop: 12 },
-  stockSnapshotBranchHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  stockSnapshotBranchName: { fontSize: 13, fontWeight: '800' },
-  stockSnapshotRow: { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  stockSnapshotRowHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  stockSnapshotProduct: { fontSize: 12, fontWeight: '800' },
-  stockSnapshotStatus: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 99 },
-  stockSnapshotStatusDot: { width: 6, height: 6, borderRadius: 3 },
-  stockSnapshotStatusText: { fontSize: 9, fontWeight: '800' },
-  stockSnapshotValues: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  stockSnapshotValue: { width: '48%', minWidth: 0 },
-  stockSnapshotVarianceValue: { width: '100%', alignItems: 'flex-start' },
-  stockSnapshotValueLabel: { fontSize: 9, fontWeight: '600' },
-  stockSnapshotValueText: { fontSize: 11, fontWeight: '800', marginTop: 3 },
 });
