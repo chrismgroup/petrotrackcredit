@@ -24,6 +24,7 @@ import {
   dipReadingToLiters,
   previousBusinessDateKey,
   unitForProd,
+  useBusinessDateKey,
   useApp,
   type Budget,
   type Message,
@@ -277,6 +278,7 @@ export default function HomeScreen() {
 
   const colors = useColors();
   const router = useRouter();
+  const todayKey = useBusinessDateKey();
 
   const [noteModal, setNoteModal] = useState(false);
   const [noteText, setNoteText] = useState('');
@@ -304,7 +306,6 @@ export default function HomeScreen() {
   );
 
   const branchStockSnapshots = useMemo<BranchStockSnapshot[]>(() => {
-    const todayKey = localDateKey(new Date());
     const sortDips = (records: typeof dips) => records.sort((a, b) => {
       const aTime = new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime();
       const bTime = new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime();
@@ -422,7 +423,7 @@ export default function HomeScreen() {
 
       return { ...scope, products };
     });
-  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, scopedBranchId, startupStocks, stockSnapshotConfig, tanks]);
+  }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, scopedBranchId, startupStocks, stockSnapshotConfig, tanks, todayKey]);
 
   // ── Approval items ────────────────────────────────────────────────────
   const pendingDips = dips.filter(d => d.status === 'pending');

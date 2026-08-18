@@ -10,7 +10,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import {
   DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, calculateStockBook, dipReadingToLiters, getCurrentTankStock,
   previousBusinessDateKey,
-  ROLE_COLORS, fmtDate, fmtDateTime, unitForProd, useApp, type StockProduct,
+  ROLE_COLORS, fmtDate, fmtDateTime, unitForProd, useBusinessDateKey, useApp, type StockProduct,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -51,6 +51,7 @@ export default function OperationsScreen() {
 
   const colors    = useColors();
   const params    = useLocalSearchParams<{ tab?: string }>();
+  const todayKey = useBusinessDateKey();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const isMgr      = role === 'mgr';
   const isMD       = role === 'md';
@@ -157,7 +158,6 @@ export default function OperationsScreen() {
   }, []).sort((a, b) => a.name.localeCompare(b.name));
 
   const stockSnapshotBranches = (() => {
-    const todayKey = localDateKey(new Date());
     const latestDipForBranch = (
       dateKey: string,
       scopeTanks: typeof tanks,
