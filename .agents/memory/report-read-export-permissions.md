@@ -3,8 +3,8 @@ name: Report read and export permissions
 description: Report visibility is separate from report export permission.
 ---
 
-All signed-in roles can read every report type in the Reports screen; role-specific restrictions apply to generating or sharing exports, not to on-screen review.
+Admin grants the Reports module by role or by individual user through Access Control. Users who receive that module can read every report type in the Reports screen; export restrictions remain role-specific.
 
-**Why:** Users need a complete operational view without every role receiving permission to create downloadable reports.
+**Why:** Report visibility is sensitive and must be explicitly granted by Admin, while permitted users still need a complete operational view without automatically receiving export/share access.
 
-**How to apply:** Keep the report selector and My Jobs report cards based on the full readable catalog, and use `canGenerate` only for the export action.
+**How to apply:** Gate the Reports route and My Jobs cards with the admin-managed `exprpt` module, keep the report selector based on the full readable catalog, and use `canGenerate` only for export.
