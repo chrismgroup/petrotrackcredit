@@ -16,3 +16,5 @@
 - [Native module preview isolation](native-module-preview.md) — load native-only SDKs behind a runtime platform guard so Expo web previews do not initialize them
 - [Start-up stock baselines](startup-stock-baselines.md) — admin-set product baselines stay locked to non-admins and prefer branch-specific values for scoped views
 - [Expo build port conflict](expo-build-port-conflict.md) — use the managed Expo workflow when the mockup sandbox already owns Metro's port
+- [Report export web print](report-export-web-print.md) — use printAsync on web; printToFileAsync has no browser file URI
+- [Report read and export permissions](report-read-export-permissions.md) — all roles can read reports; export capability remains role-specific

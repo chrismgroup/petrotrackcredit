@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { REPORT_META, ALL_REPORT_TYPES, ReportType } from '@/lib/report-helpers';
+import { REPORT_META, getPerms, ReportType } from '@/lib/report-helpers';
 import { ROLE_COLORS, SCREEN_ROUTES, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -121,6 +121,7 @@ export default function JobsScreen() {
   const visibleSupport = supportItems.filter(item => allowed.has(
     item.id === 'people' ? 'hr' : item.id === 'marketing' ? 'mktg' : item.id === 'settings' ? 'settings' : item.id,
   ) || role === 'admin' || ['ceo', 'md', 'acc', 'csm'].includes(role));
+  const visibleReportTypes = getPerms(role).visible;
   const pending = dips.filter(d => d.status === 'pending').length;
   const openMaintenance = maintenance.filter(item => item.st === 'Open').length;
   const pendingDeliveries = deliveries.filter(item => item.approvalStatus === 'pending' || item.approvalStatus === 'pending_acc' || item.approvalStatus === 'pending_md').length;
@@ -210,10 +211,8 @@ export default function JobsScreen() {
           <View style={styles.section}>
             <SectionHeader icon="document-text-outline" title="Reports" subtitle="Open a focused report or export the full picture" colors={colors} />
             <View style={styles.reportGrid}>
-              {ALL_REPORT_TYPES.map(type => {
+              {visibleReportTypes.map(type => {
                 const meta = REPORT_META[type];
-                const enabled = meta && (role === 'admin' || role === 'ceo' || role === 'md' || role === 'acc' || role === 'csm' || role === 'mktg' || role === 'mgr');
-                if (!enabled) return null;
                 return (
                   <TouchableOpacity key={type} style={[styles.reportCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => openReport(type)} activeOpacity={0.78}>
                     <View style={[styles.reportIcon, { backgroundColor: meta.color + '18' }]}><Ionicons name={meta.icon as any} size={18} color={meta.color} /></View>

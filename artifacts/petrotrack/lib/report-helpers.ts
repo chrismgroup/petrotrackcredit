@@ -29,18 +29,21 @@ export const REPORT_META: Record<ReportType, { label: string; icon: string; desc
   full:        { label:'Full Report',   icon:'document-text-outline', desc:'All sections combined',                  dept:'All',        color:'#0a3a1e' },
 };
 
-/* ─── Role permission matrix ────────────────────────────── */
+/* ─── Role permission matrix ──────────────────────────────
+ * Every signed-in role can read every report on screen.
+ * Export permissions remain role-specific below. */
 type PermSet = { visible: ReportType[]; canGenerate: ReportType[] };
 const ALL = ALL_REPORT_TYPES;
 const ROLE_PERMS: Partial<Record<Role, PermSet>> & { default: PermSet } = {
   admin:  { visible: ALL, canGenerate: ALL },
   ceo:    { visible: ALL, canGenerate: ALL },
   md:     { visible: ALL, canGenerate: ALL },
-  acc:    { visible: ['summary','pnl','expenses','sales','prices','full'], canGenerate: ['summary','pnl','expenses','full'] },
-  csm:    { visible: ['hr','summary','expenses','sales','prices','operations'], canGenerate: ['hr','summary','expenses'] },
-  mktg:   { visible: ['sales','prices','marketing','summary','expenses'], canGenerate: ['sales','prices','marketing'] },
-  mgr:    { visible: ['summary','expenses','sales','prices','operations','maintenance'], canGenerate: ['summary','expenses','sales','prices','operations'] },
-  default: { visible: [], canGenerate: [] },
+  acc:    { visible: ALL, canGenerate: ['summary','pnl','expenses','full'] },
+  csm:    { visible: ALL, canGenerate: ['hr','summary','expenses'] },
+  mktg:   { visible: ALL, canGenerate: ['sales','prices','marketing'] },
+  mgr:    { visible: ALL, canGenerate: ['summary','expenses','sales','prices','operations'] },
+  att:    { visible: ALL, canGenerate: [] },
+  default: { visible: ALL, canGenerate: [] },
 };
 
 export function getPerms(role: Role | null): PermSet {
