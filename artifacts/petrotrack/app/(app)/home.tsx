@@ -584,7 +584,7 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Daily stock snapshot ───────────────────────────────────── */}
-        <Section label="STOCK SNAPSHOT" route={`${SCREEN_ROUTES.ops}?tab=inventory`} colors={colors}>
+        <Section label="STOCK SNAPSHOT" colors={colors}>
             <View style={[s.snapshotCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
