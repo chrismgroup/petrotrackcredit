@@ -7,7 +7,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useApp } from '@/context/AppContext';
+import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
@@ -194,6 +194,7 @@ export default function ReceivingScreen() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
+  const todayKey = useBusinessDateKey();
   const [filterDate, setFilterDate] = useState('');
 
   const isMgr        = role === 'mgr' || role === 'csm' || role === 'admin';
@@ -369,7 +370,6 @@ export default function ReceivingScreen() {
     scopeDeliveries: Delivery[],
     scopeReports: typeof pumpDailyReports,
   ): StockProdRow[] {
-    const todayKey = localDateKey(new Date());
     const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, false);
     const openingDip = latestDipForBranch(previousBusinessDateKey(todayKey), scopeTanks, scopeLpgTanks, false);
     return ALL_PRODS

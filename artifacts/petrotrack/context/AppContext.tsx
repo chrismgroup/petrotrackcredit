@@ -304,6 +304,35 @@ export function businessDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
 }
 
+export function currentBusinessDateKey(date = new Date()): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+export function useBusinessDateKey(): string {
+  const [dateKey, setDateKey] = useState(() => currentBusinessDateKey());
+
+  useEffect(() => {
+    const refresh = () => {
+      const nextDateKey = currentBusinessDateKey();
+      setDateKey(previousDateKey => previousDateKey === nextDateKey ? previousDateKey : nextDateKey);
+    };
+    const timer = setInterval(refresh, 60_000);
+    const appStateSubscription = AppState.addEventListener('change', state => {
+      if (state === 'active') refresh();
+    });
+    return () => {
+      clearInterval(timer);
+      appStateSubscription.remove();
+    };
+  }, []);
+
+  return dateKey;
+}
+
 export function previousBusinessDateKey(value: string): string {
   const [year, month, day] = value.split('-').map(Number);
   if (![year, month, day].every(Number.isFinite)) return '';
