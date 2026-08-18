@@ -22,6 +22,7 @@ import {
   SCREEN_ROUTES,
   calculateStockBook,
   dipReadingToLiters,
+  previousBusinessDateKey,
   unitForProd,
   useApp,
   type Budget,
@@ -317,7 +318,7 @@ export default function HomeScreen() {
     ) => sortDips(dips
       .filter(d =>
         recordDateKey(d.dt) !== '' &&
-        recordDateKey(d.dt) <= dateKey &&
+        recordDateKey(d.dt) === dateKey &&
         (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
         (petrolTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           branchLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
@@ -380,24 +381,27 @@ export default function HomeScreen() {
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
       const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks, false);
+      const openingDip = latestDipForBranch(previousBusinessDateKey(todayKey), branchTanks, branchLpgTanks, false);
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
         : undefined;
       const products = STOCK_SNAPSHOT_PRODUCTS
         .filter(product => enabledProducts?.[product] !== false)
         .map(product => {
-        const startupStock = startupStocks.find(stock =>
+         const startupRecord = startupStocks.find(stock =>
            stock.product === product &&
            stock.branchId === scope.branchId
-         )?.quantity ?? null;
+          );
+         const openingStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks);
         const stockBook = calculateStockBook(
-          startupStocks.find(stock => stock.product === product && stock.branchId === scope.branchId),
+           startupRecord,
           product,
           scope.branchId,
           deliveries,
           pumpDailyReports,
           todayKey,
           pumps,
+           openingStock,
         );
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const variance = stockBook.bookStock === null || submittedTankDip === null
@@ -406,7 +410,7 @@ export default function HomeScreen() {
 
         return {
           product,
-          startupStock,
+           startupStock: stockBook.startupStock,
           deliveries: stockBook.delivered,
           sales: stockBook.sold,
           bookStock: stockBook.bookStock,
@@ -600,7 +604,7 @@ export default function HomeScreen() {
                     ? colors.textMuted
                   : snapshot.variance < 0 ? colors.error : colors.success;
                 const statusLabel = snapshot.startupStock === null
-                  ? 'Awaiting admin baseline'
+                  ? 'Awaiting opening balance'
                   : snapshot.variance === null
                     ? 'Awaiting dip'
                   : snapshot.variance < 0 ? 'Shortage' : snapshot.variance > 0 ? 'Excess' : 'Balanced';
@@ -620,20 +624,20 @@ export default function HomeScreen() {
                     <View style={s.snapshotValues}>
                       {stockSnapshotConfig.metrics.startupStock ? (
                         <View style={s.snapshotValue}>
-                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Seed qty.</Text>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Opening qty.</Text>
                           <Text style={[s.snapshotValueText, { color: colors.text }]}>{snapshot.startupStock === null ? '—' : `${formatQuantity(snapshot.startupStock)} ${snapshot.unit}`}</Text>
                         </View>
                       ) : null}
                       {stockSnapshotConfig.metrics.deliveries ? (
                         <View style={s.snapshotValue}>
-                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Delivered to date</Text>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Delivered today</Text>
                           <Text style={[s.snapshotValueText, { color: colors.text }]}>
                             {formatQuantity(snapshot.deliveries)} {snapshot.unit}
                           </Text>
                         </View>
                       ) : null}
                       <View style={s.snapshotValue}>
-                        <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Qty sold today</Text>
                         <Text style={[s.snapshotValueText, { color: colors.text }]}>
                           {formatQuantity(snapshot.sales)} {snapshot.unit}
                         </Text>

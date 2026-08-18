@@ -9,6 +9,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
   DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, calculateStockBook, dipReadingToLiters, getCurrentTankStock,
+  previousBusinessDateKey,
   ROLE_COLORS, fmtDate, fmtDateTime, unitForProd, useApp, type StockProduct,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -158,12 +159,13 @@ export default function OperationsScreen() {
   const stockSnapshotBranches = (() => {
     const todayKey = localDateKey(new Date());
     const latestDipForBranch = (
+      dateKey: string,
       scopeTanks: typeof tanks,
       scopeLpgTanks: typeof lpgTanks,
     ) => dips
       .filter(dip =>
         recordDateKey(dip.dt) !== '' &&
-        recordDateKey(dip.dt) <= todayKey &&
+        recordDateKey(dip.dt) === dateKey &&
         dip.status !== 'rejected' &&
         (scopeTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
           scopeLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
@@ -216,7 +218,8 @@ export default function OperationsScreen() {
       const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
-      const todayDip = latestDipForBranch(branchTanks, branchLpgTanks);
+      const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks);
+      const openingDip = latestDipForBranch(previousBusinessDateKey(todayKey), branchTanks, branchLpgTanks);
       const enabledProducts = stockSnapshotConfig.productsByBranch[scope.branchId];
 
       return {
@@ -224,14 +227,17 @@ export default function OperationsScreen() {
         products: STOCK_SNAPSHOT_PRODUCTS
           .filter(product => enabledProducts?.[product] !== false)
           .map(product => {
+            const startupRecord = startupStocks.find(stock => stock.product === product && stock.branchId === scope.branchId);
+            const openingStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks);
             const stockBook = calculateStockBook(
-              startupStocks.find(stock => stock.product === product && stock.branchId === scope.branchId),
+              startupRecord,
               product,
               scope.branchId,
               deliveries,
               pumpDailyReports,
               todayKey,
               pumps,
+              openingStock,
             );
             const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
             const variance = stockBook.bookStock === null || submittedTankDip === null
@@ -708,7 +714,7 @@ export default function OperationsScreen() {
                         ? colors.textMuted
                         : snapshot.variance < 0 ? colors.error : colors.success;
                     const statusLabel = snapshot.startupStock === null
-                      ? 'Awaiting baseline'
+                      ? 'Awaiting opening balance'
                       : snapshot.variance === null
                         ? 'Awaiting dip'
                         : snapshot.variance < 0 ? 'Shortage' : snapshot.variance > 0 ? 'Excess' : 'Balanced';
@@ -728,7 +734,7 @@ export default function OperationsScreen() {
                         <View style={styles.stockSnapshotValues}>
                           {stockSnapshotConfig.metrics.startupStock ? (
                             <View style={styles.stockSnapshotValue}>
-                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Seed qty.</Text>
+                                <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Opening qty.</Text>
                               <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
                                 {formatStockQuantity(snapshot.startupStock)} {snapshot.unit}
                               </Text>
@@ -736,14 +742,14 @@ export default function OperationsScreen() {
                           ) : null}
                           {stockSnapshotConfig.metrics.deliveries ? (
                             <View style={styles.stockSnapshotValue}>
-                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Delivered to date</Text>
+                              <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Delivered today</Text>
                               <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
                                 {formatStockQuantity(snapshot.deliveries)} {snapshot.unit}
                               </Text>
                             </View>
                           ) : null}
                           <View style={styles.stockSnapshotValue}>
-                            <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Qty sold</Text>
+                            <Text style={[styles.stockSnapshotValueLabel, { color: colors.textSubtle }]}>Qty sold today</Text>
                             <Text style={[styles.stockSnapshotValueText, { color: colors.text }]}>
                               {formatStockQuantity(snapshot.sales)} {snapshot.unit}
                             </Text>
