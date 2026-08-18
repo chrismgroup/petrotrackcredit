@@ -97,8 +97,8 @@ export default function LoginScreen() {
       });
       if (!result.success) { setBioLoading(false); return; }
       const serverResult = await apiLogin(bioCreds.username, bioCreds.password);
-      setBioLoading(false);
       if (typeof serverResult === 'string') {
+        setBioLoading(false);
         if (serverResult === 'network') {
           Alert.alert('No Connection', 'Cannot reach the server. Check your internet connection and try again.');
         } else {
@@ -107,7 +107,11 @@ export default function LoginScreen() {
           Alert.alert('Sign-in Failed', 'Your saved credentials are no longer valid. Please sign in with your password.');
         }
       } else {
-        login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, serverResult.staffId, serverResult.branchId ?? undefined);
+        const synced = await login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, serverResult.staffId, serverResult.branchId ?? undefined);
+        setBioLoading(false);
+        if (!synced) {
+          Alert.alert('Sign-in incomplete', 'Your credentials were accepted, but the latest app data could not be loaded. Please check your connection and try again.');
+        }
       }
     } catch { setBioLoading(false); }
   }, [bioCreds, bioLoading, login]);
@@ -118,8 +122,8 @@ export default function LoginScreen() {
     if (!u || !p) { Alert.alert('Required', 'Please enter your username and password.'); return; }
     setLoading(true);
     const serverResult = await apiLogin(u, p);
-    setLoading(false);
     if (typeof serverResult === 'string') {
+      setLoading(false);
       if (serverResult === 'network') {
         Alert.alert('No Connection', 'Cannot reach the server. Check your internet connection and try again.');
       } else if (serverResult === 'credentials') {
@@ -130,7 +134,11 @@ export default function LoginScreen() {
       return;
     }
     await saveCredentials(u, p);
-    login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, serverResult.staffId, serverResult.branchId ?? undefined);
+    const synced = await login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, serverResult.staffId, serverResult.branchId ?? undefined);
+    setLoading(false);
+    if (!synced) {
+      Alert.alert('Sign-in incomplete', 'Your credentials were accepted, but the latest app data could not be loaded. Please check your connection and try again.');
+    }
   }
 
   const bioIcon  = bioType === 'face' ? 'scan-outline' : 'finger-print-outline';

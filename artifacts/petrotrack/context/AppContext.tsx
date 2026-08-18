@@ -815,7 +815,7 @@ interface AppContextType {
   role: Role | null; userName: string; branchId: string | null; staffId: number | null;
   isServerAuthenticated: boolean;
   navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
-  login: (role: Role, name: string, staffId?: number, branchId?: string) => void; logout: () => void;
+  login: (role: Role, name: string, staffId?: number, branchId?: string) => Promise<boolean>; logout: () => void;
   updateMgrPerms: (branchId: string, perms: Partial<MgrPermissions>) => void;
   prices: Prices; priceHistory: PriceChange[]; tanks: Tank[]; lpgTanks: LPGTank[]; pumps: Pump[];
   dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
@@ -1081,6 +1081,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   /* ── persistence: load from AsyncStorage first (fast), then sync from API (authoritative) ── */
   const [loaded, setLoaded] = useState(false);
+  const loadedRef = useRef(false);
+  const loadedResolveRef = useRef<(() => void) | null>(null);
+  const loadedPromiseRef = useRef<Promise<void> | null>(null);
+  if (!loadedPromiseRef.current) {
+    loadedPromiseRef.current = new Promise<void>(resolve => {
+      loadedResolveRef.current = resolve;
+    });
+  }
   const [stateSyncReadyTick, setStateSyncReadyTick] = useState(0);
   useEffect(() => {
     const KEYS = [
@@ -1093,6 +1101,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
       'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks', 'stockSnapshotConfig',
     ] as const;
+    const markLoaded = () => {
+      loadedRef.current = true;
+      setLoaded(true);
+      loadedResolveRef.current?.();
+      loadedResolveRef.current = null;
+    };
     AsyncStorage.multiGet([...KEYS]).then(pairs => {
       const s: Record<string, any> = {};
       for (const [k, v] of pairs) if (v) s[k] = JSON.parse(v);
@@ -1165,8 +1179,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.callLog)           setCallLog(s.callLog);
       if (s.marketCompetitors) setMarketCompetitors(s.marketCompetitors);
       if (s.financialEntry)    setFinancialEntry(s.financialEntry);
-      setLoaded(true);
-    });
+       markLoaded();
+     }).catch(() => {
+       // The authenticated server sync can still recover the app if the local
+       // cache is unavailable, so never leave login waiting indefinitely.
+       markLoaded();
+     });
   }, []);
 
   /* ── Pending-writes tracker: keys with in-flight PUTs are skipped by syncFromServer ── */
@@ -1185,14 +1203,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   /* ── syncFromServer: fetch ALL state from the server and apply it locally ── */
   // Called once on startup and then every 3 s so every device stays in sync.
-  const syncFromServer = useCallback(async () => {
+  const syncFromServer = useCallback(async (): Promise<boolean> => {
     try {
       const p = pendingWritesRef.current;
       const [s, userRows] = await Promise.all([
         stateApi.getAll(),
         usersApi.list(),
       ]);
-      if (!s) return;
+      if (!s) return false;
       if (s.companyInfo && !p.has('companyInfo'))             setCompanyInfo(s.companyInfo as CompanyInfo);
       if (s.tanks && !p.has('tanks'))                         setTanks(s.tanks as Tank[]);
       if (s.lpgTanks && !p.has('lpgTanks'))                   setLpgTanks(s.lpgTanks as LPGTank[]);
@@ -1306,11 +1324,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Trigger deferred writes for records created while the app was still
       // unauthenticated and therefore blocked by the startup write gate.
       setStateSyncReadyTick(t => t + 1);
+      return true;
     } catch {
       // silently ignore — network errors must not break the UI.
       // CRITICAL: DO NOT lift the gate on error. If we do, the empty default state in useState([])
       // will be PUT to the server by the syncSlice effects, wiping all real data permanently.
       // The gate stays closed; the next 3-second poll will retry syncFromServer.
+      return false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1548,15 +1568,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (type === 'minutes') setMeetingMinutes(prev => prev.map(m => m.id === id ? { ...m, approval: { ...m.approval, ...approval } } : m));
   }, [userName]);
 
-  const login = useCallback((r: Role, n: string, sid?: number, bid?: string) => {
+  const login = useCallback(async (r: Role, n: string, sid?: number, bid?: string): Promise<boolean> => {
+    // apiLogin saves the JWT before this callback runs. Complete the full
+    // authenticated state refresh before exposing the role to the router, so
+    // new and returning users never see a dashboard built from empty defaults.
+    if (!loadedRef.current && loadedPromiseRef.current) {
+      await loadedPromiseRef.current;
+    }
+    const synced = await syncFromServer();
+    if (!synced) return false;
+
     setRole(r); setUserName(n);
     setBranchId(bid ?? null); setStaffId(sid ?? null);
     setIsServerAuthenticated(true);
     AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null }));
-    // The provider may have mounted before authentication, causing its initial
-    // state sync to receive 401. Refresh again now that apiLogin has saved the
-    // JWT so role-specific dashboards don't remain on empty local defaults.
-    void syncFromServer();
+    return true;
   }, [syncFromServer]);
 
   const logout = useCallback(() => {
