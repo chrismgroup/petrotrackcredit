@@ -21,7 +21,7 @@ type JobItem = {
 
 const operations: JobItem[] = [
   { id: 'maint', label: 'Maintenance', description: 'Log and follow up on station issues', icon: 'construct-outline', route: SCREEN_ROUTES.maint, accent: '#B45309' },
-  { id: 'inventory', label: 'Inventory', description: 'Review stock, sales and inventory logs', icon: 'layers-outline', route: SCREEN_ROUTES.ops, accent: '#176A45' },
+  { id: 'inventory', label: 'Inventory', description: 'Review stock and daily inventory position', icon: 'layers-outline', route: SCREEN_ROUTES.ops, accent: '#176A45' },
   { id: 'dips', label: 'Tank dipping approvals', description: 'Review physical tank readings and approvals', icon: 'water-outline', route: SCREEN_ROUTES.ops, accent: '#28698B' },
   { id: 'receiving', label: 'Products receiving', description: 'Track deliveries, costs and variances', icon: 'truck-outline', route: SCREEN_ROUTES.recv, accent: '#7C3AED' },
 ];
