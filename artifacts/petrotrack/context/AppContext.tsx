@@ -218,7 +218,7 @@ export interface InventoryLogEntry {
   branchId?: string;
 }
 export type StockLogStatus = 'balanced' | 'shortage' | 'excess' | 'awaiting_opening' | 'awaiting_dip';
-export type StockLogOpeningSource = 'startup_seed' | 'previous_log' | 'previous_dip';
+export type StockLogOpeningSource = 'startup_seed' | 'previous_log' | 'previous_dip' | 'unavailable';
 export interface StockLogEntry {
   id: string;
   branchId: string;
