@@ -20,3 +20,4 @@
 - [Report read and export permissions](report-read-export-permissions.md) — Admin grants report visibility; permitted users can read all types, while export remains role-specific
 - [COGS delivery costs](cogs-delivery-costs.md) — approved delivery costs carry forward through the report end date instead of being limited to the sales window
 - [Report runtime safety](report-runtime-safety.md) — combined reports must tolerate incomplete synced records during rendering and export
+- [Legacy branch asset records](legacy-branch-assets.md) — older tank and pump records may omit branch IDs; only unambiguous asset names can safely repair them

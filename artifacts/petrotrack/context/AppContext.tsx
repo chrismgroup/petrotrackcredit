@@ -385,6 +385,22 @@ function timestampMs(value?: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function inferLegacyBranchId(assetName: string, branches: Branch[]): string | undefined {
+  const name = assetName.toLowerCase();
+  const findBranch = (pattern: RegExp) => branches.find(branch => pattern.test(branch.name.toLowerCase()))?.id;
+
+  if (name.includes('ikot') || name.includes('ekpene')) {
+    return findBranch(/ikot|ekpene/);
+  }
+  if (name.includes('ring road')) {
+    return findBranch(/ring road/);
+  }
+  if (name.includes('uyo') && name.includes('gas')) {
+    return findBranch(/uyo.*gas|gas.*uyo/);
+  }
+  return undefined;
+}
+
 /**
  * Returns the latest validated closing meter for a pump.
  *
@@ -1401,6 +1417,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     if (changed) setTanks(repaired);
   }, [dips, isServerAuthenticated, loaded, tanks]);
+
+  /* ── Repair legacy branch-less assets using their unambiguous names ── */
+  useEffect(() => {
+    if (!loaded || !isServerAuthenticated || !initialSyncDoneRef.current || branches.length === 0) return;
+
+    let tanksChanged = false;
+    let lpgTanksChanged = false;
+    let pumpsChanged = false;
+    const repairedTanks = tanks.map(tank => {
+      if (tank.branchId) return tank;
+      const branchId = inferLegacyBranchId(tank.name, branches);
+      if (!branchId) return tank;
+      tanksChanged = true;
+      return { ...tank, branchId };
+    });
+    const repairedLpgTanks = lpgTanks.map(tank => {
+      if (tank.branchId) return tank;
+      const branchId = inferLegacyBranchId(tank.name, branches);
+      if (!branchId) return tank;
+      lpgTanksChanged = true;
+      return { ...tank, branchId };
+    });
+    const repairedPumps = pumps.map(pump => {
+      if (pump.branchId) return pump;
+      const branchId = inferLegacyBranchId(pump.name, branches);
+      if (!branchId) return pump;
+      pumpsChanged = true;
+      return { ...pump, branchId };
+    });
+
+    if (!tanksChanged && !lpgTanksChanged && !pumpsChanged) return;
+    if (tanksChanged) setTanks(repairedTanks);
+    if (lpgTanksChanged) setLpgTanks(repairedLpgTanks);
+    if (pumpsChanged) setPumps(repairedPumps);
+    setAudit(a => [{
+      id: genId(),
+      action: 'Legacy branch assignments repaired',
+      user: userName,
+      detail: 'Assigned branch IDs to legacy tank and pump records using unambiguous asset names.',
+      ts: nowTs(),
+    }, ...a]);
+  }, [branches, isServerAuthenticated, loaded, lpgTanks, pumps, tanks, userName]);
 
   useEffect(() => {
     if (!loaded || !isServerAuthenticated) return;
