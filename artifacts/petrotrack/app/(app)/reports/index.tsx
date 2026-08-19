@@ -14,7 +14,7 @@ import {
   PERIODS, PROD_COLORS, REPORT_META,
   Period, ReportType,
   buildPdf, getLastKnownCostPrice, getPerms, matchesProd, nfmt, periodRange,
-  localDateKey, priBg, priColor, stColor, safeNum, safeStr,
+  localDateKey, priBg, priColor, stColor, safeNum, safeStr, isMissingNum,
 } from '@/lib/report-helpers';
 import { useLocalSearchParams } from 'expo-router';
 
@@ -93,6 +93,18 @@ function DiffBadge({ diff }: { diff: number }) {
     </View>
   );
 }
+/** Small amber badge shown on any row whose key amount field was absent during
+ *  sync and therefore defaulted to ₦0. Alerts operators to repair the record. */
+function IncompleteBadge() {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4,
+      paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6,
+      backgroundColor: '#fff8e1', borderWidth: 1, borderColor: '#f0c040', alignSelf: 'flex-start' }}>
+      <Ionicons name="warning-outline" size={10} color="#7a5c00" />
+      <Text style={{ fontSize: 10, fontWeight: '700', color: '#7a5c00' }}>Incomplete record</Text>
+    </View>
+  );
+}
 
 /* ═══════════════════════════════════════════════════════════
    MAIN SCREEN
@@ -116,9 +128,10 @@ export default function ReportsScreen() {
      that would cause .toLocaleString() / arithmetic to throw. */
   const safeSales = (Array.isArray(sales) ? sales : []).map((s: any) => ({
     ...s,
-    L:     safeNum(s.L),
-    price: safeNum(s.price),
-    dt:    safeStr(s.dt, ''),
+    L:          safeNum(s.L),
+    price:      safeNum(s.price),
+    dt:         safeStr(s.dt, ''),
+    _amtMissing: isMissingNum(s.L) || isMissingNum(s.price),
   }));
   const safeDeliveries = (Array.isArray(deliveries) ? deliveries : []).map((d: any) => ({
     ...d,
@@ -128,12 +141,13 @@ export default function ReportsScreen() {
   }));
   const safeExpenses = (Array.isArray(expenses) ? expenses : []).map((e: any) => ({
     ...e,
-    amt:        safeNum(e.amt),
-    cat:        safeStr(e.cat, ''),
-    desc:       safeStr(e.desc, ''),
-    byName:     safeStr(e.byName, ''),
-    approvedBy: safeStr(e.approvedBy, ''),
-    dt:         safeStr(e.dt, ''),
+    amt:         safeNum(e.amt),
+    cat:         safeStr(e.cat, ''),
+    desc:        safeStr(e.desc, ''),
+    byName:      safeStr(e.byName, ''),
+    approvedBy:  safeStr(e.approvedBy, ''),
+    dt:          safeStr(e.dt, ''),
+    _amtMissing: isMissingNum(e.amt),
   }));
   const safeBranches    = Array.isArray(branches)   ? branches   : [];
   const safeMaintenance = (Array.isArray(maintenance) ? maintenance : []).map((m: any) => ({
@@ -175,6 +189,7 @@ export default function ReportsScreen() {
     grossAmount: safeNum(r.grossAmount),
     liters:      safeNum(r.liters),
     date:        safeStr(r.date, ''),
+    _amtMissing: isMissingNum(r.grossAmount),
   }));
   const safePriceHistory = (Array.isArray(priceHistory) ? priceHistory : []).map((h: any) => ({
     ...h,
@@ -249,13 +264,26 @@ export default function ReportsScreen() {
       const reps = fPumpReports.filter((r: any) => r.product === prod);
       const L    = reps.reduce((s: number, r: any) => s + r.liters, 0);
       const gross = reps.reduce((s: number, r: any) => s + r.grossAmount, 0);
-      return { prod, color, L, scaledL: Math.round(L), scaledGross: Math.round(gross) };
+      const hasIncomplete = reps.some((r: any) => r._amtMissing);
+      return { prod, color, L, scaledL: Math.round(L), scaledGross: Math.round(gross), hasIncomplete };
     }).filter(p => p.L > 0),
     [fPumpReports, rc]
   );
 
   const approved    = useMemo(() => fExps.filter((e: any) => e.status === 'approved'), [fExps]);
   const totalExp    = useMemo(() => approved.reduce((s: number, e: any) => s + e.amt, 0), [approved]);
+
+  /* Incomplete-record counts: records whose key amount field was absent during
+     sync and was coerced to ₦0 by safeNum. Used for in-app badges and PDF footnotes. */
+  const incompleteExpCount     = useMemo(() => approved.filter((e: any) => e._amtMissing).length, [approved]);
+  const incompleteSalesCount   = useMemo(() => fSales.filter((s: any) => s._amtMissing).length, [fSales]);
+  const incompletePumpCount    = useMemo(() => fPumpReports.filter((r: any) => r._amtMissing).length, [fPumpReports]);
+  const incompleteMgrExpCount  = useMemo(() => mgrBranchExps.filter((e: any) => e._amtMissing).length, [mgrBranchExps]);
+
+  function buildIncompleteFootnote(count: number): string | undefined {
+    if (count <= 0) return undefined;
+    return `${count} record${count === 1 ? '' : 's'} had a missing amount field and contributed \u20a60 to the totals shown. These figures may be understated. Please locate and repair the affected records to ensure accuracy.`;
+  }
   const scaledExp   = Math.round(totalExp);
   const scaledRev   = shiftGross;
   const scaledSales = Math.round(fSales.reduce((s: number, e: any) => s + e.L * e.price, 0));
@@ -288,6 +316,10 @@ export default function ReportsScreen() {
       grossMargin: sr > 0 ? Math.round((gp / sr) * 100) : null,
       hasCostData: ac > 0,
       priceChanges: safePriceHistory.filter(h => h.prod === prod).slice(0, 3),
+      /** True when at least one underlying sale record for this product had a
+       *  missing L or price field that safeNum coerced to 0, making the
+       *  product's sales revenue and P&L figures potentially understated. */
+      hasIncomplete: pe.some((e: any) => e._amtMissing),
     };
   }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fSales, cogsDeliveries, prices, safePriceHistory]);
 
@@ -352,6 +384,7 @@ export default function ReportsScreen() {
       const common = { branchName, generatedAt, generatedBy: userName, period: `${period} · ${periodStr}` };
       let html = '';
       if (reportType === 'summary') {
+        const summaryIncomplete = incompleteExpCount + incompleteSalesCount + incompletePumpCount;
         html = buildPdf({ ...common, title: 'Summary Report',
         sections: [
           { heading: 'Financial Overview', rows: [
@@ -365,8 +398,10 @@ export default function ReportsScreen() {
         ],
         tables: branchBD.length > 0 ? [{ heading: 'Branch Breakdown', headers: ['Branch','Revenue','Sales','Expenses','Net'],
           rows: branchBD.map(b => [b.name, nfmt(b.rev), nfmt(b.salesRev), nfmt(b.exp), nfmt(b.net)]) }] : [],
+        footnote: buildIncompleteFootnote(summaryIncomplete),
         });
       } else if (reportType === 'pnl') {
+        const pnlIncomplete = incompleteExpCount + incompleteSalesCount + incompletePumpCount;
         html = buildPdf({ ...common, title: 'P&L Report',
         sections: [{ heading: 'P&L Summary', rows: [
           { label: 'Sales Revenue',       value: nfmt(totSR)    },
@@ -382,6 +417,7 @@ export default function ReportsScreen() {
             rows: pnlByProd.map(p => [p.prod, p.totalVolumeSold.toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
           { heading: 'Operating Expenses', headers: ['Category','Amount'], rows: catScaled.map(c => [c.cat, nfmt(c.total)]) },
         ],
+        footnote: buildIncompleteFootnote(pnlIncomplete),
         });
       } else if (reportType === 'expenses') {
         html = buildPdf({ ...common, title: 'Expense Report',
@@ -391,8 +427,12 @@ export default function ReportsScreen() {
         ]}],
         tables: [{ heading: 'Expense Records', headers: ['Category','Description','By','Amount','Approved By'],
           rows: [...approved].reverse().map((e: any) => [e.cat, e.desc, e.byName, nfmt(e.amt), e.approvedBy ?? '—']) }],
+        footnote: buildIncompleteFootnote(incompleteExpCount),
         });
       } else if (reportType === 'sales') {
+        // Sales report totals (shiftGross, netSalesFigure) derive from pump reports
+        // and manager expenses — not from the legacy fSales entries.
+        const salesIncomplete = incompletePumpCount + incompleteMgrExpCount;
         html = buildPdf({ ...common, title: 'Sales Report',
         sections: [{ heading: 'Sales Summary', rows: [
           { label: 'Gross Sales (Shift Reports)', value: nfmt(shiftGross)      },
@@ -407,6 +447,7 @@ export default function ReportsScreen() {
           ...(mgrBranchExps.length > 0 ? [{ heading: 'Manager Expenses Deducted', headers: ['Category','Description','By','Amount','Approved By'],
             rows: mgrBranchExps.map((e: any) => [e.cat, e.desc, e.byName, nfmt(e.amt), e.approvedBy ?? '—']) }] : []),
         ],
+        footnote: buildIncompleteFootnote(salesIncomplete),
         });
       } else if (reportType === 'prices') {
         html = buildPdf({ ...common, title: 'Price Report',
@@ -504,6 +545,7 @@ export default function ReportsScreen() {
           { heading: 'Product P&L', headers: ['Product','Volume','Revenue','COGS','Gross Profit','Margin'],
             rows: pnlByProd.map(p => [p.prod, p.totalVolumeSold.toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
         ],
+        footnote: buildIncompleteFootnote(incompleteExpCount + incompleteSalesCount + incompletePumpCount),
         });
       }
       await shareAsPdf(html, meta.label);
@@ -677,6 +719,7 @@ export default function ReportsScreen() {
                   <Text style={[s.rowCardTitle, { color: colors.text }]}>{e.cat}</Text>
                   <Text style={[s.rowCardSub, { color: colors.textMuted }]}>{e.desc}</Text>
                   <Text style={{ fontSize: 10, marginTop: 3, color: colors.textSubtle }}>by {e.byName} · Approved by {e.approvedBy}</Text>
+                  {e._amtMissing && <IncompleteBadge />}
                 </View>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: rc }}>{fmt(e.amt)}</Text>
               </View>
@@ -721,6 +764,7 @@ export default function ReportsScreen() {
                       <Text style={[s.rowCardTitle, { color: colors.text }]}>{e.cat}</Text>
                       <Text style={[s.rowCardSub, { color: colors.textMuted }]}>{e.desc}</Text>
                       <Text style={{ fontSize: 10, marginTop: 3, color: colors.textSubtle }}>by {e.byName} · Approved by {e.approvedBy}</Text>
+                      {e._amtMissing && <IncompleteBadge />}
                     </View>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: '#791F1F' }}>{fmt(e.amt)}</Text>
                   </View>
@@ -740,6 +784,7 @@ export default function ReportsScreen() {
                     <Text style={{ fontSize: 13, fontWeight: '700', color: p.color }}>{fmt(p.scaledGross)}</Text>
                   </View>
                   <Text style={{ fontSize: 11, color: colors.textMuted }}>{p.scaledL.toLocaleString()} L</Text>
+                  {p.hasIncomplete && <IncompleteBadge />}
                 </View>
               </View>
             ))}
@@ -1000,7 +1045,8 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
                 </View>
               ) : null}
             </View>
-            <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+            {p.hasIncomplete && <IncompleteBadge />}
+            <View style={{ flexDirection: 'row', marginBottom: 8, marginTop: p.hasIncomplete ? 8 : 0 }}>
               {[
                 { label: 'Volume Sold', val: `${p.totalVolumeSold.toLocaleString()} L` },
                 { label: 'Avg Sell',    val: `₦${p.avgSellPrice.toLocaleString()}/L`, color: pc },
