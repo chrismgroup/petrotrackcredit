@@ -20,7 +20,7 @@ type JobItem = {
 };
 
 const operations: JobItem[] = [
-  { id: 'stock-log', label: 'Create stock log', description: 'Trace opening stock, deliveries, sales and tank-dip variance', icon: 'analytics-outline', route: SCREEN_ROUTES.ops, accent: '#0D6E56' },
+  { id: 'stock-log', label: 'Daily stock log', description: 'Trace opening stock, deliveries, sales and tank-dip variance', icon: 'analytics-outline', route: SCREEN_ROUTES.ops, accent: '#0D6E56' },
   { id: 'maint', label: 'Maintenance', description: 'Log and follow up on station issues', icon: 'construct-outline', route: SCREEN_ROUTES.maint, accent: '#B45309' },
   { id: 'dips', label: 'Tank dipping approvals', description: 'Review physical tank readings and approvals', icon: 'water-outline', route: SCREEN_ROUTES.ops, accent: '#28698B' },
   { id: 'receiving', label: 'Products receiving', description: 'Track deliveries, costs and variances', icon: 'truck-outline', route: SCREEN_ROUTES.recv, accent: '#7C3AED' },
