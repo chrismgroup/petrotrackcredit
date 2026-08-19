@@ -121,6 +121,9 @@ export default function ReportsScreen() {
   const safeHrEmployees = Array.isArray(hrEmployees)      ? hrEmployees      : [];
   const safeProposals   = Array.isArray(priceProposals)   ? priceProposals   : [];
   const safePumpReports = Array.isArray(pumpDailyReports) ? pumpDailyReports : [];
+  const safePriceHistory = Array.isArray(priceHistory)    ? priceHistory     : [];
+  const safeStaff       = Array.isArray(staff)            ? staff            : [];
+  const safeCompanyInfo = companyInfo && typeof companyInfo === 'object' ? companyInfo : ({} as any);
 
   const params = useLocalSearchParams<{ type?: string }>();
   const requestedType = params.type as ReportType | undefined;
@@ -221,15 +224,15 @@ export default function ReportsScreen() {
       salesRevenue: sr, avgCostPerL: Math.round(ac), scaledCOGS: cogs, grossProfit: gp,
       grossMargin: sr > 0 ? Math.round((gp / sr) * 100) : null,
       hasCostData: ac > 0,
-      priceChanges: priceHistory.filter(h => h.prod === prod).slice(0, 3),
+      priceChanges: safePriceHistory.filter(h => h.prod === prod).slice(0, 3),
     };
-  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fSales, cogsDeliveries, prices, priceHistory]);
+  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fSales, cogsDeliveries, prices, safePriceHistory]);
 
   const totSR   = pnlByProd.reduce((s, p) => s + p.salesRevenue, 0);
   const totCOGS = pnlByProd.reduce((s, p) => s + p.scaledCOGS,  0);
   const totGP   = totSR - totCOGS;
   const gmPct   = totSR > 0 ? Math.round((totGP / totSR) * 100) : 0;
-  const citaRate = parseFloat(companyInfo.citaRate || '30') / 100;
+  const citaRate = parseFloat(safeCompanyInfo.citaRate || '30') / 100;
   const operatingProfit = totGP - scaledExp;
   const citaProvision = operatingProfit > 0 ? Math.round(operatingProfit * citaRate) : 0;
   const netPnl  = operatingProfit - citaProvision;
@@ -247,7 +250,8 @@ export default function ReportsScreen() {
     const entries = fSales.filter((sale: any) => matchesProd(sale.pump, prod));
     const L = entries.reduce((sum: number, e: any) => sum + e.L, 0);
     const rev = entries.reduce((sum: number, e: any) => sum + e.L * e.price, 0);
-    return { prod, color, L, scaledL: Math.round(L), scaledRev: Math.round(rev) };
+    const price = L > 0 ? Math.round(rev / L) : 0;
+    return { prod, color, L, price, scaledL: Math.round(L), scaledRev: Math.round(rev) };
   }).filter(p => p.L > 0);
 
   const branchBD = useMemo(() => {
@@ -347,7 +351,7 @@ export default function ReportsScreen() {
           label: prod, value: getPriceForProduct(prices, prod, selBranch) > 0 ? `${nfmt(getPriceForProduct(prices, prod, selBranch))}/L` : 'Not set',
         }))}],
         tables: [{ heading: 'Price Change History', headers: ['Product','Old Price','New Price','Change','By','Date'],
-          rows: [...priceHistory]
+          rows: [...safePriceHistory]
             .filter(h => selBranch === null || !h.branchId || h.branchId === selBranch)
             .sort((a,b) => b.id-a.id)
             .map(h => [h.prod, nfmt(h.oldPrice), nfmt(h.newPrice), `${h.newPrice>h.oldPrice?'+':''}${nfmt(h.newPrice-h.oldPrice)}`, h.by, fmtDate(h.dt)]) }],
@@ -383,7 +387,7 @@ export default function ReportsScreen() {
             { label: 'Active',           value: `${hrActive}` },
             { label: 'Suspended',        value: `${hrSuspended}` },
             { label: 'Inactive',         value: `${hrInactive}` },
-            { label: 'Staff Roster',     value: `${staff.length}` },
+            { label: 'Staff Roster',     value: `${safeStaff.length}` },
           ]},
           { heading: 'By Department', rows: Object.entries(deptMap).map(([dept, count]) => ({ label: dept, value: `${count}` })) },
         ],
@@ -406,7 +410,7 @@ export default function ReportsScreen() {
               p.status, p.proposedBy, fmtDate(p.proposedAt),
             ]) },
           { heading: 'Recent Price Changes', headers: ['Product','Old','New','Change','By','Date'],
-            rows: [...priceHistory].sort((a,b) => b.id-a.id).slice(0,20).map(h => [
+            rows: [...safePriceHistory].sort((a,b) => b.id-a.id).slice(0,20).map(h => [
               h.prod, nfmt(h.oldPrice), nfmt(h.newPrice),
               `${h.newPrice>h.oldPrice?'+':''}${nfmt(h.newPrice-h.oldPrice)}`, h.by, fmtDate(h.dt),
             ]) },
@@ -686,7 +690,7 @@ export default function ReportsScreen() {
             {(['PMS','AGO','DPK','LPG','Lube Oil'] as const).map(prod => {
               const price = getPriceForProduct(prices, prod, selBranch);
               const pc = PROD_COLORS[prod] || rc;
-              const last = priceHistory
+              const last = safePriceHistory
                 .filter(h => h.prod === prod && (selBranch === null || !h.branchId || h.branchId === selBranch))
                 .sort((a,b) => b.id-a.id)[0];
               return (
@@ -705,8 +709,8 @@ export default function ReportsScreen() {
               );
             })}
             <SecTitle label="Price Change History" colors={colors} />
-            {priceHistory.length === 0 ? <EmptyState icon="pricetag-outline" label="No price changes recorded" colors={colors} /> : null}
-            {[...priceHistory].sort((a,b) => b.id-a.id).map(h => {
+            {safePriceHistory.length === 0 ? <EmptyState icon="pricetag-outline" label="No price changes recorded" colors={colors} /> : null}
+            {[...safePriceHistory].sort((a,b) => b.id-a.id).map(h => {
               const pc = PROD_COLORS[h.prod] || rc;
               const up = h.newPrice > h.oldPrice;
               return (
@@ -863,7 +867,7 @@ export default function ReportsScreen() {
               );
             })}
             <SecTitle label="Recent Price Changes" colors={colors} />
-            {[...priceHistory].sort((a,b) => b.id-a.id).slice(0, 15).map(h => {
+            {[...safePriceHistory].sort((a,b) => b.id-a.id).slice(0, 15).map(h => {
               const pc = PROD_COLORS[h.prod] || rc;
               const up = h.newPrice > h.oldPrice;
               return (
@@ -997,7 +1001,7 @@ function ProdSaleRow({ p, colors }: { p: any; colors: any }) {
           <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{p.prod}</Text>
           <Text style={{ fontSize: 13, fontWeight: '700', color: p.color }}>{fmt(p.scaledRev)}</Text>
         </View>
-        <Text style={{ fontSize: 10, color: colors.textMuted }}>{p.scaledL.toLocaleString()} L · ₦{p.price.toLocaleString()}/L</Text>
+        <Text style={{ fontSize: 10, color: colors.textMuted }}>{p.scaledL.toLocaleString()} L · ₦{(p.price ?? 0).toLocaleString()}/L</Text>
       </View>
     </View>
   );
