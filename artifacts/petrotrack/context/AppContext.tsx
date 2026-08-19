@@ -684,6 +684,15 @@ export const GLOBAL_OVERVIEW_ROLES = new Set(['ceo', 'md', 'acc', 'csm']);
 // by individual user through System Settings > Access Control.
 const REPORT_ACCESS_POLICY_VERSION = 1;
 
+function readReportAccessPolicyVersion(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value && typeof value === 'object' && 'version' in value) {
+    const version = (value as { version?: unknown }).version;
+    return typeof version === 'number' && Number.isFinite(version) ? version : 0;
+  }
+  return 0;
+}
+
 function defaultRoleAccess(): Record<string, Record<string, boolean>> {
   const result: Record<string, Record<string, boolean>> = {};
   const roles = ['ceo','md','acc','csm','mktg','mgr','att'];
@@ -1146,9 +1155,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.mgrPerms)          setMgrPerms(s.mgrPerms);
       if (s.roleAccess)        setRoleAccess(s.roleAccess);
       if (s.userAccess)        setUserAccess(s.userAccess);
-       if (typeof s.reportAccessPolicyVersion === 'number') {
-         setReportAccessPolicyVersion(s.reportAccessPolicyVersion);
-       }
+       setReportAccessPolicyVersion(readReportAccessPolicyVersion(s.reportAccessPolicyVersion));
       if (s.expenses)          setExpenses(s.expenses);
       if (s.budgets)           setBudgets(s.budgets);
       if (s.sales)             setSales(s.sales);
@@ -1238,9 +1245,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.roleAccess && !p.has('roleAccess'))               setRoleAccess(s.roleAccess as Record<string, Record<string, boolean>>);
       if (s.userAccess && !p.has('userAccess'))               setUserAccess(s.userAccess as Record<number, Record<string, boolean>>);
        if (!p.has('reportAccessPolicyVersion')) {
-         setReportAccessPolicyVersion(
-           typeof s.reportAccessPolicyVersion === 'number' ? s.reportAccessPolicyVersion : 0,
-         );
+         setReportAccessPolicyVersion(readReportAccessPolicyVersion(s.reportAccessPolicyVersion));
        }
       if (s.stockSnapshotConfig && !p.has('stockSnapshotConfig')) {
         const incoming = s.stockSnapshotConfig as Partial<StockSnapshotConfig>;
@@ -1357,7 +1362,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Reports by default. Revoke those role-wide defaults once, while keeping
   // any explicit per-user override that an admin may already have set.
   useEffect(() => {
-    if (!loaded || !initialSyncDoneRef.current || reportAccessPolicyVersion >= REPORT_ACCESS_POLICY_VERSION) return;
+    if (role !== 'admin' || !loaded || !initialSyncDoneRef.current || reportAccessPolicyVersion >= REPORT_ACCESS_POLICY_VERSION) return;
 
     setRoleAccess(prev => {
       const next = { ...prev };
@@ -1368,7 +1373,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
     setReportAccessPolicyVersion(REPORT_ACCESS_POLICY_VERSION);
-  }, [loaded, reportAccessPolicyVersion, stateSyncReadyTick]);
+  }, [loaded, reportAccessPolicyVersion, role, stateSyncReadyTick]);
 
   /* ── One-time repair for openings written by the removed mm conversion ── */
   useEffect(() => {
@@ -1436,7 +1441,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('mgrPerms',          mgrPerms); },          [mgrPerms, loaded]);
   useEffect(() => { if (loaded) syncSlice('roleAccess',        roleAccess); },        [roleAccess, loaded]);
   useEffect(() => { if (loaded) syncSlice('userAccess',        userAccess); },        [userAccess, loaded]);
-  useEffect(() => { if (loaded) syncSlice('reportAccessPolicyVersion', reportAccessPolicyVersion); }, [reportAccessPolicyVersion, loaded]);
+  useEffect(() => {
+    if (loaded && role === 'admin') {
+      syncSlice('reportAccessPolicyVersion', { version: reportAccessPolicyVersion });
+    }
+  }, [reportAccessPolicyVersion, loaded, role]);
   useEffect(() => { if (loaded) syncSlice('expenses',          expenses); },          [expenses, loaded]);
   useEffect(() => { if (loaded) syncSlice('budgets',           budgets); },           [budgets, loaded]);
   useEffect(() => { if (loaded) syncSlice('sales',             sales); },             [sales, loaded]);

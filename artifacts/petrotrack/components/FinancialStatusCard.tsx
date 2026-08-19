@@ -16,7 +16,7 @@ import {
   useApp,
   type BankLoan,
 } from '@/context/AppContext';
-import { computePumpReportCOGS } from '@/lib/report-helpers';
+import { computePumpReportCOGS, getLastKnownCostPrice } from '@/lib/report-helpers';
 import { useColors } from '@/hooks/useColors';
 
 const PROD_COLOR: Record<string, string> = {
@@ -183,14 +183,15 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const inFinancialScope = (recordBranchId?: string) =>
     isGlobal || !branchId || recordBranchId === branchId;
 
-  /* ── last cost price per product from approved deliveries ── */
+  /* ── last known cost price per product from approved deliveries ── */
   const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
+  const cogsDeliveries = deliveries.filter(delivery =>
+    businessDateKey(delivery.dt) <= currentMonthRange.to &&
+    inFinancialScope(delivery.branchId),
+  );
   const costPerProd: Record<string, number> = {};
   for (const prod of PRODUCTS) {
-    const last = deliveries
-      .filter(d => d.prod === prod && d.costPrice && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
-      .sort((a, b) => b.id - a.id)[0];
-    costPerProd[prod] = last?.costPrice ?? 0;
+    costPerProd[prod] = getLastKnownCostPrice(cogsDeliveries, prod);
   }
 
   /* ── stock value per branch per product ── */
@@ -232,10 +233,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const monthRevenue = calculateBusinessMonthRevenue(pumpDailyReports, scopedBranchId, currentMonthRange);
   const monthCOGS = computePumpReportCOGS(
     monthlyRevenueReports,
-    deliveries.filter(delivery =>
-      inCurrentMonth(delivery.dt) &&
-      inFinancialScope(delivery.branchId),
-    ),
+    cogsDeliveries,
   );
   const monthExpenses = expenses
     .filter(e => e.status === 'approved' && inCurrentMonth(e.dt) && inFinancialScope(e.branchId))
