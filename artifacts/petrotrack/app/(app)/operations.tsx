@@ -9,7 +9,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
   DEFAULT_MGR_PERMS, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
-  getCurrentTankStock, previousBusinessDateKey,
+  getCurrentTankStock,
   ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -46,10 +46,11 @@ function latestDipForStockLog(
   dateKey: string,
   petrolTanks: ReturnType<typeof useApp>['tanks'],
   branchLpgTanks: ReturnType<typeof useApp>['lpgTanks'],
+  beforeDate = false,
 ) {
   return dips
     .filter(dip =>
-      dip.dt?.slice(0, 10) === dateKey &&
+      (beforeDate ? dip.dt?.slice(0, 10) < dateKey : dip.dt?.slice(0, 10) === dateKey) &&
       dip.status !== 'rejected' &&
       (petrolTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
         branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
@@ -104,7 +105,7 @@ function stockLogValueSignature(entry: Pick<StockLogEntry, 'branchId' | 'product
 function StockLogPanel() {
   const {
     role, branchId, branches, tanks, lpgTanks, pumps, dips, deliveries,
-    pumpDailyReports, startupStocks, stockLogs, upsertStockLogs,
+    pumpDailyReports, stockLogs, upsertStockLogs,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
@@ -116,17 +117,24 @@ function StockLogPanel() {
       if (!isGlobal && branch.id !== branchId) return false;
       const branchTanks = tanks.filter(tank => tank.branchId === branch.id);
       const branchLpgTanks = lpgTanks.filter(tank => tank.branchId === branch.id);
-      const branchPumps = pumps.filter(pump => pump.branchId === branch.id);
       return (
-        ((branchTanks.length > 0 || branchLpgTanks.length > 0) && branchPumps.length > 0) ||
+        branchTanks.length > 0 ||
+        branchLpgTanks.length > 0 ||
+        pumps.some(pump => pump.branchId === branch.id) ||
+        deliveries.some(delivery => delivery.branchId === branch.id) ||
+        pumpDailyReports.some(report => report.branchId === branch.id) ||
+        dips.some(dip =>
+          dip.status !== 'rejected' &&
+          (branchTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
+            branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
+        ) ||
         stockLogs.some(entry => entry.branchId === branch.id)
       );
     }),
-    [branchId, branches, isGlobal, lpgTanks, pumps, stockLogs, tanks],
+    [branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, stockLogs, tanks],
   );
 
   const buildEntries = useMemo(() => {
-    const previousDate = previousBusinessDateKey(businessDate);
     const entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[] = [];
 
     visibleBranches.forEach(branch => {
@@ -134,20 +142,21 @@ function StockLogPanel() {
       const branchLpgTanks = lpgTanks.filter(tank => tank.branchId === branch.id);
       const branchPumps = pumps.filter(pump => pump.branchId === branch.id);
       const todayDip = latestDipForStockLog(dips, businessDate, branchTanks, branchLpgTanks);
-      const openingDip = latestDipForStockLog(dips, previousDate, branchTanks, branchLpgTanks);
+      const openingDip = latestDipForStockLog(dips, businessDate, branchTanks, branchLpgTanks, true);
 
       STOCK_PRODUCTS.forEach(product => {
         const hasProduct =
           branchTanks.some(tank => tank.prod === product) ||
           (product === 'LPG' && branchLpgTanks.length > 0) ||
           branchPumps.some(pump => pump.prod === product) ||
-          startupStocks.some(stock => stock.branchId === branch.id && stock.product === product) ||
-          deliveries.some(delivery => delivery.branchId === branch.id && delivery.prod === product) ||
+          deliveries.some(delivery =>
+            delivery.branchId === branch.id &&
+            (delivery.prod === product || (product === 'LPG' && ['LPG_Single', 'LPG_Distributor'].includes(delivery.prod))),
+          ) ||
           pumpDailyReports.some(report => report.branchId === branch.id && report.product === product) ||
           stockLogs.some(entry => entry.branchId === branch.id && entry.product === product);
         if (!hasProduct) return;
 
-        const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
         const previousLog = stockLogs
           .filter(entry =>
             entry.branchId === branch.id &&
@@ -157,15 +166,13 @@ function StockLogPanel() {
           )
           .sort((a, b) => b.businessDate.localeCompare(a.businessDate))[0];
         const openingQuantity = previousLog?.bookStock ?? stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
-        const openingSource: StockLogOpeningSource = businessDate === startupRecord?.setAt.slice(0, 10)
-          ? 'startup_seed'
-          : previousLog?.bookStock !== null && previousLog?.bookStock !== undefined
+        const openingSource: StockLogOpeningSource = previousLog?.bookStock !== null && previousLog?.bookStock !== undefined
             ? 'previous_log'
             : openingQuantity !== null
               ? 'previous_dip'
-              : 'startup_seed';
+              : 'unavailable';
         const book = calculateStockBook(
-          startupRecord,
+          undefined,
           product,
           branch.id,
           deliveries,
@@ -193,7 +200,7 @@ function StockLogPanel() {
       });
     });
     return entries;
-  }, [businessDate, branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, startupStocks, stockLogs, tanks, visibleBranches]);
+  }, [businessDate, branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, stockLogs, tanks, visibleBranches]);
 
   const savedEntries = stockLogs.filter(entry =>
     entry.businessDate === businessDate &&
@@ -273,7 +280,7 @@ function StockLogPanel() {
       </View>
 
       <View style={[styles.stockControlCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <AppliedDateField value={businessDate} onChange={setBusinessDate} label="Stock log business date" accent={roleColor} helper="Daily records auto-save. Opening carries forward from the previous saved book stock; a tank dip is used only when no prior log exists." />
+        <AppliedDateField value={businessDate} onChange={setBusinessDate} label="Stock log business date" accent={roleColor} helper="Daily records auto-save from live deliveries, pump reports, tank dips, and prior stock-log balances. No start-up quantity is required." />
         <TouchableOpacity style={[styles.stockCreateBtn, { backgroundColor: roleColor }]} onPress={createLog} activeOpacity={0.85}>
           <Ionicons name="save-outline" size={18} color="#fff" />
           <Text style={styles.stockCreateBtnText}>{savedEntries.length > 0 ? 'Refresh daily record' : 'Save daily record'}</Text>
@@ -292,7 +299,7 @@ function StockLogPanel() {
         <View style={[styles.stockEmpty, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="file-tray-outline" size={28} color={colors.textMuted} />
           <Text style={[styles.stockEmptyTitle, { color: colors.text }]}>No stock log inputs yet</Text>
-          <Text style={[styles.stockEmptyText, { color: colors.textMuted }]}>Set a branch startup quantity, record a delivery or shift report, then create the daily log.</Text>
+          <Text style={[styles.stockEmptyText, { color: colors.textMuted }]}>Record deliveries, pump sales, or tank dips in the app. The stock log will extract those live records automatically.</Text>
         </View>
       ) : null}
       <View style={styles.stockHistoryHeading}>
