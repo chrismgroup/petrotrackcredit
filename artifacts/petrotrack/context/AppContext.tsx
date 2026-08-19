@@ -218,6 +218,7 @@ export interface InventoryLogEntry {
   branchId?: string;
 }
 export type StockLogStatus = 'balanced' | 'shortage' | 'excess' | 'awaiting_opening' | 'awaiting_dip';
+export type StockLogOpeningSource = 'startup_seed' | 'previous_log' | 'previous_dip';
 export interface StockLogEntry {
   id: string;
   branchId: string;
@@ -231,8 +232,11 @@ export interface StockLogEntry {
   discrepancy: number | null;
   unit: 'L' | 'kg';
   status: StockLogStatus;
+  openingSource?: StockLogOpeningSource;
   createdBy: string;
   createdAt: string;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 export interface CompanyInfo {
   name: string; rcNumber: string; tin: string; address: string;
@@ -442,9 +446,10 @@ export function getLatestValidatedPumpReport(
 
 /**
  * Calculates one business day's branch/product stock snapshot. The admin seed
- * is used only on its own business date. On later dates, callers pass the
- * previous day's tank dip as the opening quantity. Delivered and sold values
- * are intentionally date-specific rather than cumulative.
+ * is used only on its own business date. On later dates, callers pass a
+ * previous stock-log book balance (or a previous tank dip when no log exists)
+ * as the opening quantity. Delivered and sold values are intentionally
+ * date-specific rather than cumulative.
  */
 export function calculateStockBook(
   startupStock: StartupStock | undefined,
@@ -456,22 +461,24 @@ export function calculateStockBook(
   pumps: Pick<Pump, 'id' | 'branchId'>[] = [],
   openingStockOverride?: number | null,
 ): StockBookCalculation {
-  if (!startupStock || startupStock.branchId !== branchId) {
+  if (branchId === null || (startupStock && startupStock.branchId !== branchId)) {
     return { startupStock: null, delivered: 0, sold: 0, bookStock: null };
   }
 
-  const seedAt = timestampMs(startupStock.setAt);
-  const seedDate = recordBusinessDate(startupStock.setAt);
+  const seedAt = startupStock ? timestampMs(startupStock.setAt) : 0;
+  const seedDate = startupStock ? recordBusinessDate(startupStock.setAt) : '';
   const isAfterSeed = (eventAt: string | undefined, businessDate: string) => {
     const eventAtMs = timestampMs(eventAt);
     if (seedAt > 0 && eventAtMs > 0) return eventAtMs >= seedAt;
     return !seedDate || businessDate >= seedDate;
   };
   const isInSeedWindow = (businessDate: string, eventAt: string | undefined) =>
-    Boolean(businessDate) &&
-    businessDate >= seedDate &&
-    businessDate <= asOfDate &&
-    isAfterSeed(eventAt, businessDate);
+    startupStock
+      ? Boolean(businessDate) &&
+        businessDate >= seedDate &&
+        businessDate <= asOfDate &&
+        isAfterSeed(eventAt, businessDate)
+      : businessDate === asOfDate;
 
   const liveDeliveriesById = new Map<number, Delivery>();
   deliveries
@@ -512,7 +519,7 @@ export function calculateStockBook(
     if (businessDate === asOfDate) sold += report.liters;
   }
 
-  const openingStock = asOfDate === seedDate
+  const openingStock = startupStock && asOfDate === seedDate
     ? startupStock.quantity
     : openingStockOverride ?? null;
   return {
@@ -2795,8 +2802,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         next.set(key, {
           ...entry,
           id: existing?.id ?? `stock-log-${genId()}`,
-          createdBy: userName,
-          createdAt,
+          createdBy: existing?.createdBy ?? userName,
+          createdAt: existing?.createdAt ?? createdAt,
+          updatedBy: userName,
+          updatedAt: createdAt,
         });
       });
       return Array.from(next.values()).sort((a, b) =>
