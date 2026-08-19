@@ -10,18 +10,21 @@ const SHIFT_STATUS_LABEL: Record<string, string> = {
   pending_manager:     'Pending Manager',
   pending_accountant:  'Pending Accountant',
   returned:            'Returned',
+  returned_attendant:  'With Attendant',
   approved:            'Approved',
 };
 const SHIFT_STATUS_COLOR: Record<string, string> = {
   pending_manager:     '#BA7517',
   pending_accountant:  '#185FA5',
   returned:            '#A32D2D',
+  returned_attendant:  '#8A3B0F',
   approved:            '#1a6e3c',
 };
 const SHIFT_STATUS_ICON: Record<string, string> = {
   pending_manager:     'time-outline',
   pending_accountant:  'hourglass-outline',
   returned:            'return-down-back-outline',
+  returned_attendant:  'return-down-back-outline',
   approved:            'checkmark-circle',
 };
 
@@ -263,7 +266,7 @@ export default function SalesScreen() {
         {sortedReports.map(r => {
           const sc         = SHIFT_STATUS_COLOR[r.status] || '#888';
            const isApproved = r.status === 'approved';
-          const isReturned = r.status === 'returned';
+          const isReturned = r.status === 'returned' || r.status === 'returned_attendant';
            const hasLiveDetails = !isReturned;
           return (
             <View

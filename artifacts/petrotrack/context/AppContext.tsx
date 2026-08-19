@@ -268,7 +268,7 @@ export type TaskCadence = 'daily' | 'weekly' | 'monthly' | 'quarterly';
 export interface Task { id: number; title: string; desc: string; assignedBy: Role; assignedByName: string; assignedTo: Role; assignedToName: string; status: TaskStatus; priority: TaskPriority; cadence: TaskCadence; target?: string; targetUnit?: string; dueDate: string; createdAt: string; }
 export interface KPI { id: number; title: string; target: string; unit: string; period: string; assignedTo: Role; assignedToName: string; createdAt: string; }
 export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video' | 'document'; name: string; dt: string; by: string; uri?: string; mimeType?: string; size?: number; }
-export type PumpReportStatus = 'pending_manager' | 'pending_accountant' | 'returned' | 'approved';
+export type PumpReportStatus = 'pending_manager' | 'pending_accountant' | 'returned' | 'returned_attendant' | 'approved';
 export interface PumpDailyReport {
   id: number;
   date: string;
@@ -496,7 +496,10 @@ export function calculateStockBook(
     .filter(report =>
       (report.branchId || pumps.find(pump => pump.id === report.pumpId)?.branchId) === branchId &&
       report.product === product &&
-      report.status !== 'returned',
+      // Reports withdrawn for correction (rejected or sent back to the
+      // attendant) must not count as sold stock until re-submitted.
+      report.status !== 'returned' &&
+      report.status !== 'returned_attendant',
     )
     .forEach(report => liveReportsById.set(report.id, report));
 
@@ -534,8 +537,9 @@ export function calculateStockBook(
 const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   pending_manager: 1,
   returned: 2,
-  pending_accountant: 3,
-  approved: 4,
+  returned_attendant: 3,
+  pending_accountant: 4,
+  approved: 5,
 };
 
 function pumpReportActivityMs(report: PumpDailyReport): number {
@@ -926,6 +930,8 @@ interface AppContextType {
   accApprovePumpReport: (report: PumpDailyReport, accNote: string) => void;
   accRejectPumpReport: (id: number, rejectionReason: string) => void;
   mgrResubmitPumpReport: (id: number, mgrNote: string) => void;
+  mgrReturnPumpReportToAttendant: (id: number, mgrNote: string) => void;
+  attResubmitPumpReport: (id: number, note: string) => void;
   deletePumpReport: (id: number) => void;
   updatePumpReport: (id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => void;
   updatePrice: (prod: string, price: number, by?: string, reason?: string, targetBranchId?: string) => void;
@@ -2915,7 +2921,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const mgrForwardPumpReport = useCallback((id: number, mgrNote: string) => {
     const report = pumpDailyReports.find(r => r.id === id);
-    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs() } : r));
+    // Only reports awaiting manager review may be forwarded — this also keeps
+    // approved reports permanently locked against re-entering the workflow.
+    if (!report || report.status !== 'pending_manager') return;
+    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'pending_manager' ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs() } : r));
     setAudit(a => [{ id: genId(), action: 'Pump report forwarded to accountant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
     if (report) void notificationsApi.send({
       target: 'acc',
@@ -2928,13 +2937,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const mgrResubmitPumpReport = useCallback((id: number, mgrNote: string) => {
     const report = pumpDailyReports.find(r => r.id === id);
-    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs(), rejectionReason: undefined } : r));
+    // Only accountant-rejected reports may be re-submitted; approved reports
+    // stay permanently locked.
+    if (!report || report.status !== 'returned') return;
+    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'returned' ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs(), rejectionReason: undefined } : r));
     setAudit(a => [{ id: genId(), action: 'Pump report re-submitted to accountant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
     if (report) void notificationsApi.send({
       target: 'acc',
       type: 'report_attention',
       title: 'Pump Report Re-submitted',
       body: `${report.submittedByName}'s ${report.pumpName} report is ready for accountant approval.`,
+      data: { route: SCREEN_ROUTES.shift, reportId: id },
+    });
+  }, [userName, pumpDailyReports]);
+
+  const mgrReturnPumpReportToAttendant = useCallback((id: number, mgrNote: string) => {
+    const report = pumpDailyReports.find(r => r.id === id);
+    // Only accountant-rejected reports can be pushed back to the attendant.
+    if (!report || report.status !== 'returned') return;
+    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'returned_attendant', mgrNote, mgrBy: userName, mgrAt: nowTs() } : r));
+    setAudit(a => [{ id: genId(), action: 'Pump report returned to attendant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
+    void notificationsApi.send({
+      target: report.submittedBy,
+      type: 'report_update',
+      title: 'Pump Report Sent Back to You',
+      body: `${report.pumpName} · ${report.date} needs correction: ${mgrNote}`,
+      data: { route: SCREEN_ROUTES.shift, reportId: id },
+    });
+  }, [userName, pumpDailyReports]);
+
+  const attResubmitPumpReport = useCallback((id: number, note: string) => {
+    const report = pumpDailyReports.find(r => r.id === id);
+    // Only reports sitting with the attendant can be re-submitted, and only by
+    // the attendant who originally generated the report.
+    if (!report || report.status !== 'returned_attendant' || report.submittedBy !== userName) return;
+    setPumpDailyReports(rs => rs.map(r => r.id === id
+      ? { ...r, status: 'pending_manager', note: note || r.note, submittedAt: nowTs(), rejectionReason: undefined }
+      : r
+    ));
+    setAudit(a => [{ id: genId(), action: 'Pump report re-submitted by attendant', user: userName, detail: `Report #${id} — ${report.pumpName}`, ts: nowTs() }, ...a]);
+    void notificationsApi.send({
+      target: 'mgr',
+      branchId: report.branchId,
+      type: 'report_attention',
+      title: 'Corrected Pump Report Re-submitted',
+      body: `${report.submittedByName} re-submitted ${report.pumpName} for manager review.`,
       data: { route: SCREEN_ROUTES.shift, reportId: id },
     });
   }, [userName, pumpDailyReports]);
@@ -3000,7 +3047,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const accRejectPumpReport = useCallback((id: number, rejectionReason: string) => {
     const report = pumpDailyReports.find(r => r.id === id);
-    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'returned', rejectionReason, accBy: userName, accAt: nowTs() } : r));
+    // Only reports awaiting accountant review may be rejected — approved
+    // reports are permanently locked and cannot re-enter the workflow.
+    if (!report || report.status !== 'pending_accountant') return;
+    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'pending_accountant' ? { ...r, status: 'returned', rejectionReason, accBy: userName, accAt: nowTs() } : r));
     setAudit(a => [{ id: genId(), action: 'Pump report rejected', user: userName, detail: `Report #${id} — ${rejectionReason}`, ts: nowTs() }, ...a]);
     if (report) void notificationsApi.send({
       target: report.submittedBy,
@@ -3013,26 +3063,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deletePumpReport = useCallback((id: number) => {
     const report = pumpDailyReports.find(r => r.id === id);
-    // Approved reports remain locked for normal workflow users, but Admin may
-    // remove an incorrect report. Keep this guard in the shared state layer so
-    // the admin permission cannot be bypassed or granted to other callers.
-    if (!report || (report.status === 'approved' && role !== 'admin')) return;
+    // Accountant-approved reports are permanently locked — no role, including
+    // Admin, may delete them. Keep this guard in the shared state layer so it
+    // cannot be bypassed by any caller.
+    if (!report || report.status === 'approved') return;
     setPumpDailyReports(rs => rs.filter(r => r.id !== id));
     setSales(s => s.filter(e => e.shiftReportId !== id));
     setAudit(a => [{
       id: genId(),
-      action: report.status === 'approved' ? 'Approved pump report deleted by Admin' : 'Pump report deleted',
+      action: 'Pump report deleted',
       user: userName,
-      detail: `Report #${id} deleted${report.status === 'approved' ? ' by Admin; linked sales record removed' : ''}`,
+      detail: `Report #${id} deleted`,
       ts: nowTs(),
     }, ...a]);
-  }, [role, userName, pumpDailyReports]);
+  }, [userName, pumpDailyReports]);
 
   const updatePumpReport = useCallback((id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => {
     const prev = pumpDailyReports.find(r => r.id === id);
-    // Accountant-approved reports remain immutable for normal workflow users,
-    // but Admin may correct an incorrect report.
-    if (!prev || (prev.status === 'approved' && role !== 'admin')) return;
+    // Accountant-approved reports are permanently locked — no role, including
+    // Admin, may edit them.
+    if (!prev || prev.status === 'approved') return;
     const merged = { ...prev, ...updates } as PumpDailyReport;
     // Recalculate derived values when meter or price values change.
     const liters = merged.closingMeter > merged.openingMeter ? parseFloat((merged.closingMeter - merged.openingMeter).toFixed(4)) : 0;
@@ -3303,7 +3353,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
         stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
         setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
-      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport, updatePumpReport,
+      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, deletePumpReport, updatePumpReport,
         sendMessage, addSystemNotification, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,

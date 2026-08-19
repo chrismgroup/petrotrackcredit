@@ -19,10 +19,11 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; ic
   pending_manager:    { label: "Awaiting Manager's Approval",    color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline' },
   pending_accountant: { label: "Awaiting Accountant's Approval", color: '#185FA5', bg: '#E6F1FB', icon: 'hourglass-outline' },
   returned:           { label: 'Rejected',             color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle-outline' },
+  returned_attendant: { label: 'With Attendant',       color: '#8A3B0F', bg: '#FBEADD', icon: 'return-down-back-outline' },
   approved:           { label: 'Approved',             color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle-outline' },
 };
 
-const REPORT_STATUS_GROUPS = ['pending_manager', 'pending_accountant', 'approved', 'returned'] as const;
+const REPORT_STATUS_GROUPS = ['pending_manager', 'pending_accountant', 'approved', 'returned', 'returned_attendant'] as const;
 const REPORT_STATUS_ORDER: Record<PumpDailyReport['status'], number> =
   Object.fromEntries(REPORT_STATUS_GROUPS.map((status, index) => [status, index])) as Record<PumpDailyReport['status'], number>;
 
@@ -33,13 +34,14 @@ function sortShiftReports(a: PumpDailyReport, b: PumpDailyReport): number {
     || b.id - a.id;
 }
 
-function reportMatchesQuery(report: PumpDailyReport, query: string): boolean {
+function reportMatchesQuery(report: PumpDailyReport, query: string, branchName?: string): boolean {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return true;
   return [
     report.pumpName,
     report.product,
     report.branchId,
+    branchName,
     report.submittedBy,
     report.submittedByName,
     report.date,
@@ -106,6 +108,7 @@ function GroupedReports({ reports, colors, onPress, searchQuery = '', statuses =
     pending_accountant: true,
     approved: false,
     returned: false,
+    returned_attendant: false,
   });
   const normalizedQuery = searchQuery.trim();
   const matchingReports = reports.filter(report => reportMatchesQuery(report, normalizedQuery));
@@ -169,6 +172,99 @@ function GroupedReports({ reports, colors, onPress, searchQuery = '', statuses =
   );
 }
 
+interface BranchGroupedReportsProps {
+  reports: PumpDailyReport[];
+  colors: any;
+  onPress: (report: PumpDailyReport) => void;
+  searchQuery?: string;
+  branchNameById: Record<string, string>;
+  roleColor: string;
+}
+
+/** Groups approved shift reports branch-by-branch, newest first inside each branch. */
+function BranchGroupedReports({ reports, colors, onPress, searchQuery = '', branchNameById, roleColor }: BranchGroupedReportsProps) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const normalizedQuery = searchQuery.trim();
+
+  const groups = useMemo(() => {
+    const byBranch = new Map<string, PumpDailyReport[]>();
+    for (const report of reports) {
+      if (!reportMatchesQuery(report, normalizedQuery, branchNameById[report.branchId])) continue;
+      const key = report.branchId || '';
+      const list = byBranch.get(key);
+      if (list) list.push(report);
+      else byBranch.set(key, [report]);
+    }
+    return Array.from(byBranch.entries())
+      .map(([id, list]) => ({
+        id,
+        name: id ? (branchNameById[id] ?? id) : 'Unassigned Branch',
+        list: list.sort((a, b) => b.date.localeCompare(a.date) || b.submittedAt.localeCompare(a.submittedAt) || b.id - a.id),
+      }))
+      .sort((a, b) => {
+        if (!a.id && b.id) return 1;      // unassigned last
+        if (a.id && !b.id) return -1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [reports, normalizedQuery, branchNameById]);
+
+  if (groups.length === 0 && normalizedQuery.length > 0) {
+    return (
+      <View style={[c.searchEmpty, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Ionicons name="search-outline" size={28} color={colors.textSubtle} />
+        <Text style={[c.emptyTxt, { color: colors.textMuted }]}>No approved shift reports match “{normalizedQuery}”.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      {groups.map(group => {
+        const isOpen = normalizedQuery.length > 0 || !collapsed[group.id];
+        return (
+          <View key={group.id || 'unassigned'} style={[c.folder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              onPress={() => setCollapsed(current => ({ ...current, [group.id]: !current[group.id] }))}
+              style={c.folderHeader}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={`${group.name} branch, ${group.list.length} approved reports`}
+              accessibilityState={{ expanded: isOpen }}
+            >
+              <View style={[c.folderIcon, { backgroundColor: roleColor + '18' }]}>
+                <Ionicons name="business-outline" size={18} color={roleColor} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[c.folderTitle, { color: colors.text }]}>{group.name}</Text>
+                <Text style={[c.folderHint, { color: colors.textMuted }]}>
+                  {group.list.length} approved report{group.list.length === 1 ? '' : 's'} · newest first
+                </Text>
+              </View>
+              <View style={[c.folderCount, { backgroundColor: '#EAF3DE' }]}>
+                <Text style={[c.folderCountText, { color: '#27500A' }]}>{group.list.length}</Text>
+              </View>
+              <Ionicons name={(isOpen ? 'chevron-up' : 'chevron-down') as any} size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            {isOpen && (
+              <View style={[c.folderContent, { borderTopColor: colors.border }]}>
+                {group.list.map(report => (
+                  <ReportCard
+                    key={report.id}
+                    report={report}
+                    roleColor={STATUS_META.approved.color}
+                    colors={colors}
+                    onPress={() => onPress(report)}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </>
+  );
+}
+
 interface ReportSearchProps {
   value: string;
   onChange: (value: string) => void;
@@ -224,12 +320,17 @@ function Field({ label, value, colors, accent }: FieldProps) {
 ══════════════════════════════════════════════════════ */
 export default function ShiftReportScreen() {
   const {
-    role, userName, branchId, pumps, prices,
+    role, userName, branchId, pumps, prices, branches,
     pumpDailyReports, pumpInitialMeters, pumpLockedMeters,
     submitPumpReport, mgrForwardPumpReport,
     accApprovePumpReport, accRejectPumpReport,
-    mgrResubmitPumpReport, setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, deletePumpReport, updatePumpReport,
+    mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport,
+    setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, deletePumpReport, updatePumpReport,
   } = useApp();
+  const branchNameById = useMemo(() =>
+    Object.fromEntries(branches.map(b => [b.id, b.name])) as Record<string, string>,
+    [branches]
+  );
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
 
@@ -378,14 +479,14 @@ export default function ShiftReportScreen() {
 
   function handleDelete() {
     if (!viewing) return;
-    if (viewing.status === 'approved' && !isAdmin) {
-      Alert.alert('Locked', 'This report was approved by the accountant and cannot be deleted or edited.');
+    if (viewing.status === 'approved') {
+      Alert.alert('Locked', 'This report was approved by the accountant and is permanently locked. It cannot be deleted or edited.');
       return;
     }
     if (viewing.status === 'pending_accountant' && !isAdmin && !isMd) { Alert.alert('In Review', 'This report is with the accountant and cannot be deleted.'); return; }
     Alert.alert(
       'Delete Report',
-      `Delete the shift report for ${viewing.pumpName} on ${fmtDate(viewing.date)}? This cannot be undone.${viewing.status === 'approved' ? ' The linked sales record will also be removed.' : ''}`,
+      `Delete the shift report for ${viewing.pumpName} on ${fmtDate(viewing.date)}? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => { deletePumpReport(viewing.id); closeModal(); } },
@@ -406,6 +507,34 @@ export default function ShiftReportScreen() {
     if (!reviewNote.trim()) { Alert.alert('Required', 'Add a note explaining corrections made.'); return; }
     mgrResubmitPumpReport(viewing.id, reviewNote.trim());
     Alert.alert('Re-submitted', 'Report sent back to accountant for approval.');
+    closeModal();
+  }
+
+  function handleMgrReturnToAttendant() {
+    if (!viewing) return;
+    if (!reviewNote.trim()) { Alert.alert('Required', 'Add a note telling the attendant what to correct.'); return; }
+    const report = viewing;
+    Alert.alert(
+      'Return to Attendant',
+      `Send this report back to ${report.submittedByName} for correction?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Return', style: 'destructive',
+          onPress: () => {
+            mgrReturnPumpReportToAttendant(report.id, reviewNote.trim());
+            Alert.alert('Returned', `Report sent back to ${report.submittedByName} for correction.`);
+            closeModal();
+          },
+        },
+      ]
+    );
+  }
+
+  function handleAttResubmit() {
+    if (!viewing) return;
+    attResubmitPumpReport(viewing.id, reviewNote.trim());
+    Alert.alert('Re-submitted', 'Your corrected report was sent to the branch manager for review.');
     closeModal();
   }
 
@@ -493,6 +622,11 @@ export default function ShiftReportScreen() {
       .sort(sortShiftReports),
     [pumpDailyReports, branchId]
   );
+  const returnedAttMgr = useMemo(() =>
+    pumpDailyReports.filter(r => r.status === 'returned_attendant' && (isGlobalOverview || inMyBranch(r)))
+      .sort(sortShiftReports),
+    [pumpDailyReports, branchId, isGlobalOverview]
+  );
   const pendingAcc = useMemo(() =>
     pumpDailyReports.filter(r => r.status === 'pending_accountant')
       .sort(sortShiftReports),
@@ -513,8 +647,8 @@ export default function ShiftReportScreen() {
     [pumpDailyReports]
   );
   const reviewReports = useMemo(() =>
-    [...pendingMgr, ...pendingAccMgr, ...returnedMgr].sort(sortShiftReports),
-    [pendingMgr, pendingAccMgr, returnedMgr]
+    [...pendingMgr, ...pendingAccMgr, ...returnedMgr, ...returnedAttMgr].sort(sortShiftReports),
+    [pendingMgr, pendingAccMgr, returnedMgr, returnedAttMgr]
   );
   const historyReports = useMemo(() =>
     myReports.filter(r => !historyDate || r.date === historyDate),
@@ -536,8 +670,8 @@ export default function ShiftReportScreen() {
   }), [monthReports]);
   const statusCounts = useMemo(() => ({
     approved: attReports.filter(r => r.status === 'approved').length,
-    pending:  attReports.filter(r => r.status === 'pending_manager' || r.status === 'pending_accountant').length,
-    returned: attReports.filter(r => r.status === 'returned').length,
+    pending:  attReports.filter(r => r.status === 'pending_manager' || r.status === 'pending_accountant' || r.status === 'returned').length,
+    returned: attReports.filter(r => r.status === 'returned_attendant').length,
   }), [attReports]);
   const todayPumpStatus = useMemo(() =>
     activePumps.map(p => ({
@@ -547,7 +681,7 @@ export default function ShiftReportScreen() {
     [activePumps, pumpDailyReports, today]
   );
   const returnedReports = useMemo(() =>
-    attReports.filter(r => r.status === 'returned'),
+    attReports.filter(r => r.status === 'returned_attendant'),
     [attReports]
   );
 
@@ -557,7 +691,7 @@ export default function ShiftReportScreen() {
     { key: 'dashboard',   label: 'My Summary',    badge: returnedReports.length || undefined, roles: ['att'] },
     { key: 'submit',      label: 'Record Meters', roles: ['att'] },
     { key: 'history',     label: 'My History',    roles: ['att'] },
-    { key: 'review',      label: 'Review',        badge: pendingMgr.length + returnedMgr.length + pendingAccMgr.length, roles: ['mgr'] },
+    { key: 'review',      label: 'Review',        badge: pendingMgr.length + returnedMgr.length, roles: ['mgr'] },
     { key: 'pending_acc', label: 'Approvals',     badge: pendingAcc.length, roles: ['acc'] },
     { key: 'approved',    label: 'Approved',      roles: ['acc', 'mgr'] },
     { key: 'all_records', label: 'All Records',   roles: ['admin', 'md', 'ceo'] },
@@ -957,7 +1091,7 @@ export default function ShiftReportScreen() {
               colors={colors}
               onPress={openReport}
               searchQuery={reportSearch}
-              statuses={['pending_manager', 'pending_accountant', 'returned']}
+              statuses={['pending_manager', 'returned', 'returned_attendant', 'pending_accountant']}
             />
           )}
           <View style={{ height: 24 }} />
@@ -1004,12 +1138,13 @@ export default function ShiftReportScreen() {
             </View>
           )}
           {approvedAll.length > 0 && (
-            <GroupedReports
+            <BranchGroupedReports
               reports={approvedAll}
               colors={colors}
               onPress={openReport}
               searchQuery={reportSearch}
-              statuses={['approved']}
+              branchNameById={branchNameById}
+              roleColor={roleColor}
             />
           )}
           <View style={{ height: 24 }} />
@@ -1178,17 +1313,15 @@ export default function ShiftReportScreen() {
                 <Text style={[c.cardSub, { color: colors.textMuted }]}>{viewing.product} · {fmtDate(viewing.date)}</Text>
               </View>
               {((isAtt && viewing.submittedBy === userName &&
-                (viewing.status === 'pending_manager' || viewing.status === 'returned')) ||
-                isAdmin ||
-                ((isMd || isCeo) && viewing.status !== 'approved')) && !isEditing && (
+                (viewing.status === 'pending_manager' || viewing.status === 'returned_attendant')) ||
+                ((isAdmin || isMd || isCeo) && viewing.status !== 'approved')) && !isEditing && (
                 <TouchableOpacity onPress={startEdit} style={{ marginRight: 10 }}>
                   <Ionicons name="create-outline" size={22} color={roleColor} />
                 </TouchableOpacity>
               )}
               {((isAtt && viewing.submittedBy === userName &&
-                (viewing.status === 'pending_manager' || viewing.status === 'returned')) ||
-                isAdmin ||
-                (isMd && viewing.status !== 'approved')) && !isEditing && (
+                (viewing.status === 'pending_manager' || viewing.status === 'returned_attendant')) ||
+                ((isAdmin || isMd) && viewing.status !== 'approved')) && !isEditing && (
                 <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10 }}>
                   <Ionicons name="trash-outline" size={22} color="#E74C3C" />
                 </TouchableOpacity>
@@ -1343,6 +1476,33 @@ export default function ShiftReportScreen() {
                 <TouchableOpacity onPress={handleMgrResubmit} style={[c.submitBtn, { backgroundColor: '#185FA5' }]}>
                   <Ionicons name="refresh-circle" size={16} color="#fff" />
                   <Text style={c.submitBtnTxt}>Re-submit to Accountant</Text>
+                </TouchableOpacity>
+                <Text style={[c.sectionLabel, { color: '#8A3B0F', marginTop: 14 }]}>Or Return to Attendant</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
+                  Send the report back to {viewing.submittedByName} so they can correct and re-submit it. The note above is required and will be shown to them.
+                </Text>
+                <TouchableOpacity onPress={handleMgrReturnToAttendant} style={[c.submitBtn, { backgroundColor: '#8A3B0F' }]}>
+                  <Ionicons name="return-down-back" size={16} color="#fff" />
+                  <Text style={c.submitBtnTxt}>Return to Attendant for Correction</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Attendant action: re-submit a report the manager sent back */}
+            {isAtt && viewing.submittedBy === userName && viewing.status === 'returned_attendant' && (
+              <>
+                <Text style={[c.sectionLabel, { color: colors.text, marginTop: 16 }]}>Correct & Re-submit</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
+                  Your manager sent this report back to you. Use the pencil icon above to correct the figures, then re-submit it for review.
+                </Text>
+                <TextInput
+                  style={[c.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder="Note about your corrections (optional)…" placeholderTextColor={colors.textSubtle}
+                  multiline numberOfLines={3} value={reviewNote} onChangeText={setReviewNote}
+                />
+                <TouchableOpacity onPress={handleAttResubmit} style={[c.submitBtn, { backgroundColor: roleColor }]}>
+                  <Ionicons name="send" size={16} color="#fff" />
+                  <Text style={c.submitBtnTxt}>Re-submit to Manager</Text>
                 </TouchableOpacity>
               </>
             )}
