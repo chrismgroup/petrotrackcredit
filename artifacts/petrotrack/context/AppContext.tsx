@@ -217,6 +217,23 @@ export interface InventoryLogEntry {
   discrepancy: number;
   branchId?: string;
 }
+export type StockLogStatus = 'balanced' | 'shortage' | 'excess' | 'awaiting_opening' | 'awaiting_dip';
+export interface StockLogEntry {
+  id: string;
+  branchId: string;
+  product: StockProduct;
+  businessDate: string;
+  openingQuantity: number | null;
+  delivered: number;
+  sold: number;
+  bookStock: number | null;
+  tankDip: number | null;
+  discrepancy: number | null;
+  unit: 'L' | 'kg';
+  status: StockLogStatus;
+  createdBy: string;
+  createdAt: string;
+}
 export interface CompanyInfo {
   name: string; rcNumber: string; tin: string; address: string;
   phone: string; email: string; website: string;
@@ -883,6 +900,8 @@ interface AppContextType {
   pumpInitialMeters: Record<string, number>;
   pumpLockedMeters: Record<string, number>;
   inventoryLog: InventoryLogEntry[];
+  stockLogs: StockLogEntry[];
+  upsertStockLogs: (entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[]) => void;
   startupStocks: StartupStock[];
   addStartupStock: (stock: { product: StockProduct; quantity: number; branchId: string }) => void;
   updateStartupStock: (id: string, quantity: number) => void;
@@ -1088,6 +1107,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pumpInitialMeters, setPumpInitialMeters] = useState<Record<string, number>>({});
   const [pumpLockedMeters, setPumpLockedMeters] = useState<Record<string, number>>({});
   const [inventoryLog, setInventoryLog] = useState<InventoryLogEntry[]>(INIT_INVENTORY_LOG);
+  const [stockLogs, setStockLogs] = useState<StockLogEntry[]>([]);
   const [startupStocks, setStartupStocks] = useState<StartupStock[]>(INIT_STARTUP_STOCK);
   const [stockSnapshotConfig, setStockSnapshotConfig] = useState<StockSnapshotConfig>(DEFAULT_STOCK_SNAPSHOT_CONFIG);
   const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
@@ -1129,7 +1149,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
-      'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks', 'stockSnapshotConfig',
+      'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks', 'stockSnapshotConfig', 'stockLogs',
     ] as const;
     const markLoaded = () => {
       loadedRef.current = true;
@@ -1187,6 +1207,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.myFolders)         setMyFolders(s.myFolders);
       if (s.myFolderFiles)     setMyFolderFiles(s.myFolderFiles);
        if (s.startupStocks)     setStartupStocks(s.startupStocks);
+       if (s.stockLogs)         setStockLogs(s.stockLogs);
        // Inventory discrepancy logs were retired. Do not restore stale local
        // or server history, but keep dips/tank balances for Stock Snapshot.
        AsyncStorage.removeItem('inventoryLog');
@@ -1350,7 +1371,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
       if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(s.financialEntry as FinancialEntry);
-      if (!p.has('startupStocks'))       setStartupStocks(safeArray<StartupStock>(s.startupStocks));
+       if (!p.has('startupStocks'))       setStartupStocks(safeArray<StartupStock>(s.startupStocks));
+       if (!p.has('stockLogs'))           setStockLogs(safeArray<StockLogEntry>(s.stockLogs));
       // Lift the startup write-gate ONLY on success: server state is now applied, safe to accept user writes.
       // If syncFromServer fails (no network, 500, etc.), the gate stays DOWN so the app's empty defaults
       // cannot overwrite whatever real data is on the server. The next poll (3 s) will retry.
@@ -1523,6 +1545,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('tasks',             tasks); },             [tasks, loaded]);
   useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
   useEffect(() => { if (loaded) syncSlice('inventoryLog',     inventoryLog); },    [inventoryLog, loaded]);
+   useEffect(() => { if (loaded) syncSlice('stockLogs',         stockLogs); },        [stockLogs, loaded]);
   useEffect(() => { if (loaded) syncSlice('companyFiles',      companyFiles); },      [companyFiles, loaded]);
   useEffect(() => { if (loaded) syncSlice('myFolders',          myFolders); },          [myFolders, loaded]);
   useEffect(() => { if (loaded) syncSlice('myFolderFiles',     myFolderFiles); },     [myFolderFiles, loaded]);
@@ -2759,6 +2782,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Start-up stock deleted', user: userName, detail: `Start-up stock #${id} removed`, ts: nowTs() }, ...a]);
   }, [role, userName]);
 
+  const upsertStockLogs = useCallback((entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[]) => {
+    if (entries.length === 0) return;
+    const createdAt = nowTs();
+    setStockLogs(prev => {
+      const next = new Map<string, StockLogEntry>(
+        prev.map(entry => [`${entry.branchId}|${entry.product}|${entry.businessDate}`, entry]),
+      );
+      entries.forEach(entry => {
+        const key = `${entry.branchId}|${entry.product}|${entry.businessDate}`;
+        const existing = next.get(key);
+        next.set(key, {
+          ...entry,
+          id: existing?.id ?? `stock-log-${genId()}`,
+          createdBy: userName,
+          createdAt,
+        });
+      });
+      return Array.from(next.values()).sort((a, b) =>
+        b.businessDate.localeCompare(a.businessDate) || a.branchId.localeCompare(b.branchId) || a.product.localeCompare(b.product),
+      );
+    });
+    setAudit(a => [{
+      id: genId(),
+      action: 'Stock log created',
+      user: userName,
+      detail: `${entries.length} branch/product stock calculation${entries.length === 1 ? '' : 's'} recorded.`,
+      ts: createdAt,
+    }, ...a]);
+  }, [userName]);
+
   const addDeliveryEvidence = useCallback((ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => {
     setDeliveryEvidences(e => [...e, { ...ev, id: genId(), dt: nowTs() }]);
     setAudit(a => [{ id: genId(), action: 'Delivery evidence added', user: userName, detail: `${ev.name} for delivery #${ev.delivId}`, ts: nowTs() }, ...a]);
@@ -3237,7 +3290,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
       addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, updateMaintenance, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
-        pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
+        pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
         stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
         setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, deletePumpReport, updatePumpReport,

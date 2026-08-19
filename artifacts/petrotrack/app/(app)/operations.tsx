@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import React, { useMemo, useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
@@ -7,8 +8,9 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
-  DEFAULT_MGR_PERMS, getCurrentTankStock,
-  ROLE_COLORS, fmtDate, fmtDateTime, useApp,
+  DEFAULT_MGR_PERMS, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
+  getCurrentTankStock, previousBusinessDateKey,
+  ROLE_COLORS, StockLogEntry, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -19,7 +21,237 @@ const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517',
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
 const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 const DIP_STATUS_ICON: Record<string, string>  = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
+const STOCK_PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
+const GLOBAL_ROLES = new Set(['admin', 'ceo', 'md', 'acc', 'csm']);
+
+function stockLogStatusLabel(status: StockLogStatus): string {
+  return {
+    balanced: 'Balanced',
+    shortage: 'Shortage',
+    excess: 'Excess',
+    awaiting_opening: 'Awaiting opening',
+    awaiting_dip: 'Awaiting tank dip',
+  }[status];
+}
+
+function stockLogStatusColor(status: StockLogStatus, colors: ReturnType<typeof useColors>): string {
+  if (status === 'shortage') return colors.error;
+  if (status === 'excess') return colors.info;
+  if (status === 'balanced') return colors.success;
+  return colors.amber;
+}
+
+function latestDipForStockLog(
+  dips: ReturnType<typeof useApp>['dips'],
+  dateKey: string,
+  petrolTanks: ReturnType<typeof useApp>['tanks'],
+  branchLpgTanks: ReturnType<typeof useApp>['lpgTanks'],
+) {
+  return dips
+    .filter(dip =>
+      dip.dt?.slice(0, 10) === dateKey &&
+      dip.status !== 'rejected' &&
+      (petrolTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
+        branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
+    )
+    .sort((a, b) =>
+      new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() -
+      new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime() || b.id - a.id,
+    )[0];
+}
+
+function stockDipForProduct(
+  dip: ReturnType<typeof latestDipForStockLog>,
+  product: StockProduct,
+  petrolTanks: ReturnType<typeof useApp>['tanks'],
+  branchLpgTanks: ReturnType<typeof useApp>['lpgTanks'],
+): number | null {
+  if (!dip) return null;
+  const values = product === 'LPG'
+    ? branchLpgTanks.map(tank => Number(dip.lpg?.[tank.id])).filter(Number.isFinite)
+    : petrolTanks.filter(tank => tank.prod === product).map(tank => {
+        const value = Number(dip.rd?.[tank.id]);
+        return Number.isFinite(value) ? dipReadingToLiters(value) : null;
+      }).filter((value): value is number => value !== null);
+  return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function makeStockLogStatus(opening: number | null, dip: number | null, discrepancy: number | null): StockLogStatus {
+  if (opening === null) return 'awaiting_opening';
+  if (dip === null || discrepancy === null) return 'awaiting_dip';
+  if (discrepancy < -0.01) return 'shortage';
+  if (discrepancy > 0.01) return 'excess';
+  return 'balanced';
+}
+
+function StockLogPanel() {
+  const {
+    role, branchId, branches, tanks, lpgTanks, pumps, dips, deliveries,
+    pumpDailyReports, startupStocks, stockLogs, upsertStockLogs,
+  } = useApp();
+  const colors = useColors();
+  const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
+  const [businessDate, setBusinessDate] = useState(currentBusinessDateKey());
+  const isGlobal = GLOBAL_ROLES.has(role ?? '');
+
+  const visibleBranches = useMemo(
+    () => branches.filter(branch => {
+      if (!isGlobal && branch.id !== branchId) return false;
+      const branchTanks = tanks.filter(tank => tank.branchId === branch.id);
+      const branchLpgTanks = lpgTanks.filter(tank => tank.branchId === branch.id);
+      const branchPumps = pumps.filter(pump => pump.branchId === branch.id);
+      return (branchTanks.length > 0 || branchLpgTanks.length > 0) && branchPumps.length > 0;
+    }),
+    [branchId, branches, isGlobal, lpgTanks, pumps, tanks],
+  );
+
+  const buildEntries = useMemo(() => {
+    const previousDate = previousBusinessDateKey(businessDate);
+    const entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[] = [];
+
+    visibleBranches.forEach(branch => {
+      const branchTanks = tanks.filter(tank => tank.branchId === branch.id);
+      const branchLpgTanks = lpgTanks.filter(tank => tank.branchId === branch.id);
+      const branchPumps = pumps.filter(pump => pump.branchId === branch.id);
+      const todayDip = latestDipForStockLog(dips, businessDate, branchTanks, branchLpgTanks);
+      const openingDip = latestDipForStockLog(dips, previousDate, branchTanks, branchLpgTanks);
+
+      STOCK_PRODUCTS.forEach(product => {
+        const hasProduct =
+          branchTanks.some(tank => tank.prod === product) ||
+          (product === 'LPG' && branchLpgTanks.length > 0) ||
+          branchPumps.some(pump => pump.prod === product) ||
+          startupStocks.some(stock => stock.branchId === branch.id && stock.product === product) ||
+          deliveries.some(delivery => delivery.branchId === branch.id && delivery.prod === product) ||
+          pumpDailyReports.some(report => report.branchId === branch.id && report.product === product);
+        if (!hasProduct) return;
+
+        const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
+        const openingQuantity = stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
+        const book = calculateStockBook(
+          startupRecord,
+          product,
+          branch.id,
+          deliveries,
+          pumpDailyReports,
+          businessDate,
+          branchPumps,
+          openingQuantity,
+        );
+        const tankDip = stockDipForProduct(todayDip, product, branchTanks, branchLpgTanks);
+        const discrepancy = book.bookStock === null || tankDip === null ? null : book.bookStock - tankDip;
+        entries.push({
+          branchId: branch.id,
+          product,
+          businessDate,
+          openingQuantity: book.startupStock,
+          delivered: book.delivered,
+          sold: book.sold,
+          bookStock: book.bookStock,
+          tankDip,
+          discrepancy,
+          unit: unitForProd(product) as 'L' | 'kg',
+          status: makeStockLogStatus(book.startupStock, tankDip, discrepancy),
+        });
+      });
+    });
+    return entries;
+  }, [businessDate, branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, startupStocks, tanks, visibleBranches]);
+
+  const savedEntries = stockLogs.filter(entry =>
+    entry.businessDate === businessDate &&
+    visibleBranches.some(branch => branch.id === entry.branchId),
+  );
+  const summaryEntries = buildEntries.length > 0 ? buildEntries : savedEntries;
+  const discrepancyCount = summaryEntries.filter(entry => entry.status === 'shortage' || entry.status === 'excess').length;
+  const balancedCount = summaryEntries.filter(entry => entry.status === 'balanced').length;
+  const totalSold = summaryEntries.reduce((sum, entry) => sum + entry.sold, 0);
+
+  function createLog() {
+    if (!businessDate) return;
+    if (buildEntries.length === 0) {
+      Alert.alert('Nothing to log', 'No branch assets or stock activity are available for this business date.');
+      return;
+    }
+    upsertStockLogs(buildEntries);
+    Alert.alert('Stock log recorded', `${buildEntries.length} product stock calculations were saved for ${businessDate}.`);
+  }
+
+  function renderEntry(entry: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'> | StockLogEntry) {
+    const statusColor = stockLogStatusColor(entry.status, colors);
+    return (
+      <View key={`${entry.branchId}-${entry.product}-${entry.businessDate}`} style={[styles.stockCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={styles.stockCardHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.stockProduct, { color: colors.text }]}>{entry.product}</Text>
+            <Text style={[styles.stockBranch, { color: colors.textMuted }]}>{branches.find(branch => branch.id === entry.branchId)?.name ?? 'Assigned branch'} · {entry.unit}</Text>
+          </View>
+          <View style={[styles.stockStatus, { backgroundColor: statusColor + '18' }]}>
+            <View style={[styles.stockStatusDot, { backgroundColor: statusColor }]} />
+            <Text style={[styles.stockStatusText, { color: statusColor }]}>{stockLogStatusLabel(entry.status)}</Text>
+          </View>
+        </View>
+        <View style={styles.stockMetrics}>
+          <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Opening</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.openingQuantity === null ? '—' : entry.openingQuantity.toLocaleString()}</Text></View>
+          <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Delivered</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.delivered.toLocaleString()}</Text></View>
+          <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Sold</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.sold.toLocaleString()}</Text></View>
+          <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Book stock</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.bookStock === null ? '—' : entry.bookStock.toLocaleString()}</Text></View>
+        </View>
+        <View style={[styles.stockCompare, { borderTopColor: colors.border }]}>
+          <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Tank dip</Text>
+          <Text style={[styles.stockCompareValue, { color: colors.text }]}>{entry.tankDip === null ? 'Not recorded' : `${entry.tankDip.toLocaleString()} ${entry.unit}`}</Text>
+          <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Variance</Text>
+          <Text style={[styles.stockCompareValue, { color: statusColor }]}>{entry.discrepancy === null ? '—' : `${entry.discrepancy > 0 ? '+' : ''}${entry.discrepancy.toLocaleString()} ${entry.unit}`}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.stockScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <View style={[styles.stockHero, { backgroundColor: roleColor }]}>
+        <View style={styles.stockHeroOrb} />
+        <Text style={styles.stockEyebrow}>OPERATIONS · INVENTORY CONTROL</Text>
+        <Text style={styles.stockHeroTitle}>Daily stock log</Text>
+        <Text style={styles.stockHeroSubtitle}>Opening seed + deliveries − shift-report sales, compared with the business-day tank dip.</Text>
+        <View style={styles.stockMarquee}>
+          <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{summaryEntries.length}</Text><Text style={styles.stockMarqueeLabel}>Products</Text></View>
+          <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{balancedCount}</Text><Text style={styles.stockMarqueeLabel}>Balanced</Text></View>
+          <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{discrepancyCount}</Text><Text style={styles.stockMarqueeLabel}>Discrepancies</Text></View>
+          <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{totalSold.toLocaleString()}</Text><Text style={styles.stockMarqueeLabel}>Sold today</Text></View>
+        </View>
+      </View>
+
+      <View style={[styles.stockControlCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <AppliedDateField value={businessDate} onChange={setBusinessDate} label="Stock log business date" accent={roleColor} helper="Uses the previous business-day dip as opening stock after the admin seed date." />
+        <TouchableOpacity style={[styles.stockCreateBtn, { backgroundColor: roleColor }]} onPress={createLog} activeOpacity={0.85}>
+          <Ionicons name="save-outline" size={18} color="#fff" />
+          <Text style={styles.stockCreateBtnText}>{savedEntries.length > 0 ? 'Refresh stock log' : 'Create stock log'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.stockSectionHeading}>
+        <View>
+          <Text style={[styles.stockSectionTitle, { color: colors.text }]}>Branch product ledger</Text>
+          <Text style={[styles.stockSectionSubtitle, { color: colors.textMuted }]}>{buildEntries.length > 0 ? 'Live calculation ready to record' : 'No eligible branch stock data for this date'}</Text>
+        </View>
+        <Ionicons name="analytics-outline" size={20} color={roleColor} />
+      </View>
+      {buildEntries.length > 0 ? buildEntries.map(renderEntry) : savedEntries.map(renderEntry)}
+      {buildEntries.length === 0 && savedEntries.length === 0 ? (
+        <View style={[styles.stockEmpty, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="file-tray-outline" size={28} color={colors.textMuted} />
+          <Text style={[styles.stockEmptyTitle, { color: colors.text }]}>No stock log inputs yet</Text>
+          <Text style={[styles.stockEmptyText, { color: colors.textMuted }]}>Set a branch startup quantity, record a delivery or shift report, then create the daily log.</Text>
+        </View>
+      ) : null}
+      <Text style={[styles.stockFootnote, { color: colors.textSubtle }]}>Every row is one product for one branch. LPG is measured in kg; petroleum products are measured in litres.</Text>
+    </ScrollView>
+  );
+}
+
 export default function OperationsScreen() {
+  const { tab: requestedTab } = useLocalSearchParams<{ tab?: string }>();
   const {
     role, userName, branchId, mgrPerms,
     tanks, lpgTanks, dips,
@@ -32,6 +264,8 @@ export default function OperationsScreen() {
   const isMD       = role === 'md';
   const isAdmin    = role === 'admin';
   const canApprove = isMD || isAdmin;
+  const canSeeDips = isMgr || canApprove;
+  const [departmentTab, setDepartmentTab] = useState(requestedTab === 'stock' || !canSeeDips ? 'stock' : 'dips');
 
   // ── Dip state ────────────────────────────────────────────────────────────
   // MD/Admin start on Approvals; station managers start on Dip Form.
@@ -88,6 +322,27 @@ export default function OperationsScreen() {
 
   return (
     <ScreenLayout title="Operations">
+      <View style={[styles.departmentTabs, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          style={[styles.departmentTab, { borderBottomColor: departmentTab === 'stock' ? roleColor : 'transparent' }]}
+          onPress={() => setDepartmentTab('stock')}
+        >
+          <Ionicons name="analytics-outline" size={16} color={departmentTab === 'stock' ? roleColor : colors.textMuted} />
+          <Text style={[styles.departmentTabText, { color: departmentTab === 'stock' ? roleColor : colors.textMuted }]}>Stock log</Text>
+        </TouchableOpacity>
+        {canSeeDips ? (
+          <TouchableOpacity
+            style={[styles.departmentTab, { borderBottomColor: departmentTab === 'dips' ? roleColor : 'transparent' }]}
+            onPress={() => setDepartmentTab('dips')}
+          >
+            <Ionicons name="water-outline" size={16} color={departmentTab === 'dips' ? roleColor : colors.textMuted} />
+            <Text style={[styles.departmentTabText, { color: departmentTab === 'dips' ? roleColor : colors.textMuted }]}>Tank dipping</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {departmentTab === 'stock' ? <StockLogPanel /> : null}
+      {departmentTab === 'dips' && canSeeDips ? (
+        <>
       {/* MD/Admin see the awaiting-approval queue; station managers see the Dip Form. */}
       {(() => {
         const dipTabItems = (canApprove ? DIP_SUBTABS_APPR : isMgr ? DIP_SUBTABS_MGR : []).map(
@@ -337,13 +592,18 @@ export default function OperationsScreen() {
 
               <View style={{ height: 16 }} />
             </ScrollView>
-          )}
+           )}
+        </>
+      ) : null}
 
     </ScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
+  departmentTabs: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14 },
+  departmentTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderBottomWidth: 2 },
+  departmentTabText: { fontSize: 12, fontWeight: '700' },
   subTabBar:        { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: 'transparent' },
   subTabBtn:        { flex: 1, alignItems: 'center', paddingVertical: 8, borderBottomWidth: 2 },
   subTabLabel:      { fontSize: 12 },
@@ -409,5 +669,39 @@ const styles = StyleSheet.create({
   evidenceItem:    { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 7, borderRadius: 7, borderWidth: 1, marginBottom: 4 },
   evidenceName:    { fontSize: 11, fontWeight: '600' },
   evidenceMeta:    { fontSize: 10 },
+  stockScroll: { padding: 14, paddingBottom: 32, gap: 12 },
+  stockHero: { borderRadius: 22, padding: 18, overflow: 'hidden', position: 'relative' },
+  stockHeroOrb: { position: 'absolute', width: 190, height: 190, borderRadius: 95, right: -72, top: -92, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  stockEyebrow: { color: 'rgba(255,255,255,0.68)', fontSize: 10, letterSpacing: 1.4, fontWeight: '800' },
+  stockHeroTitle: { color: '#fff', fontSize: 24, fontWeight: '800', marginTop: 7 },
+  stockHeroSubtitle: { color: 'rgba(255,255,255,0.78)', fontSize: 12, lineHeight: 18, marginTop: 5, maxWidth: 330 },
+  stockMarquee: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 18, paddingTop: 13, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)' },
+  stockMarqueeItem: { flex: 1, minWidth: 0 },
+  stockMarqueeValue: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  stockMarqueeLabel: { color: 'rgba(255,255,255,0.68)', fontSize: 10, marginTop: 3 },
+  stockControlCard: { borderRadius: 16, borderWidth: 1, padding: 13 },
+  stockCreateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 11, paddingVertical: 12, marginTop: 4 },
+  stockCreateBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  stockSectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 3, paddingHorizontal: 2 },
+  stockSectionTitle: { fontSize: 16, fontWeight: '800' },
+  stockSectionSubtitle: { fontSize: 11, marginTop: 2 },
+  stockCard: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 11 },
+  stockCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  stockProduct: { fontSize: 14, fontWeight: '800' },
+  stockBranch: { fontSize: 11, marginTop: 3 },
+  stockStatus: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
+  stockStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  stockStatusText: { fontSize: 10, fontWeight: '800' },
+  stockMetrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  stockMetric: { width: '23%', minWidth: 62 },
+  stockMetricLabel: { fontSize: 10 },
+  stockMetricValue: { fontSize: 14, fontWeight: '800', marginTop: 4 },
+  stockCompare: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
+  stockCompareLabel: { fontSize: 10, marginRight: 2 },
+  stockCompareValue: { fontSize: 11, fontWeight: '800', marginRight: 10 },
+  stockEmpty: { alignItems: 'center', borderRadius: 16, borderWidth: 1, padding: 24, gap: 7 },
+  stockEmptyTitle: { fontSize: 14, fontWeight: '800' },
+  stockEmptyText: { fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 290 },
+  stockFootnote: { fontSize: 10, lineHeight: 15, textAlign: 'center', paddingHorizontal: 12, marginTop: 2 },
 
 });

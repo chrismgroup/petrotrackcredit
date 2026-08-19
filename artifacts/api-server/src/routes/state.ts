@@ -16,7 +16,7 @@ const ALLOWED_KEYS = new Set([
   "broadcasts", "callLog", "pumpDailyReports", "pumpInitialMeters",
   "pumpLockedMeters", "inventoryLog", "financialEntry", "marketCompetitors",
   "myFolders", "myFolderFiles", "startupStocks", "stockSnapshotConfig",
-  "reportAccessPolicyVersion",
+  "stockLogs", "reportAccessPolicyVersion",
 ]);
 
 // Keys that modify access control, credentials, or HR/legal/financial records.
@@ -36,6 +36,7 @@ const PRICE_WRITE_ROLES = new Set(["admin", "ceo", "md", "mgr"]);
 const OPERATIONAL_KEYS = [
   "expenses", "budgets", "sales", "dips", "deliveries", "maintenance",
   "inventoryLog", "pumpDailyReports", "financialEntry", "messages",
+  "stockLogs",
   "tasks", "kpis", "companyFiles", "deliveryEvidences", "hrEmployees",
   "hrHandbooks", "hrRecommendations", "priceProposals", "legalMatters",
   "corpProjects", "meetingMinutes", "broadcasts", "callLog", "priceHistory",
