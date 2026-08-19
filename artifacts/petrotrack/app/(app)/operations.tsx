@@ -379,7 +379,11 @@ export default function OperationsScreen() {
   const isAdmin    = role === 'admin';
   const canApprove = isMD || isAdmin;
   const canSeeDips = isMgr || canApprove;
-  const [departmentTab, setDepartmentTab] = useState(requestedTab === 'stock' || !canSeeDips ? 'stock' : 'dips');
+  const normalizedRequestedTab = Array.isArray(requestedTab) ? requestedTab[0] : requestedTab;
+  const hasDipApprovalRoute = normalizedRequestedTab === 'dip' || normalizedRequestedTab === 'dip-approvals';
+  const [departmentTab, setDepartmentTab] = useState(
+    normalizedRequestedTab === 'stock' ? 'stock' : hasDipApprovalRoute || canSeeDips ? 'dips' : 'stock',
+  );
 
   // ── Dip state ────────────────────────────────────────────────────────────
   // MD/Admin start on Approvals; station managers start on Dip Form.
@@ -388,6 +392,17 @@ export default function OperationsScreen() {
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
   const [appliesOn, setAppliesOn]     = useState('');
+
+  useEffect(() => {
+    if (normalizedRequestedTab === 'stock') {
+      setDepartmentTab('stock');
+      return;
+    }
+    if (hasDipApprovalRoute && canSeeDips) {
+      setDepartmentTab('dips');
+      if (canApprove) setDipSubTab(1);
+    }
+  }, [normalizedRequestedTab, hasDipApprovalRoute, canSeeDips, canApprove]);
 
   const perms           = isMgr ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
   const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
