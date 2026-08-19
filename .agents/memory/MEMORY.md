@@ -22,3 +22,4 @@
 - [Report runtime safety](report-runtime-safety.md) — combined reports must tolerate incomplete synced records during rendering and export
 - [Legacy branch asset records](legacy-branch-assets.md) — older tank and pump records may omit branch IDs; only unambiguous asset names can safely repair them
 - [Operations stock logs](operations-stock-logs.md) — one persisted branch/product/date ledger row uses seed + deliveries − shift sales and compares against the same-day dip
+- [Shift-report workflow](shift-report-workflow.md) — approved reports are locked for all roles; every transition guards its source status in shared state, not just the UI
