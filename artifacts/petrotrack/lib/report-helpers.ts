@@ -104,12 +104,45 @@ export function matchesProd(pump: string, prod: string): boolean {
   return p.includes(prod.toLowerCase());
 }
 
+export type COGSDelivery = {
+  id?: number;
+  dt?: string;
+  approvedAt?: string;
+  prod: string;
+  rec: number;
+  costPrice?: number;
+  approvalStatus?: string;
+};
+
+const validCost = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+
+function latestDeliveryFirst(a: COGSDelivery, b: COGSDelivery): number {
+  const dateOrder = String(b.dt ?? '').slice(0, 10).localeCompare(String(a.dt ?? '').slice(0, 10));
+  if (dateOrder !== 0) return dateOrder;
+  const approvalOrder = String(b.approvedAt ?? '').localeCompare(String(a.approvedAt ?? ''));
+  if (approvalOrder !== 0) return approvalOrder;
+  return (b.id ?? 0) - (a.id ?? 0);
+}
+
+/** Returns the last approved cost price known for a product in the supplied
+ * as-of delivery set. Callers should exclude deliveries after the report end
+ * date and outside the selected branch before calling this function. */
+export function getLastKnownCostPrice(deliveries: COGSDelivery[], prod: string): number {
+  const latest = deliveries
+    .filter(d => d.prod === prod
+      && validCost(d.costPrice) > 0
+      && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
+    .sort(latestDeliveryFirst)[0];
+  return validCost(latest?.costPrice);
+}
+
 /** Cost of goods sold: the total cost price of the products sold.
- *  Uses weighted-average cost from MD-approved deliveries multiplied by the
- *  volume sold. Products with no approved cost data contribute 0. */
+ *  Uses the last known approved delivery cost for each product multiplied by
+ *  the volume sold. Products with no approved cost data contribute 0. */
 export function computeCOGS(
   sales: Array<{ pump: string; L: number }>,
-  deliveries: Array<{ prod: string; rec: number; costPrice?: number; approvalStatus?: string }>,
+  deliveries: COGSDelivery[],
 ): number {
   const PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil', 'Others'];
   let total = 0;
@@ -117,23 +150,17 @@ export function computeCOGS(
   for (const prod of PRODS) {
     const vol = sales.filter(s => matchesProd(s.pump, prod)).reduce((sum, e) => sum + num(e.L), 0);
     if (vol <= 0) continue;
-    const dv = deliveries.filter(d =>
-      d.prod === prod && num(d.costPrice) > 0 &&
-      (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
-    const vr = dv.reduce((sum, d) => sum + num(d.rec), 0);
-    const ct = dv.reduce((sum, d) => sum + num(d.rec) * num(d.costPrice), 0);
-    const avgCost = vr > 0 ? ct / vr : 0;
-    total += avgCost * vol;
+    total += getLastKnownCostPrice(deliveries, prod) * vol;
   }
   return Math.round(total);
 }
 
 /** COGS for a shift-report revenue feed using its sold volume and the same
- * weighted-average approved delivery costs as computeCOGS.
+ * last-known approved delivery costs as computeCOGS.
  */
 export function computePumpReportCOGS(
   reports: Array<{ pumpName: string; product: string; liters: number }>,
-  deliveries: Array<{ prod: string; rec: number; costPrice?: number; approvalStatus?: string }>,
+  deliveries: COGSDelivery[],
 ): number {
   return computeCOGS(
     reports.map(report => ({

@@ -18,3 +18,4 @@
 - [Expo build port conflict](expo-build-port-conflict.md) — use the managed Expo workflow when the mockup sandbox already owns Metro's port
 - [Report export web print](report-export-web-print.md) — use printAsync on web; printToFileAsync has no browser file URI
 - [Report read and export permissions](report-read-export-permissions.md) — Admin grants report visibility; permitted users can read all types, while export remains role-specific
+- [COGS delivery costs](cogs-delivery-costs.md) — approved delivery costs carry forward through the report end date instead of being limited to the sales window

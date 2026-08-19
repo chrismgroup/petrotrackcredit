@@ -13,7 +13,7 @@ import { useColors } from '@/hooks/useColors';
 import {
   PERIODS, PROD_COLORS, REPORT_META,
   Period, ReportType,
-  buildPdf, getPerms, matchesProd, nfmt, periodRange,
+  buildPdf, getLastKnownCostPrice, getPerms, matchesProd, nfmt, periodRange,
   localDateKey, priBg, priColor, stColor,
 } from '@/lib/report-helpers';
 import { useLocalSearchParams } from 'expo-router';
@@ -147,7 +147,15 @@ export default function ReportsScreen() {
     selBranch === null ? arr : arr.filter((x: any) => x.branchId === selBranch || !x.branchId);
 
   const fSales = useMemo(() => fb(safeSales).filter((s: any)      => s.dt   >= fromStr && s.dt   <= toStr), [safeSales,       selBranch, fromStr, toStr]);
-  const fDelvs = useMemo(() => fb(safeDeliveries).filter((d: any) => d.dt   >= fromStr && d.dt   <= toStr), [safeDeliveries,  selBranch, fromStr, toStr]);
+  // Cost prices remain the cost basis for later sales. Include approved,
+  // cost-priced deliveries up to the report end date rather than only
+  // deliveries inside the sales window.
+  const cogsDeliveries = useMemo(() => fb(safeDeliveries).filter((d: any) => {
+    const deliveryDate = String(d.dt ?? '').slice(0, 10);
+    return deliveryDate <= toStr
+      && Number(d.costPrice) > 0
+      && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved');
+  }), [safeDeliveries, selBranch, toStr]);
   const fExps  = useMemo(() => fb(safeExpenses).filter((e: any)   => e.dt   >= fromStr && e.dt   <= toStr), [safeExpenses,    selBranch, fromStr, toStr]);
 
   /* ── Shift-report-based sales ──────────────────────────── */
@@ -190,12 +198,12 @@ export default function ReportsScreen() {
 
   const allProds = useMemo(() => {
     const set = new Set<string>();
-    fDelvs.forEach((d: any) => { if (d.costPrice) set.add(d.prod); });
+    cogsDeliveries.forEach((d: any) => set.add(d.prod));
     const K = ['PMS','AGO','DPK','LPG','Lube Oil','Others'];
     fSales.forEach((sale: any) => { const m = K.find(p => matchesProd(sale.pump, p)); if (m) set.add(m); });
     const order = ['PMS','AGO','LPG','Lube Oil','Others','DPK'];
     return [...order.filter(p => set.has(p)), ...[...set].filter(p => !order.includes(p))];
-  }, [fSales, fDelvs]);
+  }, [fSales, cogsDeliveries]);
 
   const pnlByProd = useMemo(() => allProds.map(prod => {
     const pe  = fSales.filter((sale: any) => matchesProd(sale.pump, prod));
@@ -203,20 +211,17 @@ export default function ReportsScreen() {
     const rev = pe.reduce((sum: number, e: any) => sum + e.L * e.price, 0);
     const sr  = Math.round(rev);
     const avg = vol > 0 ? Math.round(rev / vol) : getPriceForProduct(prices, prod, selBranch);
-    const dv  = fDelvs.filter((d: any) => d.prod === prod && d.costPrice && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'));
-    const vr  = dv.reduce((sum: number, d: any) => sum + d.rec, 0);
-    const ct  = dv.reduce((sum: number, d: any) => sum + d.rec * (d.costPrice ?? 0), 0);
-    const ac  = vr > 0 ? ct / vr : 0;
+    const ac  = getLastKnownCostPrice(cogsDeliveries, prod);
     const cogs = Math.round(ac * vol);
     const gp   = sr - cogs;
     return {
       prod, totalVolumeSold: vol, avgSellPrice: avg,
       salesRevenue: sr, avgCostPerL: Math.round(ac), scaledCOGS: cogs, grossProfit: gp,
       grossMargin: sr > 0 ? Math.round((gp / sr) * 100) : null,
-      hasCostData: dv.length > 0,
+      hasCostData: ac > 0,
       priceChanges: priceHistory.filter(h => h.prod === prod).slice(0, 3),
     };
-  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fSales, fDelvs, prices, priceHistory]);
+  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fSales, cogsDeliveries, prices, priceHistory]);
 
   const totSR   = pnlByProd.reduce((s, p) => s + p.salesRevenue, 0);
   const totCOGS = pnlByProd.reduce((s, p) => s + p.scaledCOGS,  0);
