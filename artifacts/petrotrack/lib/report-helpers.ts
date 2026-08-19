@@ -97,11 +97,12 @@ export function periodRange(p: Period, anchor?: Date | string): { from: Date; to
   return { from, to };
 }
 
-export function matchesProd(pump: string, prod: string): boolean {
-  const p = pump.toLowerCase();
-  if (prod === 'Lube Oil') return p.includes('lube');
-  if (prod === 'Others')   return p.includes('other');
-  return p.includes(prod.toLowerCase());
+export function matchesProd(pump: string | null | undefined, prod: string | null | undefined): boolean {
+  const p = String(pump ?? '').toLowerCase();
+  const normalizedProd = String(prod ?? '').toLowerCase();
+  if (normalizedProd === 'lube oil') return p.includes('lube');
+  if (normalizedProd === 'others')   return p.includes('other');
+  return p.includes(normalizedProd);
 }
 
 export type COGSDelivery = {
@@ -186,8 +187,8 @@ export function stColor(st: string): string {
 }
 
 /* ─── HTML output encoding ──────────────────────────────── */
-export function escapeHtml(s: string): string {
-  return s
+export function escapeHtml(value: unknown): string {
+  return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
