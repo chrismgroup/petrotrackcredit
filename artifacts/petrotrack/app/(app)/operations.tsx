@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
@@ -10,7 +10,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import {
   DEFAULT_MGR_PERMS, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
   getCurrentTankStock, previousBusinessDateKey,
-  ROLE_COLORS, StockLogEntry, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
+  ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -84,6 +84,23 @@ function makeStockLogStatus(opening: number | null, dip: number | null, discrepa
   return 'balanced';
 }
 
+function stockLogValueSignature(entry: Pick<StockLogEntry, 'branchId' | 'product' | 'businessDate' | 'openingQuantity' | 'delivered' | 'sold' | 'bookStock' | 'tankDip' | 'discrepancy' | 'unit' | 'status' | 'openingSource'>): string {
+  return [
+    entry.branchId,
+    entry.product,
+    entry.businessDate,
+    entry.openingQuantity,
+    entry.delivered,
+    entry.sold,
+    entry.bookStock,
+    entry.tankDip,
+    entry.discrepancy,
+    entry.unit,
+    entry.status,
+    entry.openingSource ?? '',
+  ].join('|');
+}
+
 function StockLogPanel() {
   const {
     role, branchId, branches, tanks, lpgTanks, pumps, dips, deliveries,
@@ -100,9 +117,12 @@ function StockLogPanel() {
       const branchTanks = tanks.filter(tank => tank.branchId === branch.id);
       const branchLpgTanks = lpgTanks.filter(tank => tank.branchId === branch.id);
       const branchPumps = pumps.filter(pump => pump.branchId === branch.id);
-      return (branchTanks.length > 0 || branchLpgTanks.length > 0) && branchPumps.length > 0;
+      return (
+        ((branchTanks.length > 0 || branchLpgTanks.length > 0) && branchPumps.length > 0) ||
+        stockLogs.some(entry => entry.branchId === branch.id)
+      );
     }),
-    [branchId, branches, isGlobal, lpgTanks, pumps, tanks],
+    [branchId, branches, isGlobal, lpgTanks, pumps, stockLogs, tanks],
   );
 
   const buildEntries = useMemo(() => {
@@ -123,11 +143,27 @@ function StockLogPanel() {
           branchPumps.some(pump => pump.prod === product) ||
           startupStocks.some(stock => stock.branchId === branch.id && stock.product === product) ||
           deliveries.some(delivery => delivery.branchId === branch.id && delivery.prod === product) ||
-          pumpDailyReports.some(report => report.branchId === branch.id && report.product === product);
+          pumpDailyReports.some(report => report.branchId === branch.id && report.product === product) ||
+          stockLogs.some(entry => entry.branchId === branch.id && entry.product === product);
         if (!hasProduct) return;
 
         const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
-        const openingQuantity = stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
+        const previousLog = stockLogs
+          .filter(entry =>
+            entry.branchId === branch.id &&
+            entry.product === product &&
+            entry.businessDate < businessDate &&
+            entry.bookStock !== null,
+          )
+          .sort((a, b) => b.businessDate.localeCompare(a.businessDate))[0];
+        const openingQuantity = previousLog?.bookStock ?? stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
+        const openingSource: StockLogOpeningSource = businessDate === startupRecord?.setAt.slice(0, 10)
+          ? 'startup_seed'
+          : previousLog?.bookStock !== null && previousLog?.bookStock !== undefined
+            ? 'previous_log'
+            : openingQuantity !== null
+              ? 'previous_dip'
+              : 'startup_seed';
         const book = calculateStockBook(
           startupRecord,
           product,
@@ -152,20 +188,34 @@ function StockLogPanel() {
           discrepancy,
           unit: unitForProd(product) as 'L' | 'kg',
           status: makeStockLogStatus(book.startupStock, tankDip, discrepancy),
+          openingSource,
         });
       });
     });
     return entries;
-  }, [businessDate, branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, startupStocks, tanks, visibleBranches]);
+  }, [businessDate, branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, startupStocks, stockLogs, tanks, visibleBranches]);
 
   const savedEntries = stockLogs.filter(entry =>
     entry.businessDate === businessDate &&
     visibleBranches.some(branch => branch.id === entry.branchId),
   );
-  const summaryEntries = buildEntries.length > 0 ? buildEntries : savedEntries;
+  const hasSavedRecordDrift = buildEntries.length > 0 &&
+    (savedEntries.length !== buildEntries.length ||
+      buildEntries.some(entry => {
+        const saved = savedEntries.find(candidate => candidate.branchId === entry.branchId && candidate.product === entry.product);
+        return !saved || stockLogValueSignature(saved) !== stockLogValueSignature(entry);
+      }));
+  const displayedEntries = savedEntries.length > 0 ? savedEntries : buildEntries;
+  const summaryEntries = displayedEntries;
   const discrepancyCount = summaryEntries.filter(entry => entry.status === 'shortage' || entry.status === 'excess').length;
   const balancedCount = summaryEntries.filter(entry => entry.status === 'balanced').length;
   const totalSold = summaryEntries.reduce((sum, entry) => sum + entry.sold, 0);
+
+  useEffect(() => {
+    if (buildEntries.length > 0 && hasSavedRecordDrift) {
+      upsertStockLogs(buildEntries);
+    }
+  }, [buildEntries, hasSavedRecordDrift, upsertStockLogs]);
 
   function createLog() {
     if (!businessDate) return;
@@ -223,27 +273,61 @@ function StockLogPanel() {
       </View>
 
       <View style={[styles.stockControlCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <AppliedDateField value={businessDate} onChange={setBusinessDate} label="Stock log business date" accent={roleColor} helper="Uses the previous business-day dip as opening stock after the admin seed date." />
+        <AppliedDateField value={businessDate} onChange={setBusinessDate} label="Stock log business date" accent={roleColor} helper="Daily records auto-save. Opening carries forward from the previous saved book stock; a tank dip is used only when no prior log exists." />
         <TouchableOpacity style={[styles.stockCreateBtn, { backgroundColor: roleColor }]} onPress={createLog} activeOpacity={0.85}>
           <Ionicons name="save-outline" size={18} color="#fff" />
-          <Text style={styles.stockCreateBtnText}>{savedEntries.length > 0 ? 'Refresh stock log' : 'Create stock log'}</Text>
+          <Text style={styles.stockCreateBtnText}>{savedEntries.length > 0 ? 'Refresh daily record' : 'Save daily record'}</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.stockSectionHeading}>
         <View>
           <Text style={[styles.stockSectionTitle, { color: colors.text }]}>Branch product ledger</Text>
-          <Text style={[styles.stockSectionSubtitle, { color: colors.textMuted }]}>{buildEntries.length > 0 ? 'Live calculation ready to record' : 'No eligible branch stock data for this date'}</Text>
+          <Text style={[styles.stockSectionSubtitle, { color: colors.textMuted }]}>{savedEntries.length > 0 ? 'Historical record saved for this business day' : buildEntries.length > 0 ? 'Daily calculation auto-saves when source records change' : 'No eligible branch stock data for this date'}</Text>
         </View>
         <Ionicons name="analytics-outline" size={20} color={roleColor} />
       </View>
-      {buildEntries.length > 0 ? buildEntries.map(renderEntry) : savedEntries.map(renderEntry)}
+      {displayedEntries.map(renderEntry)}
       {buildEntries.length === 0 && savedEntries.length === 0 ? (
         <View style={[styles.stockEmpty, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="file-tray-outline" size={28} color={colors.textMuted} />
           <Text style={[styles.stockEmptyTitle, { color: colors.text }]}>No stock log inputs yet</Text>
           <Text style={[styles.stockEmptyText, { color: colors.textMuted }]}>Set a branch startup quantity, record a delivery or shift report, then create the daily log.</Text>
         </View>
+      ) : null}
+      <View style={styles.stockHistoryHeading}>
+        <View>
+          <Text style={[styles.stockSectionTitle, { color: colors.text }]}>Historical daily records</Text>
+          <Text style={[styles.stockSectionSubtitle, { color: colors.textMuted }]}>Saved by business date for reference and audit</Text>
+        </View>
+        <Ionicons name="time-outline" size={20} color={roleColor} />
+      </View>
+      {Array.from(new Set(stockLogs
+        .filter(entry => visibleBranches.some(branch => branch.id === entry.branchId))
+        .map(entry => entry.businessDate)))
+        .sort((a, b) => b.localeCompare(a))
+        .map(date => {
+          const dateEntries = stockLogs.filter(entry =>
+            entry.businessDate === date &&
+            visibleBranches.some(branch => branch.id === entry.branchId),
+          );
+          const issues = dateEntries.filter(entry => entry.status === 'shortage' || entry.status === 'excess').length;
+          return (
+            <TouchableOpacity key={date} style={[styles.stockHistoryRow, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setBusinessDate(date)} activeOpacity={0.8}>
+              <View style={[styles.stockHistoryDate, { backgroundColor: roleColor + '14' }]}>
+                <Text style={[styles.stockHistoryDateDay, { color: roleColor }]}>{date.slice(8, 10)}</Text>
+                <Text style={[styles.stockHistoryDateMonth, { color: roleColor }]}>{new Date(`${date}T12:00:00`).toLocaleString('en-GB', { month: 'short' })}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.stockHistoryTitle, { color: colors.text }]}>{fmtDate(date)}</Text>
+                <Text style={[styles.stockHistoryMeta, { color: colors.textMuted }]}>{dateEntries.length} product record{dateEntries.length === 1 ? '' : 's'} · {issues > 0 ? `${issues} discrepancy${issues === 1 ? '' : 'ies'}` : 'No discrepancies'}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+            </TouchableOpacity>
+          );
+        })}
+      {stockLogs.length === 0 ? (
+        <Text style={[styles.stockFootnote, { color: colors.textSubtle }]}>Your first saved day will appear here, followed by each subsequent business day.</Text>
       ) : null}
       <Text style={[styles.stockFootnote, { color: colors.textSubtle }]}>Every row is one product for one branch. LPG is measured in kg; petroleum products are measured in litres.</Text>
     </ScrollView>
@@ -702,6 +786,13 @@ const styles = StyleSheet.create({
   stockEmpty: { alignItems: 'center', borderRadius: 16, borderWidth: 1, padding: 24, gap: 7 },
   stockEmptyTitle: { fontSize: 14, fontWeight: '800' },
   stockEmptyText: { fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 290 },
+  stockHistoryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 9, paddingHorizontal: 2 },
+  stockHistoryRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, padding: 10, gap: 11 },
+  stockHistoryDate: { alignItems: 'center', justifyContent: 'center', width: 46, height: 46, borderRadius: 12 },
+  stockHistoryDateDay: { fontSize: 17, fontWeight: '900', lineHeight: 19 },
+  stockHistoryDateMonth: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase', marginTop: 1 },
+  stockHistoryTitle: { fontSize: 13, fontWeight: '800' },
+  stockHistoryMeta: { fontSize: 10, marginTop: 3 },
   stockFootnote: { fontSize: 10, lineHeight: 15, textAlign: 'center', paddingHorizontal: 12, marginTop: 2 },
 
 });
