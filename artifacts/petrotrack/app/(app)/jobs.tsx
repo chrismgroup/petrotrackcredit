@@ -103,7 +103,7 @@ export default function JobsScreen() {
 
   const allowed = new Set(navItems.map(item => item.id));
   const canSee = (item: JobItem) => {
-    if (item.id === 'dips') return allowed.has('ops') || allowed.has('tanks');
+    if (item.id === 'dips') return (role === 'md' || role === 'admin') && (allowed.has('ops') || allowed.has('tanks'));
     if (item.id === 'financial-status') return allowed.has('acct') || allowed.has('home');
     if (item.id === 'people') return allowed.has('hr') || allowed.has('users');
     return Object.values(SCREEN_ROUTES).includes(item.route) && (
@@ -146,7 +146,7 @@ export default function JobsScreen() {
       return;
     }
     if (item.id === 'dips') {
-      router.push(`${SCREEN_ROUTES.ops}?tab=dip` as never);
+      router.push(`${SCREEN_ROUTES.ops}?tab=dip-approvals` as never);
       return;
     }
     router.push(item.route as never);
