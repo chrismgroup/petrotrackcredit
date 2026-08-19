@@ -14,7 +14,7 @@ import {
   PERIODS, PROD_COLORS, REPORT_META,
   Period, ReportType,
   buildPdf, getLastKnownCostPrice, getPerms, matchesProd, nfmt, periodRange,
-  localDateKey, priBg, priColor, stColor,
+  localDateKey, priBg, priColor, stColor, safeNum, safeStr,
 } from '@/lib/report-helpers';
 import { useLocalSearchParams } from 'expo-router';
 
@@ -111,18 +111,81 @@ export default function ReportsScreen() {
   const perms = getPerms(role);
   const [exporting, setExporting] = useState(false);
 
-  /* Safety guards */
-  const safeSales       = Array.isArray(sales)            ? sales            : [];
-  const safeDeliveries  = Array.isArray(deliveries)       ? deliveries       : [];
-  const safeExpenses    = Array.isArray(expenses)         ? expenses         : [];
-  const safeBranches    = Array.isArray(branches)         ? branches         : [];
-  const safeMaintenance = Array.isArray(maintenance)      ? maintenance      : [];
-  const safeDips        = Array.isArray(dips)             ? dips             : [];
-  const safeHrEmployees = Array.isArray(hrEmployees)      ? hrEmployees      : [];
-  const safeProposals   = Array.isArray(priceProposals)   ? priceProposals   : [];
-  const safePumpReports = Array.isArray(pumpDailyReports) ? pumpDailyReports : [];
-  const safePriceHistory = Array.isArray(priceHistory)    ? priceHistory     : [];
-  const safeStaff       = Array.isArray(staff)            ? staff            : [];
+  /* Safety guards — also normalise per-entry numeric/string fields so that
+     partially-synced records never reach render or export with undefined values
+     that would cause .toLocaleString() / arithmetic to throw. */
+  const safeSales = (Array.isArray(sales) ? sales : []).map((s: any) => ({
+    ...s,
+    L:     safeNum(s.L),
+    price: safeNum(s.price),
+    dt:    safeStr(s.dt, ''),
+  }));
+  const safeDeliveries = (Array.isArray(deliveries) ? deliveries : []).map((d: any) => ({
+    ...d,
+    costPrice: safeNum(d.costPrice),
+    rec:       safeNum(d.rec),
+    dt:        safeStr(d.dt, ''),
+  }));
+  const safeExpenses = (Array.isArray(expenses) ? expenses : []).map((e: any) => ({
+    ...e,
+    amt:        safeNum(e.amt),
+    cat:        safeStr(e.cat, ''),
+    desc:       safeStr(e.desc, ''),
+    byName:     safeStr(e.byName, ''),
+    approvedBy: safeStr(e.approvedBy, ''),
+    dt:         safeStr(e.dt, ''),
+  }));
+  const safeBranches    = Array.isArray(branches)   ? branches   : [];
+  const safeMaintenance = (Array.isArray(maintenance) ? maintenance : []).map((m: any) => ({
+    ...m,
+    cost:  safeNum(m.cost),
+    title: safeStr(m.title, ''),
+    pri:   safeStr(m.pri, ''),
+    st:    safeStr(m.st, ''),
+    by:    safeStr(m.by, ''),
+    date:  safeStr(m.date, ''),
+  }));
+  const safeDips = (Array.isArray(dips) ? dips : []).map((d: any) => ({
+    ...d,
+    dt:     safeStr(d.dt, ''),
+    by:     safeStr(d.by, ''),
+    status: safeStr(d.status, ''),
+    obs:    safeStr(d.obs, ''),
+  }));
+  const safeHrEmployees = (Array.isArray(hrEmployees) ? hrEmployees : []).map((e: any) => ({
+    ...e,
+    name:     safeStr(e.name, ''),
+    role:     safeStr(e.role, ''),
+    dept:     safeStr(e.dept, ''),
+    status:   safeStr(e.status, ''),
+    joinDate: safeStr(e.joinDate, ''),
+  }));
+  const safeProposals = (Array.isArray(priceProposals) ? priceProposals : []).map((p: any) => ({
+    ...p,
+    currentPrice:  safeNum(p.currentPrice),
+    proposedPrice: safeNum(p.proposedPrice),
+    prod:          safeStr(p.prod, ''),
+    status:        safeStr(p.status, ''),
+    proposedBy:    safeStr(p.proposedBy, ''),
+    proposedAt:    safeStr(p.proposedAt, ''),
+    id:            safeNum(p.id),
+  }));
+  const safePumpReports = (Array.isArray(pumpDailyReports) ? pumpDailyReports : []).map((r: any) => ({
+    ...r,
+    grossAmount: safeNum(r.grossAmount),
+    liters:      safeNum(r.liters),
+    date:        safeStr(r.date, ''),
+  }));
+  const safePriceHistory = (Array.isArray(priceHistory) ? priceHistory : []).map((h: any) => ({
+    ...h,
+    oldPrice: safeNum(h.oldPrice),
+    newPrice: safeNum(h.newPrice),
+    prod:     safeStr(h.prod, ''),
+    by:       safeStr(h.by, ''),
+    dt:       safeStr(h.dt, ''),
+    id:       safeNum(h.id),
+  }));
+  const safeStaff       = Array.isArray(staff) ? staff : [];
   const safeCompanyInfo = companyInfo && typeof companyInfo === 'object' ? companyInfo : ({} as any);
 
   const params = useLocalSearchParams<{ type?: string }>();

@@ -172,8 +172,23 @@ export function computePumpReportCOGS(
   );
 }
 
+/** Coerce any value to a finite number, returning `fallback` (default 0) when
+ *  the value is undefined, null, NaN, or non-finite. Use this whenever a
+ *  synced record field that should be numeric may arrive incomplete. */
+export function safeNum(v: unknown, fallback = 0): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** Coerce any value to a non-empty string, returning `fallback` (default '—')
+ *  when the value is undefined, null, or an empty/whitespace-only string. */
+export function safeStr(v: unknown, fallback = '—'): string {
+  const s = String(v ?? '').trim();
+  return s.length > 0 ? s : fallback;
+}
+
 export function nfmt(n: number): string {
-  return '₦' + n.toLocaleString('en-NG', { maximumFractionDigits: 0 });
+  return '₦' + safeNum(n).toLocaleString('en-NG', { maximumFractionDigits: 0 });
 }
 
 export function priColor(pri: string): string {
