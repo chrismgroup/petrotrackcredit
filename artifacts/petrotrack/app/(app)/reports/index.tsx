@@ -198,7 +198,9 @@ export default function ReportsScreen() {
 
   const allProds = useMemo(() => {
     const set = new Set<string>();
-    cogsDeliveries.forEach((d: any) => set.add(d.prod));
+    cogsDeliveries.forEach((d: any) => {
+      if (typeof d.prod === 'string' && d.prod.trim()) set.add(d.prod);
+    });
     const K = ['PMS','AGO','DPK','LPG','Lube Oil','Others'];
     fSales.forEach((sale: any) => { const m = K.find(p => matchesProd(sale.pump, p)); if (m) set.add(m); });
     const order = ['PMS','AGO','LPG','Lube Oil','Others','DPK'];
@@ -242,7 +244,7 @@ export default function ReportsScreen() {
 
   const prodSales = ['PMS','AGO','DPK','LPG'].map(prod => {
     const color = PROD_COLORS[prod] || rc;
-    const entries = fSales.filter((sale: any) => sale.pump.includes(prod));
+    const entries = fSales.filter((sale: any) => matchesProd(sale.pump, prod));
     const L = entries.reduce((sum: number, e: any) => sum + e.L, 0);
     const rev = entries.reduce((sum: number, e: any) => sum + e.L * e.price, 0);
     return { prod, color, L, scaledL: Math.round(L), scaledRev: Math.round(rev) };

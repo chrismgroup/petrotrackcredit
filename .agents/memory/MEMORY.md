@@ -19,3 +19,4 @@
 - [Report export web print](report-export-web-print.md) — use printAsync on web; printToFileAsync has no browser file URI
 - [Report read and export permissions](report-read-export-permissions.md) — Admin grants report visibility; permitted users can read all types, while export remains role-specific
 - [COGS delivery costs](cogs-delivery-costs.md) — approved delivery costs carry forward through the report end date instead of being limited to the sales window
+- [Report runtime safety](report-runtime-safety.md) — combined reports must tolerate incomplete synced records during rendering and export
