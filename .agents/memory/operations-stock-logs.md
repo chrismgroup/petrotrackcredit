@@ -7,4 +7,4 @@ Operations Stock Log records are one row per branch, product, and business date.
 
 **Why:** Inventory needs an auditable operational record while still using the existing authoritative source records instead of allowing manual stock figures to drift from deliveries, shifts, or tank dips.
 
-**How to apply:** Do not require an admin seed for Stock Log. Extract opening from the latest prior saved book stock; use the latest prior tank dip only when no prior log exists. Use `book stock = opening + deliveries - shift-report sales`; compare book stock with the business-day dip; upsert the same branch/product/date key when a log is refreshed.
+**How to apply:** Use the existing Stock Snapshot seed quantity/date as the baseline; accumulate approved deliveries and pump-report sales from that date forward. Carry forward the latest saved book stock for daily openings, using a prior tank dip only as a legacy fallback.

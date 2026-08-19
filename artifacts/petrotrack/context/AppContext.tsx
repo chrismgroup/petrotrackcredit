@@ -449,7 +449,7 @@ export function getLatestValidatedPumpReport(
  * is used only on its own business date. On later dates, callers pass a
  * previous stock-log book balance (or a previous tank dip when no log exists)
  * as the opening quantity. Delivered and sold values are intentionally
- * date-specific rather than cumulative.
+ * date-specific rather than cumulative, unless includeHistoricalEvents is set.
  */
 export function calculateStockBook(
   startupStock: StartupStock | undefined,
@@ -460,6 +460,7 @@ export function calculateStockBook(
   asOfDate: string,
   pumps: Pick<Pump, 'id' | 'branchId'>[] = [],
   openingStockOverride?: number | null,
+  includeHistoricalEvents = false,
 ): StockBookCalculation {
   if (branchId === null || (startupStock && startupStock.branchId !== branchId)) {
     return { startupStock: null, delivered: 0, sold: 0, bookStock: null };
@@ -506,7 +507,7 @@ export function calculateStockBook(
     const businessDate = recordBusinessDate(delivery.dt);
     const eventAt = delivery.approvedAt ?? delivery.mdAt ?? delivery.accAt ?? delivery.submittedAt ?? delivery.dt;
     if (!isInSeedWindow(businessDate, eventAt)) continue;
-    if (businessDate === asOfDate) delivered += delivery.rec;
+    if (includeHistoricalEvents || businessDate === asOfDate) delivered += delivery.rec;
   }
 
   for (const report of liveReportsById.values()) {
@@ -516,10 +517,10 @@ export function calculateStockBook(
     const businessDate = recordBusinessDate(report.date);
     if (!businessDate) continue;
     if (!isInSeedWindow(businessDate, getPumpReportWorkflowAt(report))) continue;
-    if (businessDate === asOfDate) sold += report.liters;
+    if (includeHistoricalEvents || businessDate === asOfDate) sold += report.liters;
   }
 
-  const openingStock = startupStock && asOfDate === seedDate
+  const openingStock = startupStock && (asOfDate === seedDate || includeHistoricalEvents)
     ? startupStock.quantity
     : openingStockOverride ?? null;
   return {

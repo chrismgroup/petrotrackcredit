@@ -9,7 +9,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
   DEFAULT_MGR_PERMS, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
-  getCurrentTankStock,
+  getCurrentTankStock, previousBusinessDateKey,
   ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -105,7 +105,7 @@ function stockLogValueSignature(entry: Pick<StockLogEntry, 'branchId' | 'product
 function StockLogPanel() {
   const {
     role, branchId, branches, tanks, lpgTanks, pumps, dips, deliveries,
-    pumpDailyReports, stockLogs, upsertStockLogs,
+    pumpDailyReports, startupStocks, stockLogs, upsertStockLogs,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
@@ -120,6 +120,7 @@ function StockLogPanel() {
       return (
         branchTanks.length > 0 ||
         branchLpgTanks.length > 0 ||
+        startupStocks.some(stock => stock.branchId === branch.id) ||
         pumps.some(pump => pump.branchId === branch.id) ||
         deliveries.some(delivery => delivery.branchId === branch.id) ||
         pumpDailyReports.some(report => report.branchId === branch.id) ||
@@ -131,10 +132,11 @@ function StockLogPanel() {
         stockLogs.some(entry => entry.branchId === branch.id)
       );
     }),
-    [branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, stockLogs, tanks],
+    [branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, startupStocks, stockLogs, tanks],
   );
 
   const buildEntries = useMemo(() => {
+    const previousDate = previousBusinessDateKey(businessDate);
     const entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[] = [];
 
     visibleBranches.forEach(branch => {
@@ -149,6 +151,7 @@ function StockLogPanel() {
           branchTanks.some(tank => tank.prod === product) ||
           (product === 'LPG' && branchLpgTanks.length > 0) ||
           branchPumps.some(pump => pump.prod === product) ||
+          startupStocks.some(stock => stock.branchId === branch.id && stock.product === product) ||
           deliveries.some(delivery =>
             delivery.branchId === branch.id &&
             (delivery.prod === product || (product === 'LPG' && ['LPG_Single', 'LPG_Distributor'].includes(delivery.prod))),
@@ -157,6 +160,7 @@ function StockLogPanel() {
           stockLogs.some(entry => entry.branchId === branch.id && entry.product === product);
         if (!hasProduct) return;
 
+        const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
         const previousLog = stockLogs
           .filter(entry =>
             entry.branchId === branch.id &&
@@ -165,12 +169,31 @@ function StockLogPanel() {
             entry.bookStock !== null,
           )
           .sort((a, b) => b.businessDate.localeCompare(a.businessDate))[0];
-        const openingQuantity = previousLog?.bookStock ?? stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
-        const openingSource: StockLogOpeningSource = previousLog?.bookStock !== null && previousLog?.bookStock !== undefined
-            ? 'previous_log'
-            : openingQuantity !== null
-              ? 'previous_dip'
-              : 'unavailable';
+        let openingQuantity = previousLog?.bookStock ?? null;
+        let openingSource: StockLogOpeningSource = previousLog?.bookStock !== null && previousLog?.bookStock !== undefined
+          ? 'previous_log'
+          : 'unavailable';
+        const seedDate = startupRecord?.setAt.slice(0, 10) ?? '';
+        if (openingQuantity === null && startupRecord && businessDate >= seedDate) {
+          openingQuantity = businessDate === seedDate
+            ? startupRecord.quantity
+            : calculateStockBook(
+                startupRecord,
+                product,
+                branch.id,
+                deliveries,
+                pumpDailyReports,
+                previousDate,
+                branchPumps,
+                startupRecord.quantity,
+                true,
+              ).bookStock;
+          openingSource = 'startup_seed';
+        }
+        if (openingQuantity === null) {
+          openingQuantity = stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
+          openingSource = openingQuantity === null ? 'unavailable' : 'previous_dip';
+        }
         const book = calculateStockBook(
           undefined,
           product,
@@ -200,7 +223,7 @@ function StockLogPanel() {
       });
     });
     return entries;
-  }, [businessDate, branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, stockLogs, tanks, visibleBranches]);
+  }, [businessDate, branchId, branches, deliveries, dips, isGlobal, lpgTanks, pumpDailyReports, pumps, startupStocks, stockLogs, tanks, visibleBranches]);
 
   const savedEntries = stockLogs.filter(entry =>
     entry.businessDate === businessDate &&
@@ -280,7 +303,7 @@ function StockLogPanel() {
       </View>
 
       <View style={[styles.stockControlCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <AppliedDateField value={businessDate} onChange={setBusinessDate} label="Stock log business date" accent={roleColor} helper="Daily records auto-save from live deliveries, pump reports, tank dips, and prior stock-log balances. No start-up quantity is required." />
+        <AppliedDateField value={businessDate} onChange={setBusinessDate} label="Stock log business date" accent={roleColor} helper="Uses the Stock Snapshot seed quantity and date, then extracts approved live deliveries and pump reports from that date forward. Daily records auto-save." />
         <TouchableOpacity style={[styles.stockCreateBtn, { backgroundColor: roleColor }]} onPress={createLog} activeOpacity={0.85}>
           <Ionicons name="save-outline" size={18} color="#fff" />
           <Text style={styles.stockCreateBtnText}>{savedEntries.length > 0 ? 'Refresh daily record' : 'Save daily record'}</Text>
@@ -299,7 +322,7 @@ function StockLogPanel() {
         <View style={[styles.stockEmpty, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="file-tray-outline" size={28} color={colors.textMuted} />
           <Text style={[styles.stockEmptyTitle, { color: colors.text }]}>No stock log inputs yet</Text>
-          <Text style={[styles.stockEmptyText, { color: colors.textMuted }]}>Record deliveries, pump sales, or tank dips in the app. The stock log will extract those live records automatically.</Text>
+          <Text style={[styles.stockEmptyText, { color: colors.textMuted }]}>Configure a product in Stock Snapshot, then record deliveries, pump sales, or tank dips. The Stock Log will extract the live history automatically.</Text>
         </View>
       ) : null}
       <View style={styles.stockHistoryHeading}>
