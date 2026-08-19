@@ -392,6 +392,7 @@ export default function OperationsScreen() {
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
   const [appliesOn, setAppliesOn]     = useState('');
+  const [approvalSearch, setApprovalSearch] = useState('');
 
   useEffect(() => {
     if (normalizedRequestedTab === 'stock') {
@@ -448,6 +449,25 @@ export default function OperationsScreen() {
 
 
   const pendingDips = dips.filter(dip => dip.status === 'pending' && dipHasVisibleReading(dip));
+  const approvedDips = dips.filter(dip => dip.status === 'approved' && dipHasVisibleReading(dip));
+  const approvalSearchTerm = approvalSearch.trim().toLowerCase();
+  const approvalRecords = [...pendingDips, ...approvedDips]
+    .filter(dip => {
+      if (!approvalSearchTerm) return true;
+      const tankNames = [
+        ...Object.keys(dip.rd).map(id => tanks.find(tank => tank.id === id)?.name ?? id),
+        ...Object.keys(dip.lpg).map(id => lpgTanks.find(tank => tank.id === id)?.name ?? id),
+      ];
+      return [
+        dip.dt,
+        dip.submittedAt,
+        dip.by,
+        dip.obs,
+        dip.status,
+        ...tankNames,
+      ].some(value => String(value ?? '').toLowerCase().includes(approvalSearchTerm));
+    })
+    .sort((a, b) => b.id - a.id);
 
   return (
     <ScreenLayout title="Operations">
@@ -608,33 +628,83 @@ export default function OperationsScreen() {
             </ScrollView>
           )}
 
-          {/* ── Awaiting Approval (MD / Admin) ── */}
+          {/* ── Approvals and history (MD / Admin) ── */}
           {dipSubTab === 1 && (
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-              {pendingDips.length === 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.approvalMarquee}
+              >
+                <View style={[styles.approvalMarqueeTile, { backgroundColor: '#BA751712', borderColor: '#BA751744' }]}>
+                  <Ionicons name="time-outline" size={17} color="#BA7517" />
+                  <Text style={[styles.approvalMarqueeValue, { color: '#BA7517' }]}>{pendingDips.length}</Text>
+                  <Text style={[styles.approvalMarqueeLabel, { color: colors.textMuted }]}>Pending approvals</Text>
+                </View>
+                <View style={[styles.approvalMarqueeTile, { backgroundColor: '#1a6e3c12', borderColor: '#1a6e3c44' }]}>
+                  <Ionicons name="checkmark-circle-outline" size={17} color="#1a6e3c" />
+                  <Text style={[styles.approvalMarqueeValue, { color: '#1a6e3c' }]}>{approvedDips.length}</Text>
+                  <Text style={[styles.approvalMarqueeLabel, { color: colors.textMuted }]}>Approved dips</Text>
+                </View>
+                <View style={[styles.approvalMarqueeTile, { backgroundColor: roleColor + '12', borderColor: roleColor + '44' }]}>
+                  <Ionicons name="documents-outline" size={17} color={roleColor} />
+                  <Text style={[styles.approvalMarqueeValue, { color: roleColor }]}>{approvalRecords.length}</Text>
+                  <Text style={[styles.approvalMarqueeLabel, { color: colors.textMuted }]}>
+                    {approvalSearchTerm ? 'Matching approvals' : 'Showing approvals'}
+                  </Text>
+                </View>
+              </ScrollView>
+
+              <View style={[styles.approvalSearch, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="search-outline" size={17} color={colors.textMuted} />
+                <TextInput
+                  style={[styles.approvalSearchInput, { color: colors.text }]}
+                  placeholder="Search date, submitter, tank or note"
+                  placeholderTextColor={colors.textSubtle}
+                  value={approvalSearch}
+                  onChangeText={setApprovalSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                />
+                {approvalSearch.length > 0 ? (
+                  <TouchableOpacity onPress={() => setApprovalSearch('')} accessibilityLabel="Clear approval search">
+                    <Ionicons name="close-circle" size={17} color={colors.textMuted} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {approvalRecords.length === 0 ? (
                 <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
                   <Ionicons name="checkmark-circle-outline" size={16} color={colors.textMuted} />
-                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>No pending dip records. All caught up!</Text>
+                  <Text style={[styles.noBannerText, { color: colors.textMuted }]}>
+                    {approvalSearchTerm ? 'No approvals match your search.' : 'No pending or approved dip records yet.'}
+                  </Text>
                 </View>
               ) : (
                 <>
                   <View style={[styles.mdBanner, { backgroundColor: '#BA751712', borderColor: '#BA751744' }]}>
                     <Ionicons name="time-outline" size={16} color="#BA7517" />
                     <Text style={[styles.mdBannerText, { color: '#BA7517' }]}>
-                      {pendingDips.length} dip record{pendingDips.length > 1 ? 's' : ''} awaiting approval. Approving will update tank inventory.
+                      {approvalSearchTerm
+                        ? `${approvalRecords.length} matching approval record${approvalRecords.length === 1 ? '' : 's'}`
+                        : `${pendingDips.length} pending · ${approvedDips.length} approved dip record${pendingDips.length + approvedDips.length === 1 ? '' : 's'}`}
                     </Text>
                   </View>
-                  {pendingDips.map(dip => (
-                    <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: '#BA751744', borderWidth: 1.5 }]}>
+                  {approvalRecords.map(dip => {
+                    const isPending = dip.status === 'pending';
+                    const statusColor = isPending ? '#BA7517' : '#1a6e3c';
+                    return (
+                    <View key={dip.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: `${statusColor}44`, borderWidth: 1.5 }]}>
                       <View style={styles.logHeader}>
                         <View style={{ flex: 1 }}>
                         <Text style={[styles.logDate, { color: colors.text }]}>Applies on {fmtDate(dip.dt)}</Text>
                         <Text style={[styles.logBy, { color: colors.textMuted }]}>Submitted {fmtDateTime(dip.submittedAt ?? dip.dt)}</Text>
                           <Text style={[styles.logBy, { color: colors.textMuted }]}>by {dip.by}</Text>
                         </View>
-                        <View style={[styles.dipStatusBadge, { backgroundColor: '#BA751718' }]}>
-                          <Ionicons name="time" size={11} color="#BA7517" />
-                          <Text style={[styles.dipStatusText, { color: '#BA7517' }]}>Pending</Text>
+                        <View style={[styles.dipStatusBadge, { backgroundColor: `${statusColor}18` }]}>
+                          <Ionicons name={isPending ? 'time' : 'checkmark-circle'} size={11} color={statusColor} />
+                          <Text style={[styles.dipStatusText, { color: statusColor }]}>{isPending ? 'Pending' : 'Approved'}</Text>
                         </View>
                       </View>
 
@@ -665,7 +735,7 @@ export default function OperationsScreen() {
                       ) : null}
 
                       {/* Action row */}
-                      {canApprove ? (
+                      {isPending && canApprove ? (
                         <View style={styles.mdActions}>
                           <TouchableOpacity
                             style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
@@ -708,14 +778,20 @@ export default function OperationsScreen() {
                             <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>{isAdmin ? 'Reset' : 'Reject'}</Text>
                           </TouchableOpacity>
                         </View>
-                      ) : (
+                      ) : isPending ? (
                         <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517', marginTop: 8, marginBottom: 0 }]}>
                           <Ionicons name="time-outline" size={15} color="#BA7517" />
                           <Text style={[styles.pendingText, { color: '#BA7517' }]}>Awaiting MD approval</Text>
                         </View>
+                      ) : (
+                        <View style={[styles.pendingBanner, { backgroundColor: '#1a6e3c18', borderColor: '#1a6e3c', marginTop: 8, marginBottom: 0 }]}>
+                          <Ionicons name="checkmark-circle-outline" size={15} color="#1a6e3c" />
+                          <Text style={[styles.pendingText, { color: '#1a6e3c' }]}>Approved and inventory updated</Text>
+                        </View>
                       )}
                     </View>
-                  ))}
+                    );
+                  })}
                 </>
               )}
 
@@ -808,6 +884,12 @@ const styles = StyleSheet.create({
   stockMarqueeItem: { flex: 1, minWidth: 0 },
   stockMarqueeValue: { color: '#fff', fontSize: 18, fontWeight: '800' },
   stockMarqueeLabel: { color: 'rgba(255,255,255,0.68)', fontSize: 10, marginTop: 3 },
+  approvalMarquee: { flexDirection: 'row', gap: 9, paddingVertical: 2, paddingRight: 8 },
+  approvalMarqueeTile: { minWidth: 138, borderRadius: 13, borderWidth: 1, padding: 12, gap: 4 },
+  approvalMarqueeValue: { fontSize: 21, fontWeight: '800' },
+  approvalMarqueeLabel: { fontSize: 10, fontWeight: '600' },
+  approvalSearch: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, marginTop: 10, marginBottom: 12 },
+  approvalSearchInput: { flex: 1, minHeight: 44, fontSize: 12 },
   stockControlCard: { borderRadius: 16, borderWidth: 1, padding: 13 },
   stockCreateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 11, paddingVertical: 12, marginTop: 4 },
   stockCreateBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
