@@ -211,4 +211,54 @@ describe('attendant report resubmission', () => {
       rejectionReason: undefined,
     });
   });
+
+  it('uses an applied business date rather than the approval timestamp', () => {
+    const report = {
+      ...reportWithStatus('approved'),
+      date: '2026-08-19',
+      submittedAt: '2026-08-20T01:15:00.000Z',
+      accAt: '2026-08-20T02:00:00.000Z',
+    };
+    const yesterday = calculateStockBook(
+      {
+        id: 'seed-pms',
+        product: 'PMS',
+        quantity: 100,
+        branchId: 'branch-1',
+        setBy: 'Admin',
+        setAt: '2026-08-19T00:00:00.000Z',
+        seedDate: '2026-08-19',
+        locked: true,
+      },
+      'PMS',
+      'branch-1',
+      [],
+      [report],
+      '2026-08-19',
+    );
+    const today = calculateStockBook(
+      {
+        id: 'seed-pms',
+        product: 'PMS',
+        quantity: 100,
+        branchId: 'branch-1',
+        setBy: 'Admin',
+        setAt: '2026-08-19T00:00:00.000Z',
+        seedDate: '2026-08-19',
+        locked: true,
+      },
+      'PMS',
+      'branch-1',
+      [],
+      [report],
+      '2026-08-20',
+      [],
+      50,
+    );
+
+    expect(yesterday.sold).toBe(50);
+    expect(yesterday.bookStock).toBe(50);
+    expect(today.sold).toBe(0);
+    expect(today.bookStock).toBe(50);
+  });
 });
