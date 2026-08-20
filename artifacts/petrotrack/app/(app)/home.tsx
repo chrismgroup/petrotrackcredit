@@ -316,12 +316,12 @@ export default function HomeScreen() {
       dateKey: string,
       petrolTanks: typeof tanks,
       branchLpgTanks: typeof lpgTanks,
-      approvedOnly = false,
+      beforeDate = false,
     ) => sortDips(dips
       .filter(d =>
         recordDateKey(d.dt) !== '' &&
-        recordDateKey(d.dt) === dateKey &&
-        (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
+        (beforeDate ? recordDateKey(d.dt) < dateKey : recordDateKey(d.dt) === dateKey) &&
+        d.status === 'approved' &&
         (petrolTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           branchLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
       ))
@@ -383,7 +383,7 @@ export default function HomeScreen() {
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
       const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks, false);
-      const openingDip = latestDipForBranch(previousBusinessDateKey(todayKey), branchTanks, branchLpgTanks, false);
+      const openingDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks, true);
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
         : undefined;

@@ -51,7 +51,7 @@ function latestDipForStockLog(
   return dips
     .filter(dip =>
       (beforeDate ? dip.dt?.slice(0, 10) < dateKey : dip.dt?.slice(0, 10) === dateKey) &&
-      dip.status !== 'rejected' &&
+      dip.status === 'approved' &&
       (petrolTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
         branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
     )
@@ -125,7 +125,7 @@ function StockLogPanel() {
         deliveries.some(delivery => delivery.branchId === branch.id) ||
         pumpDailyReports.some(report => report.branchId === branch.id) ||
         dips.some(dip =>
-          dip.status !== 'rejected' &&
+          dip.status === 'approved' &&
           (branchTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
             branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
         ) ||
@@ -262,7 +262,9 @@ function StockLogPanel() {
         const saved = savedEntries.find(candidate => candidate.branchId === entry.branchId && candidate.product === entry.product);
         return !saved || stockLogValueSignature(saved) !== stockLogValueSignature(entry);
       }));
-  const displayedEntries = savedEntries.length > 0 ? savedEntries : buildEntries;
+  // Approved dips change the live tank quantity immediately. Prefer the
+  // corrected calculation while the updated row is being persisted.
+  const displayedEntries = hasSavedRecordDrift ? buildEntries : savedEntries.length > 0 ? savedEntries : buildEntries;
   const summaryEntries = displayedEntries;
   const discrepancyCount = summaryEntries.filter(entry => entry.status === 'shortage' || entry.status === 'excess').length;
   const balancedCount = summaryEntries.filter(entry => entry.status === 'balanced').length;
