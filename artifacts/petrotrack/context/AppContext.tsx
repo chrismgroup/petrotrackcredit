@@ -260,7 +260,7 @@ export interface MyFolder {
 export interface MyFolderFile {
   id: number; section: MyFolderSection; folderId: number | null; name: string;
   objectPath?: string; mimeType: string; size: number;
-  uploadedBy: string; uploadedAt: string;
+  uploadedBy: string; uploadedAt: string; deletedAt?: string;
 }
 export type TaskStatus = 'commenced' | 'progressing' | 'completed';
 export type TaskPriority = 'High' | 'Medium' | 'Low';
@@ -2734,7 +2734,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const removeMyFolderFile = useCallback((id: number) => {
-    setMyFolderFiles(prev => prev.filter(file => file.id !== id));
+    // Keep a tombstone in the shared slice so a stale device cannot
+    // resurrect a file after another user deletes it.
+    setMyFolderFiles(prev => prev.map(file =>
+      file.id === id ? { ...file, deletedAt: nowTs() } : file,
+    ));
     setAudit(a => [{
       id: genId(),
       action: 'My Folder file deleted',
