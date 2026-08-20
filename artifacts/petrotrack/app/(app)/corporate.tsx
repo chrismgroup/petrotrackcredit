@@ -89,7 +89,9 @@ function FolderWorkspacePanel({
   const [busyFileId, setBusyFileId] = useState<number | null>(null);
   const [previewFile, setPreviewFile] = useState<{ file: MyFolderFile; uri: string } | null>(null);
   const sectionFolders = folders.filter(f => f.section === section);
-  const sectionFiles = files.filter(f => f.section === section && f.folderId === selectedFolderId);
+  const sectionFiles = files.filter(f =>
+    !f.deletedAt && f.section === section && f.folderId === selectedFolderId,
+  );
 
   function localFileName(file: MyFolderFile): string {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');

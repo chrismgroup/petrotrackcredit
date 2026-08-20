@@ -97,6 +97,59 @@ function mergePumpDailyReports(existing: unknown, incoming: unknown): JsonRecord
   return Array.from(merged.values());
 }
 
+function myFolderFileActivityMs(file: JsonRecord): number {
+  const timestamps = ["uploadedAt", "deletedAt"]
+    .map(key => Date.parse(String(file[key] ?? "")))
+    .filter(value => Number.isFinite(value));
+  return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+}
+
+/**
+ * My Folder is shared between many devices. Each client sends its complete
+ * local file array, so replacing the server array would let an older device
+ * erase a document uploaded by somebody else. Merge by file ID and keep the
+ * newest upload/delete event for each file.
+ */
+function mergeMyFolderFiles(existing: unknown, incoming: unknown): JsonRecord[] {
+  const merged = new Map<string, JsonRecord>();
+
+  const add = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const file = value as JsonRecord;
+    const id = String(file.id ?? "");
+    if (!id) return;
+
+    const current = merged.get(id);
+    if (!current || myFolderFileActivityMs(file) >= myFolderFileActivityMs(current)) {
+      merged.set(id, file);
+    }
+  };
+
+  if (Array.isArray(existing)) existing.forEach(add);
+  if (Array.isArray(incoming)) incoming.forEach(add);
+  return Array.from(merged.values());
+}
+
+function mergeMyFolders(existing: unknown, incoming: unknown): JsonRecord[] {
+  const merged = new Map<string, JsonRecord>();
+
+  const add = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const folder = value as JsonRecord;
+    const id = String(folder.id ?? "");
+    if (!id) return;
+
+    const current = merged.get(id);
+    if (!current || Date.parse(String(folder.createdAt ?? "")) >= Date.parse(String(current.createdAt ?? ""))) {
+      merged.set(id, folder);
+    }
+  };
+
+  if (Array.isArray(existing)) existing.forEach(add);
+  if (Array.isArray(incoming)) incoming.forEach(add);
+  return Array.from(merged.values());
+}
+
 async function resolveManagerBranchId(username?: string): Promise<string | undefined> {
   if (!username) return undefined;
   const [manager] = await db
@@ -459,6 +512,27 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       .from(appStateTable)
       .where(eq(appStateTable.key, "pumpDailyReports"));
     data = mergePumpDailyReports(existingRow?.data, data);
+  }
+
+  // My Folder is also a shared array written by every device. Merge by ID so
+  // a stale client cannot erase a file uploaded by another user. Deletions
+  // arrive as newer tombstone records and therefore remain synchronized.
+  if (key === "myFolderFiles" && Array.isArray(data)) {
+    const [existingRow] = await db
+      .select()
+      .from(appStateTable)
+      .where(eq(appStateTable.key, "myFolderFiles"));
+    data = mergeMyFolderFiles(existingRow?.data, data);
+  }
+
+  // Folder creation is shared through the same client-side array. Preserve
+  // folders created by other users when an older device syncs its snapshot.
+  if (key === "myFolders" && Array.isArray(data)) {
+    const [existingRow] = await db
+      .select()
+      .from(appStateTable)
+      .where(eq(appStateTable.key, "myFolders"));
+    data = mergeMyFolders(existingRow?.data, data);
   }
 
   // Server-side cap: keep only the newest audit entries (entries are prepended),
