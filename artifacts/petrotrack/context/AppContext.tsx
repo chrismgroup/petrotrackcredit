@@ -317,6 +317,57 @@ export interface StockBookCalculation {
   bookStock: number | null;
 }
 
+/**
+ * Shift reports can be submitted more than once for the same meter interval.
+ * Count the meter-range union instead of summing every report, while retaining
+ * the report litres value as a fallback for legacy records with bad meters.
+ */
+function sumUniquePumpReportVolumes(reports: PumpDailyReport[]): number {
+  const intervalsByPump = new Map<string, { start: number; end: number }[]>();
+  let fallbackVolume = 0;
+
+  for (const report of reports) {
+    const start = Number(report.openingMeter);
+    const end = Number(report.closingMeter);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      const key = `${report.pumpId}|${report.product}`;
+      const intervals = intervalsByPump.get(key) ?? [];
+      intervals.push({ start, end });
+      intervalsByPump.set(key, intervals);
+    } else if (Number.isFinite(report.liters)) {
+      fallbackVolume += report.liters;
+    }
+  }
+
+  let uniqueVolume = fallbackVolume;
+  for (const intervals of intervalsByPump.values()) {
+    intervals.sort((a, b) => a.start - b.start || a.end - b.end);
+    let rangeStart: number | null = null;
+    let rangeEnd: number | null = null;
+
+    for (const interval of intervals) {
+      if (rangeStart === null || rangeEnd === null) {
+        rangeStart = interval.start;
+        rangeEnd = interval.end;
+        continue;
+      }
+      if (interval.start > rangeEnd) {
+        uniqueVolume += rangeEnd - rangeStart;
+        rangeStart = interval.start;
+        rangeEnd = interval.end;
+      } else {
+        rangeEnd = Math.max(rangeEnd, interval.end);
+      }
+    }
+
+    if (rangeStart !== null && rangeEnd !== null) {
+      uniqueVolume += rangeEnd - rangeStart;
+    }
+  }
+
+  return Number(uniqueVolume.toFixed(4));
+}
+
 function stockProductFromDelivery(product: string): StockProduct | null {
   if (product === 'LPG' || product === 'LPG_Single' || product === 'LPG_Distributor') return 'LPG';
   if (product === 'PMS' || product === 'AGO' || product === 'DPK' || product === 'Lube Oil') return product;
@@ -523,6 +574,7 @@ export function calculateStockBook(
     if (includeHistoricalEvents || businessDate === asOfDate) delivered += delivery.rec;
   }
 
+  const eligibleReportsByDate = new Map<string, PumpDailyReport[]>();
   for (const report of liveReportsById.values()) {
     // The applied/business date on the shift report is authoritative. Workflow
     // timestamps only determine whether the report was submitted after the
@@ -530,7 +582,15 @@ export function calculateStockBook(
     const businessDate = recordBusinessDate(report.date);
     if (!businessDate) continue;
     if (!isInSeedWindow(businessDate, getPumpReportWorkflowAt(report))) continue;
-    if (includeHistoricalEvents || businessDate === asOfDate) sold += report.liters;
+    const reportsForDate = eligibleReportsByDate.get(businessDate) ?? [];
+    reportsForDate.push(report);
+    eligibleReportsByDate.set(businessDate, reportsForDate);
+  }
+
+  for (const [businessDate, reportsForDate] of eligibleReportsByDate) {
+    if (includeHistoricalEvents || businessDate === asOfDate) {
+      sold += sumUniquePumpReportVolumes(reportsForDate);
+    }
   }
 
   const openingStock = startupStock && (asOfDate === seedDate || includeHistoricalEvents)
