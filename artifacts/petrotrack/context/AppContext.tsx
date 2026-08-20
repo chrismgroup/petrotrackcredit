@@ -47,6 +47,15 @@ export interface StartupStock {
   seedDate?: string;
   locked: boolean;
 }
+const HISTORICAL_BASELINE_REPAIRS: ReadonlyArray<{
+  branchName: string;
+  product: StockProduct;
+  quantity: number;
+  seedDate: string;
+}> = [
+  { branchName: 'uyo gas plant', product: 'LPG', quantity: 7000, seedDate: '2026-08-14' },
+  { branchName: 'uyo fuel station', product: 'PMS', quantity: 18800, seedDate: '2026-08-14' },
+];
 export interface MarketCompetitor { id: string; name: string; location: string; pms: string; ago: string; dpk: string; lpg: string; updatedBy: string; updatedAt: string; }
 export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; branchId?: string; accountId?: number; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
@@ -1482,11 +1491,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [loaded, isServerAuthenticated, syncFromServer]);
 
   /**
-   * One-time repair for the Uyo Gas Plant LPG baseline entered as 7,000 kg.
-   * The quantity was saved on 15 August even though it applies from 14 August,
-   * which made the 14 August stock log use the old 88 kg tank dip instead.
-   * This is data migration logic, not a new default: it only repairs that
-   * exact existing baseline (or creates it if the record is missing).
+   * One-time repair for historical baselines whose administrative save date
+   * differed from the business date they apply from. This is data migration
+   * logic, not a new default: once seedDate is present, later admin edits are
+   * left alone.
    */
   useEffect(() => {
     if (
@@ -1498,55 +1506,68 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       stockBaselineRepairRef.current
     ) return;
 
-    const branch = branches.find(item => item.name.trim().toLowerCase() === 'uyo gas plant');
-    if (!branch) return;
-
-    const seedDate = '2026-08-14';
-    const existing = startupStocks.find(stock =>
-      stock.branchId === branch.id && stock.product === 'LPG',
+    const matchingRepairs = HISTORICAL_BASELINE_REPAIRS.filter(repair =>
+      branches.some(item => item.name.trim().toLowerCase() === repair.branchName),
     );
-    const isTargetBaseline = existing?.quantity === 7000;
-    const needsDateRepair = isTargetBaseline && startupStockSeedDate(existing) !== seedDate;
-    const needsCreate = !existing;
+    if (matchingRepairs.length === 0) return;
 
-    if (!needsDateRepair && !needsCreate) {
+    const repairsToApply = matchingRepairs.flatMap(repair => {
+      const branch = branches.find(item => item.name.trim().toLowerCase() === repair.branchName);
+      if (!branch) return [];
+      const existing = startupStocks.find(stock =>
+        stock.branchId === branch.id && stock.product === repair.product,
+      );
+      if (existing && startupStockSeedDate(existing) === repair.seedDate) return [];
+      return [{ ...repair, branchId: branch.id, existingId: existing?.id }];
+    });
+
+    if (repairsToApply.length === 0) {
       stockBaselineRepairRef.current = true;
       return;
     }
 
     stockBaselineRepairRef.current = true;
     setStartupStocks(prev => {
-      if (prev.some(stock => stock.branchId === branch.id && stock.product === 'LPG')) {
-        return prev.map(stock =>
-          stock.branchId === branch.id && stock.product === 'LPG' && stock.quantity === 7000
-            ? { ...stock, seedDate }
-            : stock,
+      let next = [...prev];
+      for (const repair of repairsToApply) {
+        const existingIndex = next.findIndex(stock =>
+          stock.branchId === repair.branchId && stock.product === repair.product,
         );
+        if (existingIndex >= 0) {
+          next[existingIndex] = {
+            ...next[existingIndex],
+            quantity: repair.quantity,
+            seedDate: repair.seedDate,
+          };
+        } else {
+          next.push({
+            id: `startup-${repair.branchId}-${repair.product}-${repair.seedDate.replace(/-/g, '')}`,
+            product: repair.product,
+            quantity: repair.quantity,
+            branchId: repair.branchId,
+            setBy: userName || 'System',
+            setAt: `${repair.seedDate}T00:00:00.000Z`,
+            seedDate: repair.seedDate,
+            locked: true,
+          });
+        }
       }
-      return [
-        ...prev,
-        {
-          id: 'startup-uyo-gas-20260814',
-          product: 'LPG',
-          quantity: 7000,
-          branchId: branch.id,
-          setBy: userName || 'System',
-          setAt: `${seedDate}T00:00:00.000Z`,
-          seedDate,
-          locked: true,
-        },
-      ];
+      return next;
     });
-    // Stock logs are derived from the source records. Drop the stale Uyo LPG
-    // chain so Operations rebuilds it from the corrected seed date.
+    // Stock logs are derived from the source records. Drop the stale chains so
+    // Operations rebuilds them from the corrected seed dates.
     setStockLogs(prev => prev.filter(entry =>
-      !(entry.branchId === branch.id && entry.product === 'LPG'),
+      !repairsToApply.some(repair =>
+        entry.branchId === repair.branchId && entry.product === repair.product,
+      ),
     ));
     setAudit(prev => [{
       id: genId(),
-      action: 'Uyo Gas Plant LPG baseline repaired',
+      action: 'Historical stock baselines repaired',
       user: userName || 'System',
-      detail: 'Seeded 7,000 kg from 2026-08-14 and cleared stale derived stock logs.',
+      detail: repairsToApply
+        .map(repair => `${repair.branchName}: ${repair.quantity.toLocaleString()}${repair.product === 'LPG' ? 'kg' : 'L'} from ${repair.seedDate}`)
+        .join(' · '),
       ts: nowTs(),
     }, ...prev]);
   }, [
