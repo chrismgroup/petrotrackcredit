@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { type SalesEntry } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { safeNum } from '@/lib/report-helpers';
 
 interface Props {
   sales: SalesEntry[];
@@ -58,7 +59,7 @@ export function SalesForecastCard({ sales, roleColor }: Props) {
     const TREND_SLOPE = 0.008;
 
     const actualRevPerDay = sales.length > 0
-      ? sales.reduce((s, e) => s + e.L * e.price, 0) / Math.max(1, [...new Set(sales.map(e => e.dt.slice(0, 10)))].length)
+      ? sales.reduce((s, e) => s + safeNum(e.L) * safeNum(e.price), 0) / Math.max(1, [...new Set(sales.map(e => e.dt.slice(0, 10)))].length)
       : 1_276_400;
 
     const pastRevs: number[] = [];
@@ -105,7 +106,7 @@ export function SalesForecastCard({ sales, roleColor }: Props) {
     }));
 
     const prodData = PRODUCTS.map(p => {
-      const actualVol = sales.filter(s => s.pump.includes(p.key)).reduce((s, e) => s + e.L, 0);
+      const actualVol = sales.filter(s => s.pump.includes(p.key)).reduce((s, e) => s + safeNum(e.L), 0);
       const baseVol = actualVol > 0 ? actualVol : p.volBase;
       const projVol = Math.round(baseVol * (1 + TREND_SLOPE * 7) * daysInMonth);
       const projRev = Math.round(projVol * p.price);

@@ -159,7 +159,7 @@ export default function TanksScreen() {
       const soldSinceDip = sales
         .filter(e => e.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
           (!dipDt || e.dt > dipDt))
-        .reduce((s, e) => s + e.L, 0);
+        .reduce((s, e) => s + safeNum(e.L), 0);
       expectedByProd[t.prod] = (expectedByProd[t.prod] ?? 0) + dipReading + recvdSinceDip - soldSinceDip;
     }
     const actualByProd: Record<string, number> = {};
@@ -793,7 +793,7 @@ export default function TanksScreen() {
             const salesSinceDip = sales
               .filter(s => s.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
                 (!dipDt || new Date(s.dt) > new Date(dipDt)))
-              .reduce((s, e) => s + e.L, 0);
+              .reduce((s, e) => s + safeNum(e.L), 0);
             const currentStock = Math.max(0, dipReading + deliveriesSinceDip - salesSinceDip);
             const pct = t.cap > 0 ? Math.min(100, Math.round((currentStock / t.cap) * 100)) : 0;
             const barColor = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary;

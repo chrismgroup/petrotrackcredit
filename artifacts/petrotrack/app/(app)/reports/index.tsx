@@ -286,7 +286,7 @@ export default function ReportsScreen() {
   }
   const scaledExp   = Math.round(totalExp);
   const scaledRev   = shiftGross;
-  const scaledSales = Math.round(fSales.reduce((s: number, e: any) => s + e.L * e.price, 0));
+  const scaledSales = Math.round(fSales.reduce((s: number, e: any) => s + safeNum(e.L) * safeNum(e.price), 0));
   const scaledNet   = scaledRev - scaledExp;
   const margin      = scaledRev > 0 ? Math.round((scaledNet / scaledRev) * 100) : 0;
 
@@ -303,8 +303,8 @@ export default function ReportsScreen() {
 
   const pnlByProd = useMemo(() => allProds.map(prod => {
     const pe  = fSales.filter((sale: any) => matchesProd(sale.pump, prod));
-    const vol = pe.reduce((sum: number, e: any) => sum + e.L, 0);
-    const rev = pe.reduce((sum: number, e: any) => sum + e.L * e.price, 0);
+    const vol = pe.reduce((sum: number, e: any) => sum + safeNum(e.L), 0);
+    const rev = pe.reduce((sum: number, e: any) => sum + safeNum(e.L) * safeNum(e.price), 0);
     const sr  = Math.round(rev);
     const avg = vol > 0 ? Math.round(rev / vol) : getPriceForProduct(prices, prod, selBranch);
     const ac  = getLastKnownCostPrice(cogsDeliveries, prod);
@@ -343,8 +343,8 @@ export default function ReportsScreen() {
   const prodSales = ['PMS','AGO','DPK','LPG'].map(prod => {
     const color = PROD_COLORS[prod] || rc;
     const entries = fSales.filter((sale: any) => matchesProd(sale.pump, prod));
-    const L = entries.reduce((sum: number, e: any) => sum + e.L, 0);
-    const rev = entries.reduce((sum: number, e: any) => sum + e.L * e.price, 0);
+    const L = entries.reduce((sum: number, e: any) => sum + safeNum(e.L), 0);
+    const rev = entries.reduce((sum: number, e: any) => sum + safeNum(e.L) * safeNum(e.price), 0);
     const price = L > 0 ? Math.round(rev / L) : 0;
     return { prod, color, L, price, scaledL: Math.round(L), scaledRev: Math.round(rev) };
   }).filter(p => p.L > 0);
@@ -356,7 +356,7 @@ export default function ReportsScreen() {
       const bR  = Math.round(bPR.reduce((s: number, r: any) => s + r.grossAmount, 0));
       const bE  = safeExpenses.filter((e: any) => e.status === 'approved' && e.branchId === b.id && e.dt >= fromStr && e.dt <= toStr);
       const bX  = Math.round(bE.reduce((sum: number, e: any) => sum + e.amt, 0));
-      const bSR = Math.round(safeSales.filter((s: any) => s.branchId === b.id && s.dt >= fromStr && s.dt <= toStr).reduce((sum: number, e: any) => sum + e.L * e.price, 0));
+      const bSR = Math.round(safeSales.filter((s: any) => s.branchId === b.id && s.dt >= fromStr && s.dt <= toStr).reduce((sum: number, e: any) => sum + safeNum(e.L) * safeNum(e.price), 0));
       return { id: b.id, name: b.name, rev: bR, exp: bX, salesRev: bSR, net: bR - bX };
     });
   }, [safeBranches, safePumpReports, safeSales, safeExpenses, selBranch, fromStr, toStr]);

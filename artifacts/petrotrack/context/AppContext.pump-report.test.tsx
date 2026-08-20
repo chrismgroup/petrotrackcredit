@@ -160,6 +160,81 @@ describe('approved pump report lock', () => {
 });
 
 describe('stock book report eligibility', () => {
+  it('treats an incomplete delivery receipt as zero', () => {
+    const result = calculateStockBook(
+      {
+        id: 'seed-pms',
+        product: 'PMS',
+        quantity: 100,
+        branchId: 'branch-1',
+        setBy: 'Admin',
+        setAt: '2026-08-20T00:00:00.000Z',
+        seedDate: '2026-08-20',
+        locked: true,
+      },
+      'PMS',
+      'branch-1',
+      [{
+        id: 1,
+        dt: '2026-08-20',
+        sup: 'Supplier',
+        prod: 'PMS',
+        wb: 'WB-1',
+        rec: undefined as unknown as number,
+        ord: 100,
+        st: 'ok',
+        notes: '',
+        approvalStatus: 'approved',
+        branchId: 'branch-1',
+      }],
+      [],
+      '2026-08-20',
+    );
+
+    expect(result.delivered).toBe(0);
+    expect(result.bookStock).toBe(100);
+    expect(Number.isNaN(result.delivered)).toBe(false);
+    expect(Number.isNaN(result.bookStock ?? NaN)).toBe(false);
+  });
+
+  it.each([
+    ['openingMeter', undefined],
+    ['openingMeter', null],
+    ['openingMeter', ''],
+    ['closingMeter', undefined],
+    ['closingMeter', null],
+    ['closingMeter', ''],
+  ] as const)(
+    'uses recorded litres when the %s is incomplete',
+    (meterField, value) => {
+      const report = reportWithStatus('approved');
+      const incompleteReport = {
+        ...report,
+        [meterField]: value as unknown as number,
+      };
+      const result = calculateStockBook(
+        {
+          id: 'seed-pms',
+          product: 'PMS',
+          quantity: 100,
+          branchId: 'branch-1',
+          setBy: 'Admin',
+          setAt: '2026-08-20T00:00:00.000Z',
+          seedDate: '2026-08-20',
+          locked: true,
+        },
+        'PMS',
+        'branch-1',
+        [],
+        [incompleteReport],
+        '2026-08-20',
+      );
+
+      expect(result.sold).toBe(50);
+      expect(result.bookStock).toBe(50);
+    },
+  );
+
   it.each<PumpReportStatus>(['returned', 'returned_attendant'])(
     'excludes a %s report from sold stock',
     status => {
