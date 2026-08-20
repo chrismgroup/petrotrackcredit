@@ -9,6 +9,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { safeNum } from '@/lib/report-helpers';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const ST_MAP = {
@@ -253,16 +254,16 @@ export default function ReceivingScreen() {
 
   function dipStockForTank(tankId: string): { stock: number; dt: string | null } {
     const r = dips
-      .filter(d => d.status === 'approved' && d.rd[tankId] !== undefined)
+      .filter(d => d.status === 'approved' && (d.rd ?? {})[tankId] !== undefined)
       .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime())[0];
-    return { stock: r ? (r.rd[tankId] ?? 0) : 0, dt: r?.dt ?? null };
+    return { stock: r ? ((r.rd ?? {})[tankId] ?? 0) : 0, dt: r?.dt ?? null };
   }
 
   function dipStockForLpgTank(tankId: string): { stock: number; dt: string | null } {
     const r = dips
-      .filter(d => d.status === 'approved' && d.lpg[tankId] !== undefined)
+      .filter(d => d.status === 'approved' && (d.lpg ?? {})[tankId] !== undefined)
       .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime())[0];
-    return { stock: r ? (r.lpg[tankId] ?? 0) : 0, dt: r?.dt ?? null };
+    return { stock: r ? ((r.lpg ?? {})[tankId] ?? 0) : 0, dt: r?.dt ?? null };
   }
 
   function buildProdInventory(scopeTanks: Tank[], scopeLpgTanks: LPGTank[], scopeDeliveries: Delivery[]): ProdInv[] {
@@ -539,7 +540,7 @@ export default function ReceivingScreen() {
   function handleDelete(d: Delivery) {
     Alert.alert(
       'Delete Delivery?',
-      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}${unitForProd(d.prod)}\n\nThis cannot be undone.`,
+      `WB: ${d.wb} — ${d.prod} ${safeNum(d.rec).toLocaleString()}${unitForProd(d.prod)}\n\nThis cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => deleteDelivery(d.id) },
@@ -548,16 +549,17 @@ export default function ReceivingScreen() {
   }
 
   function handleSubmitToAcc(d: Delivery) {
-    const mismatch = d.rec !== d.ord;
+    const rec = safeNum(d.rec); const ord = safeNum(d.ord);
+    const mismatch = rec !== ord;
     const u = unitForProd(d.prod);
     const mismatchLine = mismatch
-      ? `\n\n⚠️ ${d.rec < d.ord
-          ? `Shortage: received ${(d.ord - d.rec).toLocaleString()} ${u} less than ordered`
-          : `Overage: received ${(d.rec - d.ord).toLocaleString()} ${u} more than ordered`}`
+      ? `\n\n⚠️ ${rec < ord
+          ? `Shortage: received ${(ord - rec).toLocaleString()} ${u} less than ordered`
+          : `Overage: received ${(rec - ord).toLocaleString()} ${u} more than ordered`}`
       : '';
     Alert.alert(
       mismatch ? '⚠️ Quantity Mismatch — Forward Anyway?' : 'Forward to Accountant?',
-      `WB: ${d.wb} — ${d.prod} ${d.rec.toLocaleString()}${u} from ${d.sup}${mismatchLine}\n\nAccountant will set the cost price and forward to MD for approval.`,
+      `WB: ${d.wb} — ${d.prod} ${rec.toLocaleString()}${u} from ${d.sup}${mismatchLine}\n\nAccountant will set the cost price and forward to MD for approval.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: mismatch ? 'Forward Anyway' : 'Forward', style: mismatch ? 'destructive' : 'default', onPress: () => submitDeliveryForApproval(d.id) },
@@ -577,7 +579,7 @@ export default function ReceivingScreen() {
     if (!cost || cost <= 0) { Alert.alert('Required', `Enter a valid cost price per ${unitForProd(accTarget.prod)}.`); return; }
     Alert.alert(
       'Forward to MD for Approval?',
-      `${accTarget.prod} ${accTarget.rec.toLocaleString()}${unitForProd(accTarget.prod)} · Cost ₦${cost.toLocaleString()}/${unitForProd(accTarget.prod)}\n\nMD will approve or return this record.`,
+      `${accTarget.prod} ${safeNum(accTarget.rec).toLocaleString()}${unitForProd(accTarget.prod)} · Cost ₦${cost.toLocaleString()}/${unitForProd(accTarget.prod)}\n\nMD will approve or return this record.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -610,7 +612,7 @@ export default function ReceivingScreen() {
     if (!sell || sell <= 0) { Alert.alert('Required', `Enter a valid selling price per ${unitForProd(mdTarget.prod)} before approving.`); return; }
     Alert.alert(
       'Approve & Lock Record?',
-      `${mdTarget.prod} ${mdTarget.rec.toLocaleString()}${unitForProd(mdTarget.prod)} from ${mdTarget.sup}\nWB: ${mdTarget.wb}\nCost: ₦${mdTarget.costPrice?.toLocaleString()}/${unitForProd(mdTarget.prod)} · Sell: ₦${sell.toLocaleString()}/${unitForProd(mdTarget.prod)}\n\nThis record will be permanently locked and the selling price will be updated for this branch only.`,
+      `${mdTarget.prod} ${safeNum(mdTarget.rec).toLocaleString()}${unitForProd(mdTarget.prod)} from ${mdTarget.sup}\nWB: ${mdTarget.wb}\nCost: ₦${safeNum(mdTarget.costPrice).toLocaleString()}/${unitForProd(mdTarget.prod)} · Sell: ₦${sell.toLocaleString()}/${unitForProd(mdTarget.prod)}\n\nThis record will be permanently locked and the selling price will be updated for this branch only.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -680,7 +682,7 @@ export default function ReceivingScreen() {
                       <Text style={[styles.accPendingProd, { color: pc }]}>{d.prod}</Text>
                     </View>
                     <Text style={[styles.accPendingMeta, { color: '#185FA5' }]}>
-                      {d.rec.toLocaleString()}{unitForProd(d.prod)}{'  ·  WB: '}{d.wb}
+                      {safeNum(d.rec).toLocaleString()}{unitForProd(d.prod)}{'  ·  WB: '}{d.wb}
                     </Text>
                     <Text style={[styles.accPendingDate, { color: '#185FA5' }]}>{fmtDate(d.dt)}</Text>
                   </View>
@@ -898,8 +900,8 @@ export default function ReceivingScreen() {
           const apCfg = APPR_MAP[apSt] || APPR_MAP.draft;
           const hasCost = !!(d.costPrice && d.costPrice > 0);
             const sellPrice = d.sellingPrice ?? getPriceForProduct(prices, d.prod, d.branchId ?? branchId);
-          const margin = hasCost && sellPrice ? Math.round(((sellPrice - d.costPrice!) / sellPrice) * 100) : null;
-          const totalCostVal = hasCost ? d.rec * d.costPrice! : null;
+          const margin = hasCost && sellPrice ? Math.round(((sellPrice - safeNum(d.costPrice)) / sellPrice) * 100) : null;
+          const totalCostVal = hasCost ? safeNum(d.rec) * safeNum(d.costPrice) : null;
           const locked = isLocked(d);
 
           return (
@@ -930,22 +932,22 @@ export default function ReceivingScreen() {
                   <Text style={[styles.delivSup, { color: colors.textMuted }]}>{d.sup}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                     <Text style={[styles.delivQty, { color: colors.textMuted }]}>
-                      {'Ordered: '}{d.ord.toLocaleString()}{`${unitForProd(d.prod)} · Received: `}
-                      <Text style={{ fontWeight: '700', color: colors.text }}>{d.rec.toLocaleString()}{unitForProd(d.prod)}</Text>
+                      {'Ordered: '}{safeNum(d.ord).toLocaleString()}{`${unitForProd(d.prod)} · Received: `}
+                      <Text style={{ fontWeight: '700', color: colors.text }}>{safeNum(d.rec).toLocaleString()}{unitForProd(d.prod)}</Text>
                     </Text>
-                    {d.rec !== d.ord ? (
+                    {safeNum(d.rec) !== safeNum(d.ord) ? (
                       <View style={[styles.mismatchBadge, {
-                        backgroundColor: d.rec < d.ord ? '#FAEEDA' : '#FCEBEB',
+                        backgroundColor: safeNum(d.rec) < safeNum(d.ord) ? '#FAEEDA' : '#FCEBEB',
                       }]}>
                         <Ionicons
-                          name={d.rec < d.ord ? 'warning-outline' : 'alert-circle-outline'}
+                          name={safeNum(d.rec) < safeNum(d.ord) ? 'warning-outline' : 'alert-circle-outline'}
                           size={11}
-                          color={d.rec < d.ord ? '#BA7517' : '#791F1F'}
+                          color={safeNum(d.rec) < safeNum(d.ord) ? '#BA7517' : '#791F1F'}
                         />
-                        <Text style={[styles.mismatchBadgeText, { color: d.rec < d.ord ? '#BA7517' : '#791F1F' }]}>
-                          {d.rec < d.ord
-                            ? `Short ${(d.ord - d.rec).toLocaleString()} ${unitForProd(d.prod)}`
-                            : `+${(d.rec - d.ord).toLocaleString()} ${unitForProd(d.prod)} over`}
+                        <Text style={[styles.mismatchBadgeText, { color: safeNum(d.rec) < safeNum(d.ord) ? '#BA7517' : '#791F1F' }]}>
+                          {safeNum(d.rec) < safeNum(d.ord)
+                            ? `Short ${(safeNum(d.ord) - safeNum(d.rec)).toLocaleString()} ${unitForProd(d.prod)}`
+                            : `+${(safeNum(d.rec) - safeNum(d.ord)).toLocaleString()} ${unitForProd(d.prod)} over`}
                         </Text>
                       </View>
                     ) : null}
@@ -961,7 +963,7 @@ export default function ReceivingScreen() {
                 <View style={[styles.costRow, { backgroundColor: '#0F6E5608', borderColor: '#0F6E5620' }]}>
                   <View style={styles.costItem}>
                     <Text style={[styles.costLabel, { color: colors.textMuted }]}>Cost/{unitForProd(d.prod)}</Text>
-                    <Text style={[styles.costVal, { color: colors.text }]}>{'₦'}{d.costPrice!.toLocaleString()}</Text>
+                    <Text style={[styles.costVal, { color: colors.text }]}>{'₦'}{safeNum(d.costPrice).toLocaleString()}</Text>
                   </View>
                   {sellPrice > 0 ? (
                     <>
@@ -1211,7 +1213,7 @@ export default function ReceivingScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Set Cost Price</Text>
               <Text style={[styles.editSub, { color: colors.textMuted }]}>
-                {accTarget?.prod}{' · '}{accTarget?.rec.toLocaleString()}{accTarget ? unitForProd(accTarget.prod) : 'L'}{' · WB: '}{accTarget?.wb}
+                {accTarget?.prod}{' · '}{safeNum(accTarget?.rec).toLocaleString()}{accTarget ? unitForProd(accTarget.prod) : 'L'}{' · WB: '}{accTarget?.wb}
               </Text>
             </View>
           </View>
@@ -1223,9 +1225,9 @@ export default function ReceivingScreen() {
             </Text>
             <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
               {'Received: '}
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget?.rec.toLocaleString()}{accTarget ? unitForProd(accTarget.prod) : 'L'}</Text>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{safeNum(accTarget?.rec).toLocaleString()}{accTarget ? unitForProd(accTarget.prod) : 'L'}</Text>
               {'  ·  Ordered: '}
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{accTarget?.ord.toLocaleString()}{accTarget ? unitForProd(accTarget.prod) : 'L'}</Text>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{safeNum(accTarget?.ord).toLocaleString()}{accTarget ? unitForProd(accTarget.prod) : 'L'}</Text>
             </Text>
             <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
               {'Date: '}
@@ -1251,7 +1253,7 @@ export default function ReceivingScreen() {
                 <Text style={[styles.costHint, { color: colors.textMuted }]}>
                   {'Total cost: '}
                   <Text style={{ fontWeight: '700', color: colors.text }}>
-                    {fmt(parseFloat(accCostPrice) * accTarget.rec)}
+                    {fmt(parseFloat(accCostPrice) * safeNum(accTarget.rec))}
                   </Text>
                 </Text>
                 {getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId) > 0 ? (
@@ -1298,7 +1300,7 @@ export default function ReceivingScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Set Selling Price & Approve</Text>
               <Text style={[styles.editSub, { color: colors.textMuted }]}>
-                {mdTarget?.prod}{' · '}{mdTarget?.rec.toLocaleString()}{mdTarget ? unitForProd(mdTarget.prod) : 'L'}{' · WB: '}{mdTarget?.wb}
+                {mdTarget?.prod}{' · '}{safeNum(mdTarget?.rec).toLocaleString()}{mdTarget ? unitForProd(mdTarget.prod) : 'L'}{' · WB: '}{mdTarget?.wb}
               </Text>
             </View>
           </View>
@@ -1310,9 +1312,9 @@ export default function ReceivingScreen() {
             </Text>
             <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
               {'Received: '}
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{mdTarget?.rec.toLocaleString()}{mdTarget ? unitForProd(mdTarget.prod) : 'L'}</Text>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{safeNum(mdTarget?.rec).toLocaleString()}{mdTarget ? unitForProd(mdTarget.prod) : 'L'}</Text>
               {'  ·  Cost Price: '}
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{'₦'}{mdTarget?.costPrice?.toLocaleString()}{mdTarget ? `/${unitForProd(mdTarget.prod)}` : '/L'}</Text>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{'₦'}{safeNum(mdTarget?.costPrice).toLocaleString()}{mdTarget ? `/${unitForProd(mdTarget.prod)}` : '/L'}</Text>
             </Text>
             {mdTarget?.accNote ? (
               <Text style={[styles.delivSummaryRow, { color: colors.textMuted }]}>
@@ -1340,14 +1342,14 @@ export default function ReceivingScreen() {
                 <Text style={[styles.costHint, { color: colors.textMuted }]}>
                   {'Total revenue: '}
                   <Text style={{ fontWeight: '700', color: colors.text }}>
-                    {fmt(parseFloat(mdSellingPrice) * mdTarget.rec)}
+                    {fmt(parseFloat(mdSellingPrice) * safeNum(mdTarget.rec))}
                   </Text>
                 </Text>
                 <Text style={[styles.costHint, { color: colors.textMuted }]}>
                   {'Margin: '}
-                  <Text style={{ fontWeight: '700', color: (parseFloat(mdSellingPrice) - mdTarget.costPrice) >= 0 ? '#27500A' : '#791F1F' }}>
-                    {Math.round(((parseFloat(mdSellingPrice) - mdTarget.costPrice) / parseFloat(mdSellingPrice)) * 100)}{'%'}
-                    {'  ·  ₦'}{(parseFloat(mdSellingPrice) - mdTarget.costPrice).toLocaleString()}{`/${mdTarget ? unitForProd(mdTarget.prod) : 'L'} profit`}
+                  <Text style={{ fontWeight: '700', color: (parseFloat(mdSellingPrice) - safeNum(mdTarget.costPrice)) >= 0 ? '#27500A' : '#791F1F' }}>
+                    {Math.round(((parseFloat(mdSellingPrice) - safeNum(mdTarget.costPrice)) / parseFloat(mdSellingPrice)) * 100)}{'%'}
+                    {'  ·  ₦'}{(parseFloat(mdSellingPrice) - safeNum(mdTarget.costPrice)).toLocaleString()}{`/${mdTarget ? unitForProd(mdTarget.prod) : 'L'} profit`}
                   </Text>
                 </Text>
               </View>

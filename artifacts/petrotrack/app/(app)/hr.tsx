@@ -15,6 +15,7 @@ import {
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { storageApi } from '@/lib/api';
+import { safeStr } from '@/lib/report-helpers';
 
 const REQUIRED_DOCS: { type: HRDocType; label: string; icon: string; color: string }[] = [
   { type: 'biodata',        label: 'Bio-Data Form',         icon: 'person',            color: '#27AE60' },
@@ -64,8 +65,8 @@ const REC_STATUS_META = {
 
 const ROLE_OPTS: Role[] = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'];
 
-function initials(name: string) {
-  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+function initials(name: string | null | undefined) {
+  return (name ?? '').split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase() || '?';
 }
 function fmtSize(b?: number) {
   if (!b) return '';
@@ -76,13 +77,15 @@ function fmtSize(b?: number) {
 
 function buildAppointmentLetter(emp: HREmployee, grade: string, salary: string, by: string) {
   const today = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' });
-  return `PETROTRACK LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\n\nAPPOINTMENT LETTER\n\nDear ${emp.name.split(' ')[0]},\n\nWe are pleased to offer you employment with Petrotrack Limited in the capacity of ${emp.role}, effective ${fmtDate(emp.joinDate)}.\n\nPosition:    ${emp.role}\nDepartment:  ${emp.dept}\nStaff ID:    ${emp.empId}\nGrade Level: ${grade || 'As agreed'}\nAnnual Salary: ₦${salary ? Number(salary.replace(/,/g, '')).toLocaleString() : '—'}\n\nThis appointment is subject to:\n1. Satisfactory completion of all pre-employment documentation.\n2. A probationary period of three (3) months from the date of assumption of duties.\n3. Compliance with the Company's Code of Conduct and all HR policies.\n\nPlease sign and return a copy of this letter to confirm your acceptance.\n\nCongratulations and welcome to Petrotrack.\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nPetrotrack Limited`;
+  const empName = safeStr(emp.name, 'Employee');
+  return `PETROTRACK LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${empName}\n\nAPPOINTMENT LETTER\n\nDear ${empName.split(' ')[0]},\n\nWe are pleased to offer you employment with Petrotrack Limited in the capacity of ${safeStr(emp.role)}, effective ${fmtDate(emp.joinDate)}.\n\nPosition:    ${safeStr(emp.role)}\nDepartment:  ${safeStr(emp.dept)}\nStaff ID:    ${safeStr(emp.empId)}\nGrade Level: ${grade || 'As agreed'}\nAnnual Salary: ₦${salary ? Number(salary.replace(/,/g, '')).toLocaleString() : '—'}\n\nThis appointment is subject to:\n1. Satisfactory completion of all pre-employment documentation.\n2. A probationary period of three (3) months from the date of assumption of duties.\n3. Compliance with the Company's Code of Conduct and all HR policies.\n\nPlease sign and return a copy of this letter to confirm your acceptance.\n\nCongratulations and welcome to Petrotrack.\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nPetrotrack Limited`;
 }
 
 function buildPromotionLetter(emp: HREmployee, newRole: string, effDate: string, newGrade: string, by: string) {
   const today = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' });
   const dateStr = effDate ? fmtDate(effDate) : today;
-  return `PETROTRACK LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${emp.name}\nStaff ID: ${emp.empId}\nCurrent Position: ${emp.role}\n\nLETTER OF PROMOTION\n\nDear ${emp.name.split(' ')[0]},\n\nOn behalf of Management of Petrotrack Limited, we are delighted to inform you of your promotion to the position of ${newRole}, effective ${dateStr}.\n\nNew Position: ${newRole}\nDepartment:   ${emp.dept}\nEffective:    ${dateStr}\nNew Grade:    ${newGrade || 'As communicated'}\n\nThis promotion is in recognition of your dedication, hard work, and consistent contribution to the growth of the organisation. We are confident that you will excel in your new role.\n\nApplicable salary and benefits adjustments will be communicated by the Finance department.\n\nCongratulations on this well-deserved achievement!\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nPetrotrack Limited`;
+  const empName = safeStr(emp.name, 'Employee');
+  return `PETROTRACK LIMITED\nHR Department · Confidential\n\n${today}\n\nTo: ${empName}\nStaff ID: ${safeStr(emp.empId)}\nCurrent Position: ${safeStr(emp.role)}\n\nLETTER OF PROMOTION\n\nDear ${empName.split(' ')[0]},\n\nOn behalf of Management of Petrotrack Limited, we are delighted to inform you of your promotion to the position of ${newRole}, effective ${dateStr}.\n\nNew Position: ${newRole}\nDepartment:   ${safeStr(emp.dept)}\nEffective:    ${dateStr}\nNew Grade:    ${newGrade || 'As communicated'}\n\nThis promotion is in recognition of your dedication, hard work, and consistent contribution to the growth of the organisation. We are confident that you will excel in your new role.\n\nApplicable salary and benefits adjustments will be communicated by the Finance department.\n\nCongratulations on this well-deserved achievement!\n\nYours sincerely,\n\n${by}\nCorp. Services Manager\nPetrotrack Limited`;
 }
 
 type TabId = 'employees' | 'handbooks' | 'recommendations' | 'approvals';
@@ -185,9 +188,9 @@ export default function HRScreen() {
 
   /* ── derived data ── */
   const filteredStaff = hrEmployees.filter(e =>
-    e.name.toLowerCase().includes(search.toLowerCase()) ||
-    e.empId.toLowerCase().includes(search.toLowerCase()) ||
-    e.dept.toLowerCase().includes(search.toLowerCase())
+    (e.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+    (e.empId ?? '').toLowerCase().includes(search.toLowerCase()) ||
+    (e.dept ?? '').toLowerCase().includes(search.toLowerCase())
   );
   const pendingEnrollments  = userAccounts.filter(a => a.status === 'pending_admin');
   const rejectedEnrollments = userAccounts.filter(a => a.status === 'rejected');
@@ -368,7 +371,7 @@ export default function HRScreen() {
   async function handleDeleteInactiveEmployee(emp: HREmployee) {
     if (!isAdmin || emp.status === 'active') return;
     const linkedAccount = userAccounts.find(account =>
-      account.empName.trim().toLowerCase() === emp.name.trim().toLowerCase()
+      (account.empName ?? '').trim().toLowerCase() === (emp.name ?? '').trim().toLowerCase()
     );
     if (linkedAccount) {
       const removed = await deleteUserAccount(linkedAccount.id);

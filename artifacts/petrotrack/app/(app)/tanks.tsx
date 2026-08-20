@@ -10,6 +10,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { safeNum } from '@/lib/report-helpers';
 
 const TABS = ['Dip Form', 'Log & Delivery', 'Inventory'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
@@ -87,8 +88,8 @@ export default function TanksScreen() {
   const visiblePetrolTankIds = new Set(visibleTanks.map(tank => tank.id));
   const visibleLpgTankIds = new Set(visibleLpgTanks.map(tank => tank.id));
   const dipHasVisibleReading = (dip: (typeof dips)[number]) =>
-    Object.keys(dip.rd).some(tankId => visiblePetrolTankIds.has(tankId)) ||
-    Object.keys(dip.lpg).some(tankId => visibleLpgTankIds.has(tankId));
+    Object.keys(dip.rd ?? {}).some(tankId => visiblePetrolTankIds.has(tankId)) ||
+    Object.keys(dip.lpg ?? {}).some(tankId => visibleLpgTankIds.has(tankId));
   const getDipBranch = (dip: (typeof dips)[number]) => {
     if (dip.branchId) {
       return {
@@ -97,8 +98,8 @@ export default function TanksScreen() {
       };
     }
     const branchIds = Array.from(new Set([
-      ...Object.keys(dip.rd).map(tankId => tanks.find(tank => tank.id === tankId)?.branchId),
-      ...Object.keys(dip.lpg).map(tankId => lpgTanks.find(tank => tank.id === tankId)?.branchId),
+      ...Object.keys(dip.rd ?? {}).map(tankId => tanks.find(tank => tank.id === tankId)?.branchId),
+      ...Object.keys(dip.lpg ?? {}).map(tankId => lpgTanks.find(tank => tank.id === tankId)?.branchId),
     ].filter((id): id is string => Boolean(id))));
     if (branchIds.length === 1) {
       return {
@@ -145,16 +146,16 @@ export default function TanksScreen() {
     const expectedByProd: Record<string, number> = {};
     for (const t of visibleTanks) {
       const approvedDipsForTank = dips
-        .filter(d => d.status === 'approved' && d.rd[t.id] !== undefined)
+        .filter(d => d.status === 'approved' && (d.rd ?? {})[t.id] !== undefined)
         .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
       const lastDip = approvedDipsForTank[0];
-      const dipReading = lastDip ? (lastDip.rd[t.id] ?? 0) : 0;
+      const dipReading = lastDip ? ((lastDip.rd ?? {})[t.id] ?? 0) : 0;
       const dipDt = lastDip?.dt;
       const recvdSinceDip = deliveries
         .filter(d => d.prod === t.prod &&
           (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
           (!dipDt || d.dt > dipDt))
-        .reduce((s, d) => s + d.rec, 0);
+        .reduce((s, d) => s + safeNum(d.rec), 0);
       const soldSinceDip = sales
         .filter(e => e.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
           (!dipDt || e.dt > dipDt))
@@ -232,8 +233,8 @@ export default function TanksScreen() {
 
   function startEditDip(dip: typeof dips[0]) {
     setEditingDipId(dip.id);
-    setEditDipReadings(Object.fromEntries(Object.entries(dip.rd).map(([k, v]) => [k, String(v)])));
-    setEditDipLpg(Object.fromEntries(Object.entries(dip.lpg).map(([k, v]) => [k, String(v)])));
+    setEditDipReadings(Object.fromEntries(Object.entries(dip.rd ?? {}).map(([k, v]) => [k, String(v)])));
+    setEditDipLpg(Object.fromEntries(Object.entries(dip.lpg ?? {}).map(([k, v]) => [k, String(v)])));
     setEditDipObs(dip.obs ?? '');
   }
   function cancelEditDip() {
@@ -303,10 +304,10 @@ export default function TanksScreen() {
                     <Text style={[styles.prodText, { color: roleColor }]}>{t.prod}</Text>
                   </View>
                 </View>
-                <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Capacity: {t.cap.toLocaleString()}L</Text>
+                <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Capacity: {safeNum(t.cap).toLocaleString()}L</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                  placeholder={`Current level in litres (max ${t.cap.toLocaleString()}L)`}
+                  placeholder={`Current level in litres (max ${safeNum(t.cap).toLocaleString()}L)`}
                   placeholderTextColor={colors.textSubtle}
                   keyboardType="numeric"
                   value={readings[t.id] || ''}
@@ -340,10 +341,10 @@ export default function TanksScreen() {
                     <Text style={[styles.prodText, { color: colors.teal }]}>LPG</Text>
                   </View>
                 </View>
-                <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Capacity: {l.cap.toLocaleString()} kg</Text>
+                <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>Capacity: {safeNum(l.cap).toLocaleString()} kg</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                  placeholder={`Current level in kg (max ${l.cap.toLocaleString()} kg)`}
+                  placeholder={`Current level in kg (max ${safeNum(l.cap).toLocaleString()} kg)`}
                   placeholderTextColor={colors.textSubtle}
                   keyboardType="numeric"
                   value={lpgReadings[l.id] || ''}
@@ -552,7 +553,7 @@ export default function TanksScreen() {
                   </View>
                 </View>
                 <View style={styles.readingsGrid}>
-                  {Object.entries(dip.rd).filter(([tid]) => visiblePetrolTankIds.has(tid)).map(([tid, litres]) => {
+                  {Object.entries(dip.rd ?? {}).filter(([tid]) => visiblePetrolTankIds.has(tid)).map(([tid, litres]) => {
                     const tank = tanks.find(t => t.id === tid);
                     return (
                       <View key={tid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -561,7 +562,7 @@ export default function TanksScreen() {
                       </View>
                     );
                   })}
-                  {Object.entries(dip.lpg).filter(([lid]) => visibleLpgTankIds.has(lid)).map(([lid, kg]) => {
+                  {Object.entries(dip.lpg ?? {}).filter(([lid]) => visibleLpgTankIds.has(lid)).map(([lid, kg]) => {
                     const lt = lpgTanks.find(l => l.id === lid);
                     return (
                       <View key={lid} style={[styles.readingChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -709,9 +710,9 @@ export default function TanksScreen() {
                   </View>
                 </View>
                 <View style={styles.deliveryStats}>
-                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Ordered: <Text style={{ color: colors.text, fontWeight: '600' }}>{rec.ord.toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text></Text>
-                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Received: <Text style={{ color: roleColor, fontWeight: '700' }}>{rec.rec.toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text></Text>
-                  {rec.ord !== rec.rec && <Text style={{ color: STATUS_COLORS[rec.st], fontSize: 12 }}>Diff: {(rec.rec - rec.ord).toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text>}
+                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Ordered: <Text style={{ color: colors.text, fontWeight: '600' }}>{safeNum(rec.ord).toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text></Text>
+                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Received: <Text style={{ color: roleColor, fontWeight: '700' }}>{safeNum(rec.rec).toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text></Text>
+                  {safeNum(rec.ord) !== safeNum(rec.rec) && <Text style={{ color: STATUS_COLORS[rec.st], fontSize: 12 }}>Diff: {(safeNum(rec.rec) - safeNum(rec.ord)).toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text>}
                 </View>
                 {rec.notes ? <Text style={[styles.dipObs, { color: colors.textMuted }]}>{rec.notes}</Text> : null}
 
@@ -779,16 +780,16 @@ export default function TanksScreen() {
           )}
           {visibleTanks.map(t => {
             const approvedDips = dips
-              .filter(d => d.status === 'approved' && d.rd[t.id] !== undefined)
+              .filter(d => d.status === 'approved' && (d.rd ?? {})[t.id] !== undefined)
               .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
             const lastDipRecord = approvedDips[0];
-            const dipReading = lastDipRecord ? (lastDipRecord.rd[t.id] ?? 0) : 0;
+            const dipReading = lastDipRecord ? ((lastDipRecord.rd ?? {})[t.id] ?? 0) : 0;
             const dipDt = lastDipRecord?.dt;
             const deliveriesSinceDip = deliveries
               .filter(d => d.prod === t.prod &&
                 (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
                 (!dipDt || new Date(d.dt) > new Date(dipDt)))
-              .reduce((s, d) => s + d.rec, 0);
+              .reduce((s, d) => s + safeNum(d.rec), 0);
             const salesSinceDip = sales
               .filter(s => s.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
                 (!dipDt || new Date(s.dt) > new Date(dipDt)))
@@ -801,7 +802,7 @@ export default function TanksScreen() {
                 <View style={styles.invHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.invName, { color: colors.text }]}>{t.name}</Text>
-                    <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {t.cap.toLocaleString()}L</Text>
+                    <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {safeNum(t.cap).toLocaleString()}L</Text>
                   </View>
                   <View style={[styles.prodBadge, { backgroundColor: roleColor + '18' }]}>
                     <Text style={[styles.prodText, { color: roleColor }]}>{t.prod}</Text>
@@ -853,16 +854,16 @@ export default function TanksScreen() {
           )}
           {visibleLpgTanks.map(l => {
             const approvedDips = dips
-              .filter(d => d.status === 'approved' && d.lpg[l.id] !== undefined)
+              .filter(d => d.status === 'approved' && (d.lpg ?? {})[l.id] !== undefined)
               .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
             const lastDipRecord = approvedDips[0];
-            const dipReading = lastDipRecord ? (lastDipRecord.lpg[l.id] ?? 0) : 0;
+            const dipReading = lastDipRecord ? ((lastDipRecord.lpg ?? {})[l.id] ?? 0) : 0;
             const dipDt = lastDipRecord?.dt;
             const deliveriesSinceDip = deliveries
               .filter(d => d.prod === 'LPG' &&
                 (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
                 (!dipDt || new Date(d.dt) > new Date(dipDt)))
-              .reduce((s, d) => s + d.rec, 0);
+              .reduce((s, d) => s + safeNum(d.rec), 0);
             const currentStock = Math.max(0, dipReading + deliveriesSinceDip);
             const pct = l.cap > 0 ? Math.min(100, Math.round((currentStock / l.cap) * 100)) : 0;
             const barColor = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.teal;
@@ -871,7 +872,7 @@ export default function TanksScreen() {
                 <View style={styles.invHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.invName, { color: colors.text }]}>{l.name}</Text>
-                    <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {l.cap.toLocaleString()} kg</Text>
+                    <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {safeNum(l.cap).toLocaleString()} kg</Text>
                   </View>
                   <View style={[styles.prodBadge, { backgroundColor: colors.teal + '18' }]}>
                     <Text style={[styles.prodText, { color: colors.teal }]}>LPG</Text>
