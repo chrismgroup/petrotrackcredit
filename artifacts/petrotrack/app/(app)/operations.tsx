@@ -167,10 +167,26 @@ function StockLogPanel() {
           entry.product === product &&
           entry.businessDate === seedDate,
         );
+        const expectedSeedLog = startupRecord && businessDate >= seedDate
+          ? calculateStockBook(
+              startupRecord,
+              product,
+              branch.id,
+              deliveries,
+              pumpDailyReports,
+              seedDate,
+              branchPumps,
+            )
+          : null;
+        const seedLogMatchesCalculation = expectedSeedLog && seedLog
+          ? Math.abs((seedLog.openingQuantity ?? Number.NaN) - (expectedSeedLog.startupStock ?? Number.NaN)) < 0.01 &&
+            Math.abs(seedLog.delivered - expectedSeedLog.delivered) < 0.01 &&
+            Math.abs(seedLog.sold - expectedSeedLog.sold) < 0.01 &&
+            Math.abs((seedLog.bookStock ?? Number.NaN) - (expectedSeedLog.bookStock ?? Number.NaN)) < 0.01
+          : false;
         const hasValidSeedLog = !startupRecord || (
           seedLog?.openingSource === 'startup_seed' &&
-          seedLog.openingQuantity !== null &&
-          Math.abs(seedLog.openingQuantity - startupRecord.quantity) < 0.01
+          seedLogMatchesCalculation
         );
         const previousLog = stockLogs
           .filter(entry =>
