@@ -147,9 +147,8 @@ export function computeCOGS(
 ): number {
   const PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil', 'Others'];
   let total = 0;
-  const num = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : 0);
   for (const prod of PRODS) {
-    const vol = sales.filter(s => matchesProd(s.pump, prod)).reduce((sum, e) => sum + num(e.L), 0);
+    const vol = sales.filter(s => matchesProd(s.pump, prod)).reduce((sum, e) => sum + Math.max(0, safeNum(e.L)), 0);
     if (vol <= 0) continue;
     total += getLastKnownCostPrice(deliveries, prod) * vol;
   }

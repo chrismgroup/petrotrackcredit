@@ -3,6 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AppState } from 'react-native';
 import { stateApi, versionApi, usersApi, notificationsApi, AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken } from '@/lib/api';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
+import { isMissingNum, safeNum } from '@/lib/report-helpers';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
@@ -92,7 +93,7 @@ export function getCurrentTankStock(
   dips: DipRecord[],
   productKind: 'petrol' | 'lpg' = 'petrol',
 ): number {
-  const balance = Math.max(0, tank.op + tank.rv - tank.sl);
+  const balance = Math.max(0, safeNum(tank.op) + safeNum(tank.rv) - safeNum(tank.sl));
 
   const latestDip = dips
     .filter(d => d.status === 'approved')
@@ -116,11 +117,11 @@ export function getCurrentTankStock(
       typeof tank.dip === 'number' &&
       tank.cap > 0 &&
       tank.dip > 0 &&
-      Math.abs(tank.op - Math.round((reading / tank.dip) * tank.cap)) <= 0.01
+      Math.abs(safeNum(tank.op) - Math.round((safeNum(reading) / safeNum(tank.dip)) * safeNum(tank.cap))) <= 0.01
     ) {
-      return Math.max(0, dipReadingToLiters(reading) + tank.rv - tank.sl);
+      return Math.max(0, dipReadingToLiters(safeNum(reading)) + safeNum(tank.rv) - safeNum(tank.sl));
     }
-    return Math.max(0, (productKind === 'lpg' ? reading : dipReadingToLiters(reading)) + tank.rv - tank.sl);
+    return Math.max(0, (productKind === 'lpg' ? safeNum(reading) : dipReadingToLiters(safeNum(reading))) + safeNum(tank.rv) - safeNum(tank.sl));
   }
   return balance;
 }
@@ -131,7 +132,7 @@ export function salesRevenueByBranch(sales: SalesEntry[]): { total: number; byBr
   const byBranch: Record<string, number> = {};
   let total = 0;
   for (const e of sales) {
-    const amt = e.L * e.price;
+    const amt = safeNum(e.L) * safeNum(e.price);
     if (!Number.isFinite(amt)) continue;
     total += amt;
     if (e.branchId) byBranch[e.branchId] = (byBranch[e.branchId] || 0) + amt;
@@ -336,15 +337,16 @@ function sumUniquePumpReportVolumes(reports: PumpDailyReport[]): number {
   let fallbackVolume = 0;
 
   for (const report of reports) {
-    const start = Number(report.openingMeter);
-    const end = Number(report.closingMeter);
+    const meterValue = (value: unknown) => isMissingNum(value) ? NaN : Number(value);
+    const start = meterValue(report.openingMeter);
+    const end = meterValue(report.closingMeter);
     if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
       const key = `${report.pumpId}|${report.product}`;
       const intervals = intervalsByPump.get(key) ?? [];
       intervals.push({ start, end });
       intervalsByPump.set(key, intervals);
-    } else if (Number.isFinite(report.liters)) {
-      fallbackVolume += report.liters;
+    } else {
+      fallbackVolume += safeNum(report.liters);
     }
   }
 
@@ -460,7 +462,7 @@ export function calculateBusinessMonthRevenue(
         (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId)
       );
     })
-    .reduce((sum, report) => sum + (Number.isFinite(report.grossAmount) ? report.grossAmount : 0), 0));
+    .reduce((sum, report) => sum + safeNum(report.grossAmount), 0));
 }
 
 function recordBusinessDate(value?: string): string {
@@ -580,7 +582,7 @@ export function calculateStockBook(
     const businessDate = recordBusinessDate(delivery.dt);
     const eventAt = delivery.approvedAt ?? delivery.mdAt ?? delivery.accAt ?? delivery.submittedAt ?? delivery.dt;
     if (!isInSeedWindow(businessDate, eventAt)) continue;
-    if (includeHistoricalEvents || businessDate === asOfDate) delivered += delivery.rec;
+    if (includeHistoricalEvents || businessDate === asOfDate) delivered += safeNum(delivery.rec);
   }
 
   const eligibleReportsByDate = new Map<string, PumpDailyReport[]>();

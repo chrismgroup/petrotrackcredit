@@ -281,7 +281,7 @@ export default function ReceivingScreen() {
       } else if (prod === 'Lube Oil') {
         const recv = scopeDeliveries
           .filter(d => d.prod === 'Lube Oil' && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
-          .reduce((s, d) => s + d.rec, 0);
+          .reduce((s, d) => s + safeNum(d.rec), 0);
         if (recv > 0) result.push({ prod: 'Lube Oil', unit: 'L', totalStock: recv, totalCap: 0, tanks: [], lastDipDt: null, dipBased: false });
       }
     }

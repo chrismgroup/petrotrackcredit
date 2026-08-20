@@ -10,6 +10,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { Budget, Expense, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { safeNum } from '@/lib/report-helpers';
 
 const EXPENSE_CATS = [
   'Generator fuel', 'Security & guarding', 'Utilities',
@@ -113,7 +114,7 @@ export default function ExpensesScreen() {
   const [filterDate, setFilterDate] = useState('');
 
   const today = new Date().toISOString().slice(0, 10);
-  const todaySalesRev    = sales.filter(s => s.dt.startsWith(today)).reduce((s, x) => s + x.L * x.price, 0);
+  const todaySalesRev    = sales.filter(s => s.dt.startsWith(today)).reduce((s, x) => s + safeNum(x.L) * safeNum(x.price), 0);
   const todayApprovedExp = expenses.filter(e => e.status === 'approved' && e.dt.startsWith(today)).reduce((s, e) => s + e.amt, 0);
   const todayNet = todaySalesRev - todayApprovedExp;
 
