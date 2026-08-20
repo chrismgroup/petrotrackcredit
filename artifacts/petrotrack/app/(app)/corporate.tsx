@@ -3,7 +3,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text,
   TextInput, TouchableOpacity, View,
@@ -93,6 +93,12 @@ function FolderWorkspacePanel({
     !f.deletedAt && f.section === section && f.folderId === selectedFolderId,
   );
 
+  useEffect(() => {
+    return () => {
+      if (previewFile?.uri.startsWith('blob:')) URL.revokeObjectURL(previewFile.uri);
+    };
+  }, [previewFile]);
+
   function localFileName(file: MyFolderFile): string {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     return `petrotrack-my-folder-${file.id}-${safeName}`;
@@ -100,6 +106,11 @@ function FolderWorkspacePanel({
 
   async function getLocalFile(file: MyFolderFile): Promise<string> {
     if (!file.objectPath) throw new Error('This document is missing its stored file.');
+    if (Platform.OS === 'web') {
+      const fetched = await storageApi.fetchObject(file.objectPath);
+      if (!fetched) throw new Error('The document could not be downloaded.');
+      return URL.createObjectURL(fetched.blob);
+    }
     const root = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
     if (!root) throw new Error('No local file directory is available.');
     const destinationUri = `${root}${localFileName(file)}`;
@@ -135,6 +146,17 @@ function FolderWorkspacePanel({
     setBusyFileId(file.id);
     try {
       const uri = await getLocalFile(file);
+      if (Platform.OS === 'web') {
+        const link = document.createElement('a');
+        link.href = uri;
+        link.download = file.name;
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(uri), 1000);
+        return;
+      }
       if (Platform.OS === 'android') {
         const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
         if (!permissions.granted) return;
@@ -176,6 +198,18 @@ function FolderWorkspacePanel({
     setBusyFileId(file.id);
     try {
       const uri = await getLocalFile(file);
+      if (Platform.OS === 'web') {
+        const webNavigator = navigator as Navigator & {
+          share?: (data: { title?: string; url?: string }) => Promise<void>;
+        };
+        if (webNavigator.share) {
+          await webNavigator.share({ title: file.name, url: uri });
+        } else {
+          window.open(uri, '_blank', 'noopener,noreferrer');
+        }
+        setTimeout(() => URL.revokeObjectURL(uri), 1000);
+        return;
+      }
       const available = await Sharing.isAvailableAsync();
       if (!available) {
         Alert.alert('Sharing unavailable', 'Sharing is not supported on this device.');
@@ -312,7 +346,9 @@ function FolderWorkspacePanel({
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[sty.workspaceTitle, { color: colors.text }]}>Shared folders and files</Text>
-          <Text style={[sty.workspaceSub, { color: colors.textMuted }]}>Create folders and upload any file type.</Text>
+          <Text style={[sty.workspaceSub, { color: colors.textMuted }]}>
+            Anyone authorized to view this folder can preview, download, print or share its files.
+          </Text>
         </View>
       </View>
 

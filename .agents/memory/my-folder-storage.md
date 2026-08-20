@@ -7,7 +7,7 @@ My Folder is a shared workspace with sensitive corporate sections—including Co
 
 **Why:** Company-wide reference materials must be available to all staff, while sensitive corporate records retain their existing role gate.
 
-**How to apply:** Keep General Library visible for any signed-in role, preserve the approved-role gate for the other sections, use `type: '*/*'` for device picking, store the returned object path with synchronized metadata, and keep private storage endpoints authenticated.
+**How to apply:** Keep General Library visible for any signed-in role, preserve the approved-role gate for the other sections, use `type: '*/*'` for device picking, store the returned object path with synchronized metadata, keep private storage endpoints authenticated, and use an authenticated browser blob path for web download/preview/share actions.
 
 **Why:** Every device sends its complete local metadata array. Last-writer-wins replacement made an older device overwrite a newly uploaded document before other users could see it.
 
