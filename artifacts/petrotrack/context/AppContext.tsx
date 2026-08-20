@@ -43,6 +43,8 @@ export interface StartupStock {
   branchId?: string;
   setBy: string;
   setAt: string;
+  /** Business date from which this baseline applies. Legacy records use setAt. */
+  seedDate?: string;
   locked: boolean;
 }
 export interface MarketCompetitor { id: string; name: string; location: string; pms: string; ago: string; dpk: string; lpg: string; updatedBy: string; updatedAt: string; }
@@ -325,6 +327,10 @@ export function businessDateKey(value?: string): string {
   return value?.slice(0, 10) ?? '';
 }
 
+export function startupStockSeedDate(stock?: Pick<StartupStock, 'setAt' | 'seedDate'>): string {
+  return stock?.seedDate ?? businessDateKey(stock?.setAt);
+}
+
 export function currentBusinessDateKey(date = new Date()): string {
   return [
     date.getFullYear(),
@@ -467,8 +473,12 @@ export function calculateStockBook(
   }
 
   const seedAt = startupStock ? timestampMs(startupStock.setAt) : 0;
-  const seedDate = startupStock ? recordBusinessDate(startupStock.setAt) : '';
+  const seedDate = startupStock ? startupStockSeedDate(startupStock) : '';
+  const hasExplicitSeedDate = Boolean(startupStock?.seedDate);
   const isAfterSeed = (eventAt: string | undefined, businessDate: string) => {
+    // An explicit business seed date is authoritative. Approval/submission
+    // timestamps may be later or earlier than the day the baseline applies.
+    if (hasExplicitSeedDate) return businessDate >= seedDate;
     const eventAtMs = timestampMs(eventAt);
     if (seedAt > 0 && eventAtMs > 0) return eventAtMs >= seedAt;
     return !seedDate || businessDate >= seedDate;
@@ -1154,6 +1164,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }
   const [stateSyncReadyTick, setStateSyncReadyTick] = useState(0);
+  const stockBaselineRepairRef = useRef(false);
   useEffect(() => {
     const KEYS = [
       'auth', 'companyInfo', 'tanks', 'lpgTanks', 'pumps', 'staff', 'branches',
@@ -1409,6 +1420,85 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loaded && isServerAuthenticated) syncFromServer();
   }, [loaded, isServerAuthenticated, syncFromServer]);
+
+  /**
+   * One-time repair for the Uyo Gas Plant LPG baseline entered as 7,000 kg.
+   * The quantity was saved on 15 August even though it applies from 14 August,
+   * which made the 14 August stock log use the old 88 kg tank dip instead.
+   * This is data migration logic, not a new default: it only repairs that
+   * exact existing baseline (or creates it if the record is missing).
+   */
+  useEffect(() => {
+    if (
+      !loaded ||
+      !isServerAuthenticated ||
+      !initialSyncDoneRef.current ||
+      stateSyncReadyTick === 0 ||
+      role !== 'admin' ||
+      stockBaselineRepairRef.current
+    ) return;
+
+    const branch = branches.find(item => item.name.trim().toLowerCase() === 'uyo gas plant');
+    if (!branch) return;
+
+    const seedDate = '2026-08-14';
+    const existing = startupStocks.find(stock =>
+      stock.branchId === branch.id && stock.product === 'LPG',
+    );
+    const isTargetBaseline = existing?.quantity === 7000;
+    const needsDateRepair = isTargetBaseline && startupStockSeedDate(existing) !== seedDate;
+    const needsCreate = !existing;
+
+    if (!needsDateRepair && !needsCreate) {
+      stockBaselineRepairRef.current = true;
+      return;
+    }
+
+    stockBaselineRepairRef.current = true;
+    setStartupStocks(prev => {
+      if (prev.some(stock => stock.branchId === branch.id && stock.product === 'LPG')) {
+        return prev.map(stock =>
+          stock.branchId === branch.id && stock.product === 'LPG' && stock.quantity === 7000
+            ? { ...stock, seedDate }
+            : stock,
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: 'startup-uyo-gas-20260814',
+          product: 'LPG',
+          quantity: 7000,
+          branchId: branch.id,
+          setBy: userName || 'System',
+          setAt: `${seedDate}T00:00:00.000Z`,
+          seedDate,
+          locked: true,
+        },
+      ];
+    });
+    // Stock logs are derived from the source records. Drop the stale Uyo LPG
+    // chain so Operations rebuilds it from the corrected seed date.
+    setStockLogs(prev => prev.filter(entry =>
+      !(entry.branchId === branch.id && entry.product === 'LPG'),
+    ));
+    setAudit(prev => [{
+      id: genId(),
+      action: 'Uyo Gas Plant LPG baseline repaired',
+      user: userName || 'System',
+      detail: 'Seeded 7,000 kg from 2026-08-14 and cleared stale derived stock logs.',
+      ts: nowTs(),
+    }, ...prev]);
+  }, [
+    branches,
+    isServerAuthenticated,
+    loaded,
+    role,
+    setAudit,
+    startupStocks,
+    stateSyncReadyTick,
+    userName,
+  ]);
 
   // Existing installations used to give every non-admin role access to
   // Reports by default. Revoke those role-wide defaults once, while keeping
