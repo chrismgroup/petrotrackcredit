@@ -1632,9 +1632,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let tanksChanged = false;
     let lpgTanksChanged = false;
     let pumpsChanged = false;
+    const inferCountBasedBranch = (
+      assets: Array<{ branchId?: string }>,
+      countKey: 'tanks' | 'pumps',
+    ): string | undefined => {
+      const unassignedCount = assets.filter(asset => !asset.branchId).length;
+      if (unassignedCount === 0) return undefined;
+      const candidates = branches.filter(branch =>
+        branch.st === 'Active' &&
+        branch[countKey] === assets.filter(asset => asset.branchId === branch.id).length + unassignedCount,
+      );
+      return candidates.length === 1 ? candidates[0].id : undefined;
+    };
+    // Generic legacy names cannot identify a branch by themselves. The count
+    // fallback is allowed only when the configured branch asset count makes
+    // exactly one branch possible (for this dataset, five unassigned petrol
+    // tanks and seven pumps resolve uniquely to Uyo fuel station).
+    const countBasedTankBranchId = inferCountBasedBranch(tanks, 'tanks');
+    const countBasedPumpBranchId = inferCountBasedBranch(pumps, 'pumps');
     const repairedTanks = tanks.map(tank => {
       if (tank.branchId) return tank;
-      const branchId = inferLegacyBranchId(tank.name, branches);
+      const branchId = inferLegacyBranchId(tank.name, branches) ?? countBasedTankBranchId;
       if (!branchId) return tank;
       tanksChanged = true;
       return { ...tank, branchId };
@@ -1648,7 +1666,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     const repairedPumps = pumps.map(pump => {
       if (pump.branchId) return pump;
-      const branchId = inferLegacyBranchId(pump.name, branches);
+      const branchId = inferLegacyBranchId(pump.name, branches) ?? countBasedPumpBranchId;
       if (!branchId) return pump;
       pumpsChanged = true;
       return { ...pump, branchId };
@@ -1750,6 +1768,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loaded && stateSyncReadyTick > 0) syncSlice('pumpDailyReports', pumpDailyReports);
   }, [loaded, stateSyncReadyTick, pumpDailyReports]);
+  // A dip can be submitted from a locally restored session before the first
+  // authenticated sync completes. safeArray intentionally preserves that
+  // local record when the server is empty, so flush it once the sync gate opens.
+  useEffect(() => {
+    if (loaded && stateSyncReadyTick > 0) syncSlice('dips', dips);
+  }, [dips, loaded, stateSyncReadyTick]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);

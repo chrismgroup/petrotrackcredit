@@ -51,6 +51,12 @@ const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   approved: 4,
 };
 
+const DIP_STATUS_RANK: Record<string, number> = {
+  pending: 1,
+  rejected: 2,
+  approved: 3,
+};
+
 function pumpReportActivityMs(report: JsonRecord): number {
   const timestamps = ["submittedAt", "mgrAt", "accAt"]
     .map(key => Date.parse(String(report[key] ?? "")))
@@ -95,6 +101,85 @@ function mergePumpDailyReports(existing: unknown, incoming: unknown): JsonRecord
   if (Array.isArray(existing)) existing.forEach(add);
   if (Array.isArray(incoming)) incoming.forEach(add);
   return Array.from(merged.values());
+}
+
+function dipActivityMs(dip: JsonRecord): number {
+  const timestamps = ["submittedAt", "approvedDt"]
+    .map(key => Date.parse(String(dip[key] ?? "")))
+    .filter(value => Number.isFinite(value));
+  return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+}
+
+/**
+ * Tank dips are shared workflow records. A client PUT contains its complete
+ * local array, so replacing the server array would let an older device erase
+ * a dip submitted on another device. Merge by ID and keep the latest workflow
+ * version, with terminal approval/rejection states protected from stale
+ * pending copies.
+ */
+function mergeDips(existing: unknown, incoming: unknown): JsonRecord[] {
+  const merged = new Map<string, JsonRecord>();
+
+  const add = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const dip = value as JsonRecord;
+    const id = String(dip.id ?? "");
+    if (!id) return;
+
+    const current = merged.get(id);
+    if (!current) {
+      merged.set(id, dip);
+      return;
+    }
+
+    const currentActivity = dipActivityMs(current);
+    const candidateActivity = dipActivityMs(dip);
+    const currentRank = DIP_STATUS_RANK[String(current.status ?? "")] ?? 0;
+    const candidateRank = DIP_STATUS_RANK[String(dip.status ?? "")] ?? 0;
+
+    if (
+      candidateActivity > currentActivity ||
+      (candidateActivity === currentActivity && candidateRank >= currentRank)
+    ) {
+      merged.set(id, dip);
+    }
+  };
+
+  if (Array.isArray(existing)) existing.forEach(add);
+  if (Array.isArray(incoming)) incoming.forEach(add);
+  return Array.from(merged.values());
+}
+
+/**
+ * Asset configuration is also written as a complete array by each client.
+ * Preserve an existing branch assignment when an older client sends the same
+ * asset without one; explicit branch assignments from newer clients still win.
+ */
+function mergeAssetBranchAssignments(existing: unknown, incoming: unknown): JsonRecord[] {
+  const existingById = new Map<string, JsonRecord>();
+  if (Array.isArray(existing)) {
+    for (const value of existing) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const asset = value as JsonRecord;
+      const id = String(asset.id ?? "");
+      if (id) existingById.set(id, asset);
+    }
+  }
+
+  if (!Array.isArray(incoming)) return Array.from(existingById.values());
+  return incoming.flatMap(value => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const asset = value as JsonRecord;
+    const id = String(asset.id ?? "");
+    if (!id) return [];
+    const previous = existingById.get(id);
+    return [{
+      ...asset,
+      ...(asset.branchId === undefined && previous?.branchId !== undefined
+        ? { branchId: previous.branchId }
+        : {}),
+    }];
+  });
 }
 
 function myFolderFileActivityMs(file: JsonRecord): number {
@@ -512,6 +597,24 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       .from(appStateTable)
       .where(eq(appStateTable.key, "pumpDailyReports"));
     data = mergePumpDailyReports(existingRow?.data, data);
+  }
+
+  // Tank dips are shared workflow records. Merge instead of replacing the
+  // complete array so a stale device cannot erase a dip submitted elsewhere.
+  if (key === "dips" && Array.isArray(data)) {
+    const [existingRow] = await db
+      .select()
+      .from(appStateTable)
+      .where(eq(appStateTable.key, "dips"));
+    data = mergeDips(existingRow?.data, data);
+  }
+
+  if ((key === "tanks" || key === "lpgTanks" || key === "pumps") && Array.isArray(data)) {
+    const [existingRow] = await db
+      .select()
+      .from(appStateTable)
+      .where(eq(appStateTable.key, key));
+    data = mergeAssetBranchAssignments(existingRow?.data, data);
   }
 
   // My Folder is also a shared array written by every device. Merge by ID so

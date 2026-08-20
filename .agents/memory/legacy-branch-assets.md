@@ -7,4 +7,4 @@ Older persisted asset records can have no `branchId` even though their names cle
 
 **Why:** Branch-scoped inventory must not silently treat every unassigned asset as belonging to every branch, but known legacy records can be recovered when the asset name contains an unambiguous branch marker such as a full location name.
 
-**How to apply:** Repair only unassigned assets with an unambiguous name-to-branch match. Leave generic names unassigned until an administrator explicitly chooses their branch. Do not infer delivery or stock ownership from a product name alone.
+**How to apply:** Repair unassigned assets with an unambiguous name-to-branch match. Generic names may be repaired only when the branch's configured total asset count produces exactly one possible branch; otherwise leave them unassigned until an administrator explicitly chooses their branch. Do not infer delivery or stock ownership from a product name alone.

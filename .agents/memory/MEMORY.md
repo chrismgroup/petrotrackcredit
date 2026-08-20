@@ -1,4 +1,5 @@
 - [DB persistence architecture](db-persistence.md) — app_state key-value table in PostgreSQL; mirrors AsyncStorage keys; stateApi utility in Expo calls /api/state
+- [Shared operational sync](shared-operational-sync.md) — shared workflow arrays must merge by record ID and flush locally restored records after authenticated sync
 - [Inventory log & discrepancy alerts](inventory-log.md) — InventoryLogEntry snapshots created on every approveDip; discrepancy >50L triggers chat alerts to md/ceo/acc/csm
 - [Notification sound](notification-sound.md) — expo-audio (not expo-av, deprecated in SDK 54); bundled WAV at assets/sounds/notification.wav; hook in hooks/useNotificationSound.ts
 - [LPG unit convention](lpg-unit-convention.md) — LPG tank capacity and delivery quantities are tracked in kg, not litres; use `unitForProd` / `PROD_UNIT` helpers to render labels

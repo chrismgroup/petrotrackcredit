@@ -8,7 +8,7 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
-  DEFAULT_MGR_PERMS, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
+  DEFAULT_MGR_PERMS, businessDateKey, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
   getCurrentTankStock, previousBusinessDateKey,
   ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, startupStockSeedDate, unitForProd, useApp,
 } from '@/context/AppContext';
@@ -50,7 +50,7 @@ function latestDipForStockLog(
 ) {
   return dips
     .filter(dip =>
-      (beforeDate ? dip.dt?.slice(0, 10) < dateKey : dip.dt?.slice(0, 10) === dateKey) &&
+      (beforeDate ? businessDateKey(dip.dt) < dateKey : businessDateKey(dip.dt) === dateKey) &&
       dip.status === 'approved' &&
       (petrolTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
         branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
@@ -201,7 +201,11 @@ function StockLogPanel() {
         let openingSource: StockLogOpeningSource = previousLog?.bookStock !== null && previousLog?.bookStock !== undefined
           ? 'previous_log'
           : 'unavailable';
-        if (openingQuantity === null && startupRecord && businessDate >= seedDate) {
+        if (startupRecord && businessDate >= seedDate) {
+          // Rebuild the prior-day chain from the authoritative business dates.
+          // A saved row can predate a late-approved/late-synced shift report,
+          // so using it here would hide yesterday's sold quantity in today's
+          // opening stock.
           openingQuantity = businessDate === seedDate
             ? startupRecord.quantity
             : calculateStockBook(
