@@ -23,6 +23,7 @@ import {
   calculateStockBook,
   dipReadingToLiters,
   previousBusinessDateKey,
+  startupStockSeedDate,
   unitForProd,
   useBusinessDateKey,
   useApp,
@@ -393,17 +394,44 @@ export default function HomeScreen() {
            stock.product === product &&
            stock.branchId === scope.branchId
           );
-         const openingStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks);
-        const stockBook = calculateStockBook(
-           startupRecord,
-          product,
-          scope.branchId,
-          deliveries,
-          pumpDailyReports,
-          todayKey,
-          pumps,
-           openingStock,
-        );
+         const legacyOpeningStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks);
+         const hasExplicitSeedDate = Boolean(startupRecord?.seedDate);
+         const seededOpeningStock = startupRecord && hasExplicitSeedDate && todayKey > startupStockSeedDate(startupRecord)
+           ? calculateStockBook(
+               startupRecord,
+               product,
+               scope.branchId,
+               deliveries,
+               pumpDailyReports,
+               previousBusinessDateKey(todayKey),
+               pumps,
+               startupRecord.quantity,
+               true,
+             ).bookStock
+           : startupRecord && hasExplicitSeedDate && todayKey === startupStockSeedDate(startupRecord)
+             ? startupRecord.quantity
+             : legacyOpeningStock;
+         const stockBook = hasExplicitSeedDate && todayKey > startupStockSeedDate(startupRecord)
+           ? calculateStockBook(
+               undefined,
+               product,
+               scope.branchId,
+               deliveries,
+               pumpDailyReports,
+               todayKey,
+               pumps,
+               seededOpeningStock,
+             )
+           : calculateStockBook(
+               startupRecord,
+               product,
+               scope.branchId,
+               deliveries,
+               pumpDailyReports,
+               todayKey,
+               pumps,
+               seededOpeningStock,
+             );
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const variance = stockBook.bookStock === null || submittedTankDip === null
           ? null
