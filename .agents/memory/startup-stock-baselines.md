@@ -3,11 +3,11 @@ name: Start-up stock baselines
 description: Business rules for configured opening inventory used by the Home Stock Snapshot
 ---
 
-Start-up stock in the Home Snapshot is explicitly set by an admin for each product and branch and is used only on the seed business day. LPG uses kilograms while other products use litres.
+Start-up stock in the Home Snapshot is explicitly set by an admin for each product and branch and is used only on the seed business day. LPG uses kilograms while other products use litres. Baselines may carry an explicit business `seedDate`; when present, it overrides the administrative save timestamp.
 
 **Why:** The admin seed establishes the initial opening quantity, then each subsequent day must start from the prior day’s physical tank dip so the snapshot reflects daily operational reality.
 
-**How to apply:** On the seed date use the admin quantity. On later dates use the previous calendar business day’s non-rejected tank dip as opening quantity, then calculate `opening dip + today’s deliveries − today’s shift-report sales`. Delivered and sold metrics are date-specific and show zero when there is no matching record. Do not add auto-created SalesEntry records again. Compare the result with today’s tank dip; negative variance is shortage and positive variance is excess. If the seed or required opening dip is unavailable, show the opening quantity as unavailable rather than treating it as zero.
+**How to apply:** On the seed date use the admin quantity. On later dates use the previous calendar business day’s non-rejected tank dip as opening quantity, then calculate `opening dip + today’s deliveries − today’s shift-report sales`. Delivered and sold metrics are date-specific and show zero when there is no matching record. Do not add auto-created SalesEntry records again. Compare the result with today’s tank dip; negative variance is shortage and positive variance is excess. If the seed or required opening dip is unavailable, show the opening quantity as unavailable rather than treating it as zero. For persisted stock logs, never let a pre-seed log override the explicit seed; if the seed-day log is stale or invalid, rebuild the chain from the seed.
 
 Dip aggregation must normalize stored readings to finite numbers and use the same branch rule as Tank Dipping: explicitly assigned tanks are scoped, while unassigned tanks remain visible to branch users.
 

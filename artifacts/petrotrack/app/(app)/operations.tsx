@@ -10,7 +10,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import {
   DEFAULT_MGR_PERMS, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
   getCurrentTankStock, previousBusinessDateKey,
-  ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
+  ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, startupStockSeedDate, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -161,19 +161,30 @@ function StockLogPanel() {
         if (!hasProduct) return;
 
         const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
+        const seedDate = startupRecord ? startupStockSeedDate(startupRecord) : '';
+        const seedLog = startupRecord && stockLogs.find(entry =>
+          entry.branchId === branch.id &&
+          entry.product === product &&
+          entry.businessDate === seedDate,
+        );
+        const hasValidSeedLog = !startupRecord || (
+          seedLog?.openingSource === 'startup_seed' &&
+          seedLog.openingQuantity !== null &&
+          Math.abs(seedLog.openingQuantity - startupRecord.quantity) < 0.01
+        );
         const previousLog = stockLogs
           .filter(entry =>
             entry.branchId === branch.id &&
             entry.product === product &&
             entry.businessDate < businessDate &&
-            entry.bookStock !== null,
+            entry.bookStock !== null &&
+            (!startupRecord || (hasValidSeedLog && entry.businessDate >= seedDate)),
           )
           .sort((a, b) => b.businessDate.localeCompare(a.businessDate))[0];
         let openingQuantity = previousLog?.bookStock ?? null;
         let openingSource: StockLogOpeningSource = previousLog?.bookStock !== null && previousLog?.bookStock !== undefined
           ? 'previous_log'
           : 'unavailable';
-        const seedDate = startupRecord?.setAt.slice(0, 10) ?? '';
         if (openingQuantity === null && startupRecord && businessDate >= seedDate) {
           openingQuantity = businessDate === seedDate
             ? startupRecord.quantity
