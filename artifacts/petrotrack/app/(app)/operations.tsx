@@ -8,9 +8,9 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
-  DEFAULT_MGR_PERMS, businessDateKey, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
+  DEFAULT_MGR_PERMS, businessDateKey, calculateDailyStockLogBalance, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
   getCurrentTankStock, previousBusinessDateKey,
-  ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, startupStockSeedDate, unitForProd, useApp,
+  ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -144,7 +144,7 @@ function StockLogPanel() {
       const branchLpgTanks = lpgTanks.filter(tank => tank.branchId === branch.id);
       const branchPumps = pumps.filter(pump => pump.branchId === branch.id);
       const todayDip = latestDipForStockLog(dips, businessDate, branchTanks, branchLpgTanks);
-      const openingDip = latestDipForStockLog(dips, businessDate, branchTanks, branchLpgTanks, true);
+      const openingDip = latestDipForStockLog(dips, previousDate, branchTanks, branchLpgTanks);
 
       STOCK_PRODUCTS.forEach(product => {
         const hasProduct =
@@ -161,94 +161,50 @@ function StockLogPanel() {
         if (!hasProduct) return;
 
         const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
-        const seedDate = startupRecord ? startupStockSeedDate(startupRecord) : '';
-        const seedLog = startupRecord && stockLogs.find(entry =>
-          entry.branchId === branch.id &&
-          entry.product === product &&
-          entry.businessDate === seedDate,
-        );
-        const expectedSeedLog = startupRecord && businessDate >= seedDate
-          ? calculateStockBook(
-              startupRecord,
-              product,
-              branch.id,
-              deliveries,
-              pumpDailyReports,
-              seedDate,
-              branchPumps,
-            )
-          : null;
-        const seedLogMatchesCalculation = expectedSeedLog && seedLog
-          ? Math.abs((seedLog.openingQuantity ?? Number.NaN) - (expectedSeedLog.startupStock ?? Number.NaN)) < 0.01 &&
-            Math.abs(seedLog.delivered - expectedSeedLog.delivered) < 0.01 &&
-            Math.abs(seedLog.sold - expectedSeedLog.sold) < 0.01 &&
-            Math.abs((seedLog.bookStock ?? Number.NaN) - (expectedSeedLog.bookStock ?? Number.NaN)) < 0.01
-          : false;
-        const hasValidSeedLog = !startupRecord || (
-          seedLog?.openingSource === 'startup_seed' &&
-          seedLogMatchesCalculation
-        );
-        const previousLog = stockLogs
-          .filter(entry =>
-            entry.branchId === branch.id &&
-            entry.product === product &&
-            entry.businessDate < businessDate &&
-            entry.bookStock !== null &&
-            (!startupRecord || (hasValidSeedLog && entry.businessDate >= seedDate)),
-          )
-          .sort((a, b) => b.businessDate.localeCompare(a.businessDate))[0];
-        let openingQuantity = previousLog?.bookStock ?? null;
-        let openingSource: StockLogOpeningSource = previousLog?.bookStock !== null && previousLog?.bookStock !== undefined
-          ? 'previous_log'
-          : 'unavailable';
-        if (startupRecord && businessDate >= seedDate) {
-          // Rebuild the prior-day chain from the authoritative business dates.
-          // A saved row can predate a late-approved/late-synced shift report,
-          // so using it here would hide yesterday's sold quantity in today's
-          // opening stock.
-          openingQuantity = businessDate === seedDate
-            ? startupRecord.quantity
-            : calculateStockBook(
-                startupRecord,
-                product,
-                branch.id,
-                deliveries,
-                pumpDailyReports,
-                previousDate,
-                branchPumps,
-                startupRecord.quantity,
-                true,
-              ).bookStock;
-          openingSource = 'startup_seed';
-        }
-        if (openingQuantity === null) {
-          openingQuantity = stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
-          openingSource = openingQuantity === null ? 'unavailable' : 'previous_dip';
-        }
-        const book = calculateStockBook(
+        const priorDayDip = stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
+        const openingQuantity = priorDayDip ?? startupRecord?.quantity ?? null;
+        const openingSource: StockLogOpeningSource = priorDayDip !== null
+          ? 'previous_dip'
+          : startupRecord
+            ? 'startup_seed'
+            : 'unavailable';
+        const deliveryResult = calculateStockBook(
           undefined,
           product,
           branch.id,
           deliveries,
-          pumpDailyReports,
+          [],
           businessDate,
           branchPumps,
-          openingQuantity,
+        );
+        const salesResult = calculateStockBook(
+          undefined,
+          product,
+          branch.id,
+          [],
+          pumpDailyReports.filter(report => report.status === 'approved'),
+          previousDate,
+          branchPumps,
         );
         const tankDip = stockDipForProduct(todayDip, product, branchTanks, branchLpgTanks);
-        const discrepancy = book.bookStock === null || tankDip === null ? null : book.bookStock - tankDip;
+        const balance = calculateDailyStockLogBalance(
+          openingQuantity,
+          deliveryResult.delivered,
+          salesResult.sold,
+          tankDip,
+        );
         entries.push({
           branchId: branch.id,
           product,
           businessDate,
-          openingQuantity: book.startupStock,
-          delivered: book.delivered,
-          sold: book.sold,
-          bookStock: book.bookStock,
+          openingQuantity,
+          delivered: deliveryResult.delivered,
+          sold: salesResult.sold,
+          bookStock: balance.bookStock,
           tankDip,
-          discrepancy,
+          discrepancy: balance.variance,
           unit: unitForProd(product) as 'L' | 'kg',
-          status: makeStockLogStatus(book.startupStock, tankDip, discrepancy),
+          status: makeStockLogStatus(openingQuantity, tankDip, balance.variance),
           openingSource,
         });
       });
@@ -308,7 +264,7 @@ function StockLogPanel() {
           <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Opening</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.openingQuantity === null ? '—' : entry.openingQuantity.toLocaleString()}</Text></View>
           <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Delivered</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.delivered.toLocaleString()}</Text></View>
           <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Sold</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.sold.toLocaleString()}</Text></View>
-          <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Book stock</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.bookStock === null ? '—' : entry.bookStock.toLocaleString()}</Text></View>
+          <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Expected stock</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.bookStock === null ? '—' : entry.bookStock.toLocaleString()}</Text></View>
         </View>
         <View style={[styles.stockCompare, { borderTopColor: colors.border }]}>
           <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Tank dip</Text>
@@ -326,12 +282,12 @@ function StockLogPanel() {
         <View style={styles.stockHeroOrb} />
         <Text style={styles.stockEyebrow}>OPERATIONS · INVENTORY CONTROL</Text>
         <Text style={styles.stockHeroTitle}>Daily stock log</Text>
-        <Text style={styles.stockHeroSubtitle}>Opening seed + deliveries − shift-report sales, compared with the business-day tank dip.</Text>
+        <Text style={styles.stockHeroSubtitle}>Yesterday&apos;s approved dip or seed + today&apos;s deliveries − yesterday&apos;s approved sales, compared with today&apos;s dip.</Text>
         <View style={styles.stockMarquee}>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{summaryEntries.length}</Text><Text style={styles.stockMarqueeLabel}>Products</Text></View>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{balancedCount}</Text><Text style={styles.stockMarqueeLabel}>Balanced</Text></View>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{discrepancyCount}</Text><Text style={styles.stockMarqueeLabel}>Discrepancies</Text></View>
-          <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{totalSold.toLocaleString()}</Text><Text style={styles.stockMarqueeLabel}>Sold today</Text></View>
+          <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{totalSold.toLocaleString()}</Text><Text style={styles.stockMarqueeLabel}>Prior-day sold</Text></View>
         </View>
       </View>
 

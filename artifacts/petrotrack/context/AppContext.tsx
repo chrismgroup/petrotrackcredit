@@ -327,6 +327,32 @@ export interface StockBookCalculation {
   bookStock: number | null;
 }
 
+export interface DailyStockLogBalance {
+  bookStock: number | null;
+  variance: number | null;
+}
+
+/**
+ * Expected stock is opening + same-day deliveries - prior-day approved sales.
+ * Variance is physical tank stock minus expected stock, so positive values are
+ * excess and negative values are shortage.
+ */
+export function calculateDailyStockLogBalance(
+  openingQuantity: number | null,
+  delivered: number,
+  sold: number,
+  tankDip: number | null,
+): DailyStockLogBalance {
+  const bookStock = openingQuantity === null
+    ? null
+    : openingQuantity + safeNum(delivered) - safeNum(sold);
+  const physicalStock = tankDip === null || !Number.isFinite(tankDip) ? null : tankDip;
+  return {
+    bookStock,
+    variance: bookStock === null || physicalStock === null ? null : physicalStock - bookStock,
+  };
+}
+
 /**
  * Shift reports can be submitted more than once for the same meter interval.
  * Count the meter-range union instead of summing every report, while retaining

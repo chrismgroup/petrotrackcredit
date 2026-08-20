@@ -5,6 +5,7 @@ import type { ReactTestRenderer } from 'react-test-renderer';
 import { stateApi } from '@/lib/api';
 import {
   AppProvider,
+  calculateDailyStockLogBalance,
   calculateStockBook,
   useApp,
 } from './AppContext';
@@ -260,6 +261,33 @@ describe('stock book report eligibility', () => {
       expect(result.bookStock).toBe(100);
     },
   );
+});
+
+describe('daily stock log balance', () => {
+  it('marks a higher physical dip as excess', () => {
+    const result = calculateDailyStockLogBalance(1_000, 300, 200, 1_150);
+
+    expect(result.bookStock).toBe(1_100);
+    expect(result.variance).toBe(50);
+  });
+
+  it('marks a lower physical dip as shortage', () => {
+    const result = calculateDailyStockLogBalance(1_000, 300, 200, 1_050);
+
+    expect(result.bookStock).toBe(1_100);
+    expect(result.variance).toBe(-50);
+  });
+
+  it('waits for an opening quantity or current dip before calculating variance', () => {
+    expect(calculateDailyStockLogBalance(null, 300, 200, 1_050)).toEqual({
+      bookStock: null,
+      variance: null,
+    });
+    expect(calculateDailyStockLogBalance(1_000, 300, 200, null)).toEqual({
+      bookStock: 1_100,
+      variance: null,
+    });
+  });
 });
 
 describe('attendant report resubmission', () => {

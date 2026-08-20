@@ -107,9 +107,9 @@ jest.mock('@/context/AppContext', () => ({
   useApp: jest.fn(),
 }));
 
-import ReceivingScreen from './receiving';
-import TanksScreen from './tanks';
-import HRScreen from './hr';
+import ReceivingScreen from '../app/(app)/receiving';
+import TanksScreen from '../app/(app)/tanks';
+import HRScreen from '../app/(app)/hr';
 import { useApp } from '@/context/AppContext';
 
 const mockedUseApp = jest.mocked(useApp);
