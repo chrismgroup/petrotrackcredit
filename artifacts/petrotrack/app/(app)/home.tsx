@@ -461,7 +461,8 @@ export default function HomeScreen() {
   const pendingExpenses = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded');
   const pendingPriceProps = priceProposals.filter(p => p.status === 'pending');
   const pendingPumpReports = pumpDailyReports.filter(r =>
-    r.status === 'pending_manager' || r.status === 'pending_accountant',
+    (r.status === 'pending_manager' || r.status === 'pending_accountant' || r.status === 'returned_attendant') &&
+    (isGlobalOverview || !scopedBranchId || r.branchId === scopedBranchId || !r.branchId),
   );
   const pendingBudgets = budgets.filter(b =>
     b.status === 'submitted' || b.status === 'forwarded',
@@ -759,7 +760,7 @@ export default function HomeScreen() {
                 icon="speedometer-outline"
                 accent={colors.coral}
                 title="Pump Daily Reports"
-                meta={`${pendingPumpReports.length} shift report${pendingPumpReports.length > 1 ? 's' : ''} pending approval`}
+                meta={`${pendingPumpReports.length} shift report${pendingPumpReports.length > 1 ? 's' : ''} needing action`}
                 count={pendingPumpReports.length}
                 onPress={() => router.push(SCREEN_ROUTES.shift as never)}
                 colors={colors}

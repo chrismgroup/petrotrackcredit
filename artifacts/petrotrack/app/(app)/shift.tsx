@@ -657,8 +657,10 @@ export default function ShiftReportScreen() {
 
   /* ── attendant dashboard stats ── */
   const attReports = useMemo(() =>
-    [...pumpDailyReports].filter(r => r.submittedBy === userName).sort(sortShiftReports),
-    [pumpDailyReports, userName]
+    [...pumpDailyReports]
+      .filter(r => r.submittedBy === userName && (isGlobalOverview || inMyBranch(r)))
+      .sort(sortShiftReports),
+    [pumpDailyReports, userName, branchId, isGlobalOverview]
   );
   const monthKey = today.slice(0, 7);
   const monthReports = useMemo(() => attReports.filter(r => r.date.startsWith(monthKey)), [attReports, monthKey]);
@@ -691,7 +693,7 @@ export default function ShiftReportScreen() {
     { key: 'dashboard',   label: 'My Summary',    badge: returnedReports.length || undefined, roles: ['att'] },
     { key: 'submit',      label: 'Record Meters', roles: ['att'] },
     { key: 'history',     label: 'My History',    roles: ['att'] },
-    { key: 'review',      label: 'Review',        badge: pendingMgr.length + returnedMgr.length, roles: ['mgr'] },
+    { key: 'review',      label: 'Review',        badge: pendingMgr.length + returnedMgr.length + returnedAttMgr.length, roles: ['mgr'] },
     { key: 'pending_acc', label: 'Approvals',     badge: pendingAcc.length, roles: ['acc'] },
     { key: 'approved',    label: 'Approved',      roles: ['acc', 'mgr'] },
     { key: 'all_records', label: 'All Records',   roles: ['admin', 'md', 'ceo'] },
@@ -745,7 +747,21 @@ export default function ShiftReportScreen() {
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#791F1F' }}>
                   {returnedReports.length} report{returnedReports.length > 1 ? 's' : ''} returned for correction
                 </Text>
-                <Text style={{ fontSize: 11, color: '#791F1F', marginTop: 2 }}>Check "My History" to see rejection reasons.</Text>
+                {returnedReports.slice(0, 3).map(report => (
+                  <View key={report.id} style={{ marginTop: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#791F1F' }}>
+                      {report.pumpName} · {fmtDate(report.date)}
+                    </Text>
+                    <Text style={{ fontSize: 11, lineHeight: 16, color: '#791F1F', marginTop: 1 }}>
+                      {report.mgrNote?.trim() || 'Your manager did not add a correction note.'}
+                    </Text>
+                  </View>
+                ))}
+                {returnedReports.length > 3 && (
+                  <Text style={{ fontSize: 11, color: '#791F1F', marginTop: 5 }}>
+                    +{returnedReports.length - 3} more correction{returnedReports.length - 3 === 1 ? '' : 's'} in My History
+                  </Text>
+                )}
               </View>
               <TouchableOpacity onPress={() => setTab('history')}
                 style={{ backgroundColor: '#791F1F', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
