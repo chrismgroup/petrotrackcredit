@@ -340,4 +340,19 @@ export const storageApi = {
       return null;
     }
   },
+  fetchObject: async (objectPath: string): Promise<{ blob: Blob; contentType: string } | null> => {
+    if (!BASE || !objectPath.startsWith('/objects/')) return null;
+    try {
+      const headers = await authHeaders();
+      const encodedPath = objectPath.slice('/objects/'.length).split('/').map(encodeURIComponent).join('/');
+      const response = await fetch(`${BASE}/storage/objects/${encodedPath}`, { headers });
+      if (!response.ok) return null;
+      return {
+        blob: await response.blob(),
+        contentType: response.headers.get('content-type') ?? 'application/octet-stream',
+      };
+    } catch {
+      return null;
+    }
+  },
 };
