@@ -44,6 +44,7 @@ function stockLogStatusColor(status: StockLogStatus, colors: ReturnType<typeof u
 function latestDipForStockLog(
   dips: ReturnType<typeof useApp>['dips'],
   dateKey: string,
+  branchId: string,
   petrolTanks: ReturnType<typeof useApp>['tanks'],
   branchLpgTanks: ReturnType<typeof useApp>['lpgTanks'],
   beforeDate = false,
@@ -52,7 +53,8 @@ function latestDipForStockLog(
     .filter(dip =>
       (beforeDate ? businessDateKey(dip.dt) < dateKey : businessDateKey(dip.dt) === dateKey) &&
       dip.status === 'approved' &&
-      (petrolTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
+      (dip.branchId === branchId ||
+        petrolTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
         branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
     )
     .sort((a, b) =>
@@ -143,8 +145,8 @@ function StockLogPanel() {
       const branchTanks = tanks.filter(tank => tank.branchId === branch.id);
       const branchLpgTanks = lpgTanks.filter(tank => tank.branchId === branch.id);
       const branchPumps = pumps.filter(pump => pump.branchId === branch.id);
-      const todayDip = latestDipForStockLog(dips, businessDate, branchTanks, branchLpgTanks);
-      const openingDip = latestDipForStockLog(dips, previousDate, branchTanks, branchLpgTanks);
+      const todayDip = latestDipForStockLog(dips, businessDate, branch.id, branchTanks, branchLpgTanks);
+      const openingDip = latestDipForStockLog(dips, previousDate, branch.id, branchTanks, branchLpgTanks);
 
       STOCK_PRODUCTS.forEach(product => {
         const hasProduct =
