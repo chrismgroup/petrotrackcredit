@@ -138,8 +138,8 @@ function mergeDips(existing: unknown, incoming: unknown): JsonRecord[] {
     const candidateRank = DIP_STATUS_RANK[String(dip.status ?? "")] ?? 0;
 
     if (
-      candidateActivity > currentActivity ||
-      (candidateActivity === currentActivity && candidateRank >= currentRank)
+      candidateRank > currentRank ||
+      (candidateRank === currentRank && candidateActivity >= currentActivity)
     ) {
       merged.set(id, dip);
     }

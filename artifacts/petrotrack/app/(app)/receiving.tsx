@@ -7,7 +7,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
+import { businessDateKey, calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
 
@@ -58,9 +58,6 @@ function localDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 function todayIso() { return localDateKey(new Date()); }
-function recordDateKey(value?: string) {
-  return value ? value.slice(0, 10) : '';
-}
 function unitForProd(p: string) { return p === 'LPG' ? 'kg' : 'L'; }
 function blankMgrForm(): MgrFormState {
   return { prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '', dt: '' };
@@ -322,20 +319,22 @@ export default function ReceivingScreen() {
 
   function latestDipForBranch(
     dateKey: string,
+      branchId: string | null,
     scopeTanks: Tank[],
     scopeLpgTanks: LPGTank[],
     approvedOnly: boolean,
   ) {
     return dips
       .filter(d =>
-        recordDateKey(d.dt) !== '' &&
-        recordDateKey(d.dt) === dateKey &&
+        businessDateKey(d.dt) !== '' &&
+        businessDateKey(d.dt) === dateKey &&
         (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
-        (scopeTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
+        (d.branchId === branchId ||
+          scopeTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           scopeLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
       )
       .sort((a, b) =>
-        recordDateKey(b.dt).localeCompare(recordDateKey(a.dt))
+        businessDateKey(b.dt).localeCompare(businessDateKey(a.dt))
         || new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime()
         || b.id - a.id
       )[0];
@@ -371,8 +370,8 @@ export default function ReceivingScreen() {
     scopeDeliveries: Delivery[],
     scopeReports: typeof pumpDailyReports,
   ): StockProdRow[] {
-    const todaySubmittedDip = latestDipForBranch(todayKey, scopeTanks, scopeLpgTanks, false);
-    const openingDip = latestDipForBranch(previousBusinessDateKey(todayKey), scopeTanks, scopeLpgTanks, false);
+    const todaySubmittedDip = latestDipForBranch(todayKey, scopeBranchId, scopeTanks, scopeLpgTanks, false);
+    const openingDip = latestDipForBranch(previousBusinessDateKey(todayKey), scopeBranchId, scopeTanks, scopeLpgTanks, false);
     return ALL_PRODS
       .map(prod => {
         const startupRecord = startupStocks.find(stock => stock.product === prod && stock.branchId === scopeBranchId);

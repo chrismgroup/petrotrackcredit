@@ -7,9 +7,10 @@ import {
   AppProvider,
   calculateDailyStockLogBalance,
   calculateStockBook,
+  mergeDipRecords,
   useApp,
 } from './AppContext';
-import type { PumpDailyReport, PumpReportStatus } from './AppContext';
+import type { DipRecord, PumpDailyReport, PumpReportStatus } from './AppContext';
 
 type AppState = ReturnType<typeof useApp>;
 
@@ -287,6 +288,35 @@ describe('daily stock log balance', () => {
       bookStock: 1_100,
       variance: null,
     });
+  });
+});
+
+describe('tank dip synchronization', () => {
+  const baseDip = (status: DipRecord['status'], submittedAt: string, approvedDt?: string): DipRecord => ({
+    id: 501,
+    dt: '2026-08-20',
+    by: 'Uyo manager',
+    rd: { 'tank-uyo-pms': 12000 },
+    lpg: {},
+    obs: '',
+    status,
+    submittedAt,
+    approvedDt,
+    branchId: 'uyo-fuel',
+  });
+
+  it('keeps an approved dip when a later stale pending copy arrives', () => {
+    const approved = baseDip('approved', '2026-08-20T08:00:00.000Z', '2026-08-20T10:00:00.000Z');
+    const stalePending = baseDip('pending', '2026-08-20T11:00:00.000Z');
+
+    expect(mergeDipRecords([approved], [stalePending])).toEqual([approved]);
+  });
+
+  it('allows an approved copy to replace a pending copy', () => {
+    const pending = baseDip('pending', '2026-08-20T08:00:00.000Z');
+    const approved = baseDip('approved', '2026-08-20T08:00:00.000Z', '2026-08-20T10:00:00.000Z');
+
+    expect(mergeDipRecords([pending], [approved])).toEqual([approved]);
   });
 });
 

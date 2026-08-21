@@ -86,10 +86,6 @@ function localDateKey(date: Date): string {
   ].join('-');
 }
 
-function recordDateKey(value?: string): string {
-  return value?.slice(0, 10) ?? '';
-}
-
 function formatQuantity(value: number | null): string {
   if (value === null) return '—';
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -314,19 +310,21 @@ export default function HomeScreen() {
     });
     const latestDipForBranch = (
       dateKey: string,
+      branchId: string | null,
       petrolTanks: typeof tanks,
       branchLpgTanks: typeof lpgTanks,
       beforeDate = false,
     ) => sortDips(dips
       .filter(d =>
-        recordDateKey(d.dt) !== '' &&
-        (beforeDate ? recordDateKey(d.dt) < dateKey : recordDateKey(d.dt) === dateKey) &&
+        businessDateKey(d.dt) !== '' &&
+        (beforeDate ? businessDateKey(d.dt) < dateKey : businessDateKey(d.dt) === dateKey) &&
         d.status === 'approved' &&
-        (petrolTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
+        (d.branchId === branchId ||
+          petrolTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
           branchLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
       ))
       .sort((a, b) =>
-        recordDateKey(b.dt).localeCompare(recordDateKey(a.dt))
+        businessDateKey(b.dt).localeCompare(businessDateKey(a.dt))
         || new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime()
         || b.id - a.id
       )[0];
@@ -382,8 +380,8 @@ export default function HomeScreen() {
       const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
-      const todayDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks, false);
-      const openingDip = latestDipForBranch(todayKey, branchTanks, branchLpgTanks, true);
+      const todayDip = latestDipForBranch(todayKey, scope.branchId, branchTanks, branchLpgTanks, false);
+      const openingDip = latestDipForBranch(todayKey, scope.branchId, branchTanks, branchLpgTanks, true);
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
         : undefined;

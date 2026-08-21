@@ -649,6 +649,12 @@ const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   approved: 5,
 };
 
+const DIP_STATUS_RANK: Record<DipRecord['status'], number> = {
+  pending: 1,
+  rejected: 2,
+  approved: 3,
+};
+
 function pumpReportActivityMs(report: PumpDailyReport): number {
   const timestamps = [report.submittedAt, report.mgrAt, report.accAt]
     .map(value => Date.parse(value ?? ''))
@@ -676,6 +682,39 @@ function mergePumpDailyReports(current: PumpDailyReport[], incoming: PumpDailyRe
       (incomingActivity === currentActivity && incomingRank >= currentRank)
     ) {
       merged.set(report.id, report);
+    }
+  };
+
+  current.forEach(add);
+  incoming.forEach(add);
+  return Array.from(merged.values());
+}
+
+function dipActivityMs(dip: DipRecord): number {
+  return Math.max(
+    Date.parse(dip.submittedAt ?? ''),
+    Date.parse(dip.approvedDt ?? ''),
+    0,
+  );
+}
+
+export function mergeDipRecords(current: DipRecord[], incoming: DipRecord[]): DipRecord[] {
+  const merged = new Map<number, DipRecord>();
+
+  const add = (dip: DipRecord) => {
+    const existing = merged.get(dip.id);
+    if (!existing) {
+      merged.set(dip.id, dip);
+      return;
+    }
+
+    const currentRank = DIP_STATUS_RANK[existing.status] ?? 0;
+    const incomingRank = DIP_STATUS_RANK[dip.status] ?? 0;
+    if (
+      incomingRank > currentRank ||
+      (incomingRank === currentRank && dipActivityMs(dip) >= dipActivityMs(existing))
+    ) {
+      merged.set(dip.id, dip);
     }
   };
 
@@ -1428,7 +1467,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.expenses && !p.has('expenses'))                   setExpenses(s.expenses as Expense[]);
       if (s.budgets && !p.has('budgets'))                     setBudgets(s.budgets as Budget[]);
       if (!p.has('sales'))           setSales(safeArray<SalesEntry>(s.sales));
-      if (!p.has('dips'))            setDips(safeArray<DipRecord>(s.dips));
+       if (!p.has('dips')) {
+         setDips(prev => mergeDipRecords(
+           prev,
+           Array.isArray(s.dips) ? s.dips as DipRecord[] : [],
+         ));
+       }
       if (!p.has('deliveries'))      setDeliveries(safeArray<Delivery>(s.deliveries));
       if (!p.has('maintenance'))     setMaintenance(safeArray<MaintenanceItem>(s.maintenance));
       if (Array.isArray(s.audit) && !p.has('audit'))          setAudit(s.audit as AuditEntry[]);
