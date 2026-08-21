@@ -9,6 +9,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { getPriceForProduct, PriceProduct, PriceProposal, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { safeNum, safeStr } from '@/lib/report-helpers';
 
 const PRODUCTS: PriceProduct[] = ['PMS', 'AGO', 'DPK', 'LPG_Single', 'LPG_Distributor', 'Lube Oil'];
 
@@ -50,13 +51,13 @@ export default function PricesScreen() {
         && (!branchId || !d.branchId || d.branchId === branchId)
         && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved')
         && d.costPrice)
-      .sort((a, b) => b.id - a.id);
-    return approved[0]?.costPrice ?? null;
+      .sort((a, b) => safeNum(b.id) - safeNum(a.id));
+    return safeNum(approved[0]?.costPrice) || null;
   }
   const colors = useColors();
   const rc = ROLE_COLORS[role || 'md'] || colors.primary;
   const branchName = branchId ? branches.find(b => b.id === branchId)?.name ?? branchId : null;
-  const currentPriceFor = (prod: string) => getPriceForProduct(prices, prod, branchId);
+  const currentPriceFor = (prod: string) => safeNum(getPriceForProduct(prices, prod, branchId));
 
   /* Role capabilities */
   const canSetDirect = role === 'ceo' || role === 'admin' || role === 'md' || role === 'mgr';
@@ -72,7 +73,7 @@ export default function PricesScreen() {
 
   function openSet(prod: PriceProduct) {
     setSetProd(prod);
-    const current = currentPriceFor(prod);
+    const current = safeNum(currentPriceFor(prod));
     setSetDraft(current > 0 ? String(current) : '');
     setSetReason('');
   }
@@ -83,7 +84,7 @@ export default function PricesScreen() {
       Alert.alert('Invalid price', 'Enter a valid price greater than 0.');
       return;
     }
-    const current = currentPriceFor(setProd);
+    const current = safeNum(currentPriceFor(setProd));
     if (val === current) {
       Alert.alert('No change', 'The new price is the same as the current price.');
       return;
@@ -110,7 +111,7 @@ export default function PricesScreen() {
       Alert.alert('Invalid price', 'Enter a valid price greater than 0.');
       return;
     }
-    const current = currentPriceFor(proposeProd);
+    const current = safeNum(currentPriceFor(proposeProd));
     if (val === current) {
       Alert.alert('No change', 'Proposed price is the same as the current price.');
       return;
@@ -127,7 +128,7 @@ export default function PricesScreen() {
   const [updateTarget, setUpdateTarget] = useState<PriceProposal | null>(null);
   const [updateDraft,  setUpdateDraft]  = useState('');
 
-  function openUpdate(p: PriceProposal) { setUpdateTarget(p); setUpdateDraft(String(p.proposedPrice)); }
+  function openUpdate(p: PriceProposal) { setUpdateTarget(p); setUpdateDraft(String(safeNum(p.proposedPrice))); }
   function handleUpdate() {
     if (!updateTarget) return;
     const val = parseFloat(updateDraft);
@@ -142,7 +143,7 @@ export default function PricesScreen() {
   function handleApprove(p: PriceProposal) {
     Alert.alert(
       'Approve price change?',
-      `${p.prod}: ₦${p.currentPrice.toLocaleString()} → ₦${p.proposedPrice.toLocaleString()}${PROD_META[p.prod]?.unit ?? '/L'}\nProposed by ${p.proposedBy}`,
+      `${safeStr(p.prod)}: ₦${safeNum(p.currentPrice).toLocaleString()} → ₦${safeNum(p.proposedPrice).toLocaleString()}${PROD_META[p.prod]?.unit ?? '/L'}\nProposed by ${safeStr(p.proposedBy)}`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Approve', style: 'default', onPress: () => approvePriceProposal(p.id) },
@@ -159,7 +160,7 @@ export default function PricesScreen() {
 
   const pending  = priceProposals.filter(p => p.status === 'pending');
   const resolved = priceProposals.filter(p => p.status !== 'pending').slice(0, 10);
-  const history  = [...priceHistory].sort((a, b) => b.id - a.id).slice(0, 15);
+  const history  = [...priceHistory].sort((a, b) => safeNum(b.id) - safeNum(a.id)).slice(0, 15);
 
   function myPending(prod: string) {
     return priceProposals.find(p => p.prod === prod
@@ -239,7 +240,7 @@ export default function PricesScreen() {
                 {canPropose && mp ? (
                   <View style={[s.pendingBadge, { backgroundColor: '#FAEEDA' }]}>
                     <Ionicons name="time-outline" size={11} color="#BA7517" />
-                    <Text style={[s.pendingTxt, { color: '#BA7517' }]}>₦{mp.proposedPrice.toLocaleString()} pending</Text>
+                    <Text style={[s.pendingTxt, { color: '#BA7517' }]}>₦{safeNum(mp.proposedPrice).toLocaleString()} pending</Text>
                   </View>
                 ) : null}
               </View>
@@ -253,26 +254,28 @@ export default function PricesScreen() {
             <Text style={[s.secLabel, { color: colors.textMuted }]}>Pending Approvals</Text>
             {pending.map(p => {
               const meta = PROD_META[p.prod] ?? PROD_META.PMS;
-              const up   = p.proposedPrice > p.currentPrice;
+              const currentPrice = safeNum(p.currentPrice);
+              const proposedPrice = safeNum(p.proposedPrice);
+              const up   = proposedPrice > currentPrice;
               return (
-                <View key={p.id} style={[s.proposalCard, { backgroundColor: colors.surface, borderColor: '#BA7517' }]}>
+                <View key={safeStr(p.id, `pending-${safeStr(p.prod)}`)} style={[s.proposalCard, { backgroundColor: colors.surface, borderColor: '#BA7517' }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <View style={[s.prodIconWrap, { backgroundColor: meta.color + '18' }]}>
                       <Ionicons name={meta.icon as any} size={18} color={meta.color} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[s.prodName, { color: colors.text }]}>{p.prod}</Text>
-                      <Text style={[s.prodUnit, { color: colors.textSubtle }]}>by {p.proposedBy} · {fmtDateTime(p.proposedAt)}</Text>
+                      <Text style={[s.prodName, { color: colors.text }]}>{safeStr(p.prod)}</Text>
+                      <Text style={[s.prodUnit, { color: colors.textSubtle }]}>by {safeStr(p.proposedBy)} · {fmtDateTime(safeStr(p.proposedAt, ''))}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end', gap: 2 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <Text style={[s.strikePrice, { color: colors.textMuted }]}>₦{p.currentPrice.toLocaleString()}</Text>
+                        <Text style={[s.strikePrice, { color: colors.textMuted }]}>₦{currentPrice.toLocaleString()}</Text>
                         <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={13} color={up ? '#27500A' : '#791F1F'} />
-                        <Text style={[s.propNew, { color: colors.text }]}>₦{p.proposedPrice.toLocaleString()}</Text>
+                        <Text style={[s.propNew, { color: colors.text }]}>₦{proposedPrice.toLocaleString()}</Text>
                       </View>
                       <View style={[s.diffBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB' }]}>
                         <Text style={[s.diffTxt, { color: up ? '#27500A' : '#791F1F' }]}>
-                          {up ? '+' : ''}₦{(p.proposedPrice - p.currentPrice).toLocaleString()}
+                          {up ? '+' : ''}₦{(proposedPrice - currentPrice).toLocaleString()}
                         </Text>
                       </View>
                     </View>
@@ -315,16 +318,18 @@ export default function PricesScreen() {
             <Text style={[s.secLabel, { color: colors.textMuted }]}>Recent Decisions</Text>
             {resolved.map(p => {
               const meta = PROD_META[p.prod] ?? PROD_META.PMS;
-              const cfg  = STATUS_CFG[p.status];
+              const cfg  = STATUS_CFG[p.status] ?? STATUS_CFG.rejected;
+              const currentPrice = safeNum(p.currentPrice);
+              const proposedPrice = safeNum(p.proposedPrice);
               return (
-                <View key={p.id} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View key={safeStr(p.id, `resolved-${safeStr(p.prod)}`)} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={[s.prodIconWrap, { backgroundColor: meta.color + '18' }]}>
                     <Ionicons name={meta.icon as any} size={16} color={meta.color} />
                   </View>
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={[s.prodName, { color: colors.text }]}>{p.prod}</Text>
+                    <Text style={[s.prodName, { color: colors.text }]}>{safeStr(p.prod)}</Text>
                     <Text style={[s.prodUnit, { color: colors.textSubtle }]}>
-                      ₦{p.currentPrice.toLocaleString()} → ₦{p.proposedPrice.toLocaleString()} · by {p.proposedBy}
+                      ₦{currentPrice.toLocaleString()} → ₦{proposedPrice.toLocaleString()} · by {safeStr(p.proposedBy)}
                     </Text>
                   </View>
                   <View style={[s.statusBadge, { backgroundColor: cfg.bg }]}>
@@ -343,26 +348,28 @@ export default function PricesScreen() {
             <Text style={[s.secLabel, { color: colors.textMuted }]}>Price History</Text>
             {history.map(h => {
               const meta = PROD_META[h.prod] ?? PROD_META.PMS;
-              const up   = h.newPrice > h.oldPrice;
+              const oldPrice = safeNum(h.oldPrice);
+              const newPrice = safeNum(h.newPrice);
+              const up   = newPrice > oldPrice;
               return (
-                <View key={h.id} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View key={safeStr(h.id, `history-${safeStr(h.prod)}-${safeStr(h.dt, '')}`)} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={[s.prodIconWrap, { backgroundColor: meta.color + '18' }]}>
                     <Ionicons name={meta.icon as any} size={16} color={meta.color} />
                   </View>
                   <View style={{ flex: 1, gap: 2 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[s.strikePrice, { color: colors.textMuted }]}>₦{h.oldPrice.toLocaleString()}</Text>
+                      <Text style={[s.strikePrice, { color: colors.textMuted }]}>₦{oldPrice.toLocaleString()}</Text>
                       <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
-                      <Text style={[s.propNew, { color: colors.text }]}>₦{h.newPrice.toLocaleString()}</Text>
+                      <Text style={[s.propNew, { color: colors.text }]}>₦{newPrice.toLocaleString()}</Text>
                     </View>
                      <Text style={[s.prodUnit, { color: colors.textSubtle }]}>
-                       {h.prod}{h.branchId ? ` · ${branches.find(b => b.id === h.branchId)?.name ?? h.branchId}` : ' · Network fallback'} · by {h.by} · {fmtDateTime(h.dt)}
+                       {safeStr(h.prod)}{h.branchId ? ` · ${safeStr(branches.find(b => b.id === h.branchId)?.name ?? h.branchId)}` : ' · Network fallback'} · by {safeStr(h.by)} · {fmtDateTime(safeStr(h.dt, ''))}
                      </Text>
-                    {h.reason ? <Text style={[s.prodUnit, { color: colors.textMuted, fontStyle: 'italic' }]}>{h.reason}</Text> : null}
+                     {h.reason ? <Text style={[s.prodUnit, { color: colors.textMuted, fontStyle: 'italic' }]}>{safeStr(h.reason)}</Text> : null}
                   </View>
                   <View style={[s.diffBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB', borderWidth: 1, borderColor: up ? '#27500A30' : '#791F1F30' }]}>
                     <Text style={[s.diffTxt, { color: up ? '#27500A' : '#791F1F' }]}>
-                      {up ? '+' : ''}₦{(h.newPrice - h.oldPrice).toLocaleString()}
+                      {up ? '+' : ''}₦{(newPrice - oldPrice).toLocaleString()}
                     </Text>
                   </View>
                 </View>
@@ -392,7 +399,7 @@ export default function PricesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Set {setProd} Price</Text>
               <Text style={[s.sheetSub, { color: colors.textMuted }]}>
-                Current: {setProd ? (currentPriceFor(setProd) > 0 ? `₦${currentPriceFor(setProd)}${PROD_META[setProd]?.unit ?? '/L'}` : 'Not set') : '—'}
+                Current: {setProd ? (safeNum(currentPriceFor(setProd)) > 0 ? `₦${safeNum(currentPriceFor(setProd))}${PROD_META[setProd]?.unit ?? '/L'}` : 'Not set') : '—'}
               </Text>
             </View>
           </View>
@@ -403,15 +410,15 @@ export default function PricesScreen() {
               <View style={{ flexDirection: 'row', gap: 16 }}>
                 <View style={{ flex: 1, alignItems: 'center' }}>
                   <Text style={[s.contextLabel, { color: colors.textMuted }]}>Last Cost Price</Text>
-                  <Text style={[s.contextVal, { color: colors.text }]}>{'₦'}{lastCostPrice(setProd)!.toLocaleString()}{PROD_META[setProd]?.unit ?? '/L'}</Text>
+                  <Text style={[s.contextVal, { color: colors.text }]}>{'₦'}{safeNum(lastCostPrice(setProd)).toLocaleString()}{PROD_META[setProd]?.unit ?? '/L'}</Text>
                 </View>
                 {currentPriceFor(setProd) > 0 ? (
                   <>
                     <View style={[s.contextDivider, { backgroundColor: colors.border }]} />
                     <View style={{ flex: 1, alignItems: 'center' }}>
                       <Text style={[s.contextLabel, { color: colors.textMuted }]}>Current Margin</Text>
-                      <Text style={[s.contextVal, { color: currentPriceFor(setProd) > lastCostPrice(setProd)! ? '#27500A' : '#791F1F' }]}>
-                        {Math.round(((currentPriceFor(setProd) - lastCostPrice(setProd)!) / currentPriceFor(setProd)) * 100)}{'%'}
+                      <Text style={[s.contextVal, { color: safeNum(currentPriceFor(setProd)) > safeNum(lastCostPrice(setProd)) ? '#27500A' : '#791F1F' }]}>
+                        {Math.round(((safeNum(currentPriceFor(setProd)) - safeNum(lastCostPrice(setProd))) / safeNum(currentPriceFor(setProd))) * 100)}{'%'}
                       </Text>
                     </View>
                   </>
@@ -494,7 +501,7 @@ export default function PricesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Propose {proposeProd} Price</Text>
               <Text style={[s.sheetSub, { color: colors.textMuted }]}>
-                Current: {proposeProd ? (currentPriceFor(proposeProd) > 0 ? `₦${currentPriceFor(proposeProd)}${PROD_META[proposeProd]?.unit ?? '/L'}` : 'Not set') : '—'} · Requires approval
+                Current: {proposeProd ? (safeNum(currentPriceFor(proposeProd)) > 0 ? `₦${safeNum(currentPriceFor(proposeProd))}${PROD_META[proposeProd]?.unit ?? '/L'}` : 'Not set') : '—'} · Requires approval
               </Text>
             </View>
           </View>
@@ -541,7 +548,7 @@ export default function PricesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Adjust {updateTarget?.prod} Price</Text>
               <Text style={[s.sheetSub, { color: colors.textMuted }]}>
-                Proposed: ₦{updateTarget?.proposedPrice.toLocaleString()}{PROD_META[updateTarget?.prod || 'PMS']?.unit ?? '/L'} · Set your price to approve
+                Proposed: ₦{safeNum(updateTarget?.proposedPrice).toLocaleString()}{PROD_META[updateTarget?.prod || 'PMS']?.unit ?? '/L'} · Set your price to approve
               </Text>
             </View>
           </View>
@@ -580,7 +587,7 @@ export default function PricesScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Reject Proposal</Text>
-              <Text style={[s.sheetSub, { color: colors.textMuted }]}>{rejectTarget?.prod} · ₦{rejectTarget?.proposedPrice.toLocaleString()}{PROD_META[rejectTarget?.prod || 'PMS']?.unit ?? '/L'} by {rejectTarget?.proposedBy}</Text>
+              <Text style={[s.sheetSub, { color: colors.textMuted }]}>{safeStr(rejectTarget?.prod)} · ₦{safeNum(rejectTarget?.proposedPrice).toLocaleString()}{PROD_META[rejectTarget?.prod || 'PMS']?.unit ?? '/L'} by {safeStr(rejectTarget?.proposedBy)}</Text>
             </View>
           </View>
           <Text style={[s.inputLabel, { color: colors.textMuted }]}>Reason (optional)</Text>

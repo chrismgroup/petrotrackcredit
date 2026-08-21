@@ -12,6 +12,7 @@ jest.mock('react-native', () => {
   return {
     Alert: { alert: jest.fn() },
     Image: primitive('Image'),
+    Platform: { OS: 'web' },
     ScrollView: primitive('ScrollView'),
     StyleSheet: {
       create: (styles: unknown) => styles,
@@ -110,6 +111,8 @@ jest.mock('@/context/AppContext', () => ({
 import ReceivingScreen from '../app/(app)/receiving';
 import TanksScreen from '../app/(app)/tanks';
 import HRScreen from '../app/(app)/hr';
+import PricesScreen from '../app/(app)/prices';
+import SalesScreen from '../app/(app)/sales';
 import { useApp } from '@/context/AppContext';
 
 const mockedUseApp = jest.mocked(useApp);
@@ -155,6 +158,13 @@ function baseAppState() {
     branches: [],
     pumps: [],
     pumpDailyReports: [],
+    priceHistory: [],
+    priceProposals: [],
+    updatePrice: jest.fn(),
+    addPriceProposal: jest.fn(),
+    approvePriceProposal: jest.fn(),
+    updateAndApprovePriceProposal: jest.fn(),
+    rejectPriceProposal: jest.fn(),
     startupStocks: [],
     deliveryEvidences: [],
     addDeliveryEvidence: jest.fn(),
@@ -280,5 +290,67 @@ describe('screens tolerate incomplete synced records', () => {
 
     expect(safeStr(null)).toBe('—');
     expectScreenToRender(<HRScreen />, 'EMP-MISSING-FIELDS');
+  });
+
+  it('renders sales with incomplete report fields', () => {
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      pumpDailyReports: [{
+        id: 1,
+        pumpName: undefined,
+        submittedByName: undefined,
+        submittedAt: undefined,
+        product: undefined,
+        status: 'approved',
+        openingMeter: undefined,
+        closingMeter: undefined,
+        liters: undefined,
+        grossAmount: undefined,
+        cashAmount: undefined,
+        posAmount: undefined,
+        transferAmount: undefined,
+        creditAmount: undefined,
+        variance: undefined,
+      }],
+    } as any);
+
+    expect(safeStr(undefined)).toBe('—');
+    expect(safeNum(undefined)).toBe(0);
+    expectScreenToRender(<SalesScreen />, '—');
+    expectScreenToRender(
+      <SalesScreen />,
+      `${safeNum(undefined).toLocaleString()} L`,
+    );
+  });
+
+  it('renders prices with incomplete proposal and history fields', () => {
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      priceProposals: [{
+        id: 1,
+        prod: undefined,
+        currentPrice: undefined,
+        proposedPrice: undefined,
+        proposedBy: undefined,
+        proposedAt: undefined,
+        status: 'approved',
+      }],
+      priceHistory: [{
+        id: undefined,
+        prod: undefined,
+        oldPrice: undefined,
+        newPrice: undefined,
+        by: undefined,
+        dt: undefined,
+      }],
+    } as any);
+
+    expect(safeStr(undefined)).toBe('—');
+    expect(safeNum(undefined)).toBe(0);
+    expectScreenToRender(<PricesScreen />, safeStr(undefined));
+    expectScreenToRender(
+      <PricesScreen />,
+      `₦${safeNum(undefined).toLocaleString()} → ₦${safeNum(undefined).toLocaleString()}`,
+    );
   });
 });
