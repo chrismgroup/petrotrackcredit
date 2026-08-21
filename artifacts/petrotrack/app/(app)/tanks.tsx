@@ -88,6 +88,7 @@ export default function TanksScreen() {
   const visiblePetrolTankIds = new Set(visibleTanks.map(tank => tank.id));
   const visibleLpgTankIds = new Set(visibleLpgTanks.map(tank => tank.id));
   const dipHasVisibleReading = (dip: (typeof dips)[number]) =>
+    Boolean(branchId && dip.branchId === branchId) ||
     Object.keys(dip.rd ?? {}).some(tankId => visiblePetrolTankIds.has(tankId)) ||
     Object.keys(dip.lpg ?? {}).some(tankId => visibleLpgTankIds.has(tankId));
   const getDipBranch = (dip: (typeof dips)[number]) => {
@@ -147,7 +148,10 @@ export default function TanksScreen() {
     for (const t of visibleTanks) {
       const approvedDipsForTank = dips
         .filter(d => d.status === 'approved' && (d.rd ?? {})[t.id] !== undefined)
-        .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
+        .sort((a, b) =>
+          new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() -
+          new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime()
+        );
       const lastDip = approvedDipsForTank[0];
       const dipReading = lastDip ? ((lastDip.rd ?? {})[t.id] ?? 0) : 0;
       const dipDt = lastDip?.dt;
