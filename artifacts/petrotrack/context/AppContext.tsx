@@ -647,6 +647,50 @@ export function calculateStockBook(
   };
 }
 
+/**
+ * Calculates the operational stock position for business date D. Both the
+ * Home Stock Snapshot and Daily Stock Log must call this helper so their day
+ * boundaries cannot drift apart: deliveries belong to D; approved shift sales
+ * belong to D−1.
+ */
+export function calculateDailyOperationalStock(
+  openingStock: number | null,
+  product: StockProduct,
+  branchId: string | null,
+  deliveries: Delivery[],
+  reports: PumpDailyReport[],
+  businessDate: string,
+  pumps: Pick<Pump, 'id' | 'branchId'>[] = [],
+): StockBookCalculation {
+  const deliveryResult = calculateStockBook(
+    undefined,
+    product,
+    branchId,
+    deliveries,
+    [],
+    businessDate,
+    pumps,
+  );
+  const salesResult = calculateStockBook(
+    undefined,
+    product,
+    branchId,
+    [],
+    reports.filter(report => report.status === 'approved'),
+    previousBusinessDateKey(businessDate),
+    pumps,
+  );
+
+  return {
+    startupStock: openingStock,
+    delivered: deliveryResult.delivered,
+    sold: salesResult.sold,
+    bookStock: openingStock === null
+      ? null
+      : openingStock + deliveryResult.delivered - salesResult.sold,
+  };
+}
+
 const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   pending_manager: 1,
   returned: 2,

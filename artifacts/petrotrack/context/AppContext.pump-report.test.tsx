@@ -5,6 +5,7 @@ import type { ReactTestRenderer } from 'react-test-renderer';
 import { stateApi } from '@/lib/api';
 import {
   AppProvider,
+  calculateDailyOperationalStock,
   calculateDailyStockLogBalance,
   calculateStockBook,
   mergeDipRecords,
@@ -303,6 +304,41 @@ describe('stock book report eligibility', () => {
 });
 
 describe('daily stock log balance', () => {
+  it('uses only prior-day approved shift reports for the operational stock position', () => {
+    const priorDayApproved = { ...reportWithStatus('approved'), date: '2026-08-14' };
+    const priorDayPending = { ...reportWithStatus('pending_manager'), id: 102, date: '2026-08-14' };
+    const currentDayApproved = { ...reportWithStatus('approved'), id: 103, date: '2026-08-15' };
+
+    const result = calculateDailyOperationalStock(
+      1_000,
+      'PMS',
+      'branch-1',
+      [{
+        id: 21,
+        dt: '2026-08-15',
+        sup: 'Supplier',
+        prod: 'PMS',
+        wb: 'WB-21',
+        rec: 300,
+        ord: 300,
+        st: 'ok',
+        notes: '',
+        approvalStatus: 'approved',
+        branchId: 'branch-1',
+      }],
+      [priorDayApproved, priorDayPending, currentDayApproved],
+      '2026-08-15',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+
+    expect(result).toEqual({
+      startupStock: 1_000,
+      delivered: 300,
+      sold: 50,
+      bookStock: 1_250,
+    });
+  });
+
   it('marks a higher physical dip as excess', () => {
     const result = calculateDailyStockLogBalance(1_000, 300, 200, 1_150);
 

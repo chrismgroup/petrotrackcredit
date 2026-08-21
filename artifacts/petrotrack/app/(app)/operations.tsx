@@ -8,7 +8,7 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import {
-  DEFAULT_MGR_PERMS, businessDateKey, calculateDailyStockLogBalance, calculateStockBook, currentBusinessDateKey, dipReadingToLiters,
+  DEFAULT_MGR_PERMS, businessDateKey, calculateDailyOperationalStock, calculateDailyStockLogBalance, currentBusinessDateKey, dipReadingToLiters,
   getCurrentTankStock, previousBusinessDateKey,
   ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
@@ -170,29 +170,20 @@ function StockLogPanel() {
           : startupRecord
             ? 'startup_seed'
             : 'unavailable';
-        const deliveryResult = calculateStockBook(
-          undefined,
+        const stockBook = calculateDailyOperationalStock(
+          openingQuantity,
           product,
           branch.id,
           deliveries,
-          [],
+          pumpDailyReports,
           businessDate,
-          branchPumps,
-        );
-        const salesResult = calculateStockBook(
-          undefined,
-          product,
-          branch.id,
-          [],
-          pumpDailyReports.filter(report => report.status === 'approved'),
-          previousDate,
           branchPumps,
         );
         const tankDip = stockDipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const balance = calculateDailyStockLogBalance(
           openingQuantity,
-          deliveryResult.delivered,
-          salesResult.sold,
+          stockBook.delivered,
+          stockBook.sold,
           tankDip,
         );
         entries.push({
@@ -200,8 +191,8 @@ function StockLogPanel() {
           product,
           businessDate,
           openingQuantity,
-          delivered: deliveryResult.delivered,
-          sold: salesResult.sold,
+          delivered: stockBook.delivered,
+          sold: stockBook.sold,
           bookStock: balance.bookStock,
           tankDip,
           discrepancy: balance.variance,
