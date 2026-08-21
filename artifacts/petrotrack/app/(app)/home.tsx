@@ -23,7 +23,6 @@ import {
   calculateStockBook,
   dipReadingToLiters,
   previousBusinessDateKey,
-  startupStockSeedDate,
   unitForProd,
   useBusinessDateKey,
   useApp,
@@ -380,8 +379,9 @@ export default function HomeScreen() {
       const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
+      const previousDate = previousBusinessDateKey(todayKey);
       const todayDip = latestDipForBranch(todayKey, scope.branchId, branchTanks, branchLpgTanks, false);
-      const openingDip = latestDipForBranch(todayKey, scope.branchId, branchTanks, branchLpgTanks, true);
+      const openingDip = latestDipForBranch(previousDate, scope.branchId, branchTanks, branchLpgTanks, false);
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
         : undefined;
@@ -392,44 +392,35 @@ export default function HomeScreen() {
            stock.product === product &&
            stock.branchId === scope.branchId
           );
-         const legacyOpeningStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks);
-         const hasExplicitSeedDate = Boolean(startupRecord?.seedDate);
-         const seededOpeningStock = startupRecord && hasExplicitSeedDate && todayKey > startupStockSeedDate(startupRecord)
-           ? calculateStockBook(
-               startupRecord,
-               product,
-               scope.branchId,
-               deliveries,
-               pumpDailyReports,
-               previousBusinessDateKey(todayKey),
-               pumps,
-               startupRecord.quantity,
-               true,
-             ).bookStock
-           : startupRecord && hasExplicitSeedDate && todayKey === startupStockSeedDate(startupRecord)
-             ? startupRecord.quantity
-             : legacyOpeningStock;
-         const stockBook = hasExplicitSeedDate && todayKey > startupStockSeedDate(startupRecord)
-           ? calculateStockBook(
-               undefined,
-               product,
-               scope.branchId,
-               deliveries,
-               pumpDailyReports,
-               todayKey,
-               pumps,
-               seededOpeningStock,
-             )
-           : calculateStockBook(
-               startupRecord,
-               product,
-               scope.branchId,
-               deliveries,
-               pumpDailyReports,
-               todayKey,
-               pumps,
-               seededOpeningStock,
-             );
+          const openingStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks)
+            ?? startupRecord?.quantity
+            ?? null;
+          const deliveryResult = calculateStockBook(
+            undefined,
+            product,
+            scope.branchId,
+            deliveries,
+            [],
+            todayKey,
+            pumps,
+          );
+          const salesResult = calculateStockBook(
+            undefined,
+            product,
+            scope.branchId,
+            [],
+            pumpDailyReports.filter(report => report.status === 'approved'),
+            previousDate,
+            pumps,
+          );
+          const stockBook = {
+            startupStock: openingStock,
+            delivered: deliveryResult.delivered,
+            sold: salesResult.sold,
+            bookStock: openingStock === null
+              ? null
+              : openingStock + deliveryResult.delivered - salesResult.sold,
+          };
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const variance = stockBook.bookStock === null || submittedTankDip === null
           ? null
@@ -616,7 +607,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                 <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                   Live inputs: carried-forward book stock + submitted/approved deliveries − submitted shift-report sales versus the latest submitted tank dip
+                   Live inputs: yesterday&apos;s approved dip or seed + today&apos;s approved deliveries − yesterday&apos;s approved shift sales, compared with today&apos;s approved tank dip
                 </Text>
               </View>
               {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (
@@ -665,7 +656,7 @@ export default function HomeScreen() {
                         </View>
                       ) : null}
                       <View style={s.snapshotValue}>
-                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Qty sold today</Text>
+                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Prior-day sold</Text>
                         <Text style={[s.snapshotValueText, { color: colors.text }]}>
                           {formatQuantity(snapshot.sales)} {snapshot.unit}
                         </Text>

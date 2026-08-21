@@ -162,6 +162,44 @@ describe('approved pump report lock', () => {
 });
 
 describe('stock book report eligibility', () => {
+  it('uses an approved seed-period shift report on its applied business date', () => {
+    const report = {
+      ...reportWithStatus('approved'),
+      date: '2026-08-14',
+      submittedAt: '2026-08-15T09:00:00.000Z',
+      accAt: '2026-08-15T10:00:00.000Z',
+    };
+
+    const result = calculateStockBook(
+      undefined,
+      'PMS',
+      'branch-1',
+      [],
+      [report],
+      '2026-08-14',
+      [{ id: report.pumpId, branchId: 'branch-1' }],
+    );
+
+    expect(result.sold).toBe(50);
+  });
+
+  it('does not count a current-day shift report when calculating prior-day sales', () => {
+    const priorDayReport = { ...reportWithStatus('approved'), date: '2026-08-14' };
+    const currentDayReport = { ...reportWithStatus('approved'), id: 2, date: '2026-08-15' };
+
+    const result = calculateStockBook(
+      undefined,
+      'PMS',
+      'branch-1',
+      [],
+      [priorDayReport, currentDayReport],
+      '2026-08-14',
+      [{ id: priorDayReport.pumpId, branchId: 'branch-1' }],
+    );
+
+    expect(result.sold).toBe(50);
+  });
+
   it('treats an incomplete delivery receipt as zero', () => {
     const result = calculateStockBook(
       {
