@@ -20,7 +20,7 @@ import {
   isRevenueReportStatus,
   ROLE_LABELS,
   SCREEN_ROUTES,
-  calculateStockBook,
+  calculateDailyOperationalStock,
   dipReadingToLiters,
   previousBusinessDateKey,
   unitForProd,
@@ -395,32 +395,15 @@ export default function HomeScreen() {
           const openingStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks)
             ?? startupRecord?.quantity
             ?? null;
-          const deliveryResult = calculateStockBook(
-            undefined,
+          const stockBook = calculateDailyOperationalStock(
+            openingStock,
             product,
             scope.branchId,
             deliveries,
-            [],
+            pumpDailyReports,
             todayKey,
             pumps,
           );
-          const salesResult = calculateStockBook(
-            undefined,
-            product,
-            scope.branchId,
-            [],
-            pumpDailyReports.filter(report => report.status === 'approved'),
-            previousDate,
-            pumps,
-          );
-          const stockBook = {
-            startupStock: openingStock,
-            delivered: deliveryResult.delivered,
-            sold: salesResult.sold,
-            bookStock: openingStock === null
-              ? null
-              : openingStock + deliveryResult.delivered - salesResult.sold,
-          };
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const variance = stockBook.bookStock === null || submittedTankDip === null
           ? null
