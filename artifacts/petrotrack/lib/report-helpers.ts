@@ -16,6 +16,59 @@ export const PROD_COLORS: Record<string, string> = {
   PMS:'#1a6e3c', AGO:'#185FA5', DPK:'#BA7517', LPG:'#633806', 'Lube Oil':'#5c3d11',
 };
 
+export type PriceValidationResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | 'not_authorized'
+        | 'missing_product'
+        | 'missing_actor'
+        | 'invalid_old_price'
+        | 'invalid_new_price'
+        | 'invalid_current_price'
+        | 'invalid_proposed_price'
+        | 'missing_branch';
+    };
+
+function isNonNegativeFinitePrice(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function isPositiveFinitePrice(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function hasRequiredPriceLabel(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+export function validatePriceChange(input: {
+  prod: unknown;
+  oldPrice: unknown;
+  newPrice: unknown;
+  by: unknown;
+}): PriceValidationResult {
+  if (!hasRequiredPriceLabel(input.prod)) return { ok: false, reason: 'missing_product' };
+  if (!hasRequiredPriceLabel(input.by)) return { ok: false, reason: 'missing_actor' };
+  if (!isNonNegativeFinitePrice(input.oldPrice)) return { ok: false, reason: 'invalid_old_price' };
+  if (!isPositiveFinitePrice(input.newPrice)) return { ok: false, reason: 'invalid_new_price' };
+  return { ok: true };
+}
+
+export function validatePriceProposal(input: {
+  prod: unknown;
+  currentPrice: unknown;
+  proposedPrice: unknown;
+  proposedBy: unknown;
+}): PriceValidationResult {
+  if (!hasRequiredPriceLabel(input.prod)) return { ok: false, reason: 'missing_product' };
+  if (!hasRequiredPriceLabel(input.proposedBy)) return { ok: false, reason: 'missing_actor' };
+  if (!isNonNegativeFinitePrice(input.currentPrice)) return { ok: false, reason: 'invalid_current_price' };
+  if (!isPositiveFinitePrice(input.proposedPrice)) return { ok: false, reason: 'invalid_proposed_price' };
+  return { ok: true };
+}
+
 export const REPORT_META: Record<ReportType, { label: string; icon: string; desc: string; dept: string; color: string }> = {
   summary:     { label:'Summary',       icon:'stats-chart-outline',   desc:'Revenue, expenses & net balance',        dept:'Finance',    color:'#185FA5' },
   pnl:         { label:'P&L',           icon:'trending-up-outline',   desc:'Gross / net profit with COGS',           dept:'Finance',    color:'#27500A' },

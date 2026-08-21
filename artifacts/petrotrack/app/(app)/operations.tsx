@@ -406,8 +406,9 @@ export default function OperationsScreen() {
   const visiblePetrolTankIds = new Set(visibleTanks.map(tank => tank.id));
   const visibleLpgTankIds = new Set(visibleLpgTanks.map(tank => tank.id));
   const dipHasVisibleReading = (dip: (typeof dips)[number]) =>
-    Object.keys(dip.rd).some(tankId => visiblePetrolTankIds.has(tankId)) ||
-    Object.keys(dip.lpg).some(tankId => visibleLpgTankIds.has(tankId));
+    Boolean(branchId && dip.branchId === branchId) ||
+    Object.keys(dip.rd ?? {}).some(tankId => visiblePetrolTankIds.has(tankId)) ||
+    Object.keys(dip.lpg ?? {}).some(tankId => visibleLpgTankIds.has(tankId));
   function handleDipSubmit() {
     if (!appliesOn) {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
