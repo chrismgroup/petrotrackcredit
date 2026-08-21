@@ -395,3 +395,93 @@ describe('attendant report resubmission', () => {
     expect(today.bookStock).toBe(50);
   });
 });
+
+describe('price write validation', () => {
+  it('rejects malformed direct price updates without changing prices, history, or audit', async () => {
+    await renderProvider();
+    await act(async () => {
+      expect(await app().login('ceo', 'CEO User', 1)).toBe(true);
+    });
+
+    const pricesBefore = app().prices;
+    const historyBefore = app().priceHistory;
+    const auditBefore = app().audit;
+
+    let result: ReturnType<AppState['updatePrice']>;
+    let missingProduct: ReturnType<AppState['updatePrice']>;
+    let missingActor: ReturnType<AppState['updatePrice']>;
+    await act(async () => {
+      result = app().updatePrice('PMS', Number.NaN);
+      missingProduct = app().updatePrice('   ', 700);
+      missingActor = app().updatePrice('PMS', 700, '   ');
+    });
+
+    expect(result!).toEqual({ ok: false, reason: 'invalid_new_price' });
+    expect(missingProduct!).toEqual({ ok: false, reason: 'missing_product' });
+    expect(missingActor!).toEqual({ ok: false, reason: 'missing_actor' });
+    expect(app().prices).toEqual(pricesBefore);
+    expect(app().priceHistory).toEqual(historyBefore);
+    expect(app().audit).toEqual(auditBefore);
+  });
+
+  it('accepts valid direct price updates and records their actor and history', async () => {
+    await renderProvider();
+    await act(async () => {
+      expect(await app().login('ceo', 'CEO User', 1)).toBe(true);
+    });
+
+    let result: ReturnType<AppState['updatePrice']>;
+    await act(async () => {
+      result = app().updatePrice('PMS', 700);
+    });
+
+    expect(result!).toEqual({ ok: true });
+    expect(app().prices.PMS).toBe(700);
+    expect(app().priceHistory[0]).toMatchObject({
+      prod: 'PMS',
+      oldPrice: 0,
+      newPrice: 700,
+      by: 'CEO User',
+    });
+  });
+
+  it('rejects proposals with missing product or actor without saving them', async () => {
+    await renderProvider();
+    let missingActor: ReturnType<AppState['addPriceProposal']>;
+    await act(async () => {
+      missingActor = app().addPriceProposal('PMS', 700);
+    });
+
+    await act(async () => {
+      expect(await app().login('att', 'Attendant User', 1, 'branch-1')).toBe(true);
+    });
+
+    let missingProduct: ReturnType<AppState['addPriceProposal']>;
+    await act(async () => {
+      missingProduct = app().addPriceProposal('   ', 700);
+    });
+
+    expect(missingProduct!).toEqual({ ok: false, reason: 'missing_product' });
+    expect(missingActor!).toEqual({ ok: false, reason: 'missing_actor' });
+    expect(app().priceProposals).toHaveLength(0);
+  });
+
+  it('accepts valid proposals and rejects non-finite proposed prices', async () => {
+    await renderProvider();
+    await act(async () => {
+      expect(await app().login('att', 'Attendant User', 1, 'branch-1')).toBe(true);
+    });
+
+    let invalid: ReturnType<AppState['addPriceProposal']>;
+    let valid: ReturnType<AppState['addPriceProposal']>;
+    await act(async () => {
+      invalid = app().addPriceProposal('PMS', Number.POSITIVE_INFINITY);
+      valid = app().addPriceProposal('AGO', 850);
+    });
+
+    expect(invalid!).toEqual({ ok: false, reason: 'invalid_proposed_price' });
+    expect(valid!).toEqual({ ok: true });
+    expect(app().priceProposals).toHaveLength(1);
+    expect(app().priceProposals[0]).toMatchObject({ prod: 'AGO', currentPrice: 0, proposedPrice: 850 });
+  });
+});

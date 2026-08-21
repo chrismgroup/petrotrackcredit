@@ -3,7 +3,13 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AppState } from 'react-native';
 import { stateApi, versionApi, usersApi, notificationsApi, AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken } from '@/lib/api';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
-import { isMissingNum, safeNum } from '@/lib/report-helpers';
+import {
+  isMissingNum,
+  safeNum,
+  validatePriceChange,
+  validatePriceProposal,
+  type PriceValidationResult,
+} from '@/lib/report-helpers';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
@@ -1080,11 +1086,11 @@ interface AppContextType {
   attResubmitPumpReport: (id: number, note: string) => void;
   deletePumpReport: (id: number) => void;
   updatePumpReport: (id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => void;
-  updatePrice: (prod: string, price: number, by?: string, reason?: string, targetBranchId?: string) => void;
+  updatePrice: (prod: string, price: number, by?: string, reason?: string, targetBranchId?: string) => PriceValidationResult;
   priceProposals: PriceProposal[];
-  addPriceProposal: (prod: string, proposedPrice: number) => void;
-  approvePriceProposal: (id: number) => void;
-  updateAndApprovePriceProposal: (id: number, updatedPrice: number) => void;
+  addPriceProposal: (prod: string, proposedPrice: number) => PriceValidationResult;
+  approvePriceProposal: (id: number) => PriceValidationResult;
+  updateAndApprovePriceProposal: (id: number, updatedPrice: number) => PriceValidationResult;
   rejectPriceProposal: (id: number, note?: string) => void;
   addTank: (t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => void;
   addLpgTank: (t: Omit<LPGTank, 'id' | 'op' | 'rv' | 'sl'>) => void;
@@ -2001,12 +2007,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Manager permissions updated', user: userName, detail: `Branch ${bid}: ${JSON.stringify(perms)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const updatePrice = useCallback((prod: string, price: number, by?: string, reason?: string, targetBranchId?: string) => {
-    if (!['admin', 'ceo', 'md', 'mgr'].includes(role ?? '')) return;
+  const updatePrice = useCallback((prod: string, price: number, by?: string, reason?: string, targetBranchId?: string): PriceValidationResult => {
+    if (!['admin', 'ceo', 'md', 'mgr'].includes(role ?? '')) return { ok: false, reason: 'not_authorized' };
     const scopedBranchId = targetBranchId ?? (role === 'mgr' ? branchId ?? undefined : undefined);
-    if (role === 'mgr' && !scopedBranchId) return;
+    if (role === 'mgr' && !scopedBranchId) return { ok: false, reason: 'missing_branch' };
     const oldPrice = getPriceForProduct(prices, prod, scopedBranchId);
     const actor = by ?? userName;
+    const validation = validatePriceChange({ prod, oldPrice, newPrice: price, by: actor });
+    if (!validation.ok) return validation;
     setPrices(p => {
       if (!scopedBranchId) return { ...p, [prod]: price };
       return {
@@ -2027,11 +2035,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const unit = prod === 'LPG' || prod.startsWith('LPG') ? 'kg' : 'L';
     const scopeLabel = scopedBranchId ? ` at branch ${scopedBranchId}` : ' network-wide';
     setAudit(a => [{ id: genId(), action: 'Price update', user: actor, detail: `${prod}: ₦${oldPrice} → ₦${price}/${unit}${scopeLabel}${reason ? ' — ' + reason : ''}`, ts: nowTs() }, ...a]);
+    return { ok: true };
   }, [userName, prices, role, branchId]);
 
-  const addPriceProposal = useCallback((prod: string, proposedPrice: number) => {
+  const addPriceProposal = useCallback((prod: string, proposedPrice: number): PriceValidationResult => {
     const proposalBranchId = branchId ?? undefined;
     const currentPrice = getPriceForProduct(prices, prod, proposalBranchId);
+    const validation = validatePriceProposal({
+      prod,
+      currentPrice,
+      proposedPrice,
+      proposedBy: userName,
+    });
+    if (!validation.ok) return validation;
     setPriceProposals(ps => [
       { id: genId(), prod, currentPrice, proposedPrice, proposedBy: userName, proposedAt: nowTs(), status: 'pending', branchId: proposalBranchId },
       ...ps,
@@ -2039,12 +2055,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const unit = prod === 'LPG' || prod.startsWith('LPG') ? 'kg' : 'L';
     const scopeLabel = proposalBranchId ? ` at branch ${proposalBranchId}` : '';
     setAudit(a => [{ id: genId(), action: 'Price proposal submitted', user: userName, detail: `${prod}: ₦${currentPrice} → ₦${proposedPrice}/${unit}${scopeLabel} (awaiting CEO approval)`, ts: nowTs() }, ...a]);
+    return { ok: true };
   }, [userName, prices, branchId]);
 
-  const approvePriceProposal = useCallback((id: number) => {
+  const approvePriceProposal = useCallback((id: number): PriceValidationResult => {
     const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
-    if (!proposal) return;
-    updatePrice(proposal.prod, proposal.proposedPrice, userName, undefined, proposal.branchId);
+    if (!proposal) return { ok: false, reason: 'invalid_proposed_price' };
+    const proposalValidation = validatePriceProposal(proposal);
+    if (!proposalValidation.ok) return proposalValidation;
+    const priceResult = updatePrice(proposal.prod, proposal.proposedPrice, userName, undefined, proposal.branchId);
+    if (!priceResult.ok) return priceResult;
     setPriceProposals(ps => ps.map(p =>
       p.id === id ? { ...p, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
     ));
@@ -2058,12 +2078,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ts: nowTime(), read: false,
       }],
     }));
+    return { ok: true };
   }, [userName, updatePrice, priceProposals]);
 
-  const updateAndApprovePriceProposal = useCallback((id: number, updatedPrice: number) => {
+  const updateAndApprovePriceProposal = useCallback((id: number, updatedPrice: number): PriceValidationResult => {
     const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
-    if (!proposal) return;
-    updatePrice(proposal.prod, updatedPrice, userName, undefined, proposal.branchId);
+    if (!proposal) return { ok: false, reason: 'invalid_proposed_price' };
+    const proposalValidation = validatePriceProposal(proposal);
+    if (!proposalValidation.ok) return proposalValidation;
+    const priceResult = updatePrice(proposal.prod, updatedPrice, userName, undefined, proposal.branchId);
+    if (!priceResult.ok) return priceResult;
     setPriceProposals(ps => ps.map(p =>
       p.id === id ? { ...p, proposedPrice: updatedPrice, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
     ));
@@ -2078,6 +2102,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ts: nowTime(), read: false,
       }],
     }));
+    return { ok: true };
   }, [userName, updatePrice, priceProposals]);
 
   const rejectPriceProposal = useCallback((id: number, note?: string) => {
@@ -2340,6 +2365,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const approveDelivery = useCallback((id: number, sellingPrice: number, mdNote?: string) => {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
+    const priceResult = updatePrice(d.prod, sellingPrice, userName, undefined, d.branchId);
+    if (!priceResult.ok) return priceResult;
     setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'md_approved' as const, sellingPrice, mdNote: mdNote || '', approvedBy: userName, approvedAt: nowTs(), mdBy: userName, mdAt: nowTs() } : rec));
     setTanks(ts => {
       const matching = ts.filter(t => t.prod === d.prod && (!d.branchId || !t.branchId || t.branchId === d.branchId));
@@ -2351,7 +2378,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // A delivery price belongs to the delivery's branch. Keep other branches
     // independent, while the global fallback remains available for branches
     // without a local override.
-    updatePrice(d.prod, sellingPrice, userName, undefined, d.branchId);
     // For LPG, seed both category prices in the same branch if they are unset
     // so single-buyer and distributor pumps inherit this delivery price.
     if (d.prod === 'LPG') {
