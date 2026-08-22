@@ -252,6 +252,43 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     : 0;
   const netProfit = monthlyOperatingProfit - monthCita;
 
+  /* ── previous month's net profit for the operating-capital waterfall ── */
+  const previousMonthAnchor = new Date(`${currentMonthRange.from}T12:00:00`);
+  previousMonthAnchor.setMonth(previousMonthAnchor.getMonth() - 1);
+  const previousMonthRange = calendarMonthBusinessDateRange(previousMonthAnchor);
+  const previousMonthRevenueReports = pumpDailyReports.filter(r =>
+    isRevenueReportStatus(r.status) &&
+    businessDateKey(r.date) >= previousMonthRange.from &&
+    businessDateKey(r.date) <= previousMonthRange.to &&
+    inRevenueScope(r.branchId),
+  );
+  const previousMonthRevenue = calculateBusinessMonthRevenue(
+    pumpDailyReports,
+    scopedBranchId,
+    previousMonthRange,
+  );
+  const previousMonthCOGSDeliveries = deliveries.filter(delivery =>
+    businessDateKey(delivery.dt) <= previousMonthRange.to &&
+    inFinancialScope(delivery.branchId),
+  );
+  const previousMonthCOGS = computePumpReportCOGS(
+    previousMonthRevenueReports,
+    previousMonthCOGSDeliveries,
+  );
+  const previousMonthExpenses = expenses
+    .filter(e =>
+      e.status === 'approved' &&
+      businessDateKey(e.dt) >= previousMonthRange.from &&
+      businessDateKey(e.dt) <= previousMonthRange.to &&
+      inFinancialScope(e.branchId),
+    )
+    .reduce((s, e) => s + e.amt, 0);
+  const previousMonthOperatingProfit = previousMonthRevenue - previousMonthCOGS - previousMonthExpenses;
+  const previousMonthCita = previousMonthOperatingProfit > 0
+    ? Math.round(previousMonthOperatingProfit * citaRate)
+    : 0;
+  const previousMonthNetProfit = previousMonthOperatingProfit - previousMonthCita;
+
   /* ── operating capital formula ── */
   const fe = financialEntry;
   const totalLoans = fe.bankLoans.reduce((s, l) => s + l.amount, 0);
@@ -262,6 +299,22 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const startupCapitalSource = isNewMonth ? 'rollover' : fe.startupCapitalSource;
   const operatingCapital = startupCapital + netProfit;
   const isPositive = operatingCapital >= 0;
+  const waterfallRows = [
+    { label: 'Value of Current Stock', amount: stockValue, color: '#185FA5' },
+    { label: 'Cash in Bank', amount: fe.cashInBank, color: colors.text },
+    { label: 'Value of Goods on Transit', amount: fe.goodsOnTransit, color: colors.text },
+    { label: 'Debts by Customers (Accounts Receivable)', amount: fe.debtsFromCustomers, color: colors.text },
+    {
+      label: previousMonthNetProfit >= 0 ? 'Previous Month’s Net Profit' : 'Previous Month’s Net Loss',
+      amount: previousMonthNetProfit,
+      color: previousMonthNetProfit >= 0 ? '#27500A' : '#791F1F',
+    },
+  ];
+  let waterfallTotal = 0;
+  const waterfallRowsWithTotals = waterfallRows.map(row => {
+    waterfallTotal += row.amount;
+    return { ...row, runningTotal: waterfallTotal };
+  });
 
   useEffect(() => {
     if (
@@ -343,6 +396,30 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
         {expanded && (
           <View style={[fStyles.expandBox, { borderTopColor: colors.border }]}>
 
+            {/* Operating capital waterfall */}
+            <Text style={[fStyles.subSection, { color: colors.text }]}>🌊 Operating Capital Waterfall</Text>
+            <View style={[fStyles.waterfallBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {waterfallRowsWithTotals.map(row => (
+                <View key={row.label} style={fStyles.waterfallRow}>
+                  <View style={fStyles.waterfallLabelWrap}>
+                    <Text style={[fStyles.waterfallLabel, { color: colors.text }]}>{row.label}</Text>
+                    <Text style={[fStyles.waterfallRunning, { color: colors.textMuted }]}>
+                      Running total: {fmt(row.runningTotal)}
+                    </Text>
+                  </View>
+                  <Text style={[fStyles.waterfallValue, { color: row.color }]}>
+                    {row.amount < 0 ? `− ${fmt(Math.abs(row.amount))}` : `+ ${fmt(row.amount)}`}
+                  </Text>
+                </View>
+              ))}
+              <View style={[fStyles.waterfallTotal, { borderTopColor: colors.border }]}>
+                <Text style={[fStyles.totalLabel, { color: colors.text }]}>Waterfall Total</Text>
+                <Text style={[fStyles.totalAmt, { color: waterfallTotal >= 0 ? '#27500A' : '#791F1F' }]}>
+                  {fmt(waterfallTotal)}
+                </Text>
+              </View>
+            </View>
+
             {/* Stock breakdown */}
             <Text style={[fStyles.subSection, { color: colors.text }]}>📦 Stock Value by Branch</Text>
             {Object.entries(byBranch).map(([bid, data]) => (
@@ -423,6 +500,13 @@ const fStyles = StyleSheet.create({
   quickAmt:       { fontSize: 13, fontWeight: '800' },
   expandBox:      { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, gap: 4 },
   subSection:     { fontSize: 13, fontWeight: '700', marginBottom: 6 },
+  waterfallBox:   { borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 12 },
+  waterfallRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, gap: 10 },
+  waterfallLabelWrap: { flex: 1, gap: 2 },
+  waterfallLabel: { fontSize: 12, fontWeight: '600' },
+  waterfallRunning: { fontSize: 10 },
+  waterfallValue: { fontSize: 12, fontWeight: '700', textAlign: 'right' },
+  waterfallTotal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, marginTop: 4, borderTopWidth: 1.5 },
   branchBox:      { borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 6, gap: 4 },
   branchBoxHeader:{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   branchBoxName:  { fontSize: 12, fontWeight: '700' },
