@@ -320,6 +320,9 @@ export interface PumpDailyReport {
   dateCorrectedFrom?: string;
   dateCorrectedBy?: string;
   dateCorrectedAt?: string;
+  adminReturnNote?: string;
+  adminReturnedBy?: string;
+  adminReturnedAt?: string;
 }
 
 /** Timestamp of the latest completed workflow step for meter carry-forward. */
@@ -1131,7 +1134,8 @@ interface AppContextType {
   mgrResubmitPumpReport: (id: number, mgrNote: string) => void;
   mgrReturnPumpReportToAttendant: (id: number, mgrNote: string) => void;
   attResubmitPumpReport: (id: number, note: string) => void;
-  deletePumpReport: (id: number) => void;
+  adminReturnApprovedPumpReport: (id: number, note: string) => boolean;
+  deletePumpReport: (id: number) => Promise<boolean>;
   updatePumpReport: (id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => void;
   correctApprovedPumpReportDate: (id: number, date: string) => boolean;
   updatePrice: (prod: string, price: number, by?: string, reason?: string, targetBranchId?: string) => PriceValidationResult;
@@ -3331,9 +3335,83 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [userName, pumpDailyReports]);
 
+  const reverseApprovedPumpReportEffects = useCallback((report: PumpDailyReport) => {
+    const pump = pumps.find(candidate => candidate.id === report.pumpId);
+    const resolvedBranchId = report.branchId || pump?.branchId || '';
+    setSales(entries => entries.filter(entry => entry.shiftReportId !== report.id));
+    if (report.product === 'LPG') {
+      setLpgTanks(entries => {
+        const matching = entries.filter(tank => !resolvedBranchId || !tank.branchId || tank.branchId === resolvedBranchId);
+        if (matching.length === 0) return entries;
+        const share = report.liters / matching.length;
+        const matchingIds = new Set(matching.map(tank => tank.id));
+        return entries.map(tank => matchingIds.has(tank.id)
+          ? { ...tank, sl: Math.max(0, tank.sl - share) }
+          : tank
+        );
+      });
+      return;
+    }
+    setTanks(entries => {
+      const matching = entries.filter(tank =>
+        tank.prod === report.product &&
+        (!resolvedBranchId || !tank.branchId || tank.branchId === resolvedBranchId)
+      );
+      if (matching.length === 0) return entries;
+      const share = report.liters / matching.length;
+      const matchingIds = new Set(matching.map(tank => tank.id));
+      return entries.map(tank => matchingIds.has(tank.id)
+        ? { ...tank, sl: Math.max(0, tank.sl - share) }
+        : tank
+      );
+    });
+  }, [pumps]);
+
+  const adminReturnApprovedPumpReport = useCallback((id: number, note: string): boolean => {
+    if (role !== 'admin') return false;
+    const report = pumpDailyReports.find(candidate => candidate.id === id);
+    const returnNote = note.trim();
+    if (!report || report.status !== 'approved' || !returnNote) return false;
+
+    const returnedAt = nowTs();
+    appliedPumpReportApprovals.current.delete(id);
+    setPumpDailyReports(reports => reports.map(candidate => candidate.id === id
+      ? {
+          ...candidate,
+          status: 'pending_accountant',
+          adminReturnNote: returnNote,
+          adminReturnedBy: userName,
+          adminReturnedAt: returnedAt,
+        }
+      : candidate
+    ));
+    reverseApprovedPumpReportEffects(report);
+    setAudit(entries => [{
+      id: genId(),
+      action: 'Approved pump report returned to accountant',
+      user: userName,
+      detail: `Report #${id} — ${report.pumpName}: ${returnNote}; approved sales reversed pending accountant review`,
+      ts: returnedAt,
+    }, ...entries]);
+    void notificationsApi.send({
+      target: 'acc',
+      branchId: report.branchId,
+      type: 'report_attention',
+      title: 'Approved Pump Report Returned for Review',
+      body: `${report.pumpName} was returned by Admin for accountant review: ${returnNote}`,
+      data: { route: SCREEN_ROUTES.shift, reportId: id },
+    });
+    return true;
+  }, [role, userName, pumpDailyReports, reverseApprovedPumpReportEffects]);
+
   const accApprovePumpReport = useCallback((report: PumpDailyReport, accNote: string) => {
     const id = report.id;
     const currentReport = pumpDailyReports.find(candidate => candidate.id === id);
+    const adminReturnMs = Date.parse(currentReport?.adminReturnedAt ?? '');
+    const priorApprovalMs = Date.parse(currentReport?.accAt ?? '');
+    if (Number.isFinite(adminReturnMs) && (!Number.isFinite(priorApprovalMs) || adminReturnMs > priorApprovalMs)) {
+      appliedPumpReportApprovals.current.delete(id);
+    }
     if (
       !currentReport ||
       currentReport.status !== 'pending_accountant' ||
@@ -3408,10 +3486,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deletePumpReport = useCallback((id: number) => {
     const report = pumpDailyReports.find(r => r.id === id);
-    // Accountant-approved reports are permanently locked — no role, including
-    // Admin, may delete them. Keep this guard in the shared state layer so it
-    // cannot be bypassed by any caller.
-    if (!report || report.status === 'approved') return;
+    if (!report) return Promise.resolve(false);
+    if (report.status === 'approved' && role !== 'admin') return Promise.resolve(false);
+    if (report.status === 'approved') {
+      return stateApi.deleteApprovedPumpReport(id).then(result => {
+        if (!result?.ok) return false;
+        appliedPumpReportApprovals.current.delete(id);
+        setPumpDailyReports(reports => reports.filter(candidate => candidate.id !== id));
+        reverseApprovedPumpReportEffects(report);
+        setPumpLockedMeters(meters => {
+          const next = { ...meters };
+          delete next[report.pumpId];
+          return next;
+        });
+        setPumpInitialMeters(meters => ({ ...meters, [report.pumpId]: report.openingMeter }));
+        setAudit(entries => [{
+          id: genId(),
+          action: 'Approved pump report deleted for re-entry',
+          user: userName,
+          detail: `Report #${id} deleted after wrong-date review; ${report.pumpName} opening meter reset to ${report.openingMeter.toLocaleString()} for attendant re-entry`,
+          ts: nowTs(),
+        }, ...entries]);
+        return true;
+      });
+    }
     setPumpDailyReports(rs => rs.filter(r => r.id !== id));
     setSales(s => s.filter(e => e.shiftReportId !== id));
     setAudit(a => [{
@@ -3421,7 +3519,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       detail: `Report #${id} deleted`,
       ts: nowTs(),
     }, ...a]);
-  }, [userName, pumpDailyReports]);
+    return Promise.resolve(true);
+  }, [role, userName, pumpDailyReports, reverseApprovedPumpReportEffects]);
 
   const updatePumpReport = useCallback((id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => {
     const prev = pumpDailyReports.find(r => r.id === id);
@@ -3761,7 +3860,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
         stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
         setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
-      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
+      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, adminReturnApprovedPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
         sendMessage, addSystemNotification, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,

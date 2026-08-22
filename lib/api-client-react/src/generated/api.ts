@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  DeleteApprovedPumpReport200,
   ErrorEnvelope,
   HealthStatus,
   UploadUrlRequest,
@@ -357,4 +358,76 @@ export function useGetStorageObject<TData = Awaited<ReturnType<typeof getStorage
 
 
 
+
+export const getDeleteApprovedPumpReportUrl = (id: number,) => {
+
+
+
+
+  return `/api/state/pump-reports/${id}/delete`
+}
+
+/**
+ * Admin-only. Atomically removes the approved report and linked sale, reverses its tank-sale effect, and restores the opening meter for a replacement entry.
+ * @summary Delete an approved wrong-date pump report for re-entry
+ */
+export const deleteApprovedPumpReport = async (id: number, options?: RequestInit): Promise<DeleteApprovedPumpReport200> => {
+
+  return customFetch<DeleteApprovedPumpReport200>(getDeleteApprovedPumpReportUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteApprovedPumpReportMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApprovedPumpReport>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteApprovedPumpReport>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteApprovedPumpReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteApprovedPumpReport>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteApprovedPumpReport(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteApprovedPumpReportMutationResult = NonNullable<Awaited<ReturnType<typeof deleteApprovedPumpReport>>>
+
+    export type DeleteApprovedPumpReportMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete an approved wrong-date pump report for re-entry
+ */
+export const useDeleteApprovedPumpReport = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApprovedPumpReport>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteApprovedPumpReport>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteApprovedPumpReportMutationOptions(options));
+    }
 

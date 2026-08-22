@@ -152,6 +152,7 @@ export const stateApi = {
   get: <T>(key: string) => get<T>(`/state/${key}`),
   put: (key: string, data: unknown) => put(`/state/${key}`, data),
   resetOperational: () => post<{ ok: boolean; seedMeters?: Record<string, number> }>('/state/reset-operational', {}),
+  deleteApprovedPumpReport: (id: number) => post<{ ok: boolean }>(`/state/pump-reports/${id}/delete`, {}),
 };
 
 export const versionApi = {
