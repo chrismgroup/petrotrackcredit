@@ -907,7 +907,7 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'exp',      icon: 'receipt',          label: 'Expenses'   },
   { id: 'recv',     icon: 'cube',             label: 'Receiving'  },
   { id: 'shift',    icon: 'speedometer',      label: 'Shift Report' },
-  { id: 'corp',     icon: 'folder',            label: 'My Folder'  },
+  { id: 'corp',     icon: 'folder',            label: 'My Documents'  },
   { id: 'comms',    icon: 'chatbubbles',      label: 'Comms'      },
 ];
 
@@ -3123,7 +3123,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setMyFolderFiles(prev => [...prev, { ...file, id: genId(), uploadedAt: nowTs() }]);
     setAudit(a => [{
       id: genId(),
-      action: 'My Folder file uploaded',
+      action: 'My Documents file uploaded',
       user: userName,
       detail: `${file.name} (${file.mimeType})`,
       ts: nowTs(),
@@ -3138,7 +3138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ));
     setAudit(a => [{
       id: genId(),
-      action: 'My Folder file deleted',
+      action: 'My Documents file deleted',
       user: userName,
       detail: `File #${id}`,
       ts: nowTs(),
@@ -3151,7 +3151,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ));
     setAudit(a => [{
       id: genId(),
-      action: 'My Folder file replaced',
+      action: 'My Documents file replaced',
       user: userName,
       detail: `${file.name} (${file.mimeType})`,
       ts: nowTs(),
