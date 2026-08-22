@@ -160,6 +160,52 @@ describe('approved pump report lock', () => {
     expect(app().sales).toEqual(salesBefore);
     expect(app().audit).toEqual(auditBefore);
   });
+
+  it('allows only an admin to correct an approved report business date and synchronizes its sales record', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+    await act(async () => {
+      expect(await app().login('admin', 'Operations Admin', 1)).toBe(true);
+    });
+    const approvedReport = await createApprovedReport();
+    const auditBefore = app().audit.length;
+
+    let changed = false;
+    await act(async () => {
+      changed = app().correctApprovedPumpReportDate(approvedReport.id, '2026-08-22');
+    });
+
+    expect(changed).toBe(true);
+    expect(app().pumpDailyReports[0]).toMatchObject({
+      id: approvedReport.id,
+      status: 'approved',
+      date: '2026-08-22',
+      dateCorrectedFrom: approvedReport.date,
+      dateCorrectedBy: 'Operations Admin',
+    });
+    expect(app().pumpDailyReports[0].dateCorrectedAt).toEqual(expect.any(String));
+    expect(app().sales.find(entry => entry.shiftReportId === approvedReport.id)).toMatchObject({
+      dt: '2026-08-22',
+    });
+    expect(app().audit).toHaveLength(auditBefore + 1);
+    expect(app().audit[0]).toMatchObject({
+      action: 'Approved pump report date corrected',
+      user: 'Operations Admin',
+    });
+  });
+
+  it('does not allow a non-admin to correct an approved report date', async () => {
+    await renderProvider();
+    const approvedReport = await createApprovedReport();
+
+    let changed = true;
+    await act(async () => {
+      changed = app().correctApprovedPumpReportDate(approvedReport.id, '2026-08-22');
+    });
+
+    expect(changed).toBe(false);
+    expect(app().pumpDailyReports).toEqual([approvedReport]);
+  });
 });
 
 describe('stock book report eligibility', () => {

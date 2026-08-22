@@ -58,7 +58,7 @@ const DIP_STATUS_RANK: Record<string, number> = {
 };
 
 function pumpReportActivityMs(report: JsonRecord): number {
-  const timestamps = ["submittedAt", "mgrAt", "accAt"]
+  const timestamps = ["submittedAt", "mgrAt", "accAt", "dateCorrectedAt"]
     .map(key => Date.parse(String(report[key] ?? "")))
     .filter(value => Number.isFinite(value));
   return timestamps.length > 0 ? Math.max(...timestamps) : 0;
@@ -70,7 +70,7 @@ function pumpReportActivityMs(report: JsonRecord): number {
  * server array would let an older device erase a newly submitted report.
  * Merge by report ID and keep the version with the latest workflow activity.
  */
-function mergePumpDailyReports(existing: unknown, incoming: unknown): JsonRecord[] {
+function mergePumpDailyReports(existing: unknown, incoming: unknown, actorRole?: string): JsonRecord[] {
   const merged = new Map<string, JsonRecord>();
 
   const add = (value: unknown) => {
@@ -84,9 +84,28 @@ function mergePumpDailyReports(existing: unknown, incoming: unknown): JsonRecord
       merged.set(id, report);
       return;
     }
-
     const currentActivity = pumpReportActivityMs(current);
     const candidateActivity = pumpReportActivityMs(report);
+
+    // Approved report figures and workflow state remain locked. The one
+    // exception is a business-date correction made by an Admin. Reject any
+    // non-admin attempt to change an approved report's date, including a stale
+    // full-array sync from a device that has not seen the correction yet.
+    if (
+      current.status === "approved" &&
+      report.status === "approved" &&
+      current.date !== report.date
+    ) {
+      const correctionMs = Date.parse(String(report.dateCorrectedAt ?? ""));
+      if (
+        actorRole !== "admin" ||
+        !Number.isFinite(correctionMs) ||
+        correctionMs <= currentActivity
+      ) {
+        return;
+      }
+    }
+
     const currentRank = PUMP_REPORT_STATUS_RANK[String(current.status ?? "")] ?? 0;
     const candidateRank = PUMP_REPORT_STATUS_RANK[String(report.status ?? "")] ?? 0;
 
@@ -596,7 +615,7 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       .select()
       .from(appStateTable)
       .where(eq(appStateTable.key, "pumpDailyReports"));
-    data = mergePumpDailyReports(existingRow?.data, data);
+    data = mergePumpDailyReports(existingRow?.data, data, req.auth?.role);
   }
 
   // Tank dips are shared workflow records. Merge instead of replacing the
