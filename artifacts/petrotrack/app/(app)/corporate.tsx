@@ -1078,7 +1078,7 @@ export default function CorporateScreen() {
 
   if (!hasFolderAccess) {
     return (
-      <ScreenLayout title="My Folder">
+      <ScreenLayout title="My Documents">
         <View style={sty.accessDenied}>
           <Ionicons name="lock-closed-outline" size={42} color={colors.textSubtle} />
           <Text style={[sty.accessDeniedTitle, { color: colors.text }]}>Access restricted</Text>
@@ -1091,7 +1091,7 @@ export default function CorporateScreen() {
   }
 
   return (
-    <ScreenLayout title="My Folder">
+    <ScreenLayout title="My Documents">
 
       {/* ── Tab bar ── */}
       <View style={[sty.tabBar, sty.tabBarContent, { borderBottomColor: colors.border }]}>

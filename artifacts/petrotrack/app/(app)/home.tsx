@@ -181,7 +181,7 @@ function DocumentExpiryCard({
         })}
         {trackedFiles.length > 8 ? (
           <TouchableOpacity onPress={() => onOpen(trackedFiles[0])} style={s.expirySeeAll} activeOpacity={0.78}>
-            <Text style={[s.expirySeeAllText, { color: colors.primary }]}>Open My Folder</Text>
+            <Text style={[s.expirySeeAllText, { color: colors.primary }]}>Open My Documents</Text>
             <Ionicons name="arrow-forward" size={14} color={colors.primary} />
           </TouchableOpacity>
         ) : null}
