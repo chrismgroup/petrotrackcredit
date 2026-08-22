@@ -250,7 +250,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const totalLoans = fe.bankLoans.reduce((s, l) => s + l.amount, 0);
 
   const positives = stockValue + fe.cashInBank + fe.posValue + fe.goodsOnTransit
-    + fe.cashInHand + fe.debtsFromCustomers + fe.capitalInjection + Math.max(netProfit, 0);
+    + fe.cashInHand + fe.debtsFromCustomers + Math.max(netProfit, 0);
   const negatives = totalLoans + fe.liabilities + Math.abs(Math.min(netProfit, 0));
   const operatingCapital = positives - negatives;
   const isPositive = operatingCapital >= 0;
@@ -353,7 +353,6 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
             <Row label="+ Goods on Transit" value={fmt(fe.goodsOnTransit)} />
             <Row label="+ Cash in Hand" value={fmt(fe.cashInHand)} />
             <Row label="+ Debts by Customers" value={fmt(fe.debtsFromCustomers)} />
-            <Row label="+ Capital Injection" value={fmt(fe.capitalInjection)} />
             <Row label={netProfit >= 0 ? '+ Net Profit (month)' : '- Net Loss (month)'} value={fmt(Math.abs(netProfit))} color={netProfit >= 0 ? '#27500A' : '#791F1F'} />
             {fe.bankLoans.length > 0 && (
               fe.bankLoans.map((l, i) => (
