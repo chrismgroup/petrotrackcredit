@@ -3476,10 +3476,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dateCorrectedAt: correctedAt,
     };
     setPumpDailyReports(reports => reports.map(report => report.id === id ? corrected : report));
-    setSales(entries => entries.map(entry => entry.shiftReportId === id
-      ? { ...entry, dt: normalizedDate }
-      : entry
-    ));
+    const pump = pumps.find(candidate => candidate.id === previous.pumpId);
+    const resolvedBranchId = previous.branchId || pump?.branchId || '';
+    setSales(entries => {
+      let linked = false;
+      const next = entries.map(entry => {
+        if (entry.shiftReportId !== id) return entry;
+        linked = true;
+        return {
+          ...entry,
+          pump: `${previous.pumpName} (${previous.product})`,
+          by: previous.submittedBy,
+          L: previous.liters,
+          price: previous.unitPrice,
+          dt: normalizedDate,
+          pos: previous.posAmount,
+          branchId: resolvedBranchId,
+          pumpId: previous.pumpId,
+          lpgCategory: previous.product === 'LPG' ? pump?.lpgCategory ?? entry.lpgCategory ?? 'single' : undefined,
+        };
+      });
+      if (linked) return next;
+      return [...next, {
+        id: genId(),
+        shiftReportId: id,
+        pump: `${previous.pumpName} (${previous.product})`,
+        by: previous.submittedBy,
+        L: previous.liters,
+        price: previous.unitPrice,
+        dt: normalizedDate,
+        pos: previous.posAmount,
+        branchId: resolvedBranchId,
+        pumpId: previous.pumpId,
+        lpgCategory: previous.product === 'LPG' ? pump?.lpgCategory ?? 'single' : undefined,
+      }];
+    });
     setAudit(entries => [{
       id: genId(),
       action: 'Approved pump report date corrected',
@@ -3488,7 +3519,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ts: correctedAt,
     }, ...entries]);
     return true;
-  }, [role, userName, pumpDailyReports]);
+  }, [pumps, role, userName, pumpDailyReports]);
 
   const addHREmployee = useCallback((e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => {
     setHrEmployees(prev => {
