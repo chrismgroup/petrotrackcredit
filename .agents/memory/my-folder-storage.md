@@ -9,6 +9,12 @@ My Folder is a shared workspace with sensitive corporate sections—including Co
 
 **How to apply:** Keep General Library visible for any signed-in role, preserve the approved-role gate for the other sections, use `type: '*/*'` for device picking, store the returned object path with synchronized metadata, keep private storage endpoints authenticated, and use an authenticated browser blob path for web download/preview/share actions.
 
+Certificates and documents may carry an optional expiry date. The server evaluates expiring files on startup and daily, creates a durable reminder when they enter the three-calendar-month window, and preserves an expiry-notified marker with the shared metadata.
+
+**Why:** A reminder cannot depend on a staff member opening My Folder at the right time, and sensitive document names or expiry details must not leak to staff who cannot view that folder section.
+
+**How to apply:** Send General Library expiry reminders to all active staff, but send restricted-section reminders only to approved corporate roles. Treat the authenticated inbox as the delivery guarantee; native push is a best-effort supplement. Serialize the reminder worker and normal shared-file writes with the same lock so no stale client or scheduler write can erase a file or re-send a reminder.
+
 **Why:** Every device sends its complete local metadata array. Last-writer-wins replacement made an older device overwrite a newly uploaded document before other users could see it.
 
 **How to apply:** Any new shared metadata array needs server-side ID-based merging (or an explicit operation API); never restore whole-array replacement for My Folder. Keep deleted file tombstones hidden in the UI while retaining them for conflict resolution.

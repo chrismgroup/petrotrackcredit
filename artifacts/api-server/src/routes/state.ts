@@ -2,6 +2,10 @@ import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
 import { db, appStateTable, staffUsersTable } from "@workspace/db";
 import { createBackup, listBackups, restoreBackup } from "../lib/backup";
+import {
+  validatePriceHistoryPayload,
+  validatePriceProposalsPayload,
+} from "./price-state-validation";
 
 const router: IRouter = Router();
 
@@ -18,6 +22,21 @@ const ALLOWED_KEYS = new Set([
   "myFolders", "myFolderFiles", "startupStocks", "stockSnapshotConfig",
   "stockLogs", "reportAccessPolicyVersion",
 ]);
+const MY_FOLDER_WRITE_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
+
+function visibleMyFolderState(key: string, data: unknown, role?: string): unknown {
+  if ((key !== "myFolders" && key !== "myFolderFiles") || MY_FOLDER_WRITE_ROLES.has(role ?? "")) {
+    return data;
+  }
+  return Array.isArray(data)
+    ? data.filter(value =>
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        (value as JsonRecord).section === "general",
+      )
+    : [];
+}
 
 // Keys that modify access control, credentials, or HR/legal/financial records.
 // Only admin-role users may write to these.
@@ -43,6 +62,8 @@ const OPERATIONAL_KEYS = [
 ];
 
 type JsonRecord = Record<string, unknown>;
+
+export { validatePriceHistoryPayload, validatePriceProposalsPayload } from "./price-state-validation";
 
 const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   pending_manager: 1,
@@ -210,7 +231,7 @@ function mergeAssetBranchAssignments(existing: unknown, incoming: unknown): Json
 }
 
 function myFolderFileActivityMs(file: JsonRecord): number {
-  const timestamps = ["uploadedAt", "deletedAt"]
+  const timestamps = ["uploadedAt", "deletedAt", "expiryReminderSentAt"]
     .map(key => Date.parse(String(file[key] ?? "")))
     .filter(value => Number.isFinite(value));
   return timestamps.length > 0 ? Math.max(...timestamps) : 0;
@@ -474,7 +495,7 @@ router.get("/state", async (req, res): Promise<void> => {
   for (const row of rows) {
     result[row.key] = row.key === "messages" && chatIdentity
       ? messagesForIdentity(row.data, chatIdentity)
-      : row.data;
+      : visibleMyFolderState(row.key, row.data, req.auth?.role);
   }
   res.json(result);
 });
@@ -755,7 +776,7 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     res.json(messagesForIdentity(row.data, await resolveChatIdentity(req.auth.username, req.auth.role)));
     return;
   }
-  res.json(row.data);
+  res.json(visibleMyFolderState(key, row.data, req.auth?.role));
 });
 
 router.put("/state/:key", async (req, res): Promise<void> => {
@@ -768,6 +789,10 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   // Sensitive keys require admin role
   if (ADMIN_WRITE_KEYS.has(key) && req.auth?.role !== "admin") {
     res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if ((key === "myFolders" || key === "myFolderFiles") && !MY_FOLDER_WRITE_ROLES.has(req.auth?.role ?? "")) {
+    res.status(403).json({ error: "Only approved corporate users may manage My Folder" });
     return;
   }
   if ((key === "prices" || key === "priceHistory") && !PRICE_WRITE_ROLES.has(req.auth?.role ?? "")) {
@@ -784,6 +809,15 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     const dipError = await validateDipPayload(data);
     if (dipError) {
       res.status(400).json({ error: dipError });
+      return;
+    }
+  }
+  if (key === "priceHistory" || key === "priceProposals") {
+    const priceError = key === "priceHistory"
+      ? validatePriceHistoryPayload(data)
+      : validatePriceProposalsPayload(data);
+    if (priceError) {
+      res.status(400).json({ error: priceError });
       return;
     }
   }
@@ -902,13 +936,27 @@ router.put("/state/:key", async (req, res): Promise<void> => {
 
   // My Folder is also a shared array written by every device. Merge by ID so
   // a stale client cannot erase a file uploaded by another user. Deletions
-  // arrive as newer tombstone records and therefore remain synchronized.
+  // arrive as newer tombstone records and therefore remain synchronized. This
+  // shares the expiry-reminder worker's advisory lock, preventing either path
+  // from replacing the other's newer shared metadata snapshot.
   if (key === "myFolderFiles" && Array.isArray(data)) {
-    const [existingRow] = await db
-      .select()
-      .from(appStateTable)
-      .where(eq(appStateTable.key, "myFolderFiles"));
-    data = mergeMyFolderFiles(existingRow?.data, data);
+    await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(7310450)`);
+      const [existingRow] = await tx
+        .select()
+        .from(appStateTable)
+        .where(eq(appStateTable.key, "myFolderFiles"));
+      const merged = mergeMyFolderFiles(existingRow?.data, data);
+      await tx
+        .insert(appStateTable)
+        .values({ key, data: merged })
+        .onConflictDoUpdate({
+          target: appStateTable.key,
+          set: { data: merged, updatedAt: new Date() },
+        });
+    });
+    res.json({ ok: true });
+    return;
   }
 
   // Folder creation is shared through the same client-side array. Preserve

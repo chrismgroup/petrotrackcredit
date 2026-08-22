@@ -65,6 +65,21 @@ function formatAttachmentSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function expiryDays(expiresAt?: string): number | null {
+  if (!expiresAt) return null;
+  const expiry = new Date(expiresAt);
+  if (Number.isNaN(expiry.getTime())) return null;
+  return Math.ceil((expiry.getTime() - Date.now()) / 86400000);
+}
+
+function expiryLabel(expiresAt?: string): string | null {
+  const days = expiryDays(expiresAt);
+  if (days === null) return null;
+  if (days < 0) return `Expired ${Math.abs(days)}d ago`;
+  if (days === 0) return 'Expires today';
+  return `Expires in ${days}d`;
+}
+
 type Colors = ReturnType<typeof useColors>;
 
 function FolderWorkspacePanel({
@@ -88,10 +103,17 @@ function FolderWorkspacePanel({
   const [uploading, setUploading] = useState(false);
   const [busyFileId, setBusyFileId] = useState<number | null>(null);
   const [previewFile, setPreviewFile] = useState<{ file: MyFolderFile; uri: string } | null>(null);
+  const [showUploadDetails, setShowUploadDetails] = useState(false);
+  const [documentKind, setDocumentKind] = useState<'certificate' | 'document'>('document');
+  const [expiryDate, setExpiryDate] = useState('');
   const sectionFolders = folders.filter(f => f.section === section);
   const sectionFiles = files.filter(f =>
     !f.deletedAt && f.section === section && f.folderId === selectedFolderId,
   );
+  const expiringFiles = files.filter(file => {
+    const days = expiryDays(file.expiresAt);
+    return !file.deletedAt && file.section === section && days !== null && days <= 90;
+  });
 
   useEffect(() => {
     return () => {
@@ -233,7 +255,7 @@ function FolderWorkspacePanel({
     setFolderName('');
   }
 
-  async function pickAndUploadFile(): Promise<Omit<MyFolderFile, 'id' | 'uploadedAt'> | null> {
+  async function pickAndUploadFile(metadata: Pick<MyFolderFile, 'documentKind' | 'expiresAt'>): Promise<Omit<MyFolderFile, 'id' | 'uploadedAt'> | null> {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
@@ -267,6 +289,7 @@ function FolderWorkspacePanel({
         mimeType,
         size,
         uploadedBy: userName || 'System',
+        ...metadata,
       };
     } catch {
       Alert.alert('Upload failed', 'The file could not be uploaded. Please try again.');
@@ -276,15 +299,33 @@ function FolderWorkspacePanel({
     }
   }
 
+  function openUploadDetails() {
+    setDocumentKind('document');
+    setExpiryDate('');
+    setShowUploadDetails(true);
+  }
+
   async function uploadNewFile() {
-    const uploaded = await pickAndUploadFile();
+    const normalizedExpiry = expiryDate.trim();
+    if (normalizedExpiry && Number.isNaN(new Date(normalizedExpiry).getTime())) {
+      Alert.alert('Check the expiry date', 'Use a valid date in YYYY-MM-DD format, or leave it blank.');
+      return;
+    }
+    setShowUploadDetails(false);
+    const uploaded = await pickAndUploadFile({
+      documentKind,
+      ...(normalizedExpiry ? { expiresAt: normalizedExpiry } : {}),
+    });
     if (!uploaded) return;
     addFile(uploaded);
     Alert.alert('Uploaded', `${uploaded.name} was added to ${selectedFolderId === null ? 'the main folder' : 'the selected folder'}.`);
   }
 
   async function replaceExistingFile(existing: MyFolderFile) {
-    const replacement = await pickAndUploadFile();
+    const replacement = await pickAndUploadFile({
+      documentKind: existing.documentKind ?? 'document',
+      ...(existing.expiresAt ? { expiresAt: existing.expiresAt } : {}),
+    });
     if (!replacement) return;
 
     if (existing.objectPath && !(await storageApi.deleteObject(existing.objectPath))) {
@@ -352,48 +393,76 @@ function FolderWorkspacePanel({
         </View>
       </View>
 
-      <View style={sty.folderCreateRow}>
-        <TextInput
-          value={folderName}
-          onChangeText={setFolderName}
-          placeholder="New folder name"
-          placeholderTextColor={colors.textSubtle}
-          style={[sty.folderInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
-        />
-        <TouchableOpacity onPress={createFolder} style={[sty.folderCreateBtn, { backgroundColor: roleColor }]}>
-          <Ionicons name="add" size={16} color="#fff" />
-          <Text style={sty.folderCreateTxt}>Folder</Text>
-        </TouchableOpacity>
+      <View style={[sty.workspaceStats, { backgroundColor: colors.background }]}>
+        <View>
+          <Text style={[sty.workspaceStatNumber, { color: roleColor }]}>{sectionFolders.length + 1}</Text>
+          <Text style={[sty.workspaceStatLabel, { color: colors.textMuted }]}>folders</Text>
+        </View>
+        <View style={[sty.workspaceStatDivider, { backgroundColor: colors.border }]} />
+        <View>
+          <Text style={[sty.workspaceStatNumber, { color: roleColor }]}>{files.filter(file => !file.deletedAt && file.section === section).length}</Text>
+          <Text style={[sty.workspaceStatLabel, { color: colors.textMuted }]}>files</Text>
+        </View>
+        <View style={[sty.workspaceStatDivider, { backgroundColor: colors.border }]} />
+        <View>
+          <Text style={[sty.workspaceStatNumber, { color: expiringFiles.length ? colors.warning : roleColor }]}>{expiringFiles.length}</Text>
+          <Text style={[sty.workspaceStatLabel, { color: colors.textMuted }]}>due soon</Text>
+        </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={sty.folderChips}>
+      {canManage && (
+        <View style={sty.folderCreateRow}>
+          <TextInput
+            value={folderName}
+            onChangeText={setFolderName}
+            placeholder="New folder name"
+            placeholderTextColor={colors.textSubtle}
+            style={[sty.folderInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+          />
+          <TouchableOpacity onPress={createFolder} style={[sty.folderCreateBtn, { backgroundColor: roleColor }]}>
+            <Ionicons name="add" size={16} color="#fff" />
+            <Text style={sty.folderCreateTxt}>Folder</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <Text style={[sty.workspaceFilesLabel, { color: colors.textMuted }]}>Browse folders</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={sty.folderTiles}>
         <TouchableOpacity
           onPress={() => setSelectedFolderId(null)}
-          style={[sty.folderChip, { backgroundColor: selectedFolderId === null ? roleColor + '18' : colors.background, borderColor: selectedFolderId === null ? roleColor : colors.border }]}
+          style={[sty.folderTile, { backgroundColor: selectedFolderId === null ? roleColor + '18' : colors.background, borderColor: selectedFolderId === null ? roleColor : colors.border }]}
         >
-          <Ionicons name="folder-outline" size={14} color={selectedFolderId === null ? roleColor : colors.textMuted} />
-          <Text style={[sty.folderChipTxt, { color: selectedFolderId === null ? roleColor : colors.textMuted }]}>Main folder</Text>
+          <Ionicons name="folder-open-outline" size={26} color={selectedFolderId === null ? roleColor : colors.textMuted} />
+          <Text style={[sty.folderTileTitle, { color: selectedFolderId === null ? roleColor : colors.text }]} numberOfLines={1}>Main folder</Text>
+          <Text style={[sty.folderTileMeta, { color: colors.textMuted }]}>
+            {files.filter(file => !file.deletedAt && file.section === section && file.folderId === null).length} file{files.filter(file => !file.deletedAt && file.section === section && file.folderId === null).length === 1 ? '' : 's'}
+          </Text>
         </TouchableOpacity>
         {sectionFolders.map(folder => (
           <TouchableOpacity
             key={folder.id}
             onPress={() => setSelectedFolderId(folder.id)}
-            style={[sty.folderChip, { backgroundColor: selectedFolderId === folder.id ? roleColor + '18' : colors.background, borderColor: selectedFolderId === folder.id ? roleColor : colors.border }]}
+            style={[sty.folderTile, { backgroundColor: selectedFolderId === folder.id ? roleColor + '18' : colors.background, borderColor: selectedFolderId === folder.id ? roleColor : colors.border }]}
           >
-            <Ionicons name="folder-outline" size={14} color={selectedFolderId === folder.id ? roleColor : colors.textMuted} />
-            <Text style={[sty.folderChipTxt, { color: selectedFolderId === folder.id ? roleColor : colors.textMuted }]}>{folder.name}</Text>
+            <Ionicons name="folder-outline" size={26} color={selectedFolderId === folder.id ? roleColor : colors.textMuted} />
+            <Text style={[sty.folderTileTitle, { color: selectedFolderId === folder.id ? roleColor : colors.text }]} numberOfLines={1}>{folder.name}</Text>
+            <Text style={[sty.folderTileMeta, { color: colors.textMuted }]}>
+              {files.filter(file => !file.deletedAt && file.section === section && file.folderId === folder.id).length} file{files.filter(file => !file.deletedAt && file.section === section && file.folderId === folder.id).length === 1 ? '' : 's'}
+            </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      <TouchableOpacity
-        onPress={() => void uploadNewFile()}
-        disabled={uploading}
-        style={[sty.uploadAnyBtn, { backgroundColor: uploading ? colors.border : roleColor }]}
-      >
-        <Ionicons name={uploading ? 'hourglass-outline' : 'cloud-upload-outline'} size={16} color="#fff" />
-        <Text style={sty.uploadAnyTxt}>{uploading ? 'Uploading…' : 'Choose and upload any file'}</Text>
-      </TouchableOpacity>
+      {canManage && (
+        <TouchableOpacity
+          onPress={openUploadDetails}
+          disabled={uploading}
+          style={[sty.uploadAnyBtn, { backgroundColor: uploading ? colors.border : roleColor }]}
+        >
+          <Ionicons name={uploading ? 'hourglass-outline' : 'cloud-upload-outline'} size={16} color="#fff" />
+          <Text style={sty.uploadAnyTxt}>{uploading ? 'Uploading…' : 'Upload file or certificate'}</Text>
+        </TouchableOpacity>
+      )}
 
       <Text style={[sty.workspaceFilesLabel, { color: colors.textMuted }]}>
         {selectedFolderId === null ? 'Main folder' : sectionFolders.find(f => f.id === selectedFolderId)?.name} · {sectionFiles.length} file{sectionFiles.length === 1 ? '' : 's'}
@@ -411,6 +480,27 @@ function FolderWorkspacePanel({
               <Text style={[sty.workspaceFileMeta, { color: colors.textMuted }]}>
                 {file.mimeType} · {file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'Size unavailable'} · {file.uploadedBy}
               </Text>
+              {file.expiresAt && (
+                <View style={[
+                  sty.fileExpiry,
+                  {
+                    backgroundColor: (expiryDays(file.expiresAt) ?? 91) <= 0 ? colors.errorBg : colors.warningBg,
+                    borderColor: (expiryDays(file.expiresAt) ?? 91) <= 0 ? colors.errorBorder : colors.warningBorder,
+                  },
+                ]}>
+                  <Ionicons
+                    name={(expiryDays(file.expiresAt) ?? 91) <= 0 ? 'alert-circle-outline' : 'calendar-outline'}
+                    size={12}
+                    color={(expiryDays(file.expiresAt) ?? 91) <= 0 ? colors.error : colors.warning}
+                  />
+                  <Text style={[
+                    sty.fileExpiryText,
+                    { color: (expiryDays(file.expiresAt) ?? 91) <= 0 ? colors.error : colors.warning },
+                  ]}>
+                    {file.documentKind === 'certificate' ? 'Certificate' : 'Document'} · {expiryLabel(file.expiresAt)} · {fmtDate(file.expiresAt)}
+                  </Text>
+                </View>
+              )}
               <View style={sty.workspaceFileActions}>
                 <TouchableOpacity
                   onPress={() => void previewDocument(file)}
@@ -475,6 +565,61 @@ function FolderWorkspacePanel({
           </View>
         ))
       )}
+      <Modal
+        visible={showUploadDetails}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowUploadDetails(false)}
+      >
+        <View style={sty.detailsBackdrop}>
+          <View style={[sty.detailsCard, { backgroundColor: colors.surface }]}>
+            <View style={sty.detailsHeader}>
+              <View>
+                <Text style={[sty.detailsTitle, { color: colors.text }]}>File details</Text>
+                <Text style={[sty.detailsSubtitle, { color: colors.textMuted }]}>Add expiry tracking before choosing a file.</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowUploadDetails(false)} accessibilityLabel="Close file details">
+                <Ionicons name="close-circle" size={26} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[sty.detailsLabel, { color: colors.textMuted }]}>File type</Text>
+            <View style={sty.detailsChoiceRow}>
+              {(['document', 'certificate'] as const).map(kind => (
+                <TouchableOpacity
+                  key={kind}
+                  onPress={() => setDocumentKind(kind)}
+                  style={[
+                    sty.detailsChoice,
+                    {
+                      backgroundColor: documentKind === kind ? roleColor + '18' : colors.background,
+                      borderColor: documentKind === kind ? roleColor : colors.border,
+                    },
+                  ]}
+                >
+                  <Ionicons name={kind === 'certificate' ? 'ribbon-outline' : 'document-text-outline'} size={16} color={documentKind === kind ? roleColor : colors.textMuted} />
+                  <Text style={[sty.detailsChoiceText, { color: documentKind === kind ? roleColor : colors.text }]}>{kind === 'certificate' ? 'Certificate' : 'Document'}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={[sty.detailsLabel, { color: colors.textMuted }]}>Expiry date (optional)</Text>
+            <TextInput
+              value={expiryDate}
+              onChangeText={setExpiryDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textSubtle}
+              autoCapitalize="none"
+              style={[sty.detailsInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+            />
+            <Text style={[sty.detailsHint, { color: colors.textMuted }]}>
+              Petrotrack will notify active users three months before this date.
+            </Text>
+            <TouchableOpacity onPress={() => void uploadNewFile()} style={[sty.detailsSubmit, { backgroundColor: roleColor }]}>
+              <Ionicons name="folder-open-outline" size={17} color="#fff" />
+              <Text style={sty.detailsSubmitText}>Choose file</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={!!previewFile}
         transparent
@@ -1700,15 +1845,20 @@ const sty = StyleSheet.create({
   workspaceIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   workspaceTitle: { fontSize: 14, fontWeight: '800' },
   workspaceSub: { fontSize: 11, marginTop: 2 },
+  workspaceStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', borderRadius: 12, paddingVertical: 9 },
+  workspaceStatNumber: { fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  workspaceStatLabel: { fontSize: 10, marginTop: 1, textAlign: 'center' },
+  workspaceStatDivider: { width: StyleSheet.hairlineWidth, height: 28 },
   libraryIntro: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: 15, borderWidth: 1, padding: 13, marginBottom: 8 },
   libraryIntroText: { fontSize: 11, lineHeight: 16, marginTop: 3 },
   folderCreateRow: { flexDirection: 'row', gap: 8 },
   folderInput: { flex: 1, borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12 },
   folderCreateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 9, paddingHorizontal: 11 },
   folderCreateTxt: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  folderChips: { gap: 7, paddingVertical: 2 },
-  folderChip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, paddingVertical: 7 },
-  folderChipTxt: { fontSize: 11, fontWeight: '700' },
+  folderTiles: { gap: 9, paddingVertical: 2, paddingRight: 4 },
+  folderTile: { width: 132, minHeight: 92, borderWidth: 1, borderRadius: 13, padding: 11, justifyContent: 'space-between' },
+  folderTileTitle: { fontSize: 12, fontWeight: '800', marginTop: 6 },
+  folderTileMeta: { fontSize: 10, marginTop: 3 },
   uploadAnyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 10, paddingVertical: 11 },
   uploadAnyTxt: { color: '#fff', fontSize: 12, fontWeight: '800' },
   workspaceFilesLabel: { fontSize: 11, fontWeight: '700', marginTop: 2 },
@@ -1717,9 +1867,24 @@ const sty = StyleSheet.create({
   workspaceFileIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   workspaceFileName: { fontSize: 12, fontWeight: '700' },
   workspaceFileMeta: { fontSize: 10, marginTop: 2 },
+  fileExpiry: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 4, borderWidth: 1, borderRadius: 7, paddingHorizontal: 6, paddingVertical: 4, marginTop: 6 },
+  fileExpiryText: { fontSize: 9, fontWeight: '700' },
   workspaceFileActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: 7 },
   workspaceFileAction: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
   workspaceFileActionText: { fontSize: 9, fontWeight: '700' },
+  detailsBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.52)', justifyContent: 'flex-end', padding: 12 },
+  detailsCard: { borderRadius: 18, padding: 16, gap: 9 },
+  detailsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 3 },
+  detailsTitle: { fontSize: 17, fontWeight: '800' },
+  detailsSubtitle: { fontSize: 11, marginTop: 3 },
+  detailsLabel: { fontSize: 11, fontWeight: '700', marginTop: 3 },
+  detailsChoiceRow: { flexDirection: 'row', gap: 8 },
+  detailsChoice: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  detailsChoiceText: { fontSize: 12, fontWeight: '800' },
+  detailsInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 10, fontSize: 14 },
+  detailsHint: { fontSize: 10, lineHeight: 14 },
+  detailsSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 11, paddingVertical: 12, marginTop: 3 },
+  detailsSubmitText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   previewBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', justifyContent: 'center', alignItems: 'center', padding: 18 },
   previewCard: { width: '100%', maxWidth: 390, borderRadius: 16, padding: 12 },
   previewHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },

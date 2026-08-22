@@ -18,6 +18,7 @@ function timeLabel(value: string): string {
 function iconFor(type: string): keyof typeof Ionicons.glyphMap {
   if (type === 'report_attention') return 'document-text-outline';
   if (type === 'report_update') return 'checkmark-circle-outline';
+  if (type === 'document_expiry') return 'calendar-outline';
   return 'notifications-outline';
 }
 
@@ -71,7 +72,7 @@ export default function NotificationsScreen() {
             <Ionicons name="checkmark-done-outline" size={44} color={colors.border} />
             <Text style={[styles.emptyTitle, { color: colors.text }]}>No notifications yet</Text>
             <Text style={[styles.emptyBody, { color: colors.textMuted }]}>
-              New reports sent to you will appear here and remain available after you reopen the app.
+              Report updates and document expiry reminders will appear here and remain available after you reopen the app.
             </Text>
           </View>
         ) : (
