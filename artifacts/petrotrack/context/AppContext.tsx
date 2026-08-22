@@ -546,6 +546,18 @@ export function calculateBusinessMonthRevenue(
     .reduce((sum, report) => sum + safeNum(report.grossAmount), 0));
 }
 
+export function calculateAccountsReceivable(
+  reports: PumpDailyReport[],
+  scopedBranchId: string | null = null,
+): number {
+  return Math.round(reports
+    .filter(report =>
+      isRevenueReportStatus(report.status) &&
+      (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+    )
+    .reduce((sum, report) => sum + safeNum(report.creditAmount), 0));
+}
+
 function recordBusinessDate(value?: string): string {
   return businessDateKey(value);
 }
