@@ -15,6 +15,12 @@ Certificates and documents may carry an optional expiry date. The server evaluat
 
 **How to apply:** Send General Library expiry reminders to all active staff, but send restricted-section reminders only to approved corporate roles. Treat the authenticated inbox as the delivery guarantee; native push is a best-effort supplement. Serialize the reminder worker and normal shared-file writes with the same lock so no stale client or scheduler write can erase a file or re-send a reminder.
 
+The Home dashboard classifies tracked files as red when expired, yellow when they expire within 90 days, and green when they have more than 90 days remaining. Each dashboard row deep-links with the file ID and section so My Folder can select the matching subfolder and highlight the exact document.
+
+**Why:** Expiry status needs to be scannable before users open My Folder, while a status summary is only useful if it leads directly to the record needing attention.
+
+**How to apply:** Keep the dashboard and My Folder status thresholds aligned at 90 days, exclude files without expiry dates from the dashboard summary, and preserve section/file parameters when changing the Folder navigation.
+
 **Why:** Every device sends its complete local metadata array. Last-writer-wins replacement made an older device overwrite a newly uploaded document before other users could see it.
 
 **How to apply:** Any new shared metadata array needs server-side ID-based merging (or an explicit operation API); never restore whole-array replacement for My Folder. Keep deleted file tombstones hidden in the UI while retaining them for conflict resolution.

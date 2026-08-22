@@ -3,6 +3,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text,
@@ -106,6 +107,10 @@ function FolderWorkspacePanel({
   const [showUploadDetails, setShowUploadDetails] = useState(false);
   const [documentKind, setDocumentKind] = useState<'certificate' | 'document'>('document');
   const [expiryDate, setExpiryDate] = useState('');
+  const { fileId: routeFileId, section: routeSection } = useLocalSearchParams<{ fileId?: string; section?: string }>();
+  const focusedFileId = typeof routeFileId === 'string' && Number.isFinite(Number(routeFileId))
+    ? Number(routeFileId)
+    : null;
   const sectionFolders = folders.filter(f => f.section === section);
   const sectionFiles = files.filter(f =>
     !f.deletedAt && f.section === section && f.folderId === selectedFolderId,
@@ -120,6 +125,12 @@ function FolderWorkspacePanel({
       if (previewFile?.uri.startsWith('blob:')) URL.revokeObjectURL(previewFile.uri);
     };
   }, [previewFile]);
+
+  useEffect(() => {
+    if (focusedFileId === null || routeSection !== section) return;
+    const focusedFile = files.find(file => file.id === focusedFileId && file.section === section && !file.deletedAt);
+    if (focusedFile) setSelectedFolderId(focusedFile.folderId);
+  }, [files, focusedFileId, routeSection, section]);
 
   function localFileName(file: MyFolderFile): string {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -471,7 +482,17 @@ function FolderWorkspacePanel({
         <Text style={[sty.workspaceEmpty, { color: colors.textSubtle }]}>No files in this folder yet.</Text>
       ) : (
         sectionFiles.slice().reverse().map(file => (
-          <View key={file.id} style={[sty.workspaceFile, { borderColor: colors.border }]}>
+          <View
+            key={file.id}
+            style={[
+              sty.workspaceFile,
+              {
+                borderColor: focusedFileId === file.id ? roleColor : colors.border,
+                borderWidth: focusedFileId === file.id ? 2 : 1,
+                backgroundColor: focusedFileId === file.id ? roleColor + '0A' : colors.surface,
+              },
+            ]}
+          >
             <View style={[sty.workspaceFileIcon, { backgroundColor: roleColor + '14' }]}>
               <Ionicons name="document-attach-outline" size={18} color={roleColor} />
             </View>
@@ -721,6 +742,17 @@ export default function CorporateScreen() {
 
   // ── Tab ──
   const [activeTab, setActiveTab] = useState<Tab>(hasRestrictedFolderAccess ? 'compliance' : 'general');
+  const { section: routeSection } = useLocalSearchParams<{ section?: string }>();
+
+  useEffect(() => {
+    const requestedSection = Array.isArray(routeSection) ? routeSection[0] : routeSection;
+    const validSection = ['compliance', 'legal', 'minutes', 'projects', 'correspondences', 'general'].includes(requestedSection ?? '')
+      ? requestedSection as Tab
+      : null;
+    if (validSection && (validSection === 'general' || hasRestrictedFolderAccess)) {
+      setActiveTab(validSection);
+    }
+  }, [hasRestrictedFolderAccess, routeSection]);
 
   // ── Expansion (which card shows its full panel) ──
   const [expandedId, setExpandedId] = useState<number | null>(null);
