@@ -325,7 +325,7 @@ export default function ShiftReportScreen() {
     submitPumpReport, mgrForwardPumpReport,
     accApprovePumpReport, accRejectPumpReport,
     mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport,
-    setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, deletePumpReport, updatePumpReport,
+    setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
   } = useApp();
   const branchNameById = useMemo(() =>
     Object.fromEntries(branches.map(b => [b.id, b.name])) as Record<string, string>,
@@ -429,6 +429,8 @@ export default function ShiftReportScreen() {
   const [editXfer, setEditXfer] = useState('');
   const [editCredit, setEditCredit] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [isCorrectingDate, setIsCorrectingDate] = useState(false);
+  const [correctedDate, setCorrectedDate] = useState('');
 
   function openReport(r: PumpDailyReport) {
     setViewing(r);
@@ -441,12 +443,16 @@ export default function ShiftReportScreen() {
     setEditXfer(String(r.transferAmount));
     setEditCredit(String(r.creditAmount));
     setEditNote(r.note ?? '');
+    setIsCorrectingDate(false);
+    setCorrectedDate(r.date);
   }
   function closeModal() {
     setViewing(null);
     setReviewNote('');
     setRejectReason('');
     setIsEditing(false);
+    setIsCorrectingDate(false);
+    setCorrectedDate('');
   }
 
   function startEdit() { setIsEditing(true); }
@@ -459,6 +465,44 @@ export default function ShiftReportScreen() {
     setEditCredit(String(viewing.creditAmount));
     setEditNote(viewing.note ?? '');
     setIsEditing(false);
+  }
+
+  function startDateCorrection() {
+    if (!viewing || !isAdmin || viewing.status !== 'approved') return;
+    setCorrectedDate(viewing.date);
+    setIsCorrectingDate(true);
+  }
+
+  function cancelDateCorrection() {
+    if (viewing) setCorrectedDate(viewing.date);
+    setIsCorrectingDate(false);
+  }
+
+  function handleDateCorrection() {
+    if (!viewing || !correctedDate) return;
+    if (correctedDate === viewing.date) {
+      Alert.alert('No change', 'Choose a different business date to correct this report.');
+      return;
+    }
+    const report = viewing;
+    Alert.alert(
+      'Correct approved report date?',
+      `Move ${report.pumpName} from ${fmtDate(report.date)} to ${fmtDate(correctedDate)}? The approval remains locked and the linked sales date will be updated.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Correct date',
+          onPress: () => {
+            if (!correctApprovedPumpReportDate(report.id, correctedDate)) {
+              Alert.alert('Unable to correct date', 'Only an admin can correct the business date of an approved report.');
+              return;
+            }
+            closeModal();
+            Alert.alert('Date corrected', 'The approved report and its linked sales record now use the corrected business date.');
+          },
+        },
+      ],
+    );
   }
 
   function handleSaveEdit() {
@@ -1330,20 +1374,25 @@ export default function ShiftReportScreen() {
               </View>
               {((isAtt && viewing.submittedBy === userName &&
                 (viewing.status === 'pending_manager' || viewing.status === 'returned_attendant')) ||
-                ((isAdmin || isMd || isCeo) && viewing.status !== 'approved')) && !isEditing && (
+                ((isAdmin || isMd || isCeo) && viewing.status !== 'approved')) && !isEditing && !isCorrectingDate && (
                 <TouchableOpacity onPress={startEdit} style={{ marginRight: 10 }}>
                   <Ionicons name="create-outline" size={22} color={roleColor} />
                 </TouchableOpacity>
               )}
+              {isAdmin && viewing.status === 'approved' && !isCorrectingDate && (
+                <TouchableOpacity onPress={startDateCorrection} style={{ marginRight: 10 }}>
+                  <Ionicons name="calendar-outline" size={22} color={roleColor} />
+                </TouchableOpacity>
+              )}
               {((isAtt && viewing.submittedBy === userName &&
                 (viewing.status === 'pending_manager' || viewing.status === 'returned_attendant')) ||
-                ((isAdmin || isMd) && viewing.status !== 'approved')) && !isEditing && (
+                ((isAdmin || isMd) && viewing.status !== 'approved')) && !isEditing && !isCorrectingDate && (
                 <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10 }}>
                   <Ionicons name="trash-outline" size={22} color="#E74C3C" />
                 </TouchableOpacity>
               )}
-              {isEditing && (
-                <TouchableOpacity onPress={cancelEdit} style={{ marginRight: 10 }}>
+              {(isEditing || isCorrectingDate) && (
+                <TouchableOpacity onPress={isCorrectingDate ? cancelDateCorrection : cancelEdit} style={{ marginRight: 10 }}>
                   <Ionicons name="close-outline" size={22} color={colors.textMuted} />
                 </TouchableOpacity>
               )}
@@ -1358,8 +1407,31 @@ export default function ShiftReportScreen() {
               <View style={[c.lockedNotice, { backgroundColor: '#EAF3DE', borderColor: '#27500A44' }]}>
                 <Ionicons name="lock-closed-outline" size={14} color="#27500A" />
                 <Text style={{ flex: 1, fontSize: 12, color: '#27500A' }}>
-                  Approved by the accountant. This shift report is permanently locked.
+                  Approved by the accountant and locked. Only an admin can correct its business date; figures and approval history cannot be changed.
                 </Text>
+              </View>
+            )}
+
+            {isCorrectingDate && (
+              <View style={[c.dateCorrectionCard, { backgroundColor: '#E6F1FB', borderColor: '#185FA544' }]}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#185FA5' }}>Correct business date</Text>
+                <Text style={{ fontSize: 12, color: '#185FA5', marginTop: 3 }}>
+                  Use only when an approved report was submitted against the wrong operating day. This keeps approval locked and updates the linked sales date.
+                </Text>
+                <AppliedDateField
+                  value={correctedDate}
+                  onChange={setCorrectedDate}
+                  label="Corrected applies-on date"
+                  accent="#185FA5"
+                  helper="The original date and this correction are retained in the audit trail."
+                />
+                <TouchableOpacity onPress={handleDateCorrection} style={[c.submitBtn, { backgroundColor: '#185FA5' }]}>
+                  <Ionicons name="calendar-outline" size={16} color="#fff" />
+                  <Text style={c.submitBtnTxt}>Save corrected date</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={cancelDateCorrection} style={[c.submitBtn, { backgroundColor: colors.textSubtle }]}>
+                  <Text style={c.submitBtnTxt}>Cancel</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -1460,6 +1532,13 @@ export default function ShiftReportScreen() {
             {viewing.mgrBy   && <Field label="Manager Review" value={`${viewing.mgrBy} · ${fmtDateTime(viewing.mgrAt ?? '')}`} colors={colors} />}
             {viewing.accNote && <Field label="Accountant Note" value={viewing.accNote} colors={colors} />}
             {viewing.accBy   && <Field label="Accountant Review" value={`${viewing.accBy} · ${fmtDateTime(viewing.accAt ?? '')}`} colors={colors} />}
+            {viewing.dateCorrectedAt && (
+              <Field
+                label="Business Date Correction"
+                value={`${fmtDate(viewing.dateCorrectedFrom ?? viewing.date)} → ${fmtDate(viewing.date)} · ${viewing.dateCorrectedBy ?? 'Admin'} · ${fmtDateTime(viewing.dateCorrectedAt)}`}
+                colors={colors}
+              />
+            )}
             {viewing.note    && <Field label="Attendant Note" value={viewing.note} colors={colors} />}
 
             {/* Manager actions */}
@@ -1626,6 +1705,7 @@ const c = StyleSheet.create({
   fieldValue:    { fontSize: 13, fontWeight: '600', maxWidth: '55%', textAlign: 'right' },
   varCard:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 8 },
   lockedNotice:  { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 12 },
+  dateCorrectionCard: { borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 12 },
   rejectionCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
   alertBanner:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 14 },
   todayCard:     { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1.5, marginBottom: 8 },

@@ -317,6 +317,9 @@ export interface PumpDailyReport {
   accBy?: string;
   accAt?: string;
   rejectionReason?: string;
+  dateCorrectedFrom?: string;
+  dateCorrectedBy?: string;
+  dateCorrectedAt?: string;
 }
 
 /** Timestamp of the latest completed workflow step for meter carry-forward. */
@@ -706,7 +709,7 @@ const DIP_STATUS_RANK: Record<DipRecord['status'], number> = {
 };
 
 function pumpReportActivityMs(report: PumpDailyReport): number {
-  const timestamps = [report.submittedAt, report.mgrAt, report.accAt]
+  const timestamps = [report.submittedAt, report.mgrAt, report.accAt, report.dateCorrectedAt]
     .map(value => Date.parse(value ?? ''))
     .filter(value => Number.isFinite(value));
   return timestamps.length > 0 ? Math.max(...timestamps) : 0;
@@ -1130,6 +1133,7 @@ interface AppContextType {
   attResubmitPumpReport: (id: number, note: string) => void;
   deletePumpReport: (id: number) => void;
   updatePumpReport: (id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => void;
+  correctApprovedPumpReportDate: (id: number, date: string) => boolean;
   updatePrice: (prod: string, price: number, by?: string, reason?: string, targetBranchId?: string) => PriceValidationResult;
   priceProposals: PriceProposal[];
   addPriceProposal: (prod: string, proposedPrice: number) => PriceValidationResult;
@@ -3432,8 +3436,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const variance = totalCollected + merged.creditAmount - grossAmount;
     const next: PumpDailyReport = { ...merged, liters, grossAmount, totalCollected, variance };
     setPumpDailyReports(rs => rs.map(r => r.id === id ? next : r));
-    // Accountant approval creates a linked sales record. Keep it synchronized
-    // when Admin corrects the approved shift report.
+    // Keep a linked sales record synchronized when an editable report changes.
     setSales(current => current.map(entry => entry.shiftReportId === id
       ? {
           ...entry,
@@ -3447,11 +3450,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ));
     setAudit(a => [{
       id: genId(),
-      action: prev.status === 'approved' ? 'Approved pump report updated by Admin' : 'Pump report updated',
+      action: 'Pump report updated',
       user: userName,
-      detail: `Report #${id} edited${prev.status === 'approved' ? ' by Admin; linked sales record synchronized' : ''}`,
+      detail: `Report #${id} edited`,
       ts: nowTs(),
     }, ...a]);
+  }, [role, userName, pumpDailyReports]);
+
+  const correctApprovedPumpReportDate = useCallback((id: number, date: string): boolean => {
+    if (role !== 'admin') return false;
+    const normalizedDate = date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) return false;
+    const parsed = new Date(`${normalizedDate}T00:00:00`);
+    if (!Number.isFinite(parsed.getTime()) || currentBusinessDateKey(parsed) !== normalizedDate) return false;
+
+    const previous = pumpDailyReports.find(report => report.id === id);
+    if (!previous || previous.status !== 'approved' || previous.date === normalizedDate) return false;
+
+    const correctedAt = nowTs();
+    const corrected: PumpDailyReport = {
+      ...previous,
+      date: normalizedDate,
+      dateCorrectedFrom: previous.date,
+      dateCorrectedBy: userName,
+      dateCorrectedAt: correctedAt,
+    };
+    setPumpDailyReports(reports => reports.map(report => report.id === id ? corrected : report));
+    setSales(entries => entries.map(entry => entry.shiftReportId === id
+      ? { ...entry, dt: normalizedDate }
+      : entry
+    ));
+    setAudit(entries => [{
+      id: genId(),
+      action: 'Approved pump report date corrected',
+      user: userName,
+      detail: `Report #${id} — ${previous.pumpName}: ${previous.date} → ${normalizedDate}; linked sales date synchronized`,
+      ts: correctedAt,
+    }, ...entries]);
+    return true;
   }, [role, userName, pumpDailyReports]);
 
   const addHREmployee = useCallback((e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => {
@@ -3694,7 +3730,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
         stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
         setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
-      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, deletePumpReport, updatePumpReport,
+      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
         sendMessage, addSystemNotification, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
