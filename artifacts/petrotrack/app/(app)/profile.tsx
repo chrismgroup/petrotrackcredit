@@ -47,11 +47,13 @@ export default function ProfileScreen() {
     Alert.alert('Password changed', 'Your password has been updated.');
   }
 
+  async function completeSignOut() {
+    await logout();
+    router.replace('/');
+  }
+
   function signOut() {
-    Alert.alert('Sign out?', 'You will need to sign in again to access Petrotrack.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => { logout(); router.replace('/'); } },
-    ]);
+    void completeSignOut();
   }
 
   return (

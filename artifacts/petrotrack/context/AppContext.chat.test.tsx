@@ -1,8 +1,9 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { notificationsApi, stateApi } from '@/lib/api';
+import { clearToken, notificationsApi, stateApi } from '@/lib/api';
 import { AppProvider, messageActivityMs, useApp } from './AppContext';
 
 type AppState = ReturnType<typeof useApp>;
@@ -117,5 +118,33 @@ describe('persistent chats stay separate from reports notifications', () => {
     expect(messageActivityMs({ id: 10, createdAt: '2026-08-20T10:00:00.000Z' }))
       .toBeLessThan(messageActivityMs({ id: 1, createdAt: '2026-08-21T10:00:00.000Z' }));
     expect(messageActivityMs({ id: 999 })).toBe(999);
+  });
+
+  it('cleans up the old session before safely persisting the next login', async () => {
+    await bootAsAdmin();
+    jest.clearAllMocks();
+    const order: string[] = [];
+    jest.mocked(notificationsApi.unregisterToken).mockImplementation(async () => {
+      order.push('unregister');
+      return { ok: true };
+    });
+    jest.mocked(clearToken).mockImplementation(async () => {
+      order.push('clear-token');
+    });
+    jest.mocked(AsyncStorage.removeItem).mockImplementation(async (key: string) => {
+      if (key === 'auth' || key === 'messages') order.push(`remove-${key}`);
+    });
+    jest.mocked(AsyncStorage.setItem).mockImplementation(async (key: string) => {
+      if (key === 'auth') order.push('save-new-auth');
+    });
+
+    await act(async () => {
+      await app().logout();
+      expect(order).toEqual(['unregister', 'clear-token', 'remove-auth', 'remove-messages']);
+      expect(await app().login('admin', 'Operations Admin', 1)).toBe(true);
+    });
+
+    expect(notificationsApi.unregisterToken).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['unregister', 'clear-token', 'remove-auth', 'remove-messages', 'save-new-auth']);
   });
 });

@@ -41,9 +41,9 @@ export function Header({ title, rightAction }: Props) {
   const unread = notifications.filter(item => !item.read).length;
   const isAdmin = role === 'admin';
 
-  function handleLogout() {
+  async function handleLogout() {
     setShowMenu(false);
-    logout();
+    await logout();
     router.replace('/');
   }
 
