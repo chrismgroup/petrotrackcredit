@@ -213,7 +213,7 @@ export const getPriceForPump = (pump: Pump, prices: Prices): number => {
   return getPriceForProduct(prices, pump.prod, pump.branchId);
 };
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; branchId?: string; reason?: string; }
-export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media' | 'call'; body: string; ts: string; read: boolean; archivedBy?: string[]; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; call?: { callId: string; kind: 'audio' | 'video'; roomUrl: string }; }
+export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media' | 'call'; body: string; ts: string; createdAt?: string; read: boolean; archivedBy?: string[]; archiveState?: Record<string, { archived: boolean; updatedAt: string }>; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; call?: { callId: string; kind: 'audio' | 'video'; roomUrl: string }; }
 export type { AppNotification };
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
 export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; kind?: 'audio' | 'video'; duration?: string; }
@@ -968,6 +968,23 @@ export const SCREEN_ROUTES: Record<string, string> = {
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
+export function messageActivityMs(message: Pick<Message, 'id' | 'createdAt'>): number {
+  const timestamp = Date.parse(message.createdAt ?? '');
+  return Number.isFinite(timestamp) ? timestamp : Number(message.id) || 0;
+}
+function mergeArchiveState(
+  serverState?: Message['archiveState'],
+  localState?: Message['archiveState'],
+): Message['archiveState'] | undefined {
+  const entries = new Map<string, { archived: boolean; updatedAt: string }>();
+  for (const state of [serverState, localState]) {
+    for (const [user, value] of Object.entries(state || {})) {
+      const current = entries.get(user);
+      if (!current || Date.parse(value.updatedAt) >= Date.parse(current.updatedAt)) entries.set(user, value);
+    }
+  }
+  return entries.size > 0 ? Object.fromEntries(entries) : undefined;
+}
 /** Petrol dip readings are entered as litres; LPG readings are entered as kg. */
 export function dipReadingToLiters(reading: number) {
   if (!Number.isFinite(reading) || reading <= 0) return 0;
@@ -1535,34 +1552,52 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!p.has('maintenance'))     setMaintenance(safeArray<MaintenanceItem>(s.maintenance));
       if (Array.isArray(s.audit) && !p.has('audit'))          setAudit(s.audit as AuditEntry[]);
       if (Array.isArray(s.handoverNotes) && !p.has('handoverNotes')) setHandoverNotes(s.handoverNotes as ShiftHandoverNote[]);
-      // Messages: merge with local so read-flags are preserved
+      // Messages are shared conversations. Merge every message ID instead of
+      // accepting a whole conversation snapshot from one device.
       if (s.messages && typeof s.messages === 'object' && !Array.isArray(s.messages)) {
         const serverMsgs = s.messages as Record<string, Message[]>;
         setMessages(prev => {
           const allKeys = new Set([...Object.keys(prev), ...Object.keys(serverMsgs)]);
-          let changed = false;
           const merged: Record<string, Message[]> = {};
           for (const k of allKeys) {
             const serverList: Message[] = Array.isArray(serverMsgs[k]) ? serverMsgs[k] : [];
             const localList: Message[] = prev[k] ?? [];
-            if (serverList.length !== localList.length) {
-              const localById = new Map(localList.map(m => [m.id, m]));
-              merged[k] = serverList.map(m => {
-                const local = localById.get(m.id);
-                return local
-                  ? {
-                      ...m,
-                      read: m.read || local.read,
-                      archivedBy: Array.from(new Set([...(m.archivedBy || []), ...(local.archivedBy || [])])),
-                    }
-                  : m;
-              });
-              changed = true;
-            } else {
-              merged[k] = localList;
+            const localById = new Map(localList.map(message => [message.id, message]));
+            const mergedById = new Map<number, Message>();
+
+            for (const serverMessage of serverList) {
+              const localMessage = localById.get(serverMessage.id);
+              if (!localMessage) {
+                mergedById.set(serverMessage.id, serverMessage);
+                continue;
+              }
+              const archivedBy = Array.from(new Set([
+                ...(serverMessage.archivedBy || []),
+                ...(localMessage.archivedBy || []),
+              ]));
+              const archiveState = mergeArchiveState(serverMessage.archiveState, localMessage.archiveState);
+              const read = serverMessage.read || localMessage.read;
+              const unchanged = read === localMessage.read
+                && archivedBy.length === (localMessage.archivedBy || []).length
+                && archivedBy.every(name => localMessage.archivedBy?.includes(name))
+                && JSON.stringify(archiveState) === JSON.stringify(localMessage.archiveState);
+              mergedById.set(serverMessage.id, unchanged
+                ? localMessage
+                : {
+                    ...localMessage,
+                    read,
+                    ...(archivedBy.length > 0 ? { archivedBy } : {}),
+                    ...(archiveState ? { archiveState } : {}),
+                  }
+              );
             }
+            for (const localMessage of localList) {
+              if (!mergedById.has(localMessage.id)) mergedById.set(localMessage.id, localMessage);
+            }
+            merged[k] = Array.from(mergedById.values())
+              .sort((a, b) => messageActivityMs(a) - messageActivityMs(b));
           }
-          return changed ? merged : prev;
+          return JSON.stringify(merged) === JSON.stringify(prev) ? prev : merged;
         });
       }
        if (!p.has('inventoryLog')) {
@@ -2049,8 +2084,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRole(null); setUserName(''); setBranchId(null); setStaffId(null);
     setIsServerAuthenticated(false);
     setNotifications([]);
+    // Chats are account-scoped. Do not leave the previous user's local
+    // conversation cache visible when another person signs in on this device.
+    setMessages({});
     void notificationsApi.unregisterToken();
     AsyncStorage.removeItem('auth');
+    AsyncStorage.removeItem('messages');
     clearToken();
   }, []);
 
@@ -2374,13 +2413,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ts: nowTime(), read: false,
       }],
     }));
-    void notificationsApi.send({
-      target: 'acc',
-      type: 'approval_request',
-      title: 'Delivery Awaiting Cost Entry',
-      body: `${d.prod} delivery from ${d.sup} is ready for accountant review (WB: ${d.wb}).`,
-      data: { route: SCREEN_ROUTES.recv, deliveryId: id },
-    });
   }, [userName, deliveries]);
 
   const accForwardToMd = useCallback((id: number, costPrice: number, accNote: string) => {
@@ -2398,13 +2430,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ts: nowTime(), read: false,
       }],
     }));
-    void notificationsApi.send({
-      target: 'md',
-      type: 'approval_request',
-      title: 'Delivery Awaiting MD Approval',
-      body: `${d.prod} delivery from ${d.sup} is ready for approval (WB: ${d.wb}).`,
-      data: { route: SCREEN_ROUTES.recv, deliveryId: id },
-    });
   }, [userName, deliveries]);
 
   const accRecallDelivery = useCallback((id: number) => {
@@ -2520,39 +2545,63 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const sendMessage = useCallback((toName: string, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => {
     if (!userName) return;
     const key = chatKey(userName, toName);
-    const newMsg: Message = { ...msg, id: genId(), from: userName, ts: nowTime(), read: false };
+    const newMsg: Message = {
+      ...msg, id: genId(), from: userName, ts: nowTime(), createdAt: nowTs(), read: false,
+    };
     setMessages(m => ({ ...m, [key]: [...(m[key] || []), newMsg] }));
-    void notificationsApi.send({
-      target: toName,
-      type: 'message',
-      title: `New message from ${userName}`,
-      body: msg.body.slice(0, 180),
-      data: { route: SCREEN_ROUTES.messages, sender: userName },
-    });
   }, [userName]);
+
+  const conversationKeys = useCallback((peerName: string): string[] => {
+    if (!userName) return [];
+    const peer = userAccounts.find(account =>
+      account.empName === peerName || account.username === peerName,
+    );
+    const selfIds = [userName, role].filter((value): value is string => !!value);
+    const peerIds = [peerName, peer?.username, peer?.role].filter((value): value is string => !!value);
+    return Array.from(new Set(
+      selfIds.flatMap(selfId => peerIds.map(peerId => chatKey(selfId, peerId))),
+    ));
+  }, [role, userAccounts, userName]);
 
   const markRead = useCallback((peerName: string) => {
     if (!userName) return;
-    const key = chatKey(userName, peerName);
+    const keys = new Set(conversationKeys(peerName));
     setMessages(m => ({
       ...m,
-      [key]: (m[key] || []).map(msg => msg.to === userName ? { ...msg, read: true } : msg),
+      ...Object.fromEntries(Object.entries(m).map(([key, messages]) => [
+        key,
+        keys.has(key)
+          ? messages.map(msg => msg.to === userName || msg.to === role ? { ...msg, read: true } : msg)
+          : messages,
+      ])),
     }));
-  }, [userName]);
+  }, [conversationKeys, role, userName]);
 
   const setConversationArchived = useCallback((peerName: string, archived: boolean) => {
     if (!userName) return;
-    const key = chatKey(userName, peerName);
+    const keys = new Set(conversationKeys(peerName));
     setMessages(m => ({
       ...m,
-      [key]: (m[key] || []).map(msg => {
-        const archivedBy = new Set(msg.archivedBy || []);
-        if (archived) archivedBy.add(userName);
-        else archivedBy.delete(userName);
-        return { ...msg, archivedBy: Array.from(archivedBy) };
-      }),
+      ...Object.fromEntries(Object.entries(m).map(([key, messages]) => [
+        key,
+        keys.has(key)
+          ? messages.map(msg => {
+              const archivedBy = new Set(msg.archivedBy || []);
+              if (archived) archivedBy.add(userName);
+              else archivedBy.delete(userName);
+              return {
+                ...msg,
+                archivedBy: Array.from(archivedBy),
+                archiveState: {
+                  ...(msg.archiveState || {}),
+                  [userName]: { archived, updatedAt: nowTs() },
+                },
+              };
+            })
+          : messages,
+      ])),
     }));
-  }, [userName]);
+  }, [conversationKeys, userName]);
 
   const archiveConversation = useCallback((peerName: string) => {
     setConversationArchived(peerName, true);
@@ -3729,22 +3778,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addSystemNotification = useCallback((from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => {
     if (!role) return;
     const key = chatKey(from, role);
-    const newMsg: Message = { ...msg, id: genId(), ts: nowTime(), read: false };
+    const newMsg: Message = { ...msg, id: genId(), ts: nowTime(), createdAt: nowTs(), read: false };
     setMessages(m => ({ ...m, [key]: [...(m[key] || []), newMsg] }));
   }, [role]);
 
   const getConversation = useCallback((peerName: string): Message[] => {
-    if (!userName) return [];
-    return messages[chatKey(userName, peerName)] || [];
-  }, [userName, messages]);
+    const keys = new Set(conversationKeys(peerName));
+    const seen = new Set<number>();
+    return Object.entries(messages)
+      .filter(([key]) => keys.has(key))
+      .flatMap(([, entries]) => Array.isArray(entries) ? entries : [])
+      .filter(message => {
+        if (seen.has(message.id)) return false;
+        seen.add(message.id);
+        return true;
+      })
+      .sort((a, b) => messageActivityMs(a) - messageActivityMs(b));
+  }, [conversationKeys, messages]);
 
   const unreadCount = useCallback((): number => {
     if (!userName) return 0;
     return Object.values(messages).reduce((sum, msgs) => {
       if (!Array.isArray(msgs)) return sum;
-      return sum + msgs.filter(m => m.to === userName && !m.read).length;
+      return sum + msgs.filter(m => (m.to === userName || m.to === role) && !m.read).length;
     }, 0);
-  }, [userName, messages]);
+  }, [role, userName, messages]);
 
   const updateRoleAccess = useCallback((targetRole: string, moduleId: string, enabled: boolean) => {
     if (role !== 'admin') return;

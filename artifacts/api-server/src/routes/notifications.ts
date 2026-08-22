@@ -1,8 +1,9 @@
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { db, notificationsTable, notificationTokensTable, staffUsersTable } from "@workspace/db";
 
 const router: IRouter = Router();
+const REPORT_NOTIFICATION_TYPES = ["report_attention", "report_update"] as const;
 
 async function resolveRecipients(target: string, branchId?: string | null): Promise<string[]> {
   const normalized = target.trim();
@@ -43,7 +44,10 @@ router.get("/notifications", async (req, res): Promise<void> => {
   const rows = await db
     .select()
     .from(notificationsTable)
-    .where(eq(notificationsTable.username, req.auth!.username))
+    .where(and(
+      eq(notificationsTable.username, req.auth!.username),
+      inArray(notificationsTable.type, REPORT_NOTIFICATION_TYPES),
+    ))
     .orderBy(desc(notificationsTable.createdAt))
     .limit(100);
   res.json(rows);
@@ -76,12 +80,16 @@ router.post("/notifications", async (req, res): Promise<void> => {
     res.status(400).json({ error: "target, title, and body are required" });
     return;
   }
+  if (!REPORT_NOTIFICATION_TYPES.includes(type)) {
+    res.status(400).json({ error: "Only report notifications can be delivered" });
+    return;
+  }
   const recipients = await resolveRecipients(target, typeof branchId === "string" ? branchId : null);
   const safeData = data && typeof data === "object" ? data : {};
   if (recipients.length > 0) {
     await db.insert(notificationsTable).values(recipients.map(username => ({
       username,
-      type: typeof type === "string" ? type : "general",
+      type,
       title,
       body,
       data: safeData,

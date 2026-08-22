@@ -29,6 +29,7 @@ import {
   ROLE_LABELS,
   Role,
   UserAccount,
+  messageActivityMs,
   useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -63,6 +64,17 @@ function userColor(account: UserAccount): string {
 
 function userInitials(empName: string): string {
   return empName.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
+}
+
+function conversationTime(message?: Message): string {
+  if (!message) return '';
+  const date = new Date(message.createdAt ?? '');
+  if (Number.isNaN(date.getTime())) return message.ts;
+  const today = new Date();
+  const sameDay = date.toDateString() === today.toDateString();
+  return sameDay
+    ? date.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })
+    : date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
 }
 
 // ─── Module-scope sub-components ──────────────────────────────────────────────
@@ -250,7 +262,9 @@ export default function CommsScreen() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function peerUnread(user: UserAccount): number {
-    return getConversation(user.empName).filter(m => m.to === userName && !m.read).length;
+    return getConversation(user.empName)
+      .filter(message => (message.to === userName || message.to === role) && !message.read)
+      .length;
   }
 
   function lastMsg(user: UserAccount): string {
@@ -262,23 +276,23 @@ export default function CommsScreen() {
       return prefix + `${m.call?.kind === 'video' ? 'Video' : 'Audio'} call`;
     }
     if (m.type === 'media') {
-      const label = m.media?.mimeType?.startsWith('image/') ? '📷 Photo'
-        : m.media?.mimeType?.startsWith('video/') ? '🎬 Video'
-        : `📎 ${m.media?.name || 'File'}`;
+      const label = m.media?.mimeType?.startsWith('image/') ? 'Photo'
+        : m.media?.mimeType?.startsWith('video/') ? 'Video'
+        : `File: ${m.media?.name || 'Document'}`;
       return prefix + label;
     }
     return prefix + m.body;
   }
 
-  function hasIncomingMessage(user: UserAccount): boolean {
-    return getConversation(user.empName).some(
-      m => m.from === user.empName && m.to === userName,
-    );
+  function hasConversation(user: UserAccount): boolean {
+    return getConversation(user.empName).length > 0;
   }
 
   function isArchived(user: UserAccount): boolean {
     const conv = getConversation(user.empName);
-    return conv.length > 0 && conv.every(m => m.archivedBy?.includes(userName));
+    return conv.length > 0 && conv.every(message =>
+      message.archiveState?.[userName]?.archived ?? message.archivedBy?.includes(userName),
+    );
   }
 
   function openChat(user: UserAccount) {
@@ -457,10 +471,17 @@ export default function CommsScreen() {
   }
 
   // ── Filtered peer list for search ──────────────────────────────────────────
-  const messagePeers = peerUsers.filter(hasIncomingMessage);
-  const inboxPeers = messagePeers.filter(u => (
-    inboxFilter === 'archived' ? isArchived(u) : !isArchived(u)
-  ));
+  const chatPeers = userAccounts
+    .filter(user => user.empName !== userName)
+    .filter(hasConversation);
+  const inboxPeers = chatPeers
+    .filter(u => inboxFilter === 'archived' ? isArchived(u) : !isArchived(u))
+    .sort((a, b) => {
+      const aConversation = getConversation(a.empName);
+      const bConversation = getConversation(b.empName);
+      return messageActivityMs(bConversation[bConversation.length - 1])
+        - messageActivityMs(aConversation[aConversation.length - 1]);
+    });
   const filteredPeers = searchQuery.trim()
     ? inboxPeers.filter(u => {
         const q = searchQuery.toLowerCase();
@@ -672,7 +693,7 @@ export default function CommsScreen() {
   const totalUnread = unreadCount();
 
   return (
-    <ScreenLayout title="Communications">
+    <ScreenLayout title="My Chats">
       <Modal
         visible={showNewMessage}
         transparent
@@ -803,7 +824,7 @@ export default function CommsScreen() {
       {/* Tab bar */}
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
         {([
-          { id: 'chats'     as Tab, label: 'Direct message', icon: 'chatbubbles', badge: totalUnread },
+          { id: 'chats'     as Tab, label: 'Chats', icon: 'chatbubbles', badge: totalUnread },
           { id: 'calls'     as Tab, label: 'Calls',     icon: 'call',        badge: 0 },
         ]).map(t => (
           <TouchableOpacity
@@ -829,7 +850,7 @@ export default function CommsScreen() {
         ))}
       </View>
 
-      {/* ── Direct Messages tab ── */}
+      {/* ── Chats tab ── */}
       {activeTab === 'chats' && (
         <ScrollView
           contentContainerStyle={styles.listScroll}
@@ -893,34 +914,35 @@ export default function CommsScreen() {
              ))}
            </View>
 
-           {/* Only contacts that have sent an incoming message appear in the inbox. */}
-           {messagePeers.length === 0 && (
+            {chatPeers.length === 0 && (
             <View style={[styles.emptyState, { marginTop: 32 }]}>
-              <Ionicons name="people-outline" size={44} color={colors.border} />
-               <Text style={[styles.emptyTitle, { color: colors.text }]}>No incoming messages</Text>
+               <Ionicons name="chatbubble-ellipses-outline" size={44} color={colors.border} />
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>No chats yet</Text>
               <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                 Contacts appear here after they send you a message. Use New message to contact any active user.
+                  Start a chat with an active staff member. Your conversation will stay here.
               </Text>
             </View>
           )}
 
            {/* No inbox results */}
-           {messagePeers.length > 0 && filteredPeers.length === 0 && (
+            {chatPeers.length > 0 && filteredPeers.length === 0 && (
             <View style={[styles.emptyState, { marginTop: 32 }]}>
               <Ionicons name="search-outline" size={40} color={colors.border} />
                <Text style={[styles.emptyTitle, { color: colors.text }]}>
-                 {inboxFilter === 'archived' ? 'No Archived Messages' : 'No Active Conversations'}
+                  {inboxFilter === 'archived' ? 'No Archived Chats' : 'No Active Chats'}
                </Text>
                <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                 {searchQuery ? 'Try a different name or role.' : 'Messages remain available in the other inbox view.'}
+                  {searchQuery ? 'Try a different name or role.' : 'Chats remain available in the other view.'}
                </Text>
             </View>
           )}
 
-          {/* Contact list — one card per individual user */}
+           {/* One row per conversation, most recently active first. */}
           {filteredPeers.map(user => {
             const unread   = peerUnread(user);
             const lastText = lastMsg(user);
+             const conversation = getConversation(user.empName);
+             const lastMessage = conversation[conversation.length - 1];
             const uColor   = userColor(user);
             const roleLabel = ROLE_LABELS[user.role as Role] ?? user.role ?? 'Staff';
             return (
@@ -951,6 +973,9 @@ export default function CommsScreen() {
                    </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                   <Text style={[styles.conversationTime, { color: unread > 0 ? roleColor : colors.textSubtle }]}>
+                     {conversationTime(lastMessage)}
+                   </Text>
                    <TouchableOpacity
                      onPress={() => toggleArchive(user)}
                      style={[styles.archiveIconBtn, { backgroundColor: colors.background }]}
@@ -1119,6 +1144,7 @@ const styles = StyleSheet.create({
   contactRole:    { fontSize: 10, fontWeight: '700', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   contactSub:     { fontSize: 11, marginTop: 1 },
   contactStatus:  { fontSize: 10, fontWeight: '700', marginTop: 2 },
+  conversationTime: { fontSize: 10, fontWeight: '700' },
   avatarBadge:    { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, borderWidth: 1.5, borderColor: '#fff' },
   avatarBadgeText:{ color: '#fff', fontSize: 8, fontWeight: '800' },
   unreadBadge:    { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

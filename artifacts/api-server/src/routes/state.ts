@@ -262,6 +262,136 @@ function mergeMyFolders(existing: unknown, incoming: unknown): JsonRecord[] {
   return Array.from(merged.values());
 }
 
+/**
+ * Chats are shared records written as one object keyed by conversation. Merge
+ * each conversation by message ID so a stale device cannot remove messages,
+ * read state, or archive state created on another device.
+ */
+function mergeMessages(existing: unknown, incoming: unknown): JsonRecord {
+  const existingConversations = existing && typeof existing === "object" && !Array.isArray(existing)
+    ? existing as JsonRecord
+    : {};
+  const incomingConversations = incoming && typeof incoming === "object" && !Array.isArray(incoming)
+    ? incoming as JsonRecord
+    : {};
+  const merged: JsonRecord = {};
+
+  for (const key of new Set([...Object.keys(existingConversations), ...Object.keys(incomingConversations)])) {
+    const byId = new Map<string, JsonRecord>();
+    const add = (value: unknown) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return;
+      const message = value as JsonRecord;
+      const id = String(message.id ?? "");
+      if (!id) return;
+      const current = byId.get(id);
+      if (!current) {
+        byId.set(id, message);
+        return;
+      }
+      const archivedBy = Array.from(new Set([
+        ...(Array.isArray(current.archivedBy) ? current.archivedBy : []),
+        ...(Array.isArray(message.archivedBy) ? message.archivedBy : []),
+      ]));
+      const archiveState: JsonRecord = {};
+      for (const source of [current.archiveState, message.archiveState]) {
+        if (!source || typeof source !== "object" || Array.isArray(source)) continue;
+        for (const [username, value] of Object.entries(source as JsonRecord)) {
+          if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+          const candidate = value as JsonRecord;
+          const saved = archiveState[username] as JsonRecord | undefined;
+          const candidateTime = Date.parse(String(candidate.updatedAt ?? "")) || 0;
+          const savedTime = Date.parse(String(saved?.updatedAt ?? "")) || 0;
+          if (!saved || candidateTime >= savedTime) archiveState[username] = candidate;
+        }
+      }
+      byId.set(id, {
+        ...current,
+        read: Boolean(current.read) || Boolean(message.read),
+        ...(archivedBy.length > 0 ? { archivedBy } : {}),
+        ...(Object.keys(archiveState).length > 0 ? { archiveState } : {}),
+      });
+    };
+
+    const existingMessages = existingConversations[key];
+    const incomingMessages = incomingConversations[key];
+    if (Array.isArray(existingMessages)) existingMessages.forEach(add);
+    if (Array.isArray(incomingMessages)) incomingMessages.forEach(add);
+    merged[key] = Array.from(byId.values()).sort((a, b) => {
+      const aActivity = Date.parse(String(a.createdAt ?? "")) || Number(a.id) || 0;
+      const bActivity = Date.parse(String(b.createdAt ?? "")) || Number(b.id) || 0;
+      return aActivity - bActivity;
+    });
+  }
+
+  return merged;
+}
+
+type ChatIdentity = { values: Set<string> };
+
+async function resolveChatIdentity(username: string, role?: string): Promise<ChatIdentity> {
+  const [staffUser] = await db
+    .select({ username: staffUsersTable.username, empName: staffUsersTable.empName, role: staffUsersTable.role })
+    .from(staffUsersTable)
+    .where(eq(staffUsersTable.username, username));
+  return {
+    values: new Set([username, staffUser?.empName, role ?? staffUser?.role]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)),
+  };
+}
+
+function isChatParticipant(message: unknown, identity: ChatIdentity): boolean {
+  if (!message || typeof message !== "object" || Array.isArray(message)) return false;
+  const entry = message as JsonRecord;
+  return identity.values.has(String(entry.from ?? "")) || identity.values.has(String(entry.to ?? ""));
+}
+
+function messagesForIdentity(data: unknown, identity: ChatIdentity): JsonRecord {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+  return Object.fromEntries(Object.entries(data as JsonRecord).flatMap(([key, messages]) => {
+    if (!Array.isArray(messages)) return [];
+    const visibleMessages = messages.filter(message => isChatParticipant(message, identity));
+    return visibleMessages.length > 0 ? [[key, visibleMessages]] : [];
+  }));
+}
+
+function validateIncomingMessages(data: unknown, existing: unknown, identity: ChatIdentity): string | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "Messages must be conversation records";
+  const existingConversations = existing && typeof existing === "object" && !Array.isArray(existing)
+    ? existing as JsonRecord
+    : {};
+  for (const [key, entries] of Object.entries(data as JsonRecord)) {
+    if (!Array.isArray(entries)) return "Each conversation must contain a message list";
+    const existingMessages = new Map(
+      Array.isArray(existingConversations[key])
+        ? (existingConversations[key] as JsonRecord[]).map(message => [String(message.id ?? ""), message])
+        : [],
+    );
+    for (const message of entries) {
+      if (!message || typeof message !== "object" || Array.isArray(message)) return "Invalid message record";
+      const entry = message as JsonRecord;
+      if (!isChatParticipant(entry, identity)) return "You can only write conversations you participate in";
+      const from = String(entry.from ?? "");
+      const to = String(entry.to ?? "");
+      if (!from || !to || key !== [from, to].sort().join("-")) {
+        return "Messages must remain in their matching conversation";
+      }
+      const existingMessage = existingMessages.get(String(entry.id ?? ""));
+      const isNewMessage = !existingMessage;
+      if (isNewMessage && !identity.values.has(String(entry.from ?? ""))) {
+        return "New messages must be sent by the authenticated user";
+      }
+      if (existingMessage) {
+        for (const field of ["from", "to", "type", "body", "ts", "createdAt", "req", "alrt", "media", "call"]) {
+          if (JSON.stringify(entry[field]) !== JSON.stringify(existingMessage[field])) {
+            return "Existing message content cannot be changed";
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 async function resolveManagerBranchId(username?: string): Promise<string | undefined> {
   if (!username) return undefined;
   const [manager] = await db
@@ -337,11 +467,14 @@ async function validateDipPayload(data: unknown): Promise<string | null> {
   return null;
 }
 
-router.get("/state", async (_req, res): Promise<void> => {
+router.get("/state", async (req, res): Promise<void> => {
   const rows = await db.select().from(appStateTable);
   const result: Record<string, unknown> = {};
+  const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
   for (const row of rows) {
-    result[row.key] = row.data;
+    result[row.key] = row.key === "messages" && chatIdentity
+      ? messagesForIdentity(row.data, chatIdentity)
+      : row.data;
   }
   res.json(result);
 });
@@ -618,6 +751,10 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     res.json(null);
     return;
   }
+  if (key === "messages" && req.auth) {
+    res.json(messagesForIdentity(row.data, await resolveChatIdentity(req.auth.username, req.auth.role)));
+    return;
+  }
   res.json(row.data);
 });
 
@@ -728,6 +865,31 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       .from(appStateTable)
       .where(eq(appStateTable.key, "dips"));
     data = mergeDips(existingRow?.data, data);
+  }
+
+  if (key === "messages") {
+    const identity = await resolveChatIdentity(req.auth!.username, req.auth!.role);
+    await db.transaction(async tx => {
+      // A transaction-scoped advisory lock serializes conversation merges even
+      // when the messages row is being created for the first time.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:messages'))`);
+      const [existingRow] = await tx
+        .select()
+        .from(appStateTable)
+        .where(eq(appStateTable.key, "messages"));
+      const error = validateIncomingMessages(data, existingRow?.data, identity);
+      if (error) throw new Error(error);
+      const merged = mergeMessages(existingRow?.data, data);
+      await tx.insert(appStateTable).values({ key, data: merged }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: merged, updatedAt: new Date() },
+      });
+    }).catch(error => {
+      res.status(403).json({ error: error instanceof Error ? error.message : "Unable to save messages" });
+    });
+    if (res.headersSent) return;
+    res.json({ ok: true });
+    return;
   }
 
   if ((key === "tanks" || key === "lpgTanks" || key === "pumps") && Array.isArray(data)) {

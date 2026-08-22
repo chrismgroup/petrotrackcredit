@@ -16,8 +16,7 @@ function timeLabel(value: string): string {
 }
 
 function iconFor(type: string): keyof typeof Ionicons.glyphMap {
-  if (type === 'message') return 'chatbubble-ellipses-outline';
-  if (type === 'approval_request' || type === 'report_attention') return 'document-text-outline';
+  if (type === 'report_attention') return 'document-text-outline';
   if (type === 'report_update') return 'checkmark-circle-outline';
   return 'notifications-outline';
 }
@@ -72,7 +71,7 @@ export default function NotificationsScreen() {
             <Ionicons name="checkmark-done-outline" size={44} color={colors.border} />
             <Text style={[styles.emptyTitle, { color: colors.text }]}>No notifications yet</Text>
             <Text style={[styles.emptyBody, { color: colors.textMuted }]}>
-              New messages and approval requests will appear here and remain available after you reopen the app.
+              New reports sent to you will appear here and remain available after you reopen the app.
             </Text>
           </View>
         ) : (
