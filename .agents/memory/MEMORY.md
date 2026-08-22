@@ -25,4 +25,5 @@
 - [Operations stock logs](operations-stock-logs.md) — one persisted branch/product/date ledger row uses seed + deliveries − shift sales and compares against the same-day dip
 - [Shift-report workflow](shift-report-workflow.md) — approved reports are locked for all roles; every transition guards its source status in shared state, not just the UI
 - [Maintenance workflow authority](maintenance-workflow.md) — maintenance mutations use locked API actions; operational resets must preserve this append-only workflow history
+- [Operating capital formula](operating-capital-formula.md) — operating capital is monthly opening start-up capital plus that month’s net profit, with admin seed and rollover
 - [Session sign-out ordering](session-sign-out-ordering.md) — await token removal before routing to login, and do not rely on native Alert confirmations in the Expo web preview
