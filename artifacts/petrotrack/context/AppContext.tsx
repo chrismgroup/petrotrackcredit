@@ -1,7 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { stateApi, versionApi, usersApi, notificationsApi, AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken } from '@/lib/api';
+import {
+  stateApi, versionApi, usersApi, notificationsApi, maintenanceApi,
+  AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken,
+  type MaintenanceWorkflowStatus,
+} from '@/lib/api';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import {
   isMissingNum,
@@ -21,7 +25,39 @@ export interface LPGTank { id: string; name: string; cap: number; op: number; rv
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil'; active: boolean; branchId?: string; lpgCategory?: 'single' | 'distributor'; }
 export interface DipRecord { id: number; dt: string; submittedAt?: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; branchId?: string; }
 export interface Delivery { id: number; dt: string; submittedAt?: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
-export interface MaintenanceItem { id: number; title: string; pri: 'Urgent' | 'Medium' | 'Low'; by: string; date: string; submittedAt?: string; st: 'Open' | 'Done'; cost?: number; }
+export interface MaintenanceHistoryEntry {
+  id: string;
+  action: string;
+  actor: string;
+  detail?: string;
+  at: string;
+}
+export interface MaintenanceItem {
+  id: number;
+  taskId?: string;
+  title: string;
+  pri: 'Urgent' | 'Medium' | 'Low';
+  by: string;
+  date: string;
+  submittedAt?: string;
+  submittedBy?: string;
+  submittedByName?: string;
+  st: 'Open' | 'Done';
+  status?: MaintenanceWorkflowStatus;
+  cost?: number;
+  acknowledgedBy?: string;
+  acknowledgedAt?: string;
+  receivedBy?: string;
+  receivedAt?: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  assignedBy?: string;
+  assignedAt?: string;
+  statusUpdatedBy?: string;
+  statusUpdatedAt?: string;
+  updatedAt?: string;
+  history?: MaintenanceHistoryEntry[];
+}
 export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
 export type StockProduct = 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil';
 export const STOCK_SNAPSHOT_METRICS = [
@@ -1190,9 +1226,10 @@ interface AppContextType {
   accForwardToMd: (id: number, costPrice: number, accNote: string) => void;
   approveDelivery: (id: number, sellingPrice: number, mdNote?: string) => void;
   rejectDelivery: (id: number, note?: string) => void;
-  addMaintenance: (item: Omit<MaintenanceItem, 'id'>) => void;
-  updateMaintenance: (id: number, updates: Partial<Pick<MaintenanceItem, 'title' | 'pri' | 'st' | 'cost'>>) => void;
-  deleteMaintenance: (id: number) => void;
+  addMaintenance: (item: { title: string; pri: MaintenanceItem['pri']; date: string }) => Promise<boolean>;
+  acknowledgeMaintenance: (taskId: string) => Promise<boolean>;
+  assignMaintenance: (taskId: string, username: string) => Promise<boolean>;
+  updateMaintenanceStatus: (taskId: string, status: MaintenanceWorkflowStatus) => Promise<boolean>;
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
   updateSales: (id: number, updates: Partial<Pick<SalesEntry, 'pump' | 'L' | 'price' | 'pos' | 'dt'>>) => void;
   deleteSales: (id: number) => void;
@@ -1552,7 +1589,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
          ));
        }
       if (!p.has('deliveries'))      setDeliveries(safeArray<Delivery>(s.deliveries));
-      if (!p.has('maintenance'))     setMaintenance(safeArray<MaintenanceItem>(s.maintenance));
+      if (!p.has('maintenance'))     setMaintenance(Array.isArray(s.maintenance) ? s.maintenance as MaintenanceItem[] : []);
       if (Array.isArray(s.audit) && !p.has('audit'))          setAudit(s.audit as AuditEntry[]);
       if (Array.isArray(s.handoverNotes) && !p.has('handoverNotes')) setHandoverNotes(s.handoverNotes as ShiftHandoverNote[]);
       // Messages are shared conversations. Merge every message ID instead of
@@ -1902,7 +1939,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('sales',             sales); },             [sales, loaded]);
   useEffect(() => { if (loaded) syncSlice('dips',              dips); },              [dips, loaded]);
   useEffect(() => { if (loaded) syncSlice('deliveries',        deliveries); },        [deliveries, loaded]);
-  useEffect(() => { if (loaded) syncSlice('maintenance',       maintenance); },       [maintenance, loaded]);
   // Audit log is capped to the most recent MAX_AUDIT_ENTRIES to keep payloads small.
   useEffect(() => {
     if (audit.length > MAX_AUDIT_ENTRIES) { setAudit(a => a.slice(0, MAX_AUDIT_ENTRIES)); return; }
@@ -2514,20 +2550,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, [userName, deliveries]);
 
-  const addMaintenance = useCallback((item: Omit<MaintenanceItem, 'id'>) => {
-    setMaintenance(m => [{ ...item, id: genId(), submittedAt: item.submittedAt ?? nowTs() }, ...m]);
-    setAudit(a => [{ id: genId(), action: 'Maintenance request', user: userName, detail: item.title, ts: nowTs() }, ...a]);
-  }, [userName]);
+  const applyMaintenanceRecord = useCallback((record: MaintenanceItem) => {
+    setMaintenance(previous => {
+      const exists = previous.some(item => item.taskId === record.taskId);
+      const next = exists
+        ? previous.map(item => item.taskId === record.taskId ? record : item)
+        : [record, ...previous];
+      void AsyncStorage.setItem('maintenance', JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
-  const updateMaintenance = useCallback((id: number, updates: Partial<Pick<MaintenanceItem, 'title' | 'pri' | 'st' | 'cost'>>) => {
-    setMaintenance(m => m.map(item => item.id === id ? { ...item, ...updates } : item));
-    setAudit(a => [{ id: genId(), action: 'Maintenance request updated', user: userName, detail: `Maintenance #${id} edited`, ts: nowTs() }, ...a]);
-  }, [userName]);
+  const addMaintenance = useCallback(async (item: { title: string; pri: MaintenanceItem['pri']; date: string }) => {
+    const result = await maintenanceApi.create(item);
+    if (!result?.maintenance) return false;
+    applyMaintenanceRecord(result.maintenance as MaintenanceItem);
+    return true;
+  }, [applyMaintenanceRecord]);
 
-  const deleteMaintenance = useCallback((id: number) => {
-    setMaintenance(m => m.filter(item => item.id !== id));
-    setAudit(a => [{ id: genId(), action: 'Maintenance request deleted', user: userName, detail: `Maintenance #${id} deleted`, ts: nowTs() }, ...a]);
-  }, [userName]);
+  const acknowledgeMaintenance = useCallback(async (taskId: string) => {
+    const result = await maintenanceApi.acknowledge(taskId);
+    if (!result?.maintenance) return false;
+    applyMaintenanceRecord(result.maintenance as MaintenanceItem);
+    return true;
+  }, [applyMaintenanceRecord]);
+
+  const assignMaintenance = useCallback(async (taskId: string, username: string) => {
+    const result = await maintenanceApi.assign(taskId, username);
+    if (!result?.maintenance) return false;
+    applyMaintenanceRecord(result.maintenance as MaintenanceItem);
+    return true;
+  }, [applyMaintenanceRecord]);
+
+  const updateMaintenanceStatus = useCallback(async (taskId: string, status: MaintenanceWorkflowStatus) => {
+    const result = await maintenanceApi.updateStatus(taskId, status);
+    if (!result?.maintenance) return false;
+    applyMaintenanceRecord(result.maintenance as MaintenanceItem);
+    return true;
+  }, [applyMaintenanceRecord]);
 
   const addSales = useCallback((entry: Omit<SalesEntry, 'id'>) => {
     setSales(s => [...s, { ...entry, id: genId(), branchId: entry.branchId ?? branchId ?? undefined }]);
@@ -3916,7 +3976,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
-      addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, updateMaintenance, deleteMaintenance, addSales, updateSales, deleteSales,
+      addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
         stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,

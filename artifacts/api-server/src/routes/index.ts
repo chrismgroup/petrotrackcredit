@@ -7,6 +7,7 @@ import usersRouter from "./users";
 import storageRouter from "./storage";
 import notificationsRouter from "./notifications";
 import callsRouter from "./calls";
+import maintenanceWorkflowRouter from "./maintenance-workflow";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -18,6 +19,7 @@ router.use(requireAuth, stateRouter);
 router.use(requireAuth, usersRouter);
 router.use(requireAuth, notificationsRouter);
 router.use(requireAuth, callsRouter);
+router.use(requireAuth, maintenanceWorkflowRouter);
 router.use(storageRouter);
 
 export default router;
