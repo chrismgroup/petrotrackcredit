@@ -104,7 +104,11 @@ export default function AccountsScreen() {
         .sort((a, b) => b.revenue - a.revenue),
     }))
     .sort((a, b) => b.date.localeCompare(a.date));
-  const scopedDeliveries = deliveries.filter(d => inScope(d.branchId) && inCurrentMonth(d.dt));
+  // Use the same historical delivery set as FinancialStatusCard so a
+  // product's last known cost price carries into months without a delivery.
+  const scopedDeliveries = deliveries.filter(
+    d => inScope(d.branchId) && businessDateKey(d.dt) <= currentMonthRange.to,
+  );
   const scopedExpenses   = expenses.filter(e => e.status === 'approved' && inScope(e.branchId) && inCurrentMonth(e.dt));
 
   // Revenue follows the same business-date shift-report ledger as Home.

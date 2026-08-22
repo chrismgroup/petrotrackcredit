@@ -7,4 +7,4 @@ Operating capital is calculated as the month’s opening start-up capital plus n
 
 **Why:** This is the agreed accounting definition for the Accounts capital view and makes the figure traceable from one month to the next.
 
-**How to apply:** Admins may seed the current month’s start-up capital. Store the resulting closing operating capital and use it as the next month’s opening amount when the month rolls over. Keep the formula display limited to these two inputs. Derive Accounts Receivable from credit amounts in validated shift reports rather than allowing a manual debtor balance.
+**How to apply:** Admins may seed the current month’s start-up capital. Store the resulting closing operating capital and use it as the next month’s opening amount when the month rolls over. Keep the formula display limited to these two inputs. Derive Accounts Receivable from credit amounts in validated shift reports rather than allowing a manual debtor balance. Net profit COGS must use deliveries through the reporting month’s end so the last known product cost carries forward when there is no current-month delivery.
