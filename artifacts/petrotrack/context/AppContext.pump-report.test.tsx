@@ -185,8 +185,27 @@ describe('approved pump report lock', () => {
     });
     expect(app().pumpDailyReports[0].dateCorrectedAt).toEqual(expect.any(String));
     expect(app().sales.find(entry => entry.shiftReportId === approvedReport.id)).toMatchObject({
+      L: approvedReport.liters,
       dt: '2026-08-22',
     });
+    expect(calculateStockBook(
+      undefined,
+      'PMS',
+      'branch-1',
+      [],
+      app().pumpDailyReports,
+      approvedReport.date,
+      [{ id: approvedReport.pumpId, branchId: 'branch-1' }],
+    ).sold).toBe(0);
+    expect(calculateStockBook(
+      undefined,
+      'PMS',
+      'branch-1',
+      [],
+      app().pumpDailyReports,
+      '2026-08-22',
+      [{ id: approvedReport.pumpId, branchId: 'branch-1' }],
+    ).sold).toBe(approvedReport.liters);
     expect(app().audit).toHaveLength(auditBefore + 1);
     expect(app().audit[0]).toMatchObject({
       action: 'Approved pump report date corrected',
