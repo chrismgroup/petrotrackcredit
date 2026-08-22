@@ -15,6 +15,7 @@ import {
   GLOBAL_OVERVIEW_ROLES,
   salesRevenueByBranch,
   businessDateKey,
+  calculateAccountsReceivable,
   calculateBusinessMonthRevenue,
   calendarMonthBusinessDateRange,
   isRevenueReportStatus,
@@ -388,6 +389,7 @@ export default function HomeScreen() {
   // their Home KPIs to one branch.
   const isGlobalOverview = role === 'admin' || (role ? GLOBAL_OVERVIEW_ROLES.has(role) : false);
   const scopedBranchId = isGlobalOverview ? null : branchId;
+  const accountsReceivable = calculateAccountsReceivable(pumpDailyReports, scopedBranchId);
   const greeting = dayGreeting();
   const dayStamp = new Date().toLocaleDateString('en-NG', {
     weekday: 'long', day: 'numeric', month: 'long',
@@ -911,7 +913,7 @@ export default function HomeScreen() {
             />
             <FinancialCell
               label="Debtors"
-              value={fmtK(financialEntry.debtsFromCustomers)}
+              value={fmtK(accountsReceivable)}
               icon="people-outline"
               accent={colors.amber}
               colors={colors}

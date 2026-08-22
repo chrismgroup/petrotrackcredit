@@ -186,7 +186,7 @@ export default function AccountsScreen() {
         {/* Accountant-maintained financial position */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Financial Status</Text>
         <Text style={[styles.sectionHint, { color: colors.textMuted }]}>
-          Accountant-entered cash, POS, debts, loans and liabilities
+          Accountant-entered cash and goods in transit; receivables come from validated credit sales
         </Text>
         <FinancialStatusCard roleColor={roleColor} />
 

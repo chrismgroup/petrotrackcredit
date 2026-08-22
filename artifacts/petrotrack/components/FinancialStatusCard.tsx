@@ -7,6 +7,7 @@ import {
 
 import {
   businessDateKey,
+  calculateAccountsReceivable,
   calculateBusinessMonthRevenue,
   calendarMonthBusinessDateRange,
   fmt,
@@ -56,7 +57,6 @@ function EditModal({
   const [posValue, setPosValue]               = useState(String(entry.posValue));
   const [goodsOnTransit, setGoodsOnTransit]   = useState(String(entry.goodsOnTransit));
   const [cashInHand, setCashInHand]           = useState(String(entry.cashInHand));
-  const [debts, setDebts]                     = useState(String(entry.debtsFromCustomers));
   const [liabilities, setLiabilities]        = useState(String(entry.liabilities));
   const [startupCapital, setStartupCapital]   = useState(String(entry.startupCapital ?? 0));
   const [loans, setLoans]                     = useState<BankLoan[]>(entry.bankLoans.length ? entry.bankLoans : [{ bank: '', amount: 0 }]);
@@ -73,7 +73,6 @@ function EditModal({
     onSave({
       cashInBank: n(cashInBank), posValue: n(posValue),
       goodsOnTransit: n(goodsOnTransit), cashInHand: n(cashInHand),
-      debtsFromCustomers: n(debts),
       bankLoans: loans.filter(l => l.bank.trim()),
       liabilities: n(liabilities),
       ...(canSeedStartupCapital ? {
@@ -114,7 +113,9 @@ function EditModal({
           {field('POS Value (cash at POS terminals)', posValue, setPosValue)}
           {field('Cost of Goods on Transit', goodsOnTransit, setGoodsOnTransit)}
           {field('Cash in Hand', cashInHand, setCashInHand)}
-          {field('Debts Owed by Customers', debts, setDebts)}
+          <Text style={[fStyles.editHint, { color: colors.textMuted }]}>
+            Accounts Receivable is calculated automatically from credit sales in validated shift reports.
+          </Text>
           {canSeedStartupCapital && (
             <>
               {field('Start-up Capital (current month opening)', startupCapital, setStartupCapital)}
@@ -292,6 +293,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   /* ── operating capital formula ── */
   const fe = financialEntry;
   const totalLoans = fe.bankLoans.reduce((s, l) => s + l.amount, 0);
+  const accountsReceivable = calculateAccountsReceivable(pumpDailyReports, scopedBranchId);
   const isNewMonth = fe.startupCapitalMonth !== currentMonthKey;
   const startupCapital = isNewMonth
     ? (fe.closingOperatingCapital ?? fe.startupCapital)
@@ -303,7 +305,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     { label: 'Value of Current Stock', amount: stockValue, color: '#185FA5' },
     { label: 'Cash in Bank', amount: fe.cashInBank, color: colors.text },
     { label: 'Value of Goods on Transit', amount: fe.goodsOnTransit, color: colors.text },
-    { label: 'Debts by Customers (Accounts Receivable)', amount: fe.debtsFromCustomers, color: colors.text },
+    { label: 'Debts by Customers (Accounts Receivable)', amount: accountsReceivable, color: colors.text },
     {
       label: previousMonthNetProfit >= 0 ? 'Previous Month’s Net Profit' : 'Previous Month’s Net Loss',
       amount: previousMonthNetProfit,
