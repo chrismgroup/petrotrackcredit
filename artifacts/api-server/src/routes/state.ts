@@ -53,7 +53,7 @@ const ADMIN_WRITE_KEYS = new Set([
 const PRICE_WRITE_ROLES = new Set(["admin", "ceo", "md", "mgr"]);
 
 const OPERATIONAL_KEYS = [
-  "expenses", "budgets", "sales", "dips", "deliveries", "maintenance",
+  "expenses", "budgets", "sales", "dips", "deliveries",
   "inventoryLog", "pumpDailyReports", "financialEntry", "messages",
   "stockLogs",
   "tasks", "kpis", "companyFiles", "deliveryEvidences", "hrEmployees",
@@ -793,6 +793,10 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   }
   if ((key === "myFolders" || key === "myFolderFiles") && !MY_FOLDER_WRITE_ROLES.has(req.auth?.role ?? "")) {
     res.status(403).json({ error: "Only approved corporate users may manage My Folder" });
+    return;
+  }
+  if (key === "maintenance") {
+    res.status(403).json({ error: "Use the maintenance workflow endpoints to update maintenance tasks" });
     return;
   }
   if ((key === "prices" || key === "priceHistory") && !PRICE_WRITE_ROLES.has(req.auth?.role ?? "")) {

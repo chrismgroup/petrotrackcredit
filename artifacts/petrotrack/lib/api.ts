@@ -155,6 +155,53 @@ export const stateApi = {
   deleteApprovedPumpReport: (id: number) => post<{ ok: boolean }>(`/state/pump-reports/${id}/delete`, {}),
 };
 
+export type MaintenanceWorkflowStatus =
+  | 'pending'
+  | 'awaiting_approval'
+  | 'commenced'
+  | 'open'
+  | 'done'
+  | 'closed';
+
+export interface MaintenanceWorkflowRecord {
+  id: number;
+  taskId: string;
+  title: string;
+  pri: 'Urgent' | 'Medium' | 'Low';
+  by: string;
+  date: string;
+  submittedAt: string;
+  submittedBy: string;
+  submittedByName?: string;
+  status: MaintenanceWorkflowStatus;
+  st: 'Open' | 'Done';
+  cost?: number;
+  acknowledgedBy?: string;
+  acknowledgedAt?: string;
+  receivedBy?: string;
+  receivedAt?: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  assignedBy?: string;
+  assignedAt?: string;
+  statusUpdatedBy?: string;
+  statusUpdatedAt?: string;
+  updatedAt?: string;
+  history: Array<{ id: string; action: string; actor: string; detail?: string; at: string }>;
+}
+
+export const maintenanceApi = {
+  list: () => get<MaintenanceWorkflowRecord[]>('/maintenance'),
+  create: (data: { title: string; pri: 'Urgent' | 'Medium' | 'Low'; date: string }) =>
+    post<{ maintenance: MaintenanceWorkflowRecord }>('/maintenance', data),
+  acknowledge: (taskId: string) =>
+    post<{ maintenance: MaintenanceWorkflowRecord }>(`/maintenance/${encodeURIComponent(taskId)}/acknowledge`, {}),
+  assign: (taskId: string, username: string) =>
+    post<{ maintenance: MaintenanceWorkflowRecord }>(`/maintenance/${encodeURIComponent(taskId)}/assign`, { username }),
+  updateStatus: (taskId: string, status: MaintenanceWorkflowStatus) =>
+    post<{ maintenance: MaintenanceWorkflowRecord }>(`/maintenance/${encodeURIComponent(taskId)}/status`, { status }),
+};
+
 export const versionApi = {
   get: () => get<{ version: string }>('/version'),
 };
