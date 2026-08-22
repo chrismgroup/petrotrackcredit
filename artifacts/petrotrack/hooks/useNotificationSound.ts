@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppContext';
 const notificationSound = require('../assets/sounds/notification.wav');
 
 export function useNotificationSound() {
-  const { messages, notifications } = useApp();
+  const { notifications } = useApp();
   const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   const prevCountRef = useRef(-1);
 
@@ -25,20 +25,11 @@ export function useNotificationSound() {
     };
   }, []);
 
-  const totalUnread = useMemo(
-    () =>
-      Object.values(messages).reduce(
-        (sum, msgs) =>
-          sum + (Array.isArray(msgs) ? msgs.filter(m => !m.read).length : 0),
-        0
-      ),
-    [messages]
-  );
   const unreadNotifications = useMemo(
     () => notifications.filter(item => !item.read).length,
     [notifications],
   );
-  const alertCount = totalUnread + unreadNotifications;
+  const alertCount = unreadNotifications;
 
   useEffect(() => {
     if (prevCountRef.current === -1) {

@@ -170,6 +170,8 @@ export interface AppNotification {
   createdAt: string;
 }
 
+export type ReportNotificationType = 'report_attention' | 'report_update';
+
 export const notificationsApi = {
   list: () => get<AppNotification[]>('/notifications'),
   registerToken: (token: string, platform: string) =>
@@ -179,7 +181,7 @@ export const notificationsApi = {
   send: (data: {
     target: string;
     branchId?: string;
-    type: string;
+    type: ReportNotificationType;
     title: string;
     body: string;
     data?: Record<string, unknown>;

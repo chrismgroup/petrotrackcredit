@@ -7,4 +7,8 @@ Petrotrack notifications have two delivery paths: a server-backed recipient inbo
 
 **Why:** Web previews and Expo Go cannot fully exercise native push registration, while the app must still preserve alerts reliably when a device is offline or the app is closed.
 
-**How to apply:** Treat the database inbox as authoritative. Verify actual background delivery only in an EAS-built iOS/Android app with notification permissions granted; keep web/simulator checks focused on inbox, badges, and foreground sound.
+Only pump-report workflow events may create a notification inbox row, native push, badge, or sound. Chats—including direct, group, media, calls, and operational chat alerts—remain solely in the Chats experience.
+
+**Why:** Staff need a reliable, report-focused operational notification channel without chat traffic obscuring approvals and report updates.
+
+**How to apply:** Treat the database inbox as authoritative. Verify actual background delivery only in an EAS-built iOS/Android app with notification permissions granted; keep web/simulator checks focused on report inboxes, report badges, and report foreground sound.

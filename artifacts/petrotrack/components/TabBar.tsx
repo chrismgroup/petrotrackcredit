@@ -10,7 +10,7 @@ import { useColors } from '@/hooks/useColors';
 const PRIMARY_TABS = [
   { id: 'home', label: 'Home', icon: 'home', route: SCREEN_ROUTES.home },
   { id: 'jobs', label: 'My Jobs', icon: 'briefcase', route: SCREEN_ROUTES.jobs },
-  { id: 'messages', label: 'My Messages', icon: 'chatbubbles', route: SCREEN_ROUTES.messages },
+  { id: 'messages', label: 'My Chats', icon: 'chatbubbles', route: SCREEN_ROUTES.messages },
   { id: 'folder', label: 'My Folder', icon: 'folder', route: SCREEN_ROUTES.corp },
   { id: 'profile', label: 'My Profile', icon: 'person', route: SCREEN_ROUTES.profile },
 ] as const;

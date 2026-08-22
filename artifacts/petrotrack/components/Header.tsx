@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function Header({ title, rightAction }: Props) {
-  const { role, userName, logout, unreadCount, notifications, changeOwnPassword } = useApp();
+  const { role, userName, logout, notifications, changeOwnPassword } = useApp();
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -38,7 +38,7 @@ export function Header({ title, rightAction }: Props) {
   const userInitials = userName
     ? userName.trim().split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
     : (info?.initials || 'U');
-  const unread = unreadCount() + notifications.filter(item => !item.read).length;
+  const unread = notifications.filter(item => !item.read).length;
   const isAdmin = role === 'admin';
 
   function handleLogout() {
