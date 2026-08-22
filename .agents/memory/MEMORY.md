@@ -9,10 +9,10 @@
 - [EAS iOS credentials](eas-ios-credentials.md) — Expo tokens do not replace Apple signing setup for a newly linked EAS project
 - [App Store build numbers](app-store-build-numbers.md) — iOS uploads must use a build number higher than the latest App Store Connect upload
 - [Replit Launch versioning](replit-launch-versioning.md) — Launch may use managed build state separate from app.json; trust the submitted build number in Launch logs
-- [My Folder shared storage](my-folder-storage.md) — approved My Folder users can create subfolders and upload any file type; metadata syncs through app state and bytes use protected object storage
+- [My Folder shared storage](my-folder-storage.md) — shared documents use protected storage, role-filtered metadata, horizontal folders, and server-scheduled expiry reminders
 - [Rejected enrollment persistence](rejected-enrollment-persistence.md) — rejected status, reviewer, timestamp, and reason are authoritative in the staff-user record
 - [Price permissions](price-permissions.md) — direct selling-price changes are allowed for admin, CEO, MD, and station managers
-- [Push notifications](push-notifications.md) — durable inbox works in previews; native background delivery requires an EAS device build with Expo Notifications
+- [Push notifications](push-notifications.md) — durable inbox covers report workflows and document expiry; native background delivery requires an EAS device build
 - [Business-date auditing](business-date-auditing.md) — operational records use an explicit applies-on date separate from submission time and are filtered by that business date
 - [Native module preview isolation](native-module-preview.md) — load native-only SDKs behind a runtime platform guard so Expo web previews do not initialize them
 - [Start-up stock baselines](startup-stock-baselines.md) — admin-set product baselines stay locked to non-admins and prefer branch-specific values for scoped views

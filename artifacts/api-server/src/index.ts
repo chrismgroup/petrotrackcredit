@@ -6,6 +6,7 @@ import { db, appStateTable, staffUsersTable } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { createBackup } from "./lib/backup";
+import { dispatchMyFolderExpiryReminders } from "./routes/notifications";
 
 const rawPort = process.env["PORT"];
 
@@ -203,6 +204,19 @@ app.listen(port, (err) => {
           await createBackup();
         } catch (backupErr) {
           logger.error({ err: backupErr }, "Scheduled app-state backup failed");
+        }
+      });
+      // My Folder document and certificate reminders are evaluated on startup
+      // and daily, so the notification is not dependent on a staff member
+      // opening the mobile app near the three-month threshold.
+      void dispatchMyFolderExpiryReminders().catch(err => {
+        logger.error({ err }, "My Folder expiry reminder dispatch failed");
+      });
+      cron.schedule("0 8 * * *", async () => {
+        try {
+          await dispatchMyFolderExpiryReminders();
+        } catch (reminderErr) {
+          logger.error({ err: reminderErr }, "Scheduled My Folder expiry reminder dispatch failed");
         }
       });
       logger.info("Scheduled app-state backups every 12 hours");

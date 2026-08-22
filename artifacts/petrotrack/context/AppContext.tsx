@@ -279,6 +279,9 @@ export interface MyFolderFile {
   id: number; section: MyFolderSection; folderId: number | null; name: string;
   objectPath?: string; mimeType: string; size: number;
   uploadedBy: string; uploadedAt: string; deletedAt?: string;
+  documentKind?: 'certificate' | 'document';
+  expiresAt?: string;
+  expiryReminderSentAt?: string;
 }
 export type TaskStatus = 'commenced' | 'progressing' | 'completed';
 export type TaskPriority = 'High' | 'Medium' | 'Low';
