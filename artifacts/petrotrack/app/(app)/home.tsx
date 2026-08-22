@@ -28,6 +28,7 @@ import {
   useApp,
   type Budget,
   type Message,
+  type MyFolderFile,
   type PumpDailyReport,
   type StockProduct,
 } from '@/context/AppContext';
@@ -88,6 +89,105 @@ function localDateKey(date: Date): string {
 function formatQuantity(value: number | null): string {
   if (value === null) return '—';
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function folderExpiryDays(expiresAt?: string): number | null {
+  if (!expiresAt) return null;
+  const date = new Date(expiresAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return Math.ceil((date.getTime() - Date.now()) / 86400000);
+}
+
+function folderExpiryState(days: number): { label: string; color: string; background: string; icon: keyof typeof Ionicons.glyphMap } {
+  if (days < 0) return { label: 'Expired', color: '#B91C1C', background: '#FEE2E2', icon: 'alert-circle' };
+  if (days <= 90) return { label: 'Due within 3 months', color: '#92400E', background: '#FEF3C7', icon: 'time' };
+  return { label: 'Valid', color: '#166534', background: '#DCFCE7', icon: 'checkmark-circle' };
+}
+
+const FOLDER_SECTION_LABELS: Record<MyFolderFile['section'], string> = {
+  compliance: 'Compliance',
+  legal: 'Legal',
+  minutes: 'Meeting minutes',
+  projects: 'Projects',
+  correspondences: 'Correspondences',
+  general: 'General Library',
+};
+
+function DocumentExpiryCard({
+  files,
+  colors,
+  onOpen,
+}: {
+  files: MyFolderFile[];
+  colors: ReturnType<typeof useColors>;
+  onOpen: (file: MyFolderFile) => void;
+}) {
+  const trackedFiles = files
+    .filter(file => !file.deletedAt && folderExpiryDays(file.expiresAt) !== null)
+    .sort((a, b) => (folderExpiryDays(a.expiresAt) ?? 0) - (folderExpiryDays(b.expiresAt) ?? 0));
+  if (trackedFiles.length === 0) return null;
+
+  const expiredCount = trackedFiles.filter(file => (folderExpiryDays(file.expiresAt) ?? 0) < 0).length;
+  const dueSoonCount = trackedFiles.filter(file => {
+    const days = folderExpiryDays(file.expiresAt) ?? 0;
+    return days >= 0 && days <= 90;
+  }).length;
+  const validCount = trackedFiles.length - expiredCount - dueSoonCount;
+
+  return (
+    <Section label="DOCUMENT EXPIRY" colors={colors}>
+      <View style={[s.expiryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={s.expirySummary}>
+          {[
+            { label: 'Expired', value: expiredCount, color: colors.error, background: colors.errorBg },
+            { label: 'Due soon', value: dueSoonCount, color: colors.warning, background: colors.warningBg },
+            { label: 'Valid', value: validCount, color: colors.success, background: colors.successBg },
+          ].map(item => (
+            <View key={item.label} style={[s.expirySummaryItem, { backgroundColor: item.background }]}>
+              <Text style={[s.expirySummaryValue, { color: item.color }]}>{item.value}</Text>
+              <Text style={[s.expirySummaryLabel, { color: item.color }]}>{item.label}</Text>
+            </View>
+          ))}
+        </View>
+        {trackedFiles.slice(0, 8).map(file => {
+          const days = folderExpiryDays(file.expiresAt) ?? 0;
+          const state = folderExpiryState(days);
+          return (
+            <TouchableOpacity
+              key={file.id}
+              onPress={() => onOpen(file)}
+              activeOpacity={0.78}
+              style={[s.expiryRow, { borderTopColor: colors.border }]}
+              accessibilityLabel={`Open ${file.name}`}
+            >
+              <View style={[s.expiryIcon, { backgroundColor: state.background }]}>
+                <Ionicons name={file.documentKind === 'certificate' ? 'ribbon-outline' : 'document-text-outline'} size={17} color={state.color} />
+              </View>
+              <View style={s.expiryBody}>
+                <Text style={[s.expiryName, { color: colors.text }]} numberOfLines={1}>{file.name}</Text>
+                <Text style={[s.expiryMeta, { color: colors.textMuted }]}>
+                  {FOLDER_SECTION_LABELS[file.section]} · {file.expiresAt}
+                </Text>
+              </View>
+              <View style={s.expiryRight}>
+                <View style={[s.expiryStatus, { backgroundColor: state.background }]}>
+                  <Ionicons name={state.icon} size={12} color={state.color} />
+                  <Text style={[s.expiryStatusText, { color: state.color }]}>{state.label}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={15} color={colors.textSubtle} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+        {trackedFiles.length > 8 ? (
+          <TouchableOpacity onPress={() => onOpen(trackedFiles[0])} style={s.expirySeeAll} activeOpacity={0.78}>
+            <Text style={[s.expirySeeAllText, { color: colors.primary }]}>Open My Folder</Text>
+            <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </Section>
+  );
 }
 
 // ─── sub-components ────────────────────────────────────────────────────────
@@ -269,7 +369,7 @@ export default function HomeScreen() {
     pumpDailyReports, userAccounts, messages, notifications,
     unreadCount, approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
-    sales, startupStocks, stockSnapshotConfig,
+    sales, startupStocks, stockSnapshotConfig, myFolderFiles,
   } = useApp();
 
   const colors = useColors();
@@ -485,6 +585,13 @@ export default function HomeScreen() {
 
   const budgetColor = budgetPct >= 90 ? colors.error : budgetPct >= 70 ? colors.warning : colors.success;
 
+  function openFolderFile(file: MyFolderFile) {
+    router.push({
+      pathname: SCREEN_ROUTES.corp,
+      params: { section: file.section, fileId: String(file.id) },
+    } as never);
+  }
+
   // ── 7-day revenue trend ───────────────────────────────────────────────
   const sevenDayRevenue = useMemo(() => {
     const days: { label: string; value: number }[] = [];
@@ -583,6 +690,8 @@ export default function HomeScreen() {
             />
           ) : null}
         </View>
+
+        <DocumentExpiryCard files={myFolderFiles} colors={colors} onOpen={openFolderFile} />
 
         {/* ── Daily stock snapshot ───────────────────────────────────── */}
         <Section label="STOCK SNAPSHOT" colors={colors}>
@@ -1047,6 +1156,25 @@ const s = StyleSheet.create({
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   sectionLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1.4 },
   sectionMore: { fontSize: 11, fontWeight: '700' },
+  expiryCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  expirySummary: { flexDirection: 'row', gap: 8, padding: 10 },
+  expirySummaryItem: { flex: 1, borderRadius: 11, paddingVertical: 8, alignItems: 'center' },
+  expirySummaryValue: { fontSize: 18, fontWeight: '800' },
+  expirySummaryLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
+  expiryRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 12, paddingVertical: 11,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  expiryIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  expiryBody: { flex: 1, minWidth: 0 },
+  expiryName: { fontSize: 12, fontWeight: '800' },
+  expiryMeta: { fontSize: 9, marginTop: 3 },
+  expiryRight: { alignItems: 'flex-end', gap: 5, maxWidth: 132 },
+  expiryStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 99, paddingHorizontal: 7, paddingVertical: 4 },
+  expiryStatusText: { fontSize: 9, fontWeight: '800' },
+  expirySeeAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12 },
+  expirySeeAllText: { fontSize: 11, fontWeight: '800' },
 
   // card wrapper
   card: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
