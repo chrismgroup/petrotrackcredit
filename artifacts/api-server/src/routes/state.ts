@@ -2,6 +2,10 @@ import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
 import { db, appStateTable, staffUsersTable } from "@workspace/db";
 import { createBackup, listBackups, restoreBackup } from "../lib/backup";
+import {
+  validatePriceHistoryPayload,
+  validatePriceProposalsPayload,
+} from "./price-state-validation";
 
 const router: IRouter = Router();
 
@@ -43,6 +47,8 @@ const OPERATIONAL_KEYS = [
 ];
 
 type JsonRecord = Record<string, unknown>;
+
+export { validatePriceHistoryPayload, validatePriceProposalsPayload } from "./price-state-validation";
 
 const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   pending_manager: 1,
@@ -784,6 +790,15 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     const dipError = await validateDipPayload(data);
     if (dipError) {
       res.status(400).json({ error: dipError });
+      return;
+    }
+  }
+  if (key === "priceHistory" || key === "priceProposals") {
+    const priceError = key === "priceHistory"
+      ? validatePriceHistoryPayload(data)
+      : validatePriceProposalsPayload(data);
+    if (priceError) {
+      res.status(400).json({ error: priceError });
       return;
     }
   }
