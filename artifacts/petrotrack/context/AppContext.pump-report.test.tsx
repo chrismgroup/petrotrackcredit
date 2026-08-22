@@ -225,6 +225,94 @@ describe('approved pump report lock', () => {
     expect(changed).toBe(false);
     expect(app().pumpDailyReports).toEqual([approvedReport]);
   });
+
+  it('lets an admin delete an approved wrong-date report and restores its opening meter for re-entry', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+    await act(async () => {
+      expect(await app().login('admin', 'Operations Admin', 1)).toBe(true);
+    });
+    const approvedReport = await createApprovedReport();
+
+    let deleted = false;
+    await act(async () => {
+      deleted = await app().deletePumpReport(approvedReport.id);
+    });
+
+    expect(deleted).toBe(true);
+    expect(app().pumpDailyReports).toEqual([]);
+    expect(app().sales.find(entry => entry.shiftReportId === approvedReport.id)).toBeUndefined();
+    expect(app().pumpInitialMeters[approvedReport.pumpId]).toBe(approvedReport.openingMeter);
+    expect(app().pumpLockedMeters[approvedReport.pumpId]).toBeUndefined();
+    expect(stateApi.deleteApprovedPumpReport).toHaveBeenCalledWith(approvedReport.id);
+    expect(app().audit[0]).toMatchObject({
+      action: 'Approved pump report deleted for re-entry',
+      user: 'Operations Admin',
+    });
+  });
+
+  it('lets admin return an approved report through accountant, manager, and attendant date correction', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+    await act(async () => {
+      expect(await app().login('admin', 'Operations Admin', 1)).toBe(true);
+    });
+    const approvedReport = await createApprovedReport();
+
+    let returned = false;
+    await act(async () => {
+      returned = app().adminReturnApprovedPumpReport(approvedReport.id, 'The report was applied to the wrong business date.');
+    });
+    expect(returned).toBe(true);
+    expect(app().pumpDailyReports[0]).toMatchObject({
+      status: 'pending_accountant',
+      adminReturnedBy: 'Operations Admin',
+      adminReturnNote: 'The report was applied to the wrong business date.',
+    });
+    expect(app().sales.find(entry => entry.shiftReportId === approvedReport.id)).toBeUndefined();
+
+    await act(async () => {
+      expect(await app().login('acc', 'Station Accountant', 2)).toBe(true);
+      app().accRejectPumpReport(approvedReport.id, 'Return it to the manager for a date correction.');
+    });
+    expect(app().pumpDailyReports[0].status).toBe('returned');
+
+    await act(async () => {
+      expect(await app().login('mgr', 'Station Manager', 3, 'branch-1')).toBe(true);
+      app().mgrReturnPumpReportToAttendant(approvedReport.id, 'Ask the attendant to use the correct operating date.');
+    });
+    expect(app().pumpDailyReports[0].status).toBe('returned_attendant');
+
+    await act(async () => {
+      expect(await app().login('att', approvedReport.submittedBy, 4, 'branch-1')).toBe(true);
+    });
+    await act(async () => {
+      app().updatePumpReport(approvedReport.id, { date: '2026-08-22' });
+      app().attResubmitPumpReport(approvedReport.id, 'Corrected the business date.');
+    });
+    expect(app().pumpDailyReports[0]).toMatchObject({
+      date: '2026-08-22',
+      status: 'pending_manager',
+    });
+
+    await act(async () => {
+      expect(await app().login('mgr', 'Station Manager', 3, 'branch-1')).toBe(true);
+    });
+    await act(async () => {
+      app().mgrForwardPumpReport(approvedReport.id, 'Corrected date reviewed by manager.');
+    });
+    await act(async () => {
+      expect(await app().login('acc', 'Station Accountant', 2)).toBe(true);
+    });
+    await act(async () => {
+      app().accApprovePumpReport(app().pumpDailyReports[0], 'Corrected report approved.');
+    });
+    expect(app().pumpDailyReports[0].status).toBe('approved');
+    expect(app().sales.find(entry => entry.shiftReportId === approvedReport.id)).toMatchObject({
+      dt: '2026-08-22',
+      L: approvedReport.liters,
+    });
+  });
 });
 
 describe('stock book report eligibility', () => {

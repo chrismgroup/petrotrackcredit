@@ -325,7 +325,7 @@ export default function ShiftReportScreen() {
     submitPumpReport, mgrForwardPumpReport,
     accApprovePumpReport, accRejectPumpReport,
     mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport,
-    setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
+    setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, adminReturnApprovedPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
   } = useApp();
   const branchNameById = useMemo(() =>
     Object.fromEntries(branches.map(b => [b.id, b.name])) as Record<string, string>,
@@ -429,6 +429,7 @@ export default function ShiftReportScreen() {
   const [editXfer, setEditXfer] = useState('');
   const [editCredit, setEditCredit] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [editDate, setEditDate] = useState('');
   const [isCorrectingDate, setIsCorrectingDate] = useState(false);
   const [correctedDate, setCorrectedDate] = useState('');
 
@@ -443,6 +444,7 @@ export default function ShiftReportScreen() {
     setEditXfer(String(r.transferAmount));
     setEditCredit(String(r.creditAmount));
     setEditNote(r.note ?? '');
+    setEditDate(r.date);
     setIsCorrectingDate(false);
     setCorrectedDate(r.date);
   }
@@ -464,6 +466,7 @@ export default function ShiftReportScreen() {
     setEditXfer(String(viewing.transferAmount));
     setEditCredit(String(viewing.creditAmount));
     setEditNote(viewing.note ?? '');
+    setEditDate(viewing.date);
     setIsEditing(false);
   }
 
@@ -507,9 +510,11 @@ export default function ShiftReportScreen() {
 
   function handleSaveEdit() {
     if (!viewing) return;
+    if (!editDate) { Alert.alert('Date required', 'Select the correct business date before saving.'); return; }
     const closeVal = parseFloat(editClose.replace(/,/g, '')) || 0;
     if (closeVal <= viewing.openingMeter) { Alert.alert('Invalid', 'Closing meter must be greater than opening meter.'); return; }
     updatePumpReport(viewing.id, {
+      date: editDate,
       closingMeter: closeVal,
       posAmount: parseFloat(editPos.replace(/,/g, '')) || 0,
       cashAmount: parseFloat(editCash.replace(/,/g, '')) || 0,
@@ -521,19 +526,63 @@ export default function ShiftReportScreen() {
     Alert.alert('Updated', 'Shift report has been updated.');
   }
 
-  function handleDelete() {
+  function handleAdminReturn() {
+    if (!viewing || !isAdmin || viewing.status !== 'approved') return;
+    if (!reviewNote.trim()) {
+      Alert.alert('Reason required', 'Explain why this approved report is being returned to the accountant.');
+      return;
+    }
+    const report = viewing;
+    Alert.alert(
+      'Return approved report?',
+      'This reverses its approved sales entry while the accountant reviews it. The accountant can reject it to the manager, who can then return it to the attendant to correct the business date.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Return to accountant',
+          onPress: () => {
+            if (!adminReturnApprovedPumpReport(report.id, reviewNote)) {
+              Alert.alert('Unable to return', 'Only an admin can return an approved report to the accountant.');
+              return;
+            }
+            closeModal();
+            Alert.alert('Returned to accountant', 'The report is back with the accountant for review. Its approved sales entry has been reversed while it is corrected.');
+          },
+        },
+      ],
+    );
+  }
+
+  async function handleDelete() {
     if (!viewing) return;
-    if (viewing.status === 'approved') {
+    if (viewing.status === 'approved' && !isAdmin) {
       Alert.alert('Locked', 'This report was approved by the accountant and is permanently locked. It cannot be deleted or edited.');
       return;
     }
     if (viewing.status === 'pending_accountant' && !isAdmin && !isMd) { Alert.alert('In Review', 'This report is with the accountant and cannot be deleted.'); return; }
+    const isApprovedWrongDate = viewing.status === 'approved';
     Alert.alert(
-      'Delete Report',
-      `Delete the shift report for ${viewing.pumpName} on ${fmtDate(viewing.date)}? This cannot be undone.`,
+      isApprovedWrongDate ? 'Delete approved report for re-entry?' : 'Delete Report',
+      isApprovedWrongDate
+        ? `Use this only when ${viewing.pumpName} was approved on the wrong business date. This removes the approved report and sale, resets its opening meter to ${fmtL(viewing.openingMeter)}, and lets the attendant enter and submit a replacement report.`
+        : `Delete the shift report for ${viewing.pumpName} on ${fmtDate(viewing.date)}? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => { deletePumpReport(viewing.id); closeModal(); } },
+        {
+          text: isApprovedWrongDate ? 'Delete & reopen' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const deleted = await deletePumpReport(viewing.id);
+            if (!deleted) {
+              Alert.alert('Unable to delete', 'The report could not be deleted. Check your connection and try again.');
+              return;
+            }
+            closeModal();
+            if (isApprovedWrongDate) {
+              Alert.alert('Report deleted', 'The opening meter has been reset so the pump attendant can enter and submit the corrected report.');
+            }
+          },
+        },
       ]
     );
   }
@@ -1386,7 +1435,8 @@ export default function ShiftReportScreen() {
               )}
               {((isAtt && viewing.submittedBy === userName &&
                 (viewing.status === 'pending_manager' || viewing.status === 'returned_attendant')) ||
-                ((isAdmin || isMd) && viewing.status !== 'approved')) && !isEditing && !isCorrectingDate && (
+                ((isAdmin || isMd) && viewing.status !== 'approved') ||
+                (isAdmin && viewing.status === 'approved')) && !isEditing && !isCorrectingDate && (
                 <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10 }}>
                   <Ionicons name="trash-outline" size={22} color="#E74C3C" />
                 </TouchableOpacity>
@@ -1407,7 +1457,7 @@ export default function ShiftReportScreen() {
               <View style={[c.lockedNotice, { backgroundColor: '#EAF3DE', borderColor: '#27500A44' }]}>
                 <Ionicons name="lock-closed-outline" size={14} color="#27500A" />
                 <Text style={{ flex: 1, fontSize: 12, color: '#27500A' }}>
-                  Approved by the accountant and locked. Only an admin can correct its business date; figures and approval history cannot be changed.
+                  Approved by the accountant and locked. Admin can correct its business date, return it to the accountant for a correction workflow, or delete it only to re-enter a wrong-date report.
                 </Text>
               </View>
             )}
@@ -1447,6 +1497,15 @@ export default function ShiftReportScreen() {
 
             {/* Meter & volume */}
             <Text style={[c.sectionLabel, { color: colors.text, marginTop: 16 }]}>Meter Readings</Text>
+            {isEditing && (
+              <AppliedDateField
+                value={editDate}
+                onChange={setEditDate}
+                label="Applies-on business date"
+                accent={roleColor}
+                helper="Use the operating day this shift actually belongs to."
+              />
+            )}
             <Field label="Opening Meter" value={`${fmtL(viewing.openingMeter)} ${unitForProd(viewing.product)}`} colors={colors} />
             {isEditing ? (
               <>
@@ -1532,6 +1591,13 @@ export default function ShiftReportScreen() {
             {viewing.mgrBy   && <Field label="Manager Review" value={`${viewing.mgrBy} · ${fmtDateTime(viewing.mgrAt ?? '')}`} colors={colors} />}
             {viewing.accNote && <Field label="Accountant Note" value={viewing.accNote} colors={colors} />}
             {viewing.accBy   && <Field label="Accountant Review" value={`${viewing.accBy} · ${fmtDateTime(viewing.accAt ?? '')}`} colors={colors} />}
+            {viewing.adminReturnedAt && (
+              <Field
+                label="Admin Return for Correction"
+                value={`${viewing.adminReturnedBy ?? 'Admin'} · ${fmtDateTime(viewing.adminReturnedAt)}${viewing.adminReturnNote ? ` — ${viewing.adminReturnNote}` : ''}`}
+                colors={colors}
+              />
+            )}
             {viewing.dateCorrectedAt && (
               <Field
                 label="Business Date Correction"
@@ -1572,13 +1638,13 @@ export default function ShiftReportScreen() {
                   <Ionicons name="refresh-circle" size={16} color="#fff" />
                   <Text style={c.submitBtnTxt}>Re-submit to Accountant</Text>
                 </TouchableOpacity>
-                <Text style={[c.sectionLabel, { color: '#8A3B0F', marginTop: 14 }]}>Or Return to Attendant</Text>
+                <Text style={[c.sectionLabel, { color: '#8A3B0F', marginTop: 14 }]}>Reject & Return to Attendant</Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
-                  Send the report back to {viewing.submittedByName} so they can correct and re-submit it. The note above is required and will be shown to them.
+                  Reject this returned report and send it back to {viewing.submittedByName} so they can correct the business date or figures before re-submitting it. The note above is required and will be shown to them.
                 </Text>
                 <TouchableOpacity onPress={handleMgrReturnToAttendant} style={[c.submitBtn, { backgroundColor: '#8A3B0F' }]}>
                   <Ionicons name="return-down-back" size={16} color="#fff" />
-                  <Text style={c.submitBtnTxt}>Return to Attendant for Correction</Text>
+                  <Text style={c.submitBtnTxt}>Reject — Return to Attendant</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -1588,7 +1654,7 @@ export default function ShiftReportScreen() {
               <>
                 <Text style={[c.sectionLabel, { color: colors.text, marginTop: 16 }]}>Correct & Re-submit</Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
-                  Your manager sent this report back to you. Use the pencil icon above to correct the figures, then re-submit it for review.
+                  Your manager sent this report back to you. Use the pencil icon above to correct the business date or figures, then re-submit it for review.
                 </Text>
                 <TextInput
                   style={[c.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
@@ -1598,6 +1664,24 @@ export default function ShiftReportScreen() {
                 <TouchableOpacity onPress={handleAttResubmit} style={[c.submitBtn, { backgroundColor: roleColor }]}>
                   <Ionicons name="send" size={16} color="#fff" />
                   <Text style={c.submitBtnTxt}>Re-submit to Manager</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {isAdmin && viewing.status === 'approved' && (
+              <>
+                <Text style={[c.sectionLabel, { color: '#8A3B0F', marginTop: 16 }]}>Return for Correction</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
+                  Return this approved report to the accountant when its date must be corrected through the full review chain.
+                </Text>
+                <TextInput
+                  style={[c.textArea, { backgroundColor: '#FFF4E5', borderColor: '#D9770644', color: colors.text }]}
+                  placeholder="Explain why the report is being returned (required)…" placeholderTextColor={colors.textSubtle}
+                  multiline numberOfLines={3} value={reviewNote} onChangeText={setReviewNote}
+                />
+                <TouchableOpacity onPress={handleAdminReturn} style={[c.submitBtn, { backgroundColor: '#8A3B0F' }]}>
+                  <Ionicons name="return-down-back" size={16} color="#fff" />
+                  <Text style={c.submitBtnTxt}>Return to Accountant</Text>
                 </TouchableOpacity>
               </>
             )}

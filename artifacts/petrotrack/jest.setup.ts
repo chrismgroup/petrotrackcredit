@@ -20,6 +20,7 @@ jest.mock('@/lib/api', () => ({
     get: jest.fn(async () => null),
     put: jest.fn(async () => undefined),
     resetOperational: jest.fn(async () => ({ ok: true })),
+    deleteApprovedPumpReport: jest.fn(async () => ({ ok: true })),
   },
   versionApi: { get: jest.fn(async () => ({ version: 'test' })) },
   usersApi: { list: jest.fn(async () => []) },

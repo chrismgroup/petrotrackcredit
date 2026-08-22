@@ -28,3 +28,7 @@ export interface ErrorEnvelope {
   error: string;
 }
 
+export type DeleteApprovedPumpReport200 = {
+  ok: boolean;
+};
+

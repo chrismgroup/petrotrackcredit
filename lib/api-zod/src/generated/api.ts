@@ -69,3 +69,16 @@ export const GetStorageObjectParams = zod.object({
 export const GetStorageObjectResponse = zod.unknown()
 
 
+/**
+ * Admin-only. Atomically removes the approved report and linked sale, reverses its tank-sale effect, and restores the opening meter for a replacement entry.
+ * @summary Delete an approved wrong-date pump report for re-entry
+ */
+export const DeleteApprovedPumpReportParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteApprovedPumpReportResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+

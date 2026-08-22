@@ -47,6 +47,7 @@ type JsonRecord = Record<string, unknown>;
 const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   pending_manager: 1,
   returned: 2,
+  returned_attendant: 2,
   pending_accountant: 3,
   approved: 4,
 };
@@ -58,7 +59,7 @@ const DIP_STATUS_RANK: Record<string, number> = {
 };
 
 function pumpReportActivityMs(report: JsonRecord): number {
-  const timestamps = ["submittedAt", "mgrAt", "accAt", "dateCorrectedAt"]
+  const timestamps = ["submittedAt", "mgrAt", "accAt", "dateCorrectedAt", "adminReturnedAt"]
     .map(key => Date.parse(String(report[key] ?? "")))
     .filter(value => Number.isFinite(value));
   return timestamps.length > 0 ? Math.max(...timestamps) : 0;
@@ -87,22 +88,29 @@ function mergePumpDailyReports(existing: unknown, incoming: unknown, actorRole?:
     const currentActivity = pumpReportActivityMs(current);
     const candidateActivity = pumpReportActivityMs(report);
 
-    // Approved report figures and workflow state remain locked. The one
-    // exception is a business-date correction made by an Admin. Reject any
-    // non-admin attempt to change an approved report's date, including a stale
-    // full-array sync from a device that has not seen the correction yet.
-    if (
-      current.status === "approved" &&
-      report.status === "approved" &&
-      current.date !== report.date
-    ) {
-      const correctionMs = Date.parse(String(report.dateCorrectedAt ?? ""));
-      if (
-        actorRole !== "admin" ||
-        !Number.isFinite(correctionMs) ||
-        correctionMs <= currentActivity
-      ) {
-        return;
+    // Approved reports are immutable unless an Admin either corrects their
+    // business date or explicitly returns them to the accountant for a full
+    // correction workflow. A stale device must never downgrade approval.
+    if (current.status === "approved") {
+      if (report.status === "approved" && current.date !== report.date) {
+        const correctionMs = Date.parse(String(report.dateCorrectedAt ?? ""));
+        if (
+          actorRole !== "admin" ||
+          !Number.isFinite(correctionMs) ||
+          correctionMs <= currentActivity
+        ) {
+          return;
+        }
+      } else if (report.status !== "approved") {
+        const returnedAt = Date.parse(String(report.adminReturnedAt ?? ""));
+        if (
+          actorRole !== "admin" ||
+          report.status !== "pending_accountant" ||
+          !Number.isFinite(returnedAt) ||
+          returnedAt <= currentActivity
+        ) {
+          return;
+        }
       }
     }
 
@@ -452,6 +460,100 @@ router.post("/state/reset-operational", async (req, res): Promise<void> => {
   });
 
   res.json({ ok: true, seedMeters });
+});
+
+/**
+ * An approved shift report ordinarily remains immutable. Admin may remove one
+ * only when it was approved against the wrong business date so an attendant
+ * can enter a clean replacement. This makes the report, sale, tank effect,
+ * and opening-meter reset one server-side transaction.
+ */
+router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> => {
+  if (req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Only an admin can delete an approved pump report" });
+    return;
+  }
+
+  const idValue = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const reportId = Number(idValue);
+  if (!Number.isSafeInteger(reportId)) {
+    res.status(400).json({ error: "Invalid pump report ID" });
+    return;
+  }
+
+  const keys = [
+    "pumpDailyReports", "sales", "tanks", "lpgTanks", "pumps",
+    "pumpInitialMeters", "pumpLockedMeters", "audit",
+  ];
+  const rows = await db.select().from(appStateTable).where(sql`${appStateTable.key} IN (${keys})`);
+  const state = Object.fromEntries(rows.map(row => [row.key, row.data]));
+  const reports = Array.isArray(state.pumpDailyReports) ? state.pumpDailyReports as JsonRecord[] : [];
+  const report = reports.find(candidate => Number(candidate.id) === reportId);
+  if (!report) {
+    res.status(404).json({ error: "Pump report not found" });
+    return;
+  }
+  if (report.status !== "approved") {
+    res.status(409).json({ error: "Only an approved pump report uses this delete-and-reopen action" });
+    return;
+  }
+
+  const pumps = Array.isArray(state.pumps) ? state.pumps as JsonRecord[] : [];
+  const pump = pumps.find(candidate => candidate.id === report.pumpId);
+  const branchId = String(report.branchId ?? pump?.branchId ?? "");
+  const liters = Number(report.liters ?? 0);
+  const product = String(report.product ?? "");
+  const pumpId = String(report.pumpId ?? "");
+  const sales = Array.isArray(state.sales) ? state.sales as JsonRecord[] : [];
+  const tanks = Array.isArray(state.tanks) ? state.tanks as JsonRecord[] : [];
+  const lpgTanks = Array.isArray(state.lpgTanks) ? state.lpgTanks as JsonRecord[] : [];
+  const initialMeters = state.pumpInitialMeters && typeof state.pumpInitialMeters === "object"
+    ? { ...(state.pumpInitialMeters as Record<string, number>) }
+    : {};
+  const lockedMeters = state.pumpLockedMeters && typeof state.pumpLockedMeters === "object"
+    ? { ...(state.pumpLockedMeters as Record<string, number>) }
+    : {};
+  const matchingTanks = product === "LPG"
+    ? lpgTanks.filter(tank => !branchId || !tank.branchId || tank.branchId === branchId)
+    : tanks.filter(tank => tank.prod === product && (!branchId || !tank.branchId || tank.branchId === branchId));
+  const matchingIds = new Set(matchingTanks.map(tank => String(tank.id)));
+  const share = matchingTanks.length > 0 ? liters / matchingTanks.length : 0;
+  const reverseTankSales = (entries: JsonRecord[]) => entries.map(tank => matchingIds.has(String(tank.id))
+    ? { ...tank, sl: Math.max(0, Number(tank.sl ?? 0) - share) }
+    : tank
+  );
+  const nextTanks = product === "LPG" ? tanks : reverseTankSales(tanks);
+  const nextLpgTanks = product === "LPG" ? reverseTankSales(lpgTanks) : lpgTanks;
+  if (pumpId) {
+    initialMeters[pumpId] = Number(report.openingMeter ?? 0);
+    delete lockedMeters[pumpId];
+  }
+  const audit = Array.isArray(state.audit) ? state.audit as JsonRecord[] : [];
+  const auditEntry: JsonRecord = {
+    id: Math.floor(Math.random() * 1_000_000_000),
+    action: "Approved pump report deleted for re-entry",
+    user: req.auth.username,
+    detail: `Report #${reportId} deleted after wrong-date review; ${String(report.pumpName ?? "Pump")} opening meter reset for attendant re-entry.`,
+    ts: new Date().toISOString(),
+  };
+
+  await db.transaction(async tx => {
+    const writeState = async (key: string, data: unknown) => {
+      await tx.insert(appStateTable).values({ key, data }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data, updatedAt: new Date() },
+      });
+    };
+    await writeState("pumpDailyReports", reports.filter(candidate => Number(candidate.id) !== reportId));
+    await writeState("sales", sales.filter(entry => Number(entry.shiftReportId) !== reportId));
+    await writeState("tanks", nextTanks);
+    await writeState("lpgTanks", nextLpgTanks);
+    await writeState("pumpInitialMeters", initialMeters);
+    await writeState("pumpLockedMeters", lockedMeters);
+    await writeState("audit", [auditEntry, ...audit]);
+  });
+
+  res.json({ ok: true });
 });
 
 /* ── Backup routes (admin-only) ─────────────────────────────────────────── */
