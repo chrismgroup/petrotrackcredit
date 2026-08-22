@@ -57,6 +57,7 @@ function EditModal({
   const [posValue, setPosValue]               = useState(String(entry.posValue));
   const [goodsOnTransit, setGoodsOnTransit]   = useState(String(entry.goodsOnTransit));
   const [cashInHand, setCashInHand]           = useState(String(entry.cashInHand));
+  const [capitalInjection, setCapitalInjection] = useState(String(entry.capitalInjection ?? 0));
   const [liabilities, setLiabilities]        = useState(String(entry.liabilities));
   const [startupCapital, setStartupCapital]   = useState(String(entry.startupCapital ?? 0));
   const [loans, setLoans]                     = useState<BankLoan[]>(entry.bankLoans.length ? entry.bankLoans : [{ bank: '', amount: 0 }]);
@@ -73,6 +74,7 @@ function EditModal({
     onSave({
       cashInBank: n(cashInBank), posValue: n(posValue),
       goodsOnTransit: n(goodsOnTransit), cashInHand: n(cashInHand),
+      capitalInjection: n(capitalInjection),
       bankLoans: loans.filter(l => l.bank.trim()),
       liabilities: n(liabilities),
       ...(canSeedStartupCapital ? {
@@ -113,6 +115,10 @@ function EditModal({
           {field('POS Value (cash at POS terminals)', posValue, setPosValue)}
           {field('Cost of Goods on Transit', goodsOnTransit, setGoodsOnTransit)}
           {field('Cash in Hand', cashInHand, setCashInHand)}
+          {field('Capital Injected as Loan', capitalInjection, setCapitalInjection)}
+          <Text style={[fStyles.editHint, { color: colors.textMuted }]}>
+            This is shown as a funding source in the Operating Capital Waterfall and does not affect monthly profit.
+          </Text>
           <Text style={[fStyles.editHint, { color: colors.textMuted }]}>
             Accounts Receivable is calculated automatically from credit sales in validated shift reports.
           </Text>
@@ -306,6 +312,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     { label: 'Cash in Bank', amount: fe.cashInBank, color: colors.text },
     { label: 'Value of Goods on Transit', amount: fe.goodsOnTransit, color: colors.text },
     { label: 'Debts by Customers (Accounts Receivable)', amount: accountsReceivable, color: colors.text },
+    { label: 'Capital Injected as Loan', amount: fe.capitalInjection, color: colors.text },
     {
       label: previousMonthNetProfit >= 0 ? 'Previous Month’s Net Profit' : 'Previous Month’s Net Loss',
       amount: previousMonthNetProfit,
