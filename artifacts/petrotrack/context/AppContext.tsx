@@ -118,6 +118,10 @@ export interface FinancialEntry {
   cashInBank: number; posValue: number; goodsOnTransit: number;
   cashInHand: number; debtsFromCustomers: number; capitalInjection: number;
   bankLoans: BankLoan[]; liabilities: number;
+  startupCapital: number;
+  startupCapitalMonth: string;
+  startupCapitalSource: 'admin' | 'rollover';
+  closingOperatingCapital?: number;
   updatedBy: string; updatedAt: string;
 }
 export interface NavItem { id: string; icon: string; label: string; }
@@ -1123,8 +1127,24 @@ const INIT_MEETING_MINUTES: MeetingMinutes[] = [];
 const INIT_FINANCIAL_ENTRY: FinancialEntry = {
   cashInBank: 0, posValue: 0, goodsOnTransit: 0, cashInHand: 0,
   debtsFromCustomers: 0, capitalInjection: 0, bankLoans: [], liabilities: 0,
+  startupCapital: 0, startupCapitalMonth: '', startupCapitalSource: 'rollover',
+  closingOperatingCapital: 0,
   updatedBy: '', updatedAt: '',
 };
+
+function normaliseFinancialEntry(value: unknown): FinancialEntry {
+  const incoming = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Partial<FinancialEntry>
+    : {};
+  return {
+    ...INIT_FINANCIAL_ENTRY,
+    ...incoming,
+    bankLoans: Array.isArray(incoming.bankLoans) ? incoming.bankLoans : [],
+    startupCapital: typeof incoming.startupCapital === 'number' ? incoming.startupCapital : 0,
+    startupCapitalMonth: typeof incoming.startupCapitalMonth === 'string' ? incoming.startupCapitalMonth : '',
+    startupCapitalSource: incoming.startupCapitalSource === 'admin' ? 'admin' : 'rollover',
+  };
+}
 
 interface AppContextType {
   companyInfo: CompanyInfo; updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
@@ -1506,7 +1526,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.broadcasts)        setBroadcasts(s.broadcasts);
       if (s.callLog)           setCallLog(s.callLog);
       if (s.marketCompetitors) setMarketCompetitors(s.marketCompetitors);
-      if (s.financialEntry)    setFinancialEntry(s.financialEntry);
+       if (s.financialEntry)    setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
        markLoaded();
      }).catch(() => {
        // The authenticated server sync can still recover the app if the local
@@ -1669,7 +1689,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
-      if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(s.financialEntry as FinancialEntry);
+      if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
        if (!p.has('startupStocks'))       setStartupStocks(safeArray<StartupStock>(s.startupStocks));
        if (!p.has('stockLogs'))           setStockLogs(safeArray<StockLogEntry>(s.stockLogs));
       // Lift the startup write-gate ONLY on success: server state is now applied, safe to accept user writes.

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert, Modal, ScrollView, StyleSheet, Text,
   TextInput, TouchableOpacity, View,
@@ -39,22 +39,16 @@ function Row({ label, value, color, indent, bold }: {
   );
 }
 
-function MiniBar({ pct, color }: { pct: number; color: string }) {
-  return (
-    <View style={fStyles.miniBarTrack}>
-      <View style={[fStyles.miniBarFill, { width: `${Math.min(pct * 100, 100)}%` as any, backgroundColor: color }]} />
-    </View>
-  );
-}
-
 /* ─── Edit modal for ACC ─── */
 function EditModal({
-  visible, onClose, entry, onSave,
+  visible, onClose, entry, onSave, canSeedStartupCapital, currentMonthKey,
 }: {
   visible: boolean;
   onClose: () => void;
   entry: ReturnType<typeof useApp>['financialEntry'];
   onSave: (updates: Partial<typeof entry>) => void;
+  canSeedStartupCapital: boolean;
+  currentMonthKey: string;
 }) {
   const colors = useColors();
 
@@ -63,8 +57,8 @@ function EditModal({
   const [goodsOnTransit, setGoodsOnTransit]   = useState(String(entry.goodsOnTransit));
   const [cashInHand, setCashInHand]           = useState(String(entry.cashInHand));
   const [debts, setDebts]                     = useState(String(entry.debtsFromCustomers));
-  const [capitalInj, setCapitalInj]           = useState(String(entry.capitalInjection));
   const [liabilities, setLiabilities]        = useState(String(entry.liabilities));
+  const [startupCapital, setStartupCapital]   = useState(String(entry.startupCapital ?? 0));
   const [loans, setLoans]                     = useState<BankLoan[]>(entry.bankLoans.length ? entry.bankLoans : [{ bank: '', amount: 0 }]);
 
   function n(v: string) { return parseFloat(v) || 0; }
@@ -79,9 +73,14 @@ function EditModal({
     onSave({
       cashInBank: n(cashInBank), posValue: n(posValue),
       goodsOnTransit: n(goodsOnTransit), cashInHand: n(cashInHand),
-      debtsFromCustomers: n(debts), capitalInjection: n(capitalInj),
+      debtsFromCustomers: n(debts),
       bankLoans: loans.filter(l => l.bank.trim()),
       liabilities: n(liabilities),
+      ...(canSeedStartupCapital ? {
+        startupCapital: n(startupCapital),
+        startupCapitalMonth: currentMonthKey,
+        startupCapitalSource: 'admin' as const,
+      } : {}),
     });
     onClose();
   }
@@ -116,7 +115,14 @@ function EditModal({
           {field('Cost of Goods on Transit', goodsOnTransit, setGoodsOnTransit)}
           {field('Cash in Hand', cashInHand, setCashInHand)}
           {field('Debts Owed by Customers', debts, setDebts)}
-          {field('Capital Injection', capitalInj, setCapitalInj)}
+          {canSeedStartupCapital && (
+            <>
+              {field('Start-up Capital (current month opening)', startupCapital, setStartupCapital)}
+              <Text style={[fStyles.editHint, { color: colors.textMuted }]}>
+                This seeds the current month. Future months roll over the previous month’s closing operating capital automatically.
+              </Text>
+            </>
+          )}
           {field('Total Liabilities', liabilities, setLiabilities)}
 
           <Text style={[fStyles.editSection, { color: colors.text, marginTop: 16 }]}>Bank Loans</Text>
@@ -174,6 +180,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'admin';
   const scopedBranchId = isGlobal ? null : branchId;
   const currentMonthRange = calendarMonthBusinessDateRange();
+  const currentMonthKey = currentMonthRange.from.slice(0, 7);
   const inCurrentMonth = (value?: string) => {
     const businessDate = businessDateKey(value);
     return businessDate >= currentMonthRange.from && businessDate <= currentMonthRange.to;
@@ -248,12 +255,32 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   /* ── operating capital formula ── */
   const fe = financialEntry;
   const totalLoans = fe.bankLoans.reduce((s, l) => s + l.amount, 0);
-
-  const positives = stockValue + fe.cashInBank + fe.posValue + fe.goodsOnTransit
-    + fe.cashInHand + fe.debtsFromCustomers + Math.max(netProfit, 0);
-  const negatives = totalLoans + fe.liabilities + Math.abs(Math.min(netProfit, 0));
-  const operatingCapital = positives - negatives;
+  const isNewMonth = fe.startupCapitalMonth !== currentMonthKey;
+  const startupCapital = isNewMonth
+    ? (fe.closingOperatingCapital ?? fe.startupCapital)
+    : fe.startupCapital;
+  const startupCapitalSource = isNewMonth ? 'rollover' : fe.startupCapitalSource;
+  const operatingCapital = startupCapital + netProfit;
   const isPositive = operatingCapital >= 0;
+
+  useEffect(() => {
+    if (
+      fe.startupCapital === startupCapital
+      && fe.startupCapitalMonth === currentMonthKey
+      && fe.startupCapitalSource === startupCapitalSource
+      && fe.closingOperatingCapital === operatingCapital
+    ) return;
+    updateFinancialEntry({
+      startupCapital,
+      startupCapitalMonth: currentMonthKey,
+      startupCapitalSource,
+      closingOperatingCapital: operatingCapital,
+    });
+  }, [
+    currentMonthKey, fe.closingOperatingCapital, fe.startupCapital,
+    fe.startupCapitalMonth, fe.startupCapitalSource, operatingCapital,
+    startupCapital, startupCapitalSource, updateFinancialEntry,
+  ]);
 
   return (
     <>
@@ -293,11 +320,6 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
           <Text style={[fStyles.heroLabel, { color: isPositive ? '#27500A' : '#791F1F' }]}>Operating Capital</Text>
           <Text style={[fStyles.heroAmt, { color: isPositive ? '#27500A' : '#791F1F' }]}>{fmt(operatingCapital)}</Text>
         </View>
-
-        {/* Summary bar: positives vs negatives */}
-        {(positives + negatives) > 0 && (
-          <MiniBar pct={positives / (positives + negatives)} color={isPositive ? '#27500A' : '#791F1F'} />
-        )}
 
         {/* Quick stats */}
         <View style={fStyles.quickRow}>
@@ -347,19 +369,12 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
 
             {/* Formula */}
             <Text style={[fStyles.subSection, { color: colors.text, marginTop: 14 }]}>🧮 Capital Formula</Text>
-            <Row label="Stock Value" value={fmt(stockValue)} color="#185FA5" />
-            <Row label="+ Cash in Bank" value={fmt(fe.cashInBank)} />
-            <Row label="+ POS Value" value={fmt(fe.posValue)} />
-            <Row label="+ Goods on Transit" value={fmt(fe.goodsOnTransit)} />
-            <Row label="+ Cash in Hand" value={fmt(fe.cashInHand)} />
-            <Row label="+ Debts by Customers" value={fmt(fe.debtsFromCustomers)} />
+            <Row
+              label={`Start-up Capital (${startupCapitalSource === 'admin' ? 'admin seed' : 'rolled over'})`}
+              value={fmt(startupCapital)}
+              color="#185FA5"
+            />
             <Row label={netProfit >= 0 ? '+ Net Profit (month)' : '- Net Loss (month)'} value={fmt(Math.abs(netProfit))} color={netProfit >= 0 ? '#27500A' : '#791F1F'} />
-            {fe.bankLoans.length > 0 && (
-              fe.bankLoans.map((l, i) => (
-                <Row key={i} label={`- Loan (${l.bank || 'Bank'})`} value={fmt(l.amount)} color="#791F1F" indent />
-              ))
-            )}
-            <Row label="- Liabilities" value={fmt(fe.liabilities)} color="#791F1F" />
             <View style={[fStyles.totalRow, { borderTopColor: colors.border, borderTopWidth: 1.5 }]}>
               <Text style={[fStyles.totalLabel, { color: colors.text }]}>= Operating Capital</Text>
               <Text style={[fStyles.totalAmt, { color: isPositive ? '#27500A' : '#791F1F' }]}>{fmt(operatingCapital)}</Text>
@@ -381,6 +396,8 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
         onClose={() => setShowEdit(false)}
         entry={financialEntry}
         onSave={updateFinancialEntry}
+        canSeedStartupCapital={role === 'admin'}
+        currentMonthKey={currentMonthKey}
       />
     </>
   );
@@ -431,6 +448,7 @@ const fStyles = StyleSheet.create({
   editSection:    { fontSize: 14, fontWeight: '700', marginBottom: 10 },
   editField:      { marginBottom: 12 },
   editLabel:      { fontSize: 12, fontWeight: '600', marginBottom: 4 },
+  editHint:       { fontSize: 11, lineHeight: 16, marginTop: -6, marginBottom: 12 },
   editInputRow:   { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   naira:          { fontSize: 15, fontWeight: '600', marginRight: 4 },
   editInput:      { flex: 1, fontSize: 16, fontWeight: '600' },
