@@ -74,7 +74,7 @@ function EditModal({
     onSave({
       cashInBank: n(cashInBank), posValue: n(posValue),
       goodsOnTransit: n(goodsOnTransit), cashInHand: n(cashInHand),
-      capitalInjection: n(capitalInjection),
+      capitalInjection: Math.max(0, n(capitalInjection)),
       bankLoans: loans.filter(l => l.bank.trim()),
       liabilities: n(liabilities),
       ...(canSeedStartupCapital ? {
@@ -305,7 +305,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     ? (fe.closingOperatingCapital ?? fe.startupCapital)
     : fe.startupCapital;
   const startupCapitalSource = isNewMonth ? 'rollover' : fe.startupCapitalSource;
-  const operatingCapital = startupCapital + netProfit;
+  const operatingCapital = startupCapital + netProfit + fe.capitalInjection;
   const isPositive = operatingCapital >= 0;
   const waterfallRows = [
     { label: 'Value of Current Stock', amount: stockValue, color: '#185FA5' },
@@ -461,6 +461,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
               color="#185FA5"
             />
             <Row label={netProfit >= 0 ? '+ Net Profit (month)' : '- Net Loss (month)'} value={fmt(Math.abs(netProfit))} color={netProfit >= 0 ? '#27500A' : '#791F1F'} />
+            <Row label="+ Capital Injected as Loan" value={fmt(fe.capitalInjection)} color="#185FA5" />
             <View style={[fStyles.totalRow, { borderTopColor: colors.border, borderTopWidth: 1.5 }]}>
               <Text style={[fStyles.totalLabel, { color: colors.text }]}>= Operating Capital</Text>
               <Text style={[fStyles.totalAmt, { color: isPositive ? '#27500A' : '#791F1F' }]}>{fmt(operatingCapital)}</Text>
