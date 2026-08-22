@@ -1131,7 +1131,7 @@ interface AppContextType {
   role: Role | null; userName: string; branchId: string | null; staffId: number | null;
   isServerAuthenticated: boolean;
   navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
-  login: (role: Role, name: string, staffId?: number, branchId?: string) => Promise<boolean>; logout: () => void;
+  login: (role: Role, name: string, staffId?: number, branchId?: string) => Promise<boolean>; logout: () => Promise<void>;
   updateMgrPerms: (branchId: string, perms: Partial<MgrPermissions>) => void;
   prices: Prices; priceHistory: PriceChange[]; tanks: Tank[]; lpgTanks: LPGTank[]; pumps: Pump[];
   dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
@@ -2115,21 +2115,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRole(r); setUserName(n);
     setBranchId(bid ?? null); setStaffId(sid ?? null);
     setIsServerAuthenticated(true);
-    AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null }));
+    await AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null }));
     return true;
   }, [syncFromServer]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Remove the device push-token association while the previous JWT is
+    // still available. Then finish removing that JWT before exposing login,
+    // so a quick sign-out/sign-in cannot clear the newly issued session.
+    await notificationsApi.unregisterToken();
+    await clearToken();
+    await Promise.all([
+      AsyncStorage.removeItem('auth'),
+      AsyncStorage.removeItem('messages'),
+    ]);
     setRole(null); setUserName(''); setBranchId(null); setStaffId(null);
     setIsServerAuthenticated(false);
     setNotifications([]);
     // Chats are account-scoped. Do not leave the previous user's local
     // conversation cache visible when another person signs in on this device.
     setMessages({});
-    void notificationsApi.unregisterToken();
-    AsyncStorage.removeItem('auth');
-    AsyncStorage.removeItem('messages');
-    clearToken();
   }, []);
 
   const updateMgrPerms = useCallback((bid: string, perms: Partial<MgrPermissions>) => {
