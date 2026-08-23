@@ -459,25 +459,38 @@ describe('stock book report eligibility', () => {
 });
 
 describe('current tank stock', () => {
-  it('uses an approved dip as the physical snapshot without double-counting tank counters', () => {
+  it('uses the full Uyo PMS dip total without double-counting tank counters', () => {
     const dip = {
       id: 1,
       dt: '2026-08-23',
       by: 'Operations',
-      rd: { 'tank-uyo-pms': 15_000 },
+      rd: {
+        'tank-uyo-pms-1': 100,
+        'tank-uyo-pms-2': 15_000,
+        'tank-uyo-pms-3': 100,
+        'tank-uyo-pms-4': 9_000,
+      },
       lpg: {},
       obs: '',
       status: 'approved' as const,
     };
 
-    expect(getCurrentTankStock({
-      id: 'tank-uyo-pms',
+    const tanks = [
+      ['tank-uyo-pms-1', 100],
+      ['tank-uyo-pms-2', 100],
+      ['tank-uyo-pms-3', 100],
+      ['tank-uyo-pms-4', 11_550],
+    ].map(([id, opening]) => getCurrentTankStock({
+      id,
       cap: 45_000,
       dip: 4_500,
-      op: 100,
+      op: opening,
       rv: 7_500,
       sl: 763.5,
-    }, [dip])).toBe(15_000);
+    }, [dip]));
+
+    expect(tanks).toEqual([100, 15_000, 100, 9_000]);
+    expect(tanks.reduce((total, stock) => total + stock, 0)).toBe(24_200);
   });
 });
 
