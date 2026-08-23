@@ -22,6 +22,7 @@ import {
   ROLE_LABELS,
   SCREEN_ROUTES,
   calculateDailyOperationalStock,
+  calculateDailyStockLogBalance,
   dipReadingToLiters,
   previousBusinessDateKey,
   unitForProd,
@@ -507,9 +508,12 @@ export default function HomeScreen() {
             pumps,
           );
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
-        const variance = stockBook.bookStock === null || submittedTankDip === null
-          ? null
-          : stockBook.bookStock - submittedTankDip;
+        const variance = calculateDailyStockLogBalance(
+          stockBook.bookStock,
+          stockBook.delivered,
+          stockBook.sold,
+          submittedTankDip,
+        ).variance;
 
         return {
           product,
