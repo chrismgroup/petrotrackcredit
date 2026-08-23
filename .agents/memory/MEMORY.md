@@ -23,6 +23,7 @@
 - [Report runtime safety](report-runtime-safety.md) — combined reports must tolerate incomplete synced records during rendering and export
 - [Legacy branch asset records](legacy-branch-assets.md) — older tank and pump records may omit branch IDs; only unambiguous asset names can safely repair them
 - [Operations stock logs](operations-stock-logs.md) — one persisted branch/product/date ledger row uses seed + deliveries − shift sales and compares against the same-day dip
+- [Current tank stock snapshots](current-tank-stock-snapshots.md) — an approved dip is the tank’s physical snapshot; do not add cumulative receipt/sales counters again
 - [Shift-report workflow](shift-report-workflow.md) — approved reports are locked for all roles; every transition guards its source status in shared state, not just the UI
 - [Maintenance workflow authority](maintenance-workflow.md) — maintenance mutations use locked API actions; operational resets must preserve this append-only workflow history
 - [Operating capital formula](operating-capital-formula.md) — operating capital is monthly opening start-up capital plus that month’s net profit, with admin seed and rollover

@@ -135,9 +135,10 @@ export interface UserInfo { name: string; color: string; initials: string; role:
 /**
  * Returns the current physical stock for a tank.
  *
- * Tank balances are normally maintained as opening + receipts - sales. An
- * approved dip is also used as the physical source of truth when a previous
- * approval stored the direct litre reading as a millimetre-converted opening.
+ * Tank balances are normally maintained as opening + receipts - sales. Once an
+ * approved dip exists, however, its reading is the physical stock snapshot.
+ * The tank opening/receipt/sales fields are historical cumulative counters and
+ * must not be added again or the dip will be double-counted.
  */
 export function getCurrentTankStock(
   tank: Pick<Tank | LPGTank, 'op' | 'rv' | 'sl' | 'id'> & Partial<Pick<Tank, 'cap' | 'dip'>>,
@@ -159,20 +160,7 @@ export function getCurrentTankStock(
     ? latestDip?.lpg[tank.id]
     : latestDip?.rd[tank.id];
   if (reading !== undefined) {
-    // Older approvals stored litre readings as millimetres and inflated the
-    // tank opening by cap / dip. Correct that legacy opening transparently,
-    // while preserving normal post-dip deliveries and sales.
-    if (
-      productKind === 'petrol' &&
-      typeof tank.cap === 'number' &&
-      typeof tank.dip === 'number' &&
-      tank.cap > 0 &&
-      tank.dip > 0 &&
-      Math.abs(safeNum(tank.op) - Math.round((safeNum(reading) / safeNum(tank.dip)) * safeNum(tank.cap))) <= 0.01
-    ) {
-      return Math.max(0, dipReadingToLiters(safeNum(reading)) + safeNum(tank.rv) - safeNum(tank.sl));
-    }
-    return Math.max(0, (productKind === 'lpg' ? safeNum(reading) : dipReadingToLiters(safeNum(reading))) + safeNum(tank.rv) - safeNum(tank.sl));
+    return Math.max(0, productKind === 'lpg' ? safeNum(reading) : dipReadingToLiters(safeNum(reading)));
   }
   return balance;
 }

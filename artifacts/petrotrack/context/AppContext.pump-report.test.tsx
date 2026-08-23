@@ -8,6 +8,7 @@ import {
   calculateDailyOperationalStock,
   calculateDailyStockLogBalance,
   calculateStockBook,
+  getCurrentTankStock,
   mergeDipRecords,
   useApp,
 } from './AppContext';
@@ -455,6 +456,29 @@ describe('stock book report eligibility', () => {
       expect(result.bookStock).toBe(100);
     },
   );
+});
+
+describe('current tank stock', () => {
+  it('uses an approved dip as the physical snapshot without double-counting tank counters', () => {
+    const dip = {
+      id: 1,
+      dt: '2026-08-23',
+      by: 'Operations',
+      rd: { 'tank-uyo-pms': 15_000 },
+      lpg: {},
+      obs: '',
+      status: 'approved' as const,
+    };
+
+    expect(getCurrentTankStock({
+      id: 'tank-uyo-pms',
+      cap: 45_000,
+      dip: 4_500,
+      op: 100,
+      rv: 7_500,
+      sl: 763.5,
+    }, [dip])).toBe(15_000);
+  });
 });
 
 describe('daily stock log balance', () => {
