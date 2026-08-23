@@ -475,12 +475,13 @@ describe('current tank stock', () => {
       status: 'approved' as const,
     };
 
-    const tanks = [
+    const tankInputs: Array<[string, number]> = [
       ['tank-uyo-pms-1', 100],
       ['tank-uyo-pms-2', 100],
       ['tank-uyo-pms-3', 100],
       ['tank-uyo-pms-4', 11_550],
-    ].map(([id, opening]) => getCurrentTankStock({
+    ];
+    const tanks = tankInputs.map(([id, opening]) => getCurrentTankStock({
       id,
       cap: 45_000,
       dip: 4_500,
