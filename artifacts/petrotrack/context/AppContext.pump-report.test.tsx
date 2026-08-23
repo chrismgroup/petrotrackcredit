@@ -12,6 +12,7 @@ import {
   useApp,
 } from './AppContext';
 import type { DipRecord, PumpDailyReport, PumpReportStatus } from './AppContext';
+import { findLatestDipForProduct } from '../lib/dip-helpers';
 
 type AppState = ReturnType<typeof useApp>;
 
@@ -575,6 +576,24 @@ describe('tank dip synchronization', () => {
     const approved = baseDip('approved', '2026-08-20T08:00:00.000Z', '2026-08-20T10:00:00.000Z');
 
     expect(mergeDipRecords([pending], [approved])).toEqual([approved]);
+  });
+
+  it('keeps an earlier product dip visible when a later approved dip is for another product', () => {
+    const pmsDip = baseDip('approved', '2026-08-20T08:00:00.000Z', '2026-08-20T09:00:00.000Z');
+    const agoDip: DipRecord = {
+      ...baseDip('approved', '2026-08-20T08:30:00.000Z', '2026-08-20T10:00:00.000Z'),
+      id: 502,
+      rd: { 'tank-uyo-ago': 8_000 },
+    };
+
+    expect(findLatestDipForProduct(
+      [pmsDip, agoDip],
+      '2026-08-20',
+      'uyo-fuel',
+      'PMS',
+      [{ id: 'tank-uyo-pms', prod: 'PMS' }],
+      [],
+    )).toEqual(pmsDip);
   });
 });
 

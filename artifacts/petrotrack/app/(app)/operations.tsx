@@ -13,6 +13,7 @@ import {
   ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { findLatestDipForProduct } from '@/lib/dip-helpers';
 
 const DIP_SUBTABS_MGR  = ['Dip Form', 'Awaiting Approval'];
 const DIP_SUBTABS_APPR = ['Awaiting Approval'];
@@ -41,30 +42,8 @@ function stockLogStatusColor(status: StockLogStatus, colors: ReturnType<typeof u
   return colors.amber;
 }
 
-function latestDipForStockLog(
-  dips: ReturnType<typeof useApp>['dips'],
-  dateKey: string,
-  branchId: string,
-  petrolTanks: ReturnType<typeof useApp>['tanks'],
-  branchLpgTanks: ReturnType<typeof useApp>['lpgTanks'],
-  beforeDate = false,
-) {
-  return dips
-    .filter(dip =>
-      (beforeDate ? businessDateKey(dip.dt) < dateKey : businessDateKey(dip.dt) === dateKey) &&
-      dip.status === 'approved' &&
-      (dip.branchId === branchId ||
-        petrolTanks.some(tank => dip.rd?.[tank.id] !== undefined) ||
-        branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)),
-    )
-    .sort((a, b) =>
-      new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() -
-      new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime() || b.id - a.id,
-    )[0];
-}
-
 function stockDipForProduct(
-  dip: ReturnType<typeof latestDipForStockLog>,
+  dip: ReturnType<typeof findLatestDipForProduct>,
   product: StockProduct,
   petrolTanks: ReturnType<typeof useApp>['tanks'],
   branchLpgTanks: ReturnType<typeof useApp>['lpgTanks'],
@@ -145,8 +124,6 @@ function StockLogPanel() {
       const branchTanks = tanks.filter(tank => tank.branchId === branch.id);
       const branchLpgTanks = lpgTanks.filter(tank => tank.branchId === branch.id);
       const branchPumps = pumps.filter(pump => pump.branchId === branch.id);
-      const todayDip = latestDipForStockLog(dips, businessDate, branch.id, branchTanks, branchLpgTanks);
-      const openingDip = latestDipForStockLog(dips, previousDate, branch.id, branchTanks, branchLpgTanks);
 
       STOCK_PRODUCTS.forEach(product => {
         const hasProduct =
@@ -162,6 +139,13 @@ function StockLogPanel() {
           stockLogs.some(entry => entry.branchId === branch.id && entry.product === product);
         if (!hasProduct) return;
 
+        const todayDip = findLatestDipForProduct(
+          dips, businessDate, branch.id, product, branchTanks, branchLpgTanks,
+        );
+        const openingDip = findLatestDipForProduct(
+          dips, previousDate, branch.id, product, branchTanks, branchLpgTanks,
+          { beforeDate: true },
+        );
         const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
         const priorDayDip = stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
         const openingQuantity = priorDayDip ?? startupRecord?.quantity ?? null;
