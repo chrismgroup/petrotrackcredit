@@ -25,6 +25,11 @@ export interface LPGTank { id: string; name: string; cap: number; op: number; rv
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil'; active: boolean; branchId?: string; lpgCategory?: 'single' | 'distributor'; }
 export interface DipRecord { id: number; dt: string; submittedAt?: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; branchId?: string; }
 export interface Delivery { id: number; dt: string; submittedAt?: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
+/** A saved receipt changes physical stock immediately; commercial approval only
+ * controls pricing and accounting. Rejected receipts never affect inventory. */
+export function isPhysicalDeliveryReceipt(delivery: Pick<Delivery, 'approvalStatus'>): boolean {
+  return delivery.approvalStatus !== 'rejected';
+}
 export interface MaintenanceHistoryEntry {
   id: string;
   action: string;
@@ -651,8 +656,7 @@ export function calculateStockBook(
     .filter(delivery =>
       delivery.branchId === branchId &&
       stockProductFromDelivery(delivery.prod) === product &&
-      delivery.approvalStatus !== 'draft' &&
-      delivery.approvalStatus !== 'rejected',
+      isPhysicalDeliveryReceipt(delivery),
     )
     .forEach(delivery => liveDeliveriesById.set(delivery.id, delivery));
 

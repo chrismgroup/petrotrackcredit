@@ -8,7 +8,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
-import { DEFAULT_MGR_PERMS, getCurrentTankStock, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, getCurrentTankStock, isPhysicalDeliveryReceipt, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
 
@@ -157,7 +157,8 @@ export default function TanksScreen() {
       const dipDt = lastDip?.dt;
       const recvdSinceDip = deliveries
         .filter(d => d.prod === t.prod &&
-          (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+          d.branchId === t.branchId &&
+          isPhysicalDeliveryReceipt(d) &&
           (!dipDt || d.dt > dipDt))
         .reduce((s, d) => s + safeNum(d.rec), 0);
       const soldSinceDip = sales
@@ -223,7 +224,21 @@ export default function TanksScreen() {
       Alert.alert('Date required', 'Select the date this delivery applies to.');
       return;
     }
-    addDelivery({ dt: deliveryDate, sup: delForm.sup, prod: delForm.prod, wb: delForm.wb, ord: parseFloat(delForm.ord) || 0, rec: parseFloat(delForm.rec) || 0, st: delForm.st as any, notes: delForm.notes });
+    if (!branchId) {
+      Alert.alert('Branch assignment required', 'Assign this manager to a branch before recording a delivery so the stock is added to the correct inventory ledger.');
+      return;
+    }
+    addDelivery({
+      dt: deliveryDate,
+      sup: delForm.sup,
+      prod: delForm.prod,
+      wb: delForm.wb,
+      ord: parseFloat(delForm.ord) || 0,
+      rec: parseFloat(delForm.rec) || 0,
+      st: delForm.st as any,
+      notes: delForm.notes,
+      branchId,
+    });
     setDelForm({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
     setDeliveryDate('');
     setShowDeliveryForm(false);
@@ -791,7 +806,8 @@ export default function TanksScreen() {
             const dipDt = lastDipRecord?.dt;
             const deliveriesSinceDip = deliveries
               .filter(d => d.prod === t.prod &&
-                (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+                d.branchId === t.branchId &&
+                isPhysicalDeliveryReceipt(d) &&
                 (!dipDt || new Date(d.dt) > new Date(dipDt)))
               .reduce((s, d) => s + safeNum(d.rec), 0);
             const salesSinceDip = sales
@@ -865,7 +881,8 @@ export default function TanksScreen() {
             const dipDt = lastDipRecord?.dt;
             const deliveriesSinceDip = deliveries
               .filter(d => d.prod === 'LPG' &&
-                (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved') &&
+                d.branchId === l.branchId &&
+                isPhysicalDeliveryReceipt(d) &&
                 (!dipDt || new Date(d.dt) > new Date(dipDt)))
               .reduce((s, d) => s + safeNum(d.rec), 0);
             const currentStock = Math.max(0, dipReading + deliveriesSinceDip);

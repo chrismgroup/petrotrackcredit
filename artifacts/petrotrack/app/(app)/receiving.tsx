@@ -7,7 +7,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { businessDateKey, calculateStockBook, Delivery, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
+import { businessDateKey, calculateStockBook, Delivery, isPhysicalDeliveryReceipt, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
 
@@ -277,7 +277,7 @@ export default function ReceivingScreen() {
         result.push({ prod, unit: 'L', totalStock: rows.reduce((s, r) => s + r.stock, 0), totalCap: rows.reduce((s, r) => s + r.cap, 0), tanks: rows, lastDipDt, dipBased: true });
       } else if (prod === 'Lube Oil') {
         const recv = scopeDeliveries
-          .filter(d => d.prod === 'Lube Oil' && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
+          .filter(d => d.prod === 'Lube Oil' && isPhysicalDeliveryReceipt(d))
           .reduce((s, d) => s + safeNum(d.rec), 0);
         if (recv > 0) result.push({ prod: 'Lube Oil', unit: 'L', totalStock: recv, totalCap: 0, tanks: [], lastDipDt: null, dipBased: false });
       }
@@ -509,6 +509,10 @@ export default function ReceivingScreen() {
   function handleAdd() {
     const vals = validateMgrForm(form);
     if (!vals) return;
+    if (!branchId) {
+      Alert.alert('Branch assignment required', 'Assign this manager to a branch before recording a delivery so the stock is added to the correct inventory ledger.');
+      return;
+    }
     addDelivery({
       dt: form.dt,
       sup: form.sup.trim(), prod: form.prod, wb: form.wb,

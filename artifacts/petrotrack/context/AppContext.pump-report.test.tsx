@@ -457,6 +457,37 @@ describe('stock book report eligibility', () => {
 });
 
 describe('daily stock log balance', () => {
+  it('adds a saved 15,000L PMS receipt to same-day physical stock before commercial approval', () => {
+    const result = calculateDailyOperationalStock(
+      1_000,
+      'PMS',
+      'branch-1',
+      [{
+        id: 22,
+        dt: '2026-08-15',
+        sup: 'Supplier',
+        prod: 'PMS',
+        wb: 'WB-22',
+        rec: 15_000,
+        ord: 15_000,
+        st: 'ok',
+        notes: '',
+        approvalStatus: 'draft',
+        branchId: 'branch-1',
+      }],
+      [],
+      '2026-08-15',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+
+    expect(result).toEqual({
+      startupStock: 1_000,
+      delivered: 15_000,
+      sold: 0,
+      bookStock: 16_000,
+    });
+  });
+
   it('uses only prior-day approved shift reports for the operational stock position', () => {
     const priorDayApproved = { ...reportWithStatus('approved'), date: '2026-08-14' };
     const priorDayPending = { ...reportWithStatus('pending_manager'), id: 102, date: '2026-08-14' };
