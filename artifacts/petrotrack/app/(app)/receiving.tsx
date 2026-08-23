@@ -7,8 +7,9 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { businessDateKey, calculateStockBook, Delivery, isPhysicalDeliveryReceipt, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
+import { calculateDailyStockLogBalance, calculateStockBook, Delivery, isPhysicalDeliveryReceipt, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { findLatestDipForProduct } from '@/lib/dip-helpers';
 import { safeNum } from '@/lib/report-helpers';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
@@ -317,29 +318,6 @@ export default function ReceivingScreen() {
   const ALL_PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
   const PROD_UNIT: Record<string, string> = { PMS: 'L', AGO: 'L', DPK: 'L', LPG: 'kg', 'Lube Oil': 'L' };
 
-  function latestDipForBranch(
-    dateKey: string,
-      branchId: string | null,
-    scopeTanks: Tank[],
-    scopeLpgTanks: LPGTank[],
-    approvedOnly: boolean,
-  ) {
-    return dips
-      .filter(d =>
-        businessDateKey(d.dt) !== '' &&
-        businessDateKey(d.dt) === dateKey &&
-        (approvedOnly ? d.status === 'approved' : d.status !== 'rejected') &&
-        (d.branchId === branchId ||
-          scopeTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
-          scopeLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
-      )
-      .sort((a, b) =>
-        businessDateKey(b.dt).localeCompare(businessDateKey(a.dt))
-        || new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime()
-        || b.id - a.id
-      )[0];
-  }
-
   function dipForProduct(
     record: typeof dips[number] | undefined,
     product: string,
@@ -370,10 +348,16 @@ export default function ReceivingScreen() {
     scopeDeliveries: Delivery[],
     scopeReports: typeof pumpDailyReports,
   ): StockProdRow[] {
-    const todaySubmittedDip = latestDipForBranch(todayKey, scopeBranchId, scopeTanks, scopeLpgTanks, false);
-    const openingDip = latestDipForBranch(previousBusinessDateKey(todayKey), scopeBranchId, scopeTanks, scopeLpgTanks, false);
     return ALL_PRODS
       .map(prod => {
+        const todaySubmittedDip = findLatestDipForProduct(
+          dips, todayKey, scopeBranchId, prod, scopeTanks, scopeLpgTanks,
+          { approvedOnly: false },
+        );
+        const openingDip = findLatestDipForProduct(
+          dips, previousBusinessDateKey(todayKey), scopeBranchId, prod, scopeTanks, scopeLpgTanks,
+          { beforeDate: true, approvedOnly: false },
+        );
         const startupRecord = startupStocks.find(stock => stock.product === prod && stock.branchId === scopeBranchId);
         const openingStock = dipForProduct(openingDip, prod, scopeTanks, scopeLpgTanks);
         const stockBook = calculateStockBook(
@@ -387,9 +371,12 @@ export default function ReceivingScreen() {
           openingStock,
         );
         const submittedTankDip = dipForProduct(todaySubmittedDip, prod, scopeTanks, scopeLpgTanks);
-        const variance = stockBook.bookStock === null || submittedTankDip === null
-          ? null
-          : stockBook.bookStock - submittedTankDip;
+        const variance = calculateDailyStockLogBalance(
+          stockBook.bookStock,
+          stockBook.delivered,
+          stockBook.sold,
+          submittedTankDip,
+        ).variance;
         if (stockBook.startupStock === null && stockBook.delivered === 0 && stockBook.sold === 0 && submittedTankDip === null) return null;
         return {
           prod,

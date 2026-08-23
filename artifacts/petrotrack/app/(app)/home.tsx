@@ -35,6 +35,7 @@ import {
   type StockProduct,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { findLatestDipForProduct } from '@/lib/dip-helpers';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 import { G, Rect, Svg, Text as SvgText } from 'react-native-svg';
@@ -405,31 +406,6 @@ export default function HomeScreen() {
   );
 
   const branchStockSnapshots = useMemo<BranchStockSnapshot[]>(() => {
-    const sortDips = (records: typeof dips) => records.sort((a, b) => {
-      const aTime = new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime();
-      const bTime = new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime();
-      return bTime - aTime || b.id - a.id;
-    });
-    const latestDipForBranch = (
-      dateKey: string,
-      branchId: string | null,
-      petrolTanks: typeof tanks,
-      branchLpgTanks: typeof lpgTanks,
-      beforeDate = false,
-    ) => sortDips(dips
-      .filter(d =>
-        businessDateKey(d.dt) !== '' &&
-        (beforeDate ? businessDateKey(d.dt) < dateKey : businessDateKey(d.dt) === dateKey) &&
-        d.status === 'approved' &&
-        (d.branchId === branchId ||
-          petrolTanks.some(tank => d.rd?.[tank.id] !== undefined) ||
-          branchLpgTanks.some(tank => d.lpg?.[tank.id] !== undefined)),
-      ))
-      .sort((a, b) =>
-        businessDateKey(b.dt).localeCompare(businessDateKey(a.dt))
-        || new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() - new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime()
-        || b.id - a.id
-      )[0];
     function dipForProduct(
       record: typeof dips[number] | undefined,
       product: StockSnapshotProduct,
@@ -483,8 +459,6 @@ export default function HomeScreen() {
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
       const previousDate = previousBusinessDateKey(todayKey);
-      const todayDip = latestDipForBranch(todayKey, scope.branchId, branchTanks, branchLpgTanks, false);
-      const openingDip = latestDipForBranch(previousDate, scope.branchId, branchTanks, branchLpgTanks, false);
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
         : undefined;
@@ -494,6 +468,13 @@ export default function HomeScreen() {
          const startupRecord = startupStocks.find(stock =>
            stock.product === product &&
            stock.branchId === scope.branchId
+          );
+          const todayDip = findLatestDipForProduct(
+            dips, todayKey, scope.branchId, product, branchTanks, branchLpgTanks,
+          );
+          const openingDip = findLatestDipForProduct(
+            dips, previousDate, scope.branchId, product, branchTanks, branchLpgTanks,
+            { beforeDate: true },
           );
           const openingStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks)
             ?? startupRecord?.quantity
