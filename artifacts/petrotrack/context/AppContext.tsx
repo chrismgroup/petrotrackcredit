@@ -586,16 +586,61 @@ export function getLatestValidatedPumpReport(
   reports: PumpDailyReport[],
   pumpId: string,
 ): PumpDailyReport | undefined {
+  return getLatestPumpReportWithValidMeter(
+    reports,
+    pumpId,
+    ['pending_accountant', 'approved'],
+  );
+}
+
+/**
+ * Returns the latest report that can safely seed the next opening meter.
+ *
+ * A submitted report is usable immediately so attendants can continue to the
+ * next shift without waiting for manager review. Returned reports and records
+ * with incomplete/backwards meters are deliberately excluded. Business date
+ * remains authoritative, with workflow activity as the tie-breaker.
+ */
+export function getLatestPumpReportForOpeningMeter(
+  reports: PumpDailyReport[],
+  pumpId: string,
+): PumpDailyReport | undefined {
+  return getLatestPumpReportWithValidMeter(
+    reports,
+    pumpId,
+    ['pending_manager', 'pending_accountant', 'approved'],
+  );
+}
+
+function getLatestPumpReportWithValidMeter(
+  reports: PumpDailyReport[],
+  pumpId: string,
+  statuses: readonly PumpReportStatus[],
+): PumpDailyReport | undefined {
   return reports
-    .filter(report =>
-      report.pumpId === pumpId &&
-      (report.status === 'approved' || report.status === 'pending_accountant'),
-    )
+    .filter(report => {
+      if (report.pumpId !== pumpId || !statuses.includes(report.status)) return false;
+      const openingMeter = Number(report.openingMeter);
+      const closingMeter = Number(report.closingMeter);
+      return Number.isFinite(openingMeter) && Number.isFinite(closingMeter) && closingMeter > openingMeter;
+    })
     .sort((a, b) =>
       recordBusinessDate(b.date).localeCompare(recordBusinessDate(a.date))
       || timestampMs(getPumpReportWorkflowAt(b)) - timestampMs(getPumpReportWorkflowAt(a))
       || b.id - a.id
     )[0];
+}
+
+export function getPumpOpeningMeter(
+  reports: PumpDailyReport[],
+  pumpId: string,
+  lockedMeters: Record<string, number>,
+  initialMeters: Record<string, number>,
+): number {
+  const latestReport = getLatestPumpReportForOpeningMeter(reports, pumpId);
+  if (latestReport) return Number(latestReport.closingMeter);
+  if (lockedMeters[pumpId] !== undefined) return safeNum(lockedMeters[pumpId]);
+  return safeNum(initialMeters[pumpId]);
 }
 
 /**

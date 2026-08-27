@@ -7,7 +7,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  PumpDailyReport, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getLatestValidatedPumpReport, getPriceForPump, unitForProd, useApp,
+  PumpDailyReport, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPumpOpeningMeter, getPriceForPump, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { AppliedDateField } from '@/components/AppliedDateField';
@@ -351,16 +351,9 @@ export default function ShiftReportScreen() {
     return p.branchId === branchId;               // attendant/mgr — branch-scoped
   });
 
-  /* ── derive opening meter from last closing or admin initial ── */
+  /* ── derive opening meter from the latest usable closing or admin initial ── */
   const getOpeningMeter = useCallback((pumpId: string) => {
-    // Only use reports that have passed manager review (pending_accountant or approved).
-    // pending_manager and returned reports have not been validated yet and must not roll over.
-    const latestValidatedReport = getLatestValidatedPumpReport(pumpDailyReports, pumpId);
-    if (latestValidatedReport) return latestValidatedReport.closingMeter;
-    // A lock is a fallback before the pump has a manager-approved report. It
-    // must not block the mandatory manager-approval rollover above.
-    if (pumpLockedMeters[pumpId] !== undefined) return pumpLockedMeters[pumpId];
-    return pumpInitialMeters[pumpId] ?? 0;
+    return getPumpOpeningMeter(pumpDailyReports, pumpId, pumpLockedMeters, pumpInitialMeters);
   }, [pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
 
   /* ── tab state ── */
