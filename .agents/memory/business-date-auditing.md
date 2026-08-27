@@ -12,3 +12,9 @@ Operational records must carry an explicit business/applies-on date selected by 
 Reporting periods are calendar periods, not rolling day counts: daily is one date, weekly is Monday–Sunday, monthly is the 1st through the last day, quarterly is the calendar quarter, and yearly is January 1 through December 31.
 
 Revenue KPIs and revenue reports should use the same approved pump-report gross revenue source and the selected record business date.
+
+Attendants may submit shift reports for today or any earlier business date, but never a future date; use the device’s local calendar date for this comparison rather than UTC.
+
+**Why:** A future-dated meter report can make a shift appear to have happened before its physical readings exist and can distort operational sequencing and audit review.
+
+**How to apply:** Enforce the rule in both the shift-entry UI and the shared state mutation, including attendant re-submissions of returned reports. Admin date-correction workflows remain separate.
