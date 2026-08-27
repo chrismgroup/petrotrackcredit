@@ -8,6 +8,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { DEFAULT_MGR_PERMS, getCurrentTankStock, isPhysicalDeliveryReceipt, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
@@ -58,6 +59,7 @@ export default function TanksScreen() {
   }
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
+  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
   const canEdit = role === 'mgr';
   const [activeTab, setActiveTab] = useState(canEdit ? 0 : 1);
   const [readings, setReadings] = useState<Record<string, string>>({});
@@ -191,32 +193,34 @@ export default function TanksScreen() {
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
 
     const analysis = computeDipAnalysis(rd);
-    addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
-    setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
+    requestDateConfirmation('tank dip', appliesOn, () => {
+      addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
+      setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
 
-    if (analysis.length > 0) {
-      const lines = analysis.map(a => {
-        const diffAbs = Math.abs(a.diff).toLocaleString(undefined, { maximumFractionDigits: 0 });
-        return a.complete
-          ? `${a.prod}: ${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded — ✅ Complete (surplus ${diffAbs}L)`
-          : `${a.prod}: ${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded vs ${a.expected.toLocaleString(undefined, { maximumFractionDigits: 0 })}L expected — ⚠ SHORT by ${diffAbs}L`;
-      }).join('\n');
-      const alertBody = `Dip submitted by ${userName}:\n\n${lines}`;
-      (['md', 'ceo'] as const).forEach(to => {
-        sendMessage(to, {
-          to,
-          type: 'alert',
-          body: alertBody,
-          alrt: {
-            title: `Tank Dip Report — ${analysis.some(a => !a.complete) ? 'SHORTAGE DETECTED' : 'All Complete'}`,
-            pri: analysis.some(a => !a.complete) ? 'High' : 'Low',
-            detail: lines,
-          },
+      if (analysis.length > 0) {
+        const lines = analysis.map(a => {
+          const diffAbs = Math.abs(a.diff).toLocaleString(undefined, { maximumFractionDigits: 0 });
+          return a.complete
+            ? `${a.prod}: ${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded — ✅ Complete (surplus ${diffAbs}L)`
+            : `${a.prod}: ${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded vs ${a.expected.toLocaleString(undefined, { maximumFractionDigits: 0 })}L expected — ⚠ SHORT by ${diffAbs}L`;
+        }).join('\n');
+        const alertBody = `Dip submitted by ${userName}:\n\n${lines}`;
+        (['md', 'ceo'] as const).forEach(to => {
+          sendMessage(to, {
+            to,
+            type: 'alert',
+            body: alertBody,
+            alrt: {
+              title: `Tank Dip Report — ${analysis.some(a => !a.complete) ? 'SHORTAGE DETECTED' : 'All Complete'}`,
+              pri: analysis.some(a => !a.complete) ? 'High' : 'Low',
+              detail: lines,
+            },
+          });
         });
-      });
-    }
+      }
 
-    Alert.alert('Dip Submitted', 'Tank readings recorded. MD and CEO have been notified.');
+      Alert.alert('Dip Submitted', 'Tank readings recorded. MD and CEO have been notified.');
+    });
   }
 
   function handleDeliverySubmit() {
@@ -228,21 +232,23 @@ export default function TanksScreen() {
       Alert.alert('Branch assignment required', 'Assign this manager to a branch before recording a delivery so the stock is added to the correct inventory ledger.');
       return;
     }
-    addDelivery({
-      dt: deliveryDate,
-      sup: delForm.sup,
-      prod: delForm.prod,
-      wb: delForm.wb,
-      ord: parseFloat(delForm.ord) || 0,
-      rec: parseFloat(delForm.rec) || 0,
-      st: delForm.st as any,
-      notes: delForm.notes,
-      branchId,
-    });
-    setDelForm({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
-    setDeliveryDate('');
-    setShowDeliveryForm(false);
-    Alert.alert('Delivery Recorded', 'Delivery entry saved.');
+    requestDateConfirmation('delivery', deliveryDate, () => {
+      addDelivery({
+        dt: deliveryDate,
+        sup: delForm.sup,
+        prod: delForm.prod,
+        wb: delForm.wb,
+        ord: parseFloat(delForm.ord) || 0,
+        rec: parseFloat(delForm.rec) || 0,
+        st: delForm.st as any,
+        notes: delForm.notes,
+        branchId,
+      });
+      setDelForm({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
+      setDeliveryDate('');
+      setShowDeliveryForm(false);
+      Alert.alert('Delivery Recorded', 'Delivery entry saved.');
+    }, 'Confirm & save');
   }
 
   function stockPct(t: { id: string; op: number; sl: number; rv: number; cap: number }) {
@@ -935,6 +941,7 @@ export default function TanksScreen() {
         </ScrollView>
       )}
 
+      {confirmationModal}
     </ScreenLayout>
   );
 }

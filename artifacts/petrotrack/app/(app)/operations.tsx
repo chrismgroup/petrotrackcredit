@@ -7,6 +7,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import {
   DEFAULT_MGR_PERMS, businessDateKey, calculateDailyOperationalStock, calculateDailyStockLogBalance, currentBusinessDateKey, dipReadingToLiters,
   getCurrentTankStock, previousBusinessDateKey,
@@ -340,6 +341,7 @@ export default function OperationsScreen() {
 
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
+  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
   const isMgr      = role === 'mgr';
   const isMD       = role === 'md';
   const isAdmin    = role === 'admin';
@@ -409,9 +411,11 @@ export default function OperationsScreen() {
     const lpg: Record<string, number> = {};
     for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
-    addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
-    setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
-    Alert.alert('Dip Submitted', 'Tank readings recorded successfully.');
+    requestDateConfirmation('tank dip', appliesOn, () => {
+      addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
+      setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
+      Alert.alert('Dip Submitted', 'Tank readings recorded successfully.');
+    });
   }
 
 
@@ -768,6 +772,7 @@ export default function OperationsScreen() {
         </>
       ) : null}
 
+      {confirmationModal}
     </ScreenLayout>
   );
 }

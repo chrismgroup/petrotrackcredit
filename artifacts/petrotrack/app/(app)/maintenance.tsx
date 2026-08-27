@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { fmtDate, fmtDateTime, type MaintenanceItem, useApp } from '@/context/AppContext';
 import { type MaintenanceWorkflowStatus } from '@/lib/api';
@@ -37,6 +38,7 @@ export default function MaintenanceScreen() {
     addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus,
   } = useApp();
   const colors = useColors();
+  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
   const isDecisionMaker = role === 'md' || role === 'ceo';
   const [showForm, setShowForm] = useState(false);
   const [filterDate, setFilterDate] = useState('');
@@ -59,14 +61,16 @@ export default function MaintenanceScreen() {
       Alert.alert('Date required', 'Select the business date this request applies to.');
       return;
     }
-    const ok = await addMaintenance({ title: form.title.trim(), pri: form.pri, date: form.date });
-    if (!ok) {
-      Alert.alert('Not submitted', 'The request could not be saved. Please check your connection and try again.');
-      return;
-    }
-    setForm({ title: '', pri: 'Urgent', date: '' });
-    setShowForm(false);
-    Alert.alert('Request submitted', 'The MD and CEO can now acknowledge and assign this request.');
+    requestDateConfirmation('maintenance request', form.date, async () => {
+      const ok = await addMaintenance({ title: form.title.trim(), pri: form.pri, date: form.date });
+      if (!ok) {
+        Alert.alert('Not submitted', 'The request could not be saved. Please check your connection and try again.');
+        return;
+      }
+      setForm({ title: '', pri: 'Urgent', date: '' });
+      setShowForm(false);
+      Alert.alert('Request submitted', 'The MD and CEO can now acknowledge and assign this request.');
+    });
   }
 
   async function acknowledge(taskId: string) {
@@ -229,6 +233,7 @@ export default function MaintenanceScreen() {
         {finishedItems.map(renderItem)}
         {items.length === 0 && <Text style={[styles.empty, { color: colors.textMuted }]}>No maintenance requests match this date.</Text>}
       </ScrollView>
+      {confirmationModal}
     </ScreenLayout>
   );
 }

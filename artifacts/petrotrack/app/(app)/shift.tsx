@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import {
   PumpDailyReport, ROLE_COLORS, currentBusinessDateKey, fmt, fmtDate, fmtDateTime, getPumpOpeningMeter, getPriceForPump, isFutureBusinessDate, unitForProd, useApp,
 } from '@/context/AppContext';
@@ -333,6 +334,7 @@ export default function ShiftReportScreen() {
   );
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
+  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
 
   const isAtt   = role === 'att';
   const isMgr   = role === 'mgr';
@@ -397,26 +399,28 @@ export default function ShiftReportScreen() {
     }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
     if (totalColl + creditVal <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, transfer, or credit).'); return; }
-    const submitted = submitPumpReport({
-       date: appliesOn,
-      pumpId: pump.id, pumpName: pump.name, product: pump.prod,
-      branchId: branchId ?? pump.branchId ?? '',
-      openingMeter, closingMeter: closeVal, liters,
-      unitPrice, grossAmount: grossAmt,
-      posAmount: posVal, cashAmount: cashVal, transferAmount: xferVal, creditAmount: creditVal,
-      totalCollected: totalColl, variance,
-      note: noteAtt.trim(),
-      submittedBy: userName ?? '', submittedByName: userName ?? '',
+    requestDateConfirmation('shift report', appliesOn, () => {
+      const submitted = submitPumpReport({
+         date: appliesOn,
+        pumpId: pump.id, pumpName: pump.name, product: pump.prod,
+        branchId: branchId ?? pump.branchId ?? '',
+        openingMeter, closingMeter: closeVal, liters,
+        unitPrice, grossAmount: grossAmt,
+        posAmount: posVal, cashAmount: cashVal, transferAmount: xferVal, creditAmount: creditVal,
+        totalCollected: totalColl, variance,
+        note: noteAtt.trim(),
+        submittedBy: userName ?? '', submittedByName: userName ?? '',
+      });
+      if (!submitted) {
+        Alert.alert('Future date not allowed', `Attendants can only submit shift reports dated ${fmtDate(today)} or earlier.`);
+        return;
+      }
+      setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditAmt(''); setNoteAtt('');
+      setAppliesOn('');
+      const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
+      Alert.alert('Shift Report Submitted', `${pump.name} · ${fmtL(liters)}${unitForProd(pump.prod)}\nGross: ${fmt(grossAmt)}\n${vLabel}\nSent to branch manager for review.`);
+      setTab('history');
     });
-    if (!submitted) {
-      Alert.alert('Future date not allowed', `Attendants can only submit shift reports dated ${fmtDate(today)} or earlier.`);
-      return;
-    }
-    setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditAmt(''); setNoteAtt('');
-    setAppliesOn('');
-    const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
-    Alert.alert('Shift Report Submitted', `${pump.name} · ${fmtL(liters)}${unitForProd(pump.prod)}\nGross: ${fmt(grossAmt)}\n${vLabel}\nSent to branch manager for review.`);
-    setTab('history');
   }
 
   /* ── modal state ── */
@@ -514,17 +518,19 @@ export default function ShiftReportScreen() {
     if (!editDate) { Alert.alert('Date required', 'Select the correct business date before saving.'); return; }
     const closeVal = parseFloat(editClose.replace(/,/g, '')) || 0;
     if (closeVal <= viewing.openingMeter) { Alert.alert('Invalid', 'Closing meter must be greater than opening meter.'); return; }
-    updatePumpReport(viewing.id, {
-      date: editDate,
-      closingMeter: closeVal,
-      posAmount: parseFloat(editPos.replace(/,/g, '')) || 0,
-      cashAmount: parseFloat(editCash.replace(/,/g, '')) || 0,
-      transferAmount: parseFloat(editXfer.replace(/,/g, '')) || 0,
-      creditAmount: parseFloat(editCredit.replace(/,/g, '')) || 0,
-      note: editNote.trim(),
-    });
-    setIsEditing(false);
-    Alert.alert('Updated', 'Shift report has been updated.');
+    requestDateConfirmation('shift report', editDate, () => {
+      updatePumpReport(viewing.id, {
+        date: editDate,
+        closingMeter: closeVal,
+        posAmount: parseFloat(editPos.replace(/,/g, '')) || 0,
+        cashAmount: parseFloat(editCash.replace(/,/g, '')) || 0,
+        transferAmount: parseFloat(editXfer.replace(/,/g, '')) || 0,
+        creditAmount: parseFloat(editCredit.replace(/,/g, '')) || 0,
+        note: editNote.trim(),
+      });
+      setIsEditing(false);
+      Alert.alert('Updated', 'Shift report has been updated.');
+    }, 'Confirm & save');
   }
 
   function handleAdminReturn() {
@@ -631,12 +637,14 @@ export default function ShiftReportScreen() {
       Alert.alert('Future date not allowed', `Attendants can only submit shift reports dated ${fmtDate(today)} or earlier.`);
       return;
     }
-    if (!attResubmitPumpReport(viewing.id, reviewNote.trim())) {
-      Alert.alert('Unable to re-submit', 'This shift report cannot be submitted with a future business date.');
-      return;
-    }
-    Alert.alert('Re-submitted', 'Your corrected report was sent to the branch manager for review.');
-    closeModal();
+    requestDateConfirmation('corrected shift report', viewing.date, () => {
+      if (!attResubmitPumpReport(viewing.id, reviewNote.trim())) {
+        Alert.alert('Unable to re-submit', 'This shift report cannot be submitted with a future business date.');
+        return;
+      }
+      Alert.alert('Re-submitted', 'Your corrected report was sent to the branch manager for review.');
+      closeModal();
+    });
   }
 
   function handleAccApprove() {
@@ -1724,7 +1732,7 @@ export default function ShiftReportScreen() {
           </ScrollView>
         </View>
       )}
-
+      {confirmationModal}
     </ScreenLayout>
   );
 }

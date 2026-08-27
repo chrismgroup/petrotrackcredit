@@ -8,6 +8,7 @@ import {
 import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { Budget, Expense, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
@@ -95,6 +96,7 @@ export default function ExpensesScreen() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
+  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
 
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const isAcc = role === 'acc' || role === 'admin';
@@ -163,12 +165,14 @@ export default function ExpensesScreen() {
       Alert.alert('No Budget Selected', 'Please select an approved budget to charge this expense to.');
       return;
     }
-    if (editTarget) {
-      updateExpense(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, dt: form.dt });
-    } else {
-      addExpense({ dt: form.dt, cat: form.cat, desc: form.desc.trim(), amt: amount, by: role || 'mgr', byName: userName, ref: form.ref.trim() || undefined, budgetId: form.budgetId });
-    }
-    setShowForm(false);
+    requestDateConfirmation('expense', form.dt, () => {
+      if (editTarget) {
+        updateExpense(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, dt: form.dt });
+      } else {
+        addExpense({ dt: form.dt, cat: form.cat, desc: form.desc.trim(), amt: amount, by: role || 'mgr', byName: userName, ref: form.ref.trim() || undefined, budgetId: form.budgetId });
+      }
+      setShowForm(false);
+    }, 'Confirm & save');
   }
 
   function handleDelete(e: Expense) {
@@ -434,6 +438,7 @@ export default function ExpensesScreen() {
             </View>
           </View>
       </ModalSheet>
+      {confirmationModal}
     </ScreenLayout>
   );
 }

@@ -7,6 +7,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { ROLE_COLORS, fmt, fmtDateTime, useApp, type Budget, type Expense } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -139,6 +140,7 @@ export default function BudgetScreen() {
 
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
+  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
 
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const isAcc = role === 'acc' || role === 'admin';
@@ -216,26 +218,30 @@ export default function BudgetScreen() {
     if (!formDate) { Alert.alert('Date required', 'Select the date this budget applies to.'); return; }
     const built = buildItems();
     if (!built) return;
-    if (editTarget) {
-      updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
-    } else {
-      const status = isAcc ? 'submitted' : 'draft';
-      addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status });
-    }
-    setShowForm(false);
+    requestDateConfirmation('budget', formDate, () => {
+      if (editTarget) {
+        updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
+      } else {
+        const status = isAcc ? 'submitted' : 'draft';
+        addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status });
+      }
+      setShowForm(false);
+    }, 'Confirm & save');
   }
 
   function handleSaveAndSubmit() {
     if (!formDate) { Alert.alert('Date required', 'Select the date this budget applies to.'); return; }
     const built = buildItems();
     if (!built) return;
-    if (editTarget) {
-      updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
-      setTimeout(() => submitBudgetToAcc(editTarget.id), 50);
-    } else {
-      addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted' });
-    }
-    setShowForm(false);
+    requestDateConfirmation('budget', formDate, () => {
+      if (editTarget) {
+        updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
+        setTimeout(() => submitBudgetToAcc(editTarget.id), 50);
+      } else {
+        addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted' });
+      }
+      setShowForm(false);
+    });
   }
 
   function handleDeleteBudget(b: Budget) {
@@ -797,6 +803,7 @@ export default function BudgetScreen() {
             </ScrollView>
           </View>
       </Modal>
+      {confirmationModal}
     </ScreenLayout>
   );
 }

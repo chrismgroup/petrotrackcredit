@@ -7,6 +7,7 @@ import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { calculateDailyStockLogBalance, calculateStockBook, Delivery, isPhysicalDeliveryReceipt, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { findLatestDipForProduct } from '@/lib/dip-helpers';
@@ -193,6 +194,7 @@ export default function ReceivingScreen() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
+  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
   const todayKey = useBusinessDateKey();
   const [filterDate, setFilterDate] = useState('');
 
@@ -500,15 +502,17 @@ export default function ReceivingScreen() {
       Alert.alert('Branch assignment required', 'Assign this manager to a branch before recording a delivery so the stock is added to the correct inventory ledger.');
       return;
     }
-    addDelivery({
-      dt: form.dt,
-      sup: form.sup.trim(), prod: form.prod, wb: form.wb,
-      ord: vals.ordN, rec: vals.recN, st: form.st, notes: form.notes,
-      receivedBy: userName, approvalStatus: 'draft',
-      branchId: branchId ?? undefined,
-    });
-    setForm(blankMgrForm());
-    setShowForm(false);
+    requestDateConfirmation('delivery', form.dt, () => {
+      addDelivery({
+        dt: form.dt,
+        sup: form.sup.trim(), prod: form.prod, wb: form.wb,
+        ord: vals.ordN, rec: vals.recN, st: form.st, notes: form.notes,
+        receivedBy: userName, approvalStatus: 'draft',
+        branchId: branchId ?? undefined,
+      });
+      setForm(blankMgrForm());
+      setShowForm(false);
+    }, 'Confirm & save');
   }
 
   function openEdit(d: Delivery) { setEditTarget(d); setEditForm(deliveryToMgrForm(d)); }
@@ -517,14 +521,16 @@ export default function ReceivingScreen() {
     if (!editTarget) return;
     const vals = validateMgrForm(editForm);
     if (!vals) return;
-    updateDelivery(editTarget.id, {
-      dt: editForm.dt,
-      sup: editForm.sup.trim(), prod: editForm.prod, wb: editForm.wb,
-      ord: vals.ordN, rec: vals.recN, st: editForm.st, notes: editForm.notes,
-      receivedBy: editTarget.receivedBy,
-      approvalStatus: 'draft',
-    });
-    setEditTarget(null);
+    requestDateConfirmation('delivery', editForm.dt, () => {
+      updateDelivery(editTarget.id, {
+        dt: editForm.dt,
+        sup: editForm.sup.trim(), prod: editForm.prod, wb: editForm.wb,
+        ord: vals.ordN, rec: vals.recN, st: editForm.st, notes: editForm.notes,
+        receivedBy: editTarget.receivedBy,
+        approvalStatus: 'draft',
+      });
+      setEditTarget(null);
+    }, 'Confirm & save');
   }
 
   function handleDelete(d: Delivery) {
@@ -1410,6 +1416,7 @@ export default function ReceivingScreen() {
           </View>
         </View>
       </ModalSheet>
+      {confirmationModal}
     </ScreenLayout>
   );
 
