@@ -10,7 +10,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import {
   DEFAULT_MGR_PERMS, businessDateKey, calculateDailyOperationalStock, calculateDailyStockLogBalance, currentBusinessDateKey, dipReadingToLiters,
-  getCurrentTankStock, previousBusinessDateKey,
+  getCurrentTankStock, startupStockSeedDate,
   ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -118,7 +118,6 @@ function StockLogPanel() {
   );
 
   const buildEntries = useMemo(() => {
-    const previousDate = previousBusinessDateKey(businessDate);
     const entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[] = [];
 
     visibleBranches.forEach(branch => {
@@ -142,21 +141,11 @@ function StockLogPanel() {
 
         const todayDip = findLatestDipForProduct(
           dips, businessDate, branch.id, product, branchTanks, branchLpgTanks,
-        );
-        const openingDip = findLatestDipForProduct(
-          dips, previousDate, branch.id, product, branchTanks, branchLpgTanks,
-          { beforeDate: true },
+          { approvedOnly: false },
         );
         const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
-        const priorDayDip = stockDipForProduct(openingDip, product, branchTanks, branchLpgTanks);
-        const openingQuantity = priorDayDip ?? startupRecord?.quantity ?? null;
-        const openingSource: StockLogOpeningSource = priorDayDip !== null
-          ? 'previous_dip'
-          : startupRecord
-            ? 'startup_seed'
-            : 'unavailable';
         const stockBook = calculateDailyOperationalStock(
-          openingQuantity,
+          startupRecord,
           product,
           branch.id,
           deliveries,
@@ -164,9 +153,15 @@ function StockLogPanel() {
           businessDate,
           branchPumps,
         );
+        const openingQuantity = stockBook.startupStock;
+        const openingSource: StockLogOpeningSource = openingQuantity === null
+          ? 'unavailable'
+          : startupRecord && businessDate === startupStockSeedDate(startupRecord)
+            ? 'startup_seed'
+            : 'previous_log';
         const tankDip = stockDipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const balance = calculateDailyStockLogBalance(
-          openingQuantity,
+          stockBook.startupStock,
           stockBook.delivered,
           stockBook.sold,
           tankDip,
@@ -260,12 +255,12 @@ function StockLogPanel() {
         <View style={styles.stockHeroOrb} />
         <Text style={styles.stockEyebrow}>OPERATIONS · INVENTORY CONTROL</Text>
         <Text style={styles.stockHeroTitle}>Daily stock log</Text>
-        <Text style={styles.stockHeroSubtitle}>Yesterday&apos;s approved dip or seed + today&apos;s deliveries − yesterday&apos;s approved sales, compared with today&apos;s dip.</Text>
+        <Text style={styles.stockHeroSubtitle}>Yesterday&apos;s expected book stock rolls forward as opening + today&apos;s deliveries − today&apos;s approved sales, compared with today&apos;s submitted dip.</Text>
         <View style={styles.stockMarquee}>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{summaryEntries.length}</Text><Text style={styles.stockMarqueeLabel}>Products</Text></View>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{balancedCount}</Text><Text style={styles.stockMarqueeLabel}>Balanced</Text></View>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{discrepancyCount}</Text><Text style={styles.stockMarqueeLabel}>Discrepancies</Text></View>
-          <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{totalSold.toLocaleString()}</Text><Text style={styles.stockMarqueeLabel}>Prior-day sold</Text></View>
+          <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{totalSold.toLocaleString()}</Text><Text style={styles.stockMarqueeLabel}>Sold today</Text></View>
         </View>
       </View>
 

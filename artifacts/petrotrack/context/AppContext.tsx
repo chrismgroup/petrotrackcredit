@@ -381,7 +381,7 @@ export interface DailyStockLogBalance {
 }
 
 /**
- * Expected stock is opening + same-day deliveries - prior-day approved sales.
+ * Expected stock is opening + same-day deliveries - same-day approved sales.
  * Variance is physical tank stock minus expected stock, so positive values are
  * excess and negative values are shortage.
  */
@@ -650,10 +650,9 @@ export function getPumpOpeningMeter(
 
 /**
  * Calculates one business day's branch/product stock snapshot. The admin seed
- * is used only on its own business date. On later dates, callers pass a
- * previous stock-log book balance (or a previous tank dip when no log exists)
- * as the opening quantity. Delivered and sold values are intentionally
- * date-specific rather than cumulative, unless includeHistoricalEvents is set.
+ * is used on its own business date and every later expected balance rolls
+ * forward as the next day's opening. Delivered and sold values are
+ * date-specific unless includeHistoricalEvents is set.
  */
 export function calculateStockBook(
   startupStock: StartupStock | undefined,
@@ -753,11 +752,11 @@ export function calculateStockBook(
 /**
  * Calculates the operational stock position for business date D. Both the
  * Home Stock Snapshot and Daily Stock Log must call this helper so their day
- * boundaries cannot drift apart: deliveries belong to D; approved shift sales
- * belong to D−1.
+ * boundaries cannot drift apart: deliveries and approved shift sales belong
+ * to D, and yesterday's expected book balance becomes today's opening.
  */
 export function calculateDailyOperationalStock(
-  openingStock: number | null,
+  startupStock: StartupStock | undefined,
   product: StockProduct,
   branchId: string | null,
   deliveries: Delivery[],
@@ -765,32 +764,55 @@ export function calculateDailyOperationalStock(
   businessDate: string,
   pumps: Pick<Pump, 'id' | 'branchId'>[] = [],
 ): StockBookCalculation {
-  const deliveryResult = calculateStockBook(
-    undefined,
+  const seedDate = startupStockSeedDate(startupStock);
+  if (
+    !startupStock ||
+    branchId === null ||
+    startupStock.branchId !== branchId ||
+    !businessDate ||
+    !seedDate ||
+    businessDate < seedDate
+  ) {
+    return { startupStock: null, delivered: 0, sold: 0, bookStock: null };
+  }
+
+  const approvedReports = reports.filter(report => report.status === 'approved');
+  const current = calculateStockBook(
+    startupStock,
     product,
     branchId,
     deliveries,
-    [],
+    approvedReports,
     businessDate,
     pumps,
-  );
-  const salesResult = calculateStockBook(
     undefined,
-    product,
-    branchId,
-    [],
-    reports.filter(report => report.status === 'approved'),
-    previousBusinessDateKey(businessDate),
-    pumps,
+    true,
   );
+  const previousDate = previousBusinessDateKey(businessDate);
+  const previous = previousDate >= seedDate
+    ? calculateStockBook(
+        startupStock,
+        product,
+        branchId,
+        deliveries,
+        approvedReports,
+        previousDate,
+        pumps,
+        undefined,
+        true,
+      )
+    : null;
+  const openingStock = previous?.bookStock ?? (
+    businessDate === seedDate ? startupStock.quantity : null
+  );
+  const delivered = current.delivered - (previous?.delivered ?? 0);
+  const sold = current.sold - (previous?.sold ?? 0);
 
   return {
     startupStock: openingStock,
-    delivered: deliveryResult.delivered,
-    sold: salesResult.sold,
-    bookStock: openingStock === null
-      ? null
-      : openingStock + deliveryResult.delivered - salesResult.sold,
+    delivered,
+    sold,
+    bookStock: openingStock === null ? null : openingStock + delivered - sold,
   };
 }
 

@@ -596,44 +596,51 @@ describe('current tank stock', () => {
 });
 
 describe('daily stock log balance', () => {
-  it('adds a saved 15,000L PMS receipt to same-day physical stock before commercial approval', () => {
+  const startupSeed = {
+    id: 'seed-pms',
+    product: 'PMS' as const,
+    quantity: 2_000,
+    branchId: 'branch-1',
+    setBy: 'Admin',
+    setAt: '2026-08-14T00:00:00.000Z',
+    seedDate: '2026-08-14',
+    locked: true,
+  };
+
+  it('starts from the 14.08.2026 seed and applies same-day delivery and approved sales', () => {
     const result = calculateDailyOperationalStock(
-      1_000,
+      startupSeed,
       'PMS',
       'branch-1',
       [{
         id: 22,
-        dt: '2026-08-15',
+        dt: '2026-08-14',
         sup: 'Supplier',
         prod: 'PMS',
         wb: 'WB-22',
-        rec: 15_000,
-        ord: 15_000,
+        rec: 500,
+        ord: 500,
         st: 'ok',
         notes: '',
         approvalStatus: 'draft',
         branchId: 'branch-1',
       }],
-      [],
-      '2026-08-15',
+      [{ ...reportWithStatus('approved'), date: '2026-08-14', openingMeter: 0, closingMeter: 1_000, liters: 1_000 }],
+      '2026-08-14',
       [{ id: 'pump-1', branchId: 'branch-1' }],
     );
 
     expect(result).toEqual({
-      startupStock: 1_000,
-      delivered: 15_000,
-      sold: 0,
-      bookStock: 16_000,
+      startupStock: 2_000,
+      delivered: 500,
+      sold: 1_000,
+      bookStock: 1_500,
     });
   });
 
-  it('uses only prior-day approved shift reports for the operational stock position', () => {
-    const priorDayApproved = { ...reportWithStatus('approved'), date: '2026-08-14' };
-    const priorDayPending = { ...reportWithStatus('pending_manager'), id: 102, date: '2026-08-14' };
-    const currentDayApproved = { ...reportWithStatus('approved'), id: 103, date: '2026-08-15' };
-
+  it('rolls yesterday expected stock into the next opening and excludes unapproved sales', () => {
     const result = calculateDailyOperationalStock(
-      1_000,
+      startupSeed,
       'PMS',
       'branch-1',
       [{
@@ -642,6 +649,40 @@ describe('daily stock log balance', () => {
         sup: 'Supplier',
         prod: 'PMS',
         wb: 'WB-21',
+        rec: 0,
+        ord: 0,
+        st: 'ok',
+        notes: '',
+        approvalStatus: 'approved',
+        branchId: 'branch-1',
+      }],
+      [
+        { ...reportWithStatus('approved'), date: '2026-08-14', openingMeter: 0, closingMeter: 1_000, liters: 1_000 },
+        { ...reportWithStatus('pending_manager'), id: 102, date: '2026-08-15', liters: 200 },
+      ],
+      '2026-08-15',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+
+    expect(result).toEqual({
+      startupStock: 1_000,
+      delivered: 0,
+      sold: 0,
+      bookStock: 1_000,
+    });
+  });
+
+  it('uses same-day movements after the rollover opening', () => {
+    const result = calculateDailyOperationalStock(
+      startupSeed,
+      'PMS',
+      'branch-1',
+      [{
+        id: 23,
+        dt: '2026-08-15',
+        sup: 'Supplier',
+        prod: 'PMS',
+        wb: 'WB-23',
         rec: 300,
         ord: 300,
         st: 'ok',
@@ -649,7 +690,7 @@ describe('daily stock log balance', () => {
         approvalStatus: 'approved',
         branchId: 'branch-1',
       }],
-      [priorDayApproved, priorDayPending, currentDayApproved],
+      [{ ...reportWithStatus('approved'), date: '2026-08-14', openingMeter: 0, closingMeter: 1_000, liters: 1_000 }],
       '2026-08-15',
       [{ id: 'pump-1', branchId: 'branch-1' }],
     );
@@ -657,8 +698,8 @@ describe('daily stock log balance', () => {
     expect(result).toEqual({
       startupStock: 1_000,
       delivered: 300,
-      sold: 50,
-      bookStock: 1_250,
+      sold: 0,
+      bookStock: 1_300,
     });
   });
 
