@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput,
@@ -335,6 +336,8 @@ export default function ShiftReportScreen() {
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
   const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
+  const { tab: requestedTab } = useLocalSearchParams<{ tab?: string }>();
+  const normalizedRequestedTab = Array.isArray(requestedTab) ? requestedTab[0] : requestedTab;
 
   const isAtt   = role === 'att';
   const isMgr   = role === 'mgr';
@@ -359,7 +362,9 @@ export default function ShiftReportScreen() {
   }, [pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
 
   /* ── tab state ── */
-  const defaultTab = isAtt ? 'dashboard' : isMgr ? 'review' : isAcc ? 'pending_acc' : (isMd || isCeo) ? 'all_records' : 'initial';
+  const defaultTab = normalizedRequestedTab === 'all_records' && (isAdmin || isMd || isCeo)
+    ? 'all_records'
+    : isAtt ? 'dashboard' : isMgr ? 'review' : isAcc ? 'pending_acc' : (isMd || isCeo) ? 'all_records' : 'initial';
   const [tab, setTab] = useState(defaultTab);
 
   /* ── selected pump (att) ── */
