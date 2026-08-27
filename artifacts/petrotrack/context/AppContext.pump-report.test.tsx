@@ -9,6 +9,8 @@ import {
   calculateDailyStockLogBalance,
   calculateStockBook,
   getCurrentTankStock,
+  getLatestPumpReportForOpeningMeter,
+  getPumpOpeningMeter,
   mergeDipRecords,
   useApp,
 } from './AppContext';
@@ -456,6 +458,83 @@ describe('stock book report eligibility', () => {
       expect(result.bookStock).toBe(100);
     },
   );
+});
+
+describe('pump opening meter rollover', () => {
+  it('carries a valid pending-manager submission into the next shift', async () => {
+    await renderProvider();
+
+    const firstReport = await submitReport();
+    expect(firstReport.status).toBe('pending_manager');
+    expect(getLatestPumpReportForOpeningMeter([firstReport], firstReport.pumpId)).toBe(firstReport);
+    expect(getPumpOpeningMeter([firstReport], firstReport.pumpId, {}, {})).toBe(firstReport.closingMeter);
+
+    const { id: _id, status: _status, submittedAt: _submittedAt, ...secondInput } = {
+      ...firstReport,
+      closingMeter: 1100,
+      liters: 50,
+      submittedAt: undefined,
+    };
+    await act(async () => {
+      app().submitPumpReport({
+        ...secondInput,
+        openingMeter: firstReport.closingMeter,
+      });
+    });
+
+    expect(app().pumpDailyReports[1]).toMatchObject({
+      openingMeter: firstReport.closingMeter,
+      closingMeter: 1100,
+      status: 'pending_manager',
+    });
+  });
+
+  it('prefers the later reviewed workflow record on the same business date', () => {
+    const submitted = {
+      ...reportWithStatus('pending_manager'),
+      id: 201,
+      closingMeter: 1100,
+      submittedAt: '2026-08-20T12:00:00.000Z',
+      mgrAt: undefined,
+      accAt: undefined,
+    };
+    const reviewed = {
+      ...reportWithStatus('pending_accountant'),
+      id: 202,
+      closingMeter: 1150,
+      submittedAt: '2026-08-20T09:00:00.000Z',
+      mgrAt: '2026-08-20T13:00:00.000Z',
+      accAt: undefined,
+    };
+
+    expect(getPumpOpeningMeter([submitted, reviewed], 'pump-1', {}, {})).toBe(1150);
+  });
+
+  it.each<PumpReportStatus>(['returned', 'returned_attendant'])(
+    'does not use a %s report as the opening meter',
+    status => {
+      const returned = { ...reportWithStatus(status), closingMeter: 1200 };
+      expect(getPumpOpeningMeter([returned], returned.pumpId, {}, { [returned.pumpId]: 1000 })).toBe(1000);
+    },
+  );
+
+  it('ignores incomplete meter intervals and falls back to the configured meter', () => {
+    const incomplete = {
+      ...reportWithStatus('pending_manager'),
+      openingMeter: undefined as unknown as number,
+      closingMeter: 1200,
+    };
+
+    expect(getPumpOpeningMeter([incomplete], incomplete.pumpId, {}, { [incomplete.pumpId]: 1000 })).toBe(1000);
+  });
+
+  it('uses the selected pump’s own latest meter', () => {
+    const pumpOne = { ...reportWithStatus('pending_manager'), pumpId: 'pump-1', closingMeter: 1200 };
+    const pumpTwo = { ...reportWithStatus('pending_manager'), id: 203, pumpId: 'pump-2', closingMeter: 2400 };
+
+    expect(getPumpOpeningMeter([pumpOne, pumpTwo], 'pump-1', {}, {})).toBe(1200);
+    expect(getPumpOpeningMeter([pumpOne, pumpTwo], 'pump-2', {}, {})).toBe(2400);
+  });
 });
 
 describe('current tank stock', () => {
