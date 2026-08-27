@@ -27,6 +27,7 @@ const APPR_MAP: Record<string, { label: string; color: string; bg: string; icon:
   pending_md:  { label: 'Awaiting MD Approval', color: '#BA7517', bg: '#FAEEDA',  icon: 'hourglass-outline' },
   md_approved: { label: 'MD Approved',          color: '#27500A', bg: '#EAF3DE',  icon: 'checkmark-circle' },
   approved:    { label: 'Approved',             color: '#27500A', bg: '#EAF3DE',  icon: 'checkmark-circle' },
+  returned:    { label: 'Returned for Correction', color: '#791F1F', bg: '#FCEBEB', icon: 'return-down-back' },
   rejected:    { label: 'Rejected by MD',       color: '#791F1F', bg: '#FCEBEB',  icon: 'close-circle' },
 };
 const PROD_COLORS: Record<string, string> = {
@@ -201,6 +202,7 @@ export default function ReceivingScreen() {
   const isMgr        = role === 'mgr' || role === 'csm' || role === 'admin';
   const isAcc        = role === 'acc' || role === 'admin';
   const isMd         = role === 'md'  || role === 'ceo' || role === 'admin';
+  const isAdmin      = role === 'admin';
   const canSeeStock  = role === 'acc' || role === 'md' || role === 'ceo' || role === 'csm' || role === 'admin';
   const isMdOrCeo    = role === 'md'  || role === 'ceo' || role === 'admin';
 
@@ -522,13 +524,17 @@ export default function ReceivingScreen() {
     const vals = validateMgrForm(editForm);
     if (!vals) return;
     requestDateConfirmation('delivery', editForm.dt, () => {
-      updateDelivery(editTarget.id, {
+      const updated = updateDelivery(editTarget.id, {
         dt: editForm.dt,
         sup: editForm.sup.trim(), prod: editForm.prod, wb: editForm.wb,
         ord: vals.ordN, rec: vals.recN, st: editForm.st, notes: editForm.notes,
         receivedBy: editTarget.receivedBy,
         approvalStatus: 'draft',
       });
+      if (!updated) {
+        Alert.alert('Unable to update', 'Only the original delivery manager can edit a returned delivery, and approved deliveries are locked.');
+        return;
+      }
       setEditTarget(null);
     }, 'Confirm & save');
   }
@@ -539,7 +545,11 @@ export default function ReceivingScreen() {
       `WB: ${d.wb} — ${d.prod} ${safeNum(d.rec).toLocaleString()}${unitForProd(d.prod)}\n\nThis cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteDelivery(d.id) },
+        { text: 'Delete', style: 'destructive', onPress: () => {
+          if (!deleteDelivery(d.id)) {
+            Alert.alert('Unable to delete', 'Returned deliveries can only be deleted by their originator. Approved deliveries can only be deleted by an admin.');
+          }
+        } },
       ]
     );
   }
@@ -633,9 +643,13 @@ export default function ReceivingScreen() {
   }
 
   const canMgrEdit = (d: Delivery) =>
-    isMgr && (d.approvalStatus === 'draft' || !d.approvalStatus);
+    isMgr &&
+    (d.approvalStatus === 'draft' || !d.approvalStatus || d.approvalStatus === 'returned') &&
+    (!d.receivedBy || d.receivedBy === userName);
   const canMgrSubmit = (d: Delivery) =>
-    isMgr && (d.approvalStatus === 'draft' || !d.approvalStatus);
+    isMgr &&
+    (d.approvalStatus === 'draft' || !d.approvalStatus || d.approvalStatus === 'returned') &&
+    (!d.receivedBy || d.receivedBy === userName);
   const canAccSet = (d: Delivery) =>
     isAcc && (d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending');
   const canAccRecall = (d: Delivery) =>
@@ -949,8 +963,10 @@ export default function ReceivingScreen() {
                     ) : null}
                   </View>
                   {d.notes ? <Text style={[styles.delivNotes, { color: colors.textSubtle }]}>{d.notes}</Text> : null}
-                  {(apSt === 'pending_acc' || apSt === 'pending') && d.rejectedNote ? (
-                    <Text style={[styles.delivNotes, { color: '#791F1F' }]}>{'Returned by MD: '}{d.rejectedNote}</Text>
+                   {(apSt === 'returned' || apSt === 'pending_acc' || apSt === 'pending') && d.rejectedNote ? (
+                     <Text style={[styles.delivNotes, { color: '#791F1F' }]}>
+                       {apSt === 'returned' ? 'Returned by MD: ' : 'Returned for review: '}{d.rejectedNote}
+                     </Text>
                   ) : null}
                 </View>
               </View>
@@ -1100,6 +1116,14 @@ export default function ReceivingScreen() {
                       <Text style={styles.forwardBtnText}>Forward to Acc</Text>
                     </TouchableOpacity>
                   ) : null}
+                </View>
+              ) : null}
+              {isAdmin && !canMgrEdit(d) ? (
+                <View style={styles.actionRow}>
+                  <TouchableOpacity onPress={() => handleDelete(d)} style={[styles.actionBtn, { borderColor: '#791F1F' }]}>
+                    <Ionicons name="trash-outline" size={14} color="#791F1F" />
+                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Delete</Text>
+                  </TouchableOpacity>
                 </View>
               ) : null}
 
