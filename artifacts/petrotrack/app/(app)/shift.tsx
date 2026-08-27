@@ -7,7 +7,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  PumpDailyReport, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPumpOpeningMeter, getPriceForPump, unitForProd, useApp,
+  PumpDailyReport, ROLE_COLORS, currentBusinessDateKey, fmt, fmtDate, fmtDateTime, getPumpOpeningMeter, getPriceForPump, isFutureBusinessDate, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { AppliedDateField } from '@/components/AppliedDateField';
@@ -344,7 +344,7 @@ export default function ShiftReportScreen() {
   const canView = isAtt || isMgr || isAcc || isAdmin || isMd || isCeo || isCsm;
   const isGlobalOverview = isAcc || isAdmin || isMd || isCeo || isCsm;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = currentBusinessDateKey();
   const activePumps = pumps.filter(p => {
     if (!p.active) return false;
     if (isGlobalOverview || !branchId || !p.branchId) return true;   // global overview or legacy pump — show all
@@ -391,9 +391,13 @@ export default function ShiftReportScreen() {
   function handleSubmit() {
     if (!pump) { Alert.alert('Error', 'No active pump selected.'); return; }
     if (!appliesOn) { Alert.alert('Date required', 'Select the date this shift report applies to.'); return; }
+    if (isAtt && isFutureBusinessDate(appliesOn, today)) {
+      Alert.alert('Future date not allowed', `Attendants can only submit shift reports dated ${fmtDate(today)} or earlier.`);
+      return;
+    }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
     if (totalColl + creditVal <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, transfer, or credit).'); return; }
-    submitPumpReport({
+    const submitted = submitPumpReport({
        date: appliesOn,
       pumpId: pump.id, pumpName: pump.name, product: pump.prod,
       branchId: branchId ?? pump.branchId ?? '',
@@ -404,6 +408,10 @@ export default function ShiftReportScreen() {
       note: noteAtt.trim(),
       submittedBy: userName ?? '', submittedByName: userName ?? '',
     });
+    if (!submitted) {
+      Alert.alert('Future date not allowed', `Attendants can only submit shift reports dated ${fmtDate(today)} or earlier.`);
+      return;
+    }
     setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditAmt(''); setNoteAtt('');
     setAppliesOn('');
     const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
@@ -619,7 +627,14 @@ export default function ShiftReportScreen() {
 
   function handleAttResubmit() {
     if (!viewing) return;
-    attResubmitPumpReport(viewing.id, reviewNote.trim());
+    if (isFutureBusinessDate(viewing.date, today)) {
+      Alert.alert('Future date not allowed', `Attendants can only submit shift reports dated ${fmtDate(today)} or earlier.`);
+      return;
+    }
+    if (!attResubmitPumpReport(viewing.id, reviewNote.trim())) {
+      Alert.alert('Unable to re-submit', 'This shift report cannot be submitted with a future business date.');
+      return;
+    }
     Alert.alert('Re-submitted', 'Your corrected report was sent to the branch manager for review.');
     closeModal();
   }
