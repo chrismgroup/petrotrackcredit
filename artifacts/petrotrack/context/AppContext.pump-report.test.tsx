@@ -703,6 +703,49 @@ describe('daily stock log balance', () => {
     });
   });
 
+  it('counts received delivery stock when submitted and keeps it counted after approval', () => {
+    const submittedDelivery = {
+      id: 24,
+      ...deliveryWithStatus('pending_acc'),
+      dt: '2026-08-14',
+      rec: 400,
+    };
+    const submitted = calculateDailyOperationalStock(
+      startupSeed,
+      'PMS',
+      'branch-1',
+      [submittedDelivery],
+      [],
+      '2026-08-14',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+    const approved = calculateDailyOperationalStock(
+      startupSeed,
+      'PMS',
+      'branch-1',
+      [{ ...submittedDelivery, approvalStatus: 'approved' }],
+      [],
+      '2026-08-14',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+    const rejected = calculateDailyOperationalStock(
+      startupSeed,
+      'PMS',
+      'branch-1',
+      [{ ...submittedDelivery, approvalStatus: 'rejected' }],
+      [],
+      '2026-08-14',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+
+    expect(submitted.delivered).toBe(400);
+    expect(submitted.bookStock).toBe(2_400);
+    expect(approved.delivered).toBe(400);
+    expect(approved.bookStock).toBe(2_400);
+    expect(rejected.delivered).toBe(0);
+    expect(rejected.bookStock).toBe(2_000);
+  });
+
   it('marks a higher physical dip as excess', () => {
     const result = calculateDailyStockLogBalance(1_000, 300, 200, 1_150);
 
