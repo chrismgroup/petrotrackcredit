@@ -35,6 +35,7 @@ import {
   type StockProduct,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { getDashboardApprovalRoute } from '@/lib/dashboard-approval-routing';
 import { findLatestDipForProduct } from '@/lib/dip-helpers';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
@@ -528,6 +529,10 @@ export default function HomeScreen() {
   );
   const pendingAccounts = userAccounts.filter(a =>
     a.status === 'pending' || a.status === 'pending_md' || a.status === 'pending_admin',
+  );
+  const pendingReviewRoute = getDashboardApprovalRoute(
+    { shiftReports: pendingPumpReports.length, deliveries: pendingDeliveries.length },
+    { shift: SCREEN_ROUTES.shift, receiving: SCREEN_ROUTES.recv, reports: SCREEN_ROUTES.exprpt },
   );
 
   const totalApprovals =
@@ -1024,7 +1029,7 @@ export default function HomeScreen() {
         </Section>
 
         {/* ── Reports Awaiting Approval ────────────────────────────── */}
-        <Section label="REPORTS PENDING REVIEW" route={SCREEN_ROUTES.exprpt} colors={colors}>
+        <Section label="REPORTS PENDING REVIEW" route={pendingReviewRoute} colors={colors}>
           <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {pendingPumpReports.length === 0 && pendingDeliveries.length === 0 ? (
               <View style={s.emptyState}>
