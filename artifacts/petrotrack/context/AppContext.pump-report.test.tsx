@@ -15,7 +15,7 @@ import {
   mergeDipRecords,
   useApp,
 } from './AppContext';
-import type { DipRecord, PumpDailyReport, PumpReportStatus } from './AppContext';
+import type { Delivery, DipRecord, PumpDailyReport, PumpReportStatus } from './AppContext';
 import { findLatestDipForProduct } from '../lib/dip-helpers';
 
 type AppState = ReturnType<typeof useApp>;
@@ -69,6 +69,26 @@ function reportWithStatus(status: PumpReportStatus, submittedBy = 'Original Atte
     mgrNote: 'Reviewed',
     accNote: 'Approved',
     accAt: '2026-08-20T11:00:00.000Z',
+  };
+}
+
+function deliveryWithStatus(
+  approvalStatus: Delivery['approvalStatus'],
+  receivedBy = 'Original Manager',
+): Omit<Delivery, 'id'> {
+  return {
+    dt: '2026-08-20',
+    submittedAt: '2026-08-20T10:00:00.000Z',
+    sup: 'Test Supplier',
+    prod: 'PMS',
+    wb: 'WB-DEL-1',
+    ord: 100,
+    rec: 100,
+    st: 'ok',
+    notes: 'Test receipt',
+    receivedBy,
+    approvalStatus,
+    branchId: 'branch-1',
   };
 }
 
@@ -728,6 +748,12 @@ describe('attendant report resubmission', () => {
       app().attResubmitPumpReport(returnedReport.id, 'I should not be able to do this');
     });
     expect(app().pumpDailyReports).toEqual([returnedReport]);
+    let deleted = true;
+    await act(async () => {
+      deleted = await app().deletePumpReport(returnedReport.id);
+    });
+    expect(deleted).toBe(false);
+    expect(app().pumpDailyReports).toEqual([returnedReport]);
 
     await act(async () => {
       expect(await app().login('att', returnedReport.submittedBy, 2, 'branch-1')).toBe(true);
@@ -794,6 +820,37 @@ describe('attendant report resubmission', () => {
     expect(today.bookStock).toBe(50);
   });
 
+  it('lets the original attendant edit and delete a returned report', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+
+    await act(async () => {
+      expect(await app().login('att', 'Original Attendant', 1, 'branch-1')).toBe(true);
+    });
+    const returnedReport = await createReturnedAttendantReport('Original Attendant');
+
+    await act(async () => {
+      app().updatePumpReport(returnedReport.id, {
+        date: '2026-08-21',
+        closingMeter: 1060,
+        note: 'Corrected returned report',
+      });
+    });
+    expect(app().pumpDailyReports[0]).toMatchObject({
+      date: '2026-08-21',
+      closingMeter: 1060,
+      note: 'Corrected returned report',
+      status: 'returned_attendant',
+    });
+
+    let deleted = false;
+    await act(async () => {
+      deleted = await app().deletePumpReport(returnedReport.id);
+    });
+    expect(deleted).toBe(true);
+    expect(app().pumpDailyReports).toEqual([]);
+  });
+
   it('does not let an attendant re-submit a returned report dated in the future', async () => {
     await renderProvider();
     jest.mocked(stateApi.getAll).mockResolvedValue({});
@@ -817,6 +874,114 @@ describe('attendant report resubmission', () => {
       date: '2099-01-01',
       status: 'returned_attendant',
     });
+  });
+});
+
+describe('delivery returned and approved permissions', () => {
+  it('returns an MD-rejected delivery to its originating manager for editing and deletion', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+
+    await act(async () => {
+      expect(await app().login('mgr', 'Original Manager', 3, 'branch-1')).toBe(true);
+      app().addDelivery(deliveryWithStatus('draft'));
+    });
+    const delivery = app().deliveries[0];
+    await act(async () => {
+      app().submitDeliveryForApproval(delivery.id);
+      app().accForwardToMd(delivery.id, 650, 'Cost entered');
+    });
+
+    await act(async () => {
+      expect(await app().login('md', 'Managing Director', 4)).toBe(true);
+    });
+    await act(async () => {
+      app().rejectDelivery(delivery.id, 'Correct the applies-on date and receipt details.');
+    });
+    expect(app().deliveries[0]).toMatchObject({
+      id: delivery.id,
+      approvalStatus: 'returned',
+      rejectedNote: 'Correct the applies-on date and receipt details.',
+    });
+
+    let updated = false;
+    await act(async () => {
+      expect(await app().login('mgr', 'Original Manager', 3, 'branch-1')).toBe(true);
+    });
+    await act(async () => {
+      updated = app().updateDelivery(delivery.id, {
+        dt: '2026-08-21',
+        notes: 'Corrected receipt details',
+        approvalStatus: 'draft',
+      });
+    });
+    expect(updated).toBe(true);
+    expect(app().deliveries[0]).toMatchObject({
+      dt: '2026-08-21',
+      notes: 'Corrected receipt details',
+      approvalStatus: 'draft',
+    });
+
+    let deleted = false;
+    await act(async () => {
+      deleted = app().deleteDelivery(delivery.id);
+    });
+    expect(deleted).toBe(true);
+    expect(app().deliveries).toEqual([]);
+  });
+
+  it('does not let another manager edit or delete a returned delivery', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+
+    await act(async () => {
+      expect(await app().login('mgr', 'Original Manager', 3, 'branch-1')).toBe(true);
+      app().addDelivery(deliveryWithStatus('returned'));
+    });
+    const delivery = app().deliveries[0];
+    await act(async () => {
+      expect(await app().login('mgr', 'Another Manager', 5, 'branch-1')).toBe(true);
+    });
+
+    let updated = true;
+    let deleted = true;
+    await act(async () => {
+      updated = app().updateDelivery(delivery.id, { notes: 'Unauthorized edit' });
+      deleted = app().deleteDelivery(delivery.id);
+    });
+    expect(updated).toBe(false);
+    expect(deleted).toBe(false);
+    expect(app().deliveries).toEqual([delivery]);
+  });
+
+  it('locks approved deliveries for edits and allows deletion only for admin', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+
+    await act(async () => {
+      expect(await app().login('mgr', 'Original Manager', 3, 'branch-1')).toBe(true);
+      app().addDelivery(deliveryWithStatus('approved'));
+    });
+    const delivery = app().deliveries[0];
+
+    let updated = true;
+    let deleted = true;
+    await act(async () => {
+      updated = app().updateDelivery(delivery.id, { notes: 'Unauthorized edit' });
+      deleted = app().deleteDelivery(delivery.id);
+    });
+    expect(updated).toBe(false);
+    expect(deleted).toBe(false);
+    expect(app().deliveries).toEqual([delivery]);
+
+    await act(async () => {
+      expect(await app().login('admin', 'Operations Admin', 1)).toBe(true);
+    });
+    await act(async () => {
+      deleted = app().deleteDelivery(delivery.id);
+    });
+    expect(deleted).toBe(true);
+    expect(app().deliveries).toEqual([]);
   });
 });
 

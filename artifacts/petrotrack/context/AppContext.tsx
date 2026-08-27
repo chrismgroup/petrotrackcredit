@@ -24,7 +24,7 @@ export interface Tank {
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; branchId?: string; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil'; active: boolean; branchId?: string; lpgCategory?: 'single' | 'distributor'; }
 export interface DipRecord { id: number; dt: string; submittedAt?: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; branchId?: string; }
-export interface Delivery { id: number; dt: string; submittedAt?: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
+export interface Delivery { id: number; dt: string; submittedAt?: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'returned' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
 /** A saved receipt changes physical stock immediately; commercial approval only
  * controls pricing and accounting. Rejected receipts never affect inventory. */
 export function isPhysicalDeliveryReceipt(delivery: Pick<Delivery, 'approvalStatus'>): boolean {
@@ -1293,9 +1293,9 @@ interface AppContextType {
   approveDip: (id: number) => void;
   rejectDip: (id: number) => void;
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
-  updateDelivery: (id: number, updates: Partial<Omit<Delivery, 'id'>>) => void;
+  updateDelivery: (id: number, updates: Partial<Omit<Delivery, 'id'>>) => boolean;
   accRecallDelivery: (id: number) => void;
-  deleteDelivery: (id: number) => void;
+  deleteDelivery: (id: number) => boolean;
   submitDeliveryForApproval: (id: number) => void;
   accForwardToMd: (id: number, costPrice: number, accNote: string) => void;
   approveDelivery: (id: number, sellingPrice: number, mdNote?: string) => void;
@@ -2503,18 +2503,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName, branchId]);
 
   const updateDelivery = useCallback((id: number, updates: Partial<Omit<Delivery, 'id'>>) => {
+    const existing = deliveries.find(d => d.id === id);
+    if (!existing) return false;
+    const isApproved = existing.approvalStatus === 'md_approved' || existing.approvalStatus === 'approved';
+    const isReturnedToOriginator = existing.approvalStatus === 'returned';
+    if (isApproved || (isReturnedToOriginator && role !== 'admin' && (role !== 'mgr' || existing.receivedBy !== userName))) {
+      return false;
+    }
     setDeliveries(ds => ds.map(d => d.id === id ? { ...d, ...updates } : d));
     setAudit(a => [{ id: genId(), action: 'Delivery updated', user: userName, detail: `Delivery #${id} edited`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    return true;
+  }, [deliveries, role, userName]);
 
   const deleteDelivery = useCallback((id: number) => {
-    setDeliveries(ds => {
-      const d = ds.find(r => r.id === id);
-      if (d?.approvalStatus === 'md_approved' || d?.approvalStatus === 'approved') return ds;
-      return ds.filter(r => r.id !== id);
-    });
+    const delivery = deliveries.find(d => d.id === id);
+    if (!delivery) return false;
+    const isApproved = delivery.approvalStatus === 'md_approved' || delivery.approvalStatus === 'approved';
+    const isReturnedToOriginator = delivery.approvalStatus === 'returned';
+    if (
+      (isApproved && role !== 'admin') ||
+      (isReturnedToOriginator && role !== 'admin' && (role !== 'mgr' || delivery.receivedBy !== userName))
+    ) return false;
+    setDeliveries(ds => ds.filter(r => r.id !== id));
     setAudit(a => [{ id: genId(), action: 'Delivery deleted', user: userName, detail: `Delivery #${id} removed`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    return true;
+  }, [deliveries, role, userName]);
 
   const submitDeliveryForApproval = useCallback((id: number) => {
     const d = deliveries.find(d => d.id === id);
@@ -2614,20 +2627,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const rejectDelivery = useCallback((id: number, note?: string) => {
     const d = deliveries.find(d => d.id === id);
-    if (!d) return;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_acc' as const, rejectedNote: note } : rec));
-    setAudit(a => [{ id: genId(), action: 'Delivery rejected by MD', user: userName, detail: `WB: ${d.wb}${note ? ' — ' + note : ''} · returned to accountant`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('md', 'acc');
+    if (!d || (role !== 'md' && role !== 'admin') || d.approvalStatus !== 'pending_md') return;
+    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'returned' as const, rejectedNote: note } : rec));
+    setAudit(a => [{ id: genId(), action: 'Delivery returned to originator', user: userName, detail: `WB: ${d.wb}${note ? ' — ' + note : ''} · returned to ${d.receivedBy || 'originating manager'}`, ts: nowTs() }, ...a]);
+    const msgKey = chatKey('md', 'mgr');
     setMessages(m => ({
       ...m,
       [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'md' as Role, to: 'acc' as Role, type: 'alert' as const,
-        body: `Delivery rejected: ${d.prod} WB: ${d.wb}${note ? ' — ' + note : ''}. Please revise and resubmit.`,
-        alrt: { title: 'Delivery Returned by MD', pri: 'Medium', detail: note || 'No reason given' },
+        id: genId(), from: 'md' as Role, to: 'mgr' as Role, type: 'alert' as const,
+        body: `Delivery returned to originator: ${d.prod} WB: ${d.wb}${note ? ' — ' + note : ''}. Please edit and resubmit.`,
+        alrt: { title: 'Delivery Returned for Correction', pri: 'Medium', detail: note || 'No reason given' },
         ts: nowTime(), read: false,
       }],
     }));
-  }, [userName, deliveries]);
+  }, [role, userName, deliveries]);
 
   const applyMaintenanceRecord = useCallback((record: MaintenanceItem) => {
     setMaintenance(previous => {
@@ -3683,6 +3696,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const report = pumpDailyReports.find(r => r.id === id);
     if (!report) return Promise.resolve(false);
     if (report.status === 'approved' && role !== 'admin') return Promise.resolve(false);
+    if (report.status === 'returned_attendant' && role !== 'admin' && report.submittedBy !== userName) {
+      return Promise.resolve(false);
+    }
     if (report.status === 'approved') {
       return stateApi.deleteApprovedPumpReport(id).then(result => {
         if (!result?.ok) return false;
@@ -3722,6 +3738,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Accountant-approved reports are permanently locked — no role, including
     // Admin, may edit them.
     if (!prev || prev.status === 'approved') return;
+    // A report returned to the attendant may only be corrected by the
+    // attendant who originally submitted it (admins retain controlled
+    // workflow access to non-approved records).
+    if (prev.status === 'returned_attendant' && role !== 'admin' && prev.submittedBy !== userName) return;
     const merged = { ...prev, ...updates } as PumpDailyReport;
     // Recalculate derived values when meter or price values change.
     const liters = merged.closingMeter > merged.openingMeter ? parseFloat((merged.closingMeter - merged.openingMeter).toFixed(4)) : 0;
