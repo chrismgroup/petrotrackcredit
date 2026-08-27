@@ -475,6 +475,11 @@ export function currentBusinessDateKey(date = new Date()): string {
   ].join('-');
 }
 
+export function isFutureBusinessDate(value: string, today = currentBusinessDateKey()): boolean {
+  const normalized = businessDateKey(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) && normalized > today;
+}
+
 export function useBusinessDateKey(): string {
   const [dateKey, setDateKey] = useState(() => currentBusinessDateKey());
 
@@ -1252,13 +1257,13 @@ interface AppContextType {
   lockPumpMeter: (pumpId: string, meter: number) => void;
   unlockPumpMeter: (pumpId: string) => void;
   resetOperationalData: () => Promise<void>;
-  submitPumpReport: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => void;
+  submitPumpReport: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => boolean;
   mgrForwardPumpReport: (id: number, mgrNote: string) => void;
   accApprovePumpReport: (report: PumpDailyReport, accNote: string) => void;
   accRejectPumpReport: (id: number, rejectionReason: string) => void;
   mgrResubmitPumpReport: (id: number, mgrNote: string) => void;
   mgrReturnPumpReportToAttendant: (id: number, mgrNote: string) => void;
-  attResubmitPumpReport: (id: number, note: string) => void;
+  attResubmitPumpReport: (id: number, note: string) => boolean;
   adminReturnApprovedPumpReport: (id: number, note: string) => boolean;
   deletePumpReport: (id: number) => Promise<boolean>;
   updatePumpReport: (id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => void;
@@ -3441,6 +3446,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName, pumps, pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
 
   const submitPumpReport = useCallback((r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
+    if (role === 'att' && isFutureBusinessDate(r.date)) return false;
     const reportId = genId();
     setPumpDailyReports(rs => [...rs, { ...r, id: reportId, status: 'pending_manager', submittedAt: nowTs() }]);
     setAudit(a => [{ id: genId(), action: 'Pump report submitted', user: userName, detail: `${r.pumpName} · ${r.liters.toLocaleString()}L · variance: ₦${r.variance.toLocaleString()}`, ts: nowTs() }, ...a]);
@@ -3452,7 +3458,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       body: `${r.submittedByName} submitted ${r.pumpName} for manager review.`,
       data: { route: SCREEN_ROUTES.shift, reportId },
     });
-  }, [userName]);
+    return true;
+  }, [role, userName]);
 
   const mgrForwardPumpReport = useCallback((id: number, mgrNote: string) => {
     const report = pumpDailyReports.find(r => r.id === id);
@@ -3505,7 +3512,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const report = pumpDailyReports.find(r => r.id === id);
     // Only reports sitting with the attendant can be re-submitted, and only by
     // the attendant who originally generated the report.
-    if (!report || report.status !== 'returned_attendant' || report.submittedBy !== userName) return;
+    if (!report || report.status !== 'returned_attendant' || report.submittedBy !== userName) return false;
+    if (role === 'att' && isFutureBusinessDate(report.date)) return false;
     setPumpDailyReports(rs => rs.map(r => r.id === id
       ? { ...r, status: 'pending_manager', note: note || r.note, submittedAt: nowTs(), rejectionReason: undefined }
       : r
@@ -3519,7 +3527,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       body: `${report.submittedByName} re-submitted ${report.pumpName} for manager review.`,
       data: { route: SCREEN_ROUTES.shift, reportId: id },
     });
-  }, [userName, pumpDailyReports]);
+    return true;
+  }, [role, userName, pumpDailyReports]);
 
   const reverseApprovedPumpReportEffects = useCallback((report: PumpDailyReport) => {
     const pump = pumps.find(candidate => candidate.id === report.pumpId);

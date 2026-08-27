@@ -11,6 +11,7 @@ import {
   getCurrentTankStock,
   getLatestPumpReportForOpeningMeter,
   getPumpOpeningMeter,
+  isFutureBusinessDate,
   mergeDipRecords,
   useApp,
 } from './AppContext';
@@ -723,13 +724,17 @@ describe('attendant report resubmission', () => {
       expect(await app().login('att', 'Another Attendant', 1, 'branch-1')).toBe(true);
     });
     const returnedReport = await createReturnedAttendantReport('Original Attendant');
-    await act(async () => app().attResubmitPumpReport(returnedReport.id, 'I should not be able to do this'));
+    await act(async () => {
+      app().attResubmitPumpReport(returnedReport.id, 'I should not be able to do this');
+    });
     expect(app().pumpDailyReports).toEqual([returnedReport]);
 
     await act(async () => {
       expect(await app().login('att', returnedReport.submittedBy, 2, 'branch-1')).toBe(true);
     });
-    await act(async () => app().attResubmitPumpReport(returnedReport.id, 'Corrected reading'));
+    await act(async () => {
+      app().attResubmitPumpReport(returnedReport.id, 'Corrected reading');
+    });
 
     expect(app().pumpDailyReports[0]).toMatchObject({
       id: returnedReport.id,
@@ -787,6 +792,62 @@ describe('attendant report resubmission', () => {
     expect(yesterday.bookStock).toBe(50);
     expect(today.sold).toBe(0);
     expect(today.bookStock).toBe(50);
+  });
+
+  it('does not let an attendant re-submit a returned report dated in the future', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+
+    await act(async () => {
+      expect(await app().login('att', 'Original Attendant', 1, 'branch-1')).toBe(true);
+    });
+    const returnedReport = await createReturnedAttendantReport('Original Attendant');
+    await act(async () => {
+      app().updatePumpReport(returnedReport.id, { date: '2099-01-01' });
+    });
+
+    let resubmitted = true;
+    await act(async () => {
+      resubmitted = app().attResubmitPumpReport(returnedReport.id, 'Corrected reading');
+    });
+
+    expect(resubmitted).toBe(false);
+    expect(app().pumpDailyReports[0]).toMatchObject({
+      id: returnedReport.id,
+      date: '2099-01-01',
+      status: 'returned_attendant',
+    });
+  });
+});
+
+describe('future shift-report business dates', () => {
+  it('recognizes future dates but allows today and earlier', () => {
+    expect(isFutureBusinessDate('2026-08-28', '2026-08-27')).toBe(true);
+    expect(isFutureBusinessDate('2026-08-27', '2026-08-27')).toBe(false);
+    expect(isFutureBusinessDate('2026-08-26', '2026-08-27')).toBe(false);
+  });
+
+  it('rejects a future-dated new report for an attendant in shared state', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+
+    await act(async () => {
+      expect(await app().login('att', 'Original Attendant', 1, 'branch-1')).toBe(true);
+    });
+
+    const { id: _id, status: _status, submittedAt: _submittedAt, ...input } = {
+      ...reportWithStatus('pending_manager'),
+      date: '2099-01-01',
+      submittedBy: 'Original Attendant',
+      submittedByName: 'Original Attendant',
+    };
+    let submitted = true;
+    await act(async () => {
+      submitted = app().submitPumpReport(input);
+    });
+
+    expect(submitted).toBe(false);
+    expect(app().pumpDailyReports).toEqual([]);
   });
 });
 
