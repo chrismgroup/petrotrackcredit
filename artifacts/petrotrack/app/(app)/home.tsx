@@ -24,7 +24,6 @@ import {
   calculateDailyOperationalStock,
   calculateDailyStockLogBalance,
   dipReadingToLiters,
-  previousBusinessDateKey,
   unitForProd,
   useBusinessDateKey,
   useApp,
@@ -459,7 +458,6 @@ export default function HomeScreen() {
       const inScope = (item: { branchId?: string }) => item.branchId === scope.branchId;
       const branchTanks = tanks.filter(inScope);
       const branchLpgTanks = lpgTanks.filter(inScope);
-      const previousDate = previousBusinessDateKey(todayKey);
       const enabledProducts = scope.branchId
         ? stockSnapshotConfig.productsByBranch[scope.branchId]
         : undefined;
@@ -471,17 +469,11 @@ export default function HomeScreen() {
            stock.branchId === scope.branchId
           );
           const todayDip = findLatestDipForProduct(
-            dips, todayKey, scope.branchId, product, branchTanks, branchLpgTanks,
+             dips, todayKey, scope.branchId, product, branchTanks, branchLpgTanks,
+             { approvedOnly: false },
           );
-          const openingDip = findLatestDipForProduct(
-            dips, previousDate, scope.branchId, product, branchTanks, branchLpgTanks,
-            { beforeDate: true },
-          );
-          const openingStock = dipForProduct(openingDip, product, branchTanks, branchLpgTanks)
-            ?? startupRecord?.quantity
-            ?? null;
           const stockBook = calculateDailyOperationalStock(
-            openingStock,
+             startupRecord,
             product,
             scope.branchId,
             deliveries,
@@ -491,7 +483,7 @@ export default function HomeScreen() {
           );
         const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const variance = calculateDailyStockLogBalance(
-          stockBook.bookStock,
+           stockBook.startupStock,
           stockBook.delivered,
           stockBook.sold,
           submittedTankDip,
@@ -690,8 +682,8 @@ export default function HomeScreen() {
             <View style={[s.snapshotCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
-                <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                   Live inputs: yesterday&apos;s approved dip or seed + today&apos;s approved deliveries − yesterday&apos;s approved shift sales, compared with today&apos;s approved tank dip
+                    <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
+                   Live inputs: yesterday&apos;s expected book stock rolls forward as opening + today&apos;s deliveries − today&apos;s approved shift sales, compared with today&apos;s submitted tank dip
                 </Text>
               </View>
               {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (
@@ -740,7 +732,7 @@ export default function HomeScreen() {
                         </View>
                       ) : null}
                       <View style={s.snapshotValue}>
-                          <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Prior-day sold</Text>
+                           <Text style={[s.snapshotValueLabel, { color: colors.textSubtle }]}>Sold today</Text>
                         <Text style={[s.snapshotValueText, { color: colors.text }]}>
                           {formatQuantity(snapshot.sales)} {snapshot.unit}
                         </Text>

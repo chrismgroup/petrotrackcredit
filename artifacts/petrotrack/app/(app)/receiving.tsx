@@ -8,7 +8,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
-import { calculateDailyStockLogBalance, calculateStockBook, Delivery, isPhysicalDeliveryReceipt, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, previousBusinessDateKey, useBusinessDateKey, useApp } from '@/context/AppContext';
+import { calculateDailyOperationalStock, calculateDailyStockLogBalance, Delivery, isPhysicalDeliveryReceipt, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, useBusinessDateKey, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { findLatestDipForProduct } from '@/lib/dip-helpers';
 import { safeNum } from '@/lib/report-helpers';
@@ -358,13 +358,8 @@ export default function ReceivingScreen() {
           dips, todayKey, scopeBranchId, prod, scopeTanks, scopeLpgTanks,
           { approvedOnly: false },
         );
-        const openingDip = findLatestDipForProduct(
-          dips, previousBusinessDateKey(todayKey), scopeBranchId, prod, scopeTanks, scopeLpgTanks,
-          { beforeDate: true, approvedOnly: false },
-        );
         const startupRecord = startupStocks.find(stock => stock.product === prod && stock.branchId === scopeBranchId);
-        const openingStock = dipForProduct(openingDip, prod, scopeTanks, scopeLpgTanks);
-        const stockBook = calculateStockBook(
+        const stockBook = calculateDailyOperationalStock(
           startupRecord,
           prod as 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil',
           scopeBranchId,
@@ -372,11 +367,10 @@ export default function ReceivingScreen() {
           scopeReports,
           todayKey,
           pumps,
-          openingStock,
         );
         const submittedTankDip = dipForProduct(todaySubmittedDip, prod, scopeTanks, scopeLpgTanks);
         const variance = calculateDailyStockLogBalance(
-          stockBook.bookStock,
+           stockBook.startupStock,
           stockBook.delivered,
           stockBook.sold,
           submittedTankDip,
@@ -417,7 +411,7 @@ export default function ReceivingScreen() {
            branchId ?? null,
            tanks.filter(t => t.branchId === (branchId ?? null)),
            lpgTanks.filter(t => t.branchId === (branchId ?? null)),
-           visibleDeliveries,
+            deliveries,
            pumpDailyReports,
          ),
       }].filter(b => b.rows.length > 0);
@@ -740,7 +734,6 @@ export default function ReceivingScreen() {
             <Text style={[styles.mismatchBannerSub, { color: '#791F1F' }]}>Dip reading differs from book stock by more than the accepted threshold</Text>
             {mismatches.map((m, i) => {
               const pc = PROD_COLORS[m.prod] || '#791F1F';
-              const shortageInDip = m.variance > 0;
               return (
                 <View key={i} style={[styles.mismatchRow, { backgroundColor: '#fff3' }]}>
                   <View style={[styles.mismatchProdDot, { backgroundColor: pc }]} />
@@ -748,7 +741,7 @@ export default function ReceivingScreen() {
                   {isGlobalViewer ? <Text style={[styles.mismatchBranch, { color: '#791F1F' }]}>{m.branchName}</Text> : null}
                   <Text style={[styles.mismatchDiff, { color: '#791F1F' }]}>
                     {m.variance > 0 ? '+' : '−'}{Math.abs(m.variance).toLocaleString(undefined, { maximumFractionDigits: 0 })}{' ' + m.unit}
-                    <Text style={{ fontWeight: '500', fontSize: 10 }}>{shortageInDip ? ' shortage in dip' : ' excess in dip'}</Text>
+                    <Text style={{ fontWeight: '500', fontSize: 10 }}>{m.variance > 0 ? ' excess in dip' : ' shortage in dip'}</Text>
                   </Text>
                 </View>
               );
@@ -849,10 +842,10 @@ export default function ReceivingScreen() {
                       <Text style={[styles.stockColProd, styles.stockHeaderText, { color: colors.textMuted }]}>Product</Text>
                        <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Opening</Text>
                        <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Delivered today</Text>
-                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Sold today</Text>
+                        <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Sold today</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Book Stock</Text>
                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Dip</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Variance</Text>
+                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Variance / Status</Text>
                       {isMdOrCeo ? <Text style={[styles.stockColFlag, styles.stockHeaderText, { color: colors.textMuted }]}>Alert</Text> : null}
                     </View>
                     {bsr.rows.map(row => {
@@ -872,9 +865,16 @@ export default function ReceivingScreen() {
                           <Text style={[styles.stockColNum, styles.stockNum, { color: '#791F1F' }]}>{row.sold.toLocaleString()}</Text>
                           <Text style={[styles.stockColNum, styles.stockNum, { color: '#27500A', fontWeight: '800' }]}>{row.bookStock === null ? '—' : row.bookStock.toLocaleString()}</Text>
                           <Text style={[styles.stockColNum, styles.stockNum, { color: colors.textMuted }]}>{row.submittedTankDip === null ? '—' : row.submittedTankDip.toLocaleString()}</Text>
-                          <Text style={[styles.stockColNum, styles.stockNum, { color: varianceColor, fontWeight: '800' }]}>
-                            {row.variance === null ? '—' : `${row.variance > 0 ? '+' : ''}${row.variance.toLocaleString()}`}
-                          </Text>
+                          <View style={styles.stockColNum}>
+                            <Text style={[styles.stockNum, { color: varianceColor, fontWeight: '800' }]}>
+                              {row.variance === null ? '—' : `${row.variance > 0 ? '+' : ''}${row.variance.toLocaleString()}`}
+                            </Text>
+                            {row.variance !== null ? (
+                              <Text style={{ color: varianceColor, fontSize: 10, fontWeight: '700' }}>
+                                {row.variance > 0 ? 'Excess' : row.variance < 0 ? 'Shortage' : 'Balanced'}
+                              </Text>
+                            ) : null}
+                          </View>
                           {isMdOrCeo ? (
                             <View style={styles.stockColFlag}>
                               {mismatch ? (
