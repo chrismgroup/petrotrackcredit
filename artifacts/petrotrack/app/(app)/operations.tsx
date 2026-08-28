@@ -33,6 +33,7 @@ function stockLogStatusLabel(status: StockLogStatus): string {
     excess: 'Excess',
     awaiting_opening: 'Awaiting opening',
     awaiting_dip: 'Awaiting tank dip',
+    not_applicable: 'No tank dip required',
   }[status];
 }
 
@@ -40,6 +41,7 @@ function stockLogStatusColor(status: StockLogStatus, colors: ReturnType<typeof u
   if (status === 'shortage') return colors.error;
   if (status === 'excess') return colors.info;
   if (status === 'balanced') return colors.success;
+  if (status === 'not_applicable') return colors.textMuted;
   return colors.amber;
 }
 
@@ -59,8 +61,14 @@ function stockDipForProduct(
   return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) : null;
 }
 
-function makeStockLogStatus(opening: number | null, dip: number | null, discrepancy: number | null): StockLogStatus {
+function makeStockLogStatus(
+  opening: number | null,
+  dip: number | null,
+  discrepancy: number | null,
+  dipRequired: boolean,
+): StockLogStatus {
   if (opening === null) return 'awaiting_opening';
+  if (!dipRequired) return 'not_applicable';
   if (dip === null || discrepancy === null) return 'awaiting_dip';
   if (discrepancy < -0.01) return 'shortage';
   if (discrepancy > 0.01) return 'excess';
@@ -166,6 +174,9 @@ function StockLogPanel() {
           stockBook.sold,
           tankDip,
         );
+        const dipRequired = product === 'LPG'
+          ? branchLpgTanks.length > 0
+          : branchTanks.some(tank => tank.prod === product);
         entries.push({
           branchId: branch.id,
           product,
@@ -177,7 +188,7 @@ function StockLogPanel() {
           tankDip,
           discrepancy: balance.variance,
           unit: unitForProd(product) as 'L' | 'kg',
-          status: makeStockLogStatus(openingQuantity, tankDip, balance.variance),
+          status: makeStockLogStatus(openingQuantity, tankDip, balance.variance, dipRequired),
           openingSource,
         });
       });

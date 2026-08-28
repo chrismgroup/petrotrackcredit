@@ -269,7 +269,7 @@ export interface InventoryLogEntry {
   discrepancy: number;
   branchId?: string;
 }
-export type StockLogStatus = 'balanced' | 'shortage' | 'excess' | 'awaiting_opening' | 'awaiting_dip';
+export type StockLogStatus = 'balanced' | 'shortage' | 'excess' | 'awaiting_opening' | 'awaiting_dip' | 'not_applicable';
 export type StockLogOpeningSource = 'startup_seed' | 'previous_log' | 'previous_dip' | 'unavailable';
 export interface StockLogEntry {
   id: string;
