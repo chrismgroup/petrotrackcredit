@@ -23,7 +23,7 @@
       }
     },
     "android": {
-      "package": "com.petrack.app",
+      "package": "com.petrotrack.app",
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "pan"
     },
