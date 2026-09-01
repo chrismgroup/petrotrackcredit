@@ -1,4 +1,4 @@
-package com.petrotrack
+package petrotrack.replit.app
 
 import android.os.Build
 import android.os.Bundle
