@@ -24,6 +24,7 @@
     },
     "android": {
       "package": "com.petrack.app",
+      "versionCode": 1,
       "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
