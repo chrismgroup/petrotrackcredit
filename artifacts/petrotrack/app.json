@@ -23,7 +23,7 @@
       }
     },
     "android": {
-      "package": "com.petrotrack.app",
+      "package": "petrotrack.replit.app",
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "pan"
     },
