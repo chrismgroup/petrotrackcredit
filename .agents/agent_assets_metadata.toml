@@ -635,3 +635,115 @@ mtime_ms = 1788340387555
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/fb9a9f33-0913-47f3-a914-3050493f342a/3e93e80f-935b-46f2-b589-1d58ffc3d65b"
 storage_version_token = "1788340401031732"
 content_type = "image/png"
+
+[[outputs]]
+id = "MItJkm6p2GDHBW9dZPE7K"
+uri = "file://store-screenshots/google-play/chromebook/01-home.png"
+type = "image"
+title = "Chromebook screenshot 1 — Home"
+description = "Wide Petrotrack app-screen PNG for Chromebook. 1920×1080, exact 16:9, no device frame, approximately 133 KB."
+logical_id = "413e8af8-9727-426a-9de3-90843ebe68c7"
+content_hash = "sha256:63e7fdf62fde8b3c56d69f20cbb662cebbf56c8a8e14121154c98efb7c817166"
+size = 133482
+mtime_ms = 1788340822047
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/413e8af8-9727-426a-9de3-90843ebe68c7/3792eb03-d1d4-4b8c-9755-16d0afb69f91"
+storage_version_token = "1788340829862708"
+content_type = "image/png"
+
+[[outputs]]
+id = "YDf_61520iFFIqJjwQhmK"
+uri = "file://store-screenshots/google-play/chromebook/02-operations-stock-log.png"
+type = "image"
+title = "Chromebook screenshot 2 — Operations"
+description = "Wide Petrotrack app-screen PNG for Chromebook. 1920×1080, exact 16:9, no device frame, approximately 119 KB."
+logical_id = "e3a65b70-6f07-46da-8e4e-27be3e6a0093"
+content_hash = "sha256:0fc750c20136abea7b31f739fcbca42936058f1f8d2dd0a2dfcbeb00ef35908d"
+size = 119198
+mtime_ms = 1788340822051
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/e3a65b70-6f07-46da-8e4e-27be3e6a0093/c0193423-cb17-43eb-98cc-c838b8830325"
+storage_version_token = "1788340830589569"
+content_type = "image/png"
+
+[[outputs]]
+id = "OxGnHQiqt9Qr3eIjaV6lX"
+uri = "file://store-screenshots/google-play/chromebook/03-shift-report.png"
+type = "image"
+title = "Chromebook screenshot 3 — Shift Report"
+description = "Wide Petrotrack app-screen PNG for Chromebook. 1920×1080, exact 16:9, no device frame, approximately 115 KB."
+logical_id = "0da92fd8-4330-4391-968c-28457c6c0486"
+content_hash = "sha256:03bf6c2eb960692266b1a8032cc33dfd66b6f4b9652f737d365f857716efb605"
+size = 115284
+mtime_ms = 1788340822051
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/0da92fd8-4330-4391-968c-28457c6c0486/a5c64fb1-d55d-4d95-b28b-475d975f4e67"
+storage_version_token = "1788340831277803"
+content_type = "image/png"
+
+[[outputs]]
+id = "jiXAuJh8i35v5MOFXtEyI"
+uri = "file://store-screenshots/google-play/chromebook/04-reports.png"
+type = "image"
+title = "Chromebook screenshot 4 — Reports"
+description = "Wide Petrotrack app-screen PNG for Chromebook. 1920×1080, exact 16:9, no device frame, approximately 112 KB."
+logical_id = "8d5859bc-664a-4ae1-9a41-8a93b63380fd"
+content_hash = "sha256:2f194a22eaf26761d4baa2806662a6a45d749155f99e10ba37e4b522acc0636c"
+size = 111880
+mtime_ms = 1788340822055
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/8d5859bc-664a-4ae1-9a41-8a93b63380fd/d57aa240-3958-4c18-9c7e-028740433a69"
+storage_version_token = "1788340831982292"
+content_type = "image/png"
+
+[[outputs]]
+id = "ROPS_Ms_3G_rFkXmJtmqO"
+uri = "file://store-screenshots/google-play/chromebook/05-tank-dipping.png"
+type = "image"
+title = "Chromebook screenshot 5 — Tank Dipping"
+description = "Wide Petrotrack app-screen PNG for Chromebook. 1920×1080, exact 16:9, no device frame, approximately 107 KB."
+logical_id = "7528a5cd-ad64-44d2-aab2-2a854ef0e144"
+content_hash = "sha256:70c46bad8776b80515a8e8b3192aabc9a9cfff4d50898a79c78c6bf1a8484b38"
+size = 107189
+mtime_ms = 1788340822059
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/7528a5cd-ad64-44d2-aab2-2a854ef0e144/166d0cca-3cd3-4518-8075-f7f8429c1db4"
+storage_version_token = "1788340832608361"
+content_type = "image/png"
+
+[[outputs]]
+id = "ChMg8kMmbuJas4IDmfiog"
+uri = "file://store-screenshots/google-play/chromebook/06-selling-prices.png"
+type = "image"
+title = "Chromebook screenshot 6 — Selling Prices"
+description = "Wide Petrotrack app-screen PNG for Chromebook. 1920×1080, exact 16:9, no device frame, approximately 118 KB."
+logical_id = "c729684c-62bc-4b5c-9148-a3d50e4b5155"
+content_hash = "sha256:bed4e0195a0e63fa2dae4997a0314e85a2e85c88e015a90e57577df3c45aedd0"
+size = 117883
+mtime_ms = 1788340822059
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/c729684c-62bc-4b5c-9148-a3d50e4b5155/ed36f1fd-8bd7-4841-9757-ea42a0f0857e"
+storage_version_token = "1788340833218872"
+content_type = "image/png"
+
+[[outputs]]
+id = "GHQeTwk8h4KKWiEgYDlNT"
+uri = "file://store-screenshots/google-play/chromebook/07-expenses.png"
+type = "image"
+title = "Chromebook screenshot 7 — Expenses"
+description = "Wide Petrotrack app-screen PNG for Chromebook. 1920×1080, exact 16:9, no device frame, approximately 118 KB."
+logical_id = "ca653b55-f0bb-4cd6-9e5a-408798517709"
+content_hash = "sha256:63639f62493047134ca9addca7ab6b95388b7a0eee71bd89f5eba4c6933ca1ed"
+size = 118293
+mtime_ms = 1788340822063
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/ca653b55-f0bb-4cd6-9e5a-408798517709/1a5c5142-ca34-4edf-affa-d7afd142e60e"
+storage_version_token = "1788340833810168"
+content_type = "image/png"
+
+[[outputs]]
+id = "apYtHf2jH_2R7aKyCzHsE"
+uri = "file://store-screenshots/google-play/chromebook/08-budget.png"
+type = "image"
+title = "Chromebook screenshot 8 — Budget"
+description = "Wide Petrotrack app-screen PNG for Chromebook. 1920×1080, exact 16:9, no device frame, approximately 127 KB."
+logical_id = "81355f26-e589-4df6-a4ac-2627a0fdad27"
+content_hash = "sha256:0c1176587652388f844e304fd8263ff4d05fbaf61d968030ccb6929c829a3c1e"
+size = 126549
+mtime_ms = 1788340822067
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/81355f26-e589-4df6-a4ac-2627a0fdad27/20385203-fcc7-4ab6-b77d-f8590f096dba"
+storage_version_token = "1788340834432503"
+content_type = "image/png"
