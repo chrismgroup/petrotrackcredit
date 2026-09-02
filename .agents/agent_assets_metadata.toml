@@ -1,8 +1,231 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "eVsFpow37EABZgmFj2cXL"
 uri = "file://artifacts/petrotrack/assets/images/icon.png"
 type = "image"
 title = "Petrotrack icon"
+
+[[outputs]]
+id = "oOlPDXwCN-Cs3-z9AyrYZ"
+uri = "file://store-screenshots/01-home-play-iphone55.png"
+type = "image"
+title = "Petrotrack Home — Google Play"
+description = "Home dashboard screenshot, 1242×2208 PNG; suitable for Google Play phone listing."
+logical_id = "37a7e4d1-b685-4587-8e84-25d13e029145"
+content_hash = "sha256:9b4af7223b4fa0c513499bd367bf80bacf2a56f67214eb87c84a9d6b76a31550"
+size = 150416
+mtime_ms = 1788335128331
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/37a7e4d1-b685-4587-8e84-25d13e029145/17114949-a862-4e6b-b704-8e53857ed488"
+storage_version_token = "1788335186312850"
+content_type = "image/png"
+
+[[outputs]]
+id = "pxby90LGvXqSaHAVCjxsB"
+uri = "file://store-screenshots/02-my-jobs-play-iphone55.png"
+type = "image"
+title = "Petrotrack My Jobs — Google Play"
+description = "My Jobs workflow screenshot, 1242×2208 PNG; suitable for Google Play phone listing."
+logical_id = "70576a87-e188-4ea2-bbf4-e65de86379b4"
+content_hash = "sha256:7cbf9997e004c6252edda408f8c06de5b28fa37288989cbd9a73db60685a0cca"
+size = 135511
+mtime_ms = 1788335130191
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/70576a87-e188-4ea2-bbf4-e65de86379b4/bd77b484-b7f4-495d-b93e-f21d6f311197"
+storage_version_token = "1788335187027747"
+content_type = "image/png"
+
+[[outputs]]
+id = "y8-OvoWKbJ3qA2Y-5j1kD"
+uri = "file://store-screenshots/03-stock-log-play-iphone55.png"
+type = "image"
+title = "Petrotrack Stock Log — Google Play"
+description = "Daily Stock Log screenshot, 1242×2208 PNG; suitable for Google Play phone listing."
+logical_id = "a5b296d0-338c-4fc8-a8f0-20533704d252"
+content_hash = "sha256:3a6cf4e95275d74d2d95155431dbe32ea26f7107da01dd2eda1c3ecfb948ae66"
+size = 120140
+mtime_ms = 1788335131859
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/a5b296d0-338c-4fc8-a8f0-20533704d252/832d68db-9471-4a04-a841-c5d308dde527"
+storage_version_token = "1788335187716050"
+content_type = "image/png"
+
+[[outputs]]
+id = "pHc5bGwoeYDT-uEilyy37"
+uri = "file://store-screenshots/04-receiving-play-iphone55.png"
+type = "image"
+title = "Petrotrack Receiving — Google Play"
+description = "Receiving and delivery workflow screenshot, 1242×2208 PNG; suitable for Google Play phone listing."
+logical_id = "262dcbdc-ffba-4fa1-a1df-afa816062b41"
+content_hash = "sha256:54d1f8ef44a1f0954f3d901bc7e2bbabad09c2a709e1cda589763847840447c6"
+size = 114628
+mtime_ms = 1788335133699
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/262dcbdc-ffba-4fa1-a1df-afa816062b41/48333f66-3bb3-422f-881f-2d74d542db70"
+storage_version_token = "1788335188599425"
+content_type = "image/png"
+
+[[outputs]]
+id = "PvkH7pi_-yMixw5n_ZBl1"
+uri = "file://store-screenshots/05-pump-report-play-iphone55.png"
+type = "image"
+title = "Petrotrack Pump Report — Google Play"
+description = "Pump meter reporting screenshot, 1242×2208 PNG; suitable for Google Play phone listing."
+logical_id = "1d75a07e-e304-40f7-b927-1d758114f7a7"
+content_hash = "sha256:3e8d3d5b2d99b3926fbfd0a1b7b5a40d5922a0cf572c9a817240c7d24645741a"
+size = 123464
+mtime_ms = 1788335135391
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/1d75a07e-e304-40f7-b927-1d758114f7a7/34a9a7cd-8416-4614-ae0d-78e6a512a1e2"
+storage_version_token = "1788335189241577"
+content_type = "image/png"
+
+[[outputs]]
+id = "vf2jAUeQvw87F2KgoEUgM"
+uri = "file://store-screenshots/06-reports-play-iphone55.png"
+type = "image"
+title = "Petrotrack Reports — Google Play"
+description = "Operational reports screenshot, 1242×2208 PNG; suitable for Google Play phone listing."
+logical_id = "d998a159-0210-48f4-bbd5-17d311e253ad"
+content_hash = "sha256:e6708792c216b737375f25e225a6b22235cbdcaa6b38935a62acb0ea6841c8de"
+size = 111382
+mtime_ms = 1788335137111
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/d998a159-0210-48f4-bbd5-17d311e253ad/f4dccb6e-3356-44d9-b9b2-41d451656ed6"
+storage_version_token = "1788335189918045"
+content_type = "image/png"
+
+[[outputs]]
+id = "y2lJDRP8635maTpm8Acjx"
+uri = "file://store-screenshots/07-messages-play-iphone55.png"
+type = "image"
+title = "Petrotrack Messages — Google Play"
+description = "Team messages screenshot, 1242×2208 PNG; suitable for Google Play phone listing."
+logical_id = "435da19c-9a14-45bf-a351-8bc309b8b42d"
+content_hash = "sha256:2cc237e7f47e38de450e6c940e9a7b2807b338b338765598e181e00d11daa9dd"
+size = 131926
+mtime_ms = 1788335138891
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/435da19c-9a14-45bf-a351-8bc309b8b42d/1784f263-b2b3-4ebf-beb8-b47b02dd21ff"
+storage_version_token = "1788335190569912"
+content_type = "image/png"
+
+[[outputs]]
+id = "QWDLmicWazLrIXb2pEZ0v"
+uri = "file://store-screenshots/08-profile-play-iphone55.png"
+type = "image"
+title = "Petrotrack Profile — Google Play"
+description = "Account profile screenshot, 1242×2208 PNG; suitable for Google Play phone listing."
+logical_id = "328391d2-dd5a-4d3c-84f5-260d085083dc"
+content_hash = "sha256:aba15f65a39e7cf5b58e90ad66acf80e1502eee14a00b5817fcf096659a95ed8"
+size = 110298
+mtime_ms = 1788335140831
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/328391d2-dd5a-4d3c-84f5-260d085083dc/c764db13-35ac-4a2a-bf89-265d3dd8b57a"
+storage_version_token = "1788335191159370"
+content_type = "image/png"
+
+[[outputs]]
+id = "qSUqUYjLrpeg71yyYAv1y"
+uri = "file://store-screenshots/01-home-ios-iphone69.png"
+type = "image"
+title = "Petrotrack Home — iPhone"
+description = "Home dashboard screenshot, 1290×2796 PNG; sized for the 6.9-inch iPhone App Store slot."
+logical_id = "6dd99682-a947-40ff-b1f1-3d785f704893"
+content_hash = "sha256:c9e52442d6f830e858ab787b803b948555cbdc994d458c79b6e458522cdf7b89"
+size = 670776
+mtime_ms = 1788335129595
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/6dd99682-a947-40ff-b1f1-3d785f704893/28685afc-45c6-446c-bd24-b3f00948a010"
+storage_version_token = "1788335191986522"
+content_type = "image/png"
+
+[[outputs]]
+id = "jffI8mIjGhvjFICQvmQCa"
+uri = "file://store-screenshots/02-my-jobs-ios-iphone69.png"
+type = "image"
+title = "Petrotrack My Jobs — iPhone"
+description = "My Jobs workflow screenshot, 1290×2796 PNG; sized for the 6.9-inch iPhone App Store slot."
+logical_id = "22e32d1a-25e8-4f87-9248-5f67b853c76e"
+content_hash = "sha256:df60b1e88a74f5a785480c0abd1f53be74293d7985352d90db5d950759b3de79"
+size = 592259
+mtime_ms = 1788335131427
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/22e32d1a-25e8-4f87-9248-5f67b853c76e/1fbb386e-e0c3-4194-bb6e-0766eb4a96fe"
+storage_version_token = "1788335192584207"
+content_type = "image/png"
+
+[[outputs]]
+id = "Fy0rKW1yykmtdhkNpcZVT"
+uri = "file://store-screenshots/03-stock-log-ios-iphone69.png"
+type = "image"
+title = "Petrotrack Stock Log — iPhone"
+description = "Daily Stock Log screenshot, 1290×2796 PNG; sized for the 6.9-inch iPhone App Store slot."
+logical_id = "7f744a25-7192-4baf-b32e-2013c69447e0"
+content_hash = "sha256:d85c0041cbe9c3c7c8de2ce75bf36bac1f2f7ec9e0d803a6453df5b15d4646a0"
+size = 540549
+mtime_ms = 1788335133259
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/7f744a25-7192-4baf-b32e-2013c69447e0/55426f8e-77e9-4681-bb07-0a433139f185"
+storage_version_token = "1788335193200934"
+content_type = "image/png"
+
+[[outputs]]
+id = "fWl3pmV4TfFwSxQXnHiye"
+uri = "file://store-screenshots/04-receiving-ios-iphone69.png"
+type = "image"
+title = "Petrotrack Receiving — iPhone"
+description = "Receiving and delivery workflow screenshot, 1290×2796 PNG; sized for the 6.9-inch iPhone App Store slot."
+logical_id = "727ae51c-f42b-45be-9140-3ad4f7140a04"
+content_hash = "sha256:3da4bc50895cea17e3ba8f1638b76a4e16ce375a0a2937cb16c12333056c8be3"
+size = 478850
+mtime_ms = 1788335134955
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/727ae51c-f42b-45be-9140-3ad4f7140a04/bcae2755-c5a1-4159-a762-1cdcb78494d7"
+storage_version_token = "1788335193857135"
+content_type = "image/png"
+
+[[outputs]]
+id = "7SDrBPNUcAwQsACV0cEq6"
+uri = "file://store-screenshots/05-pump-report-ios-iphone69.png"
+type = "image"
+title = "Petrotrack Pump Report — iPhone"
+description = "Pump meter reporting screenshot, 1290×2796 PNG; sized for the 6.9-inch iPhone App Store slot."
+logical_id = "6675a9f9-d60c-4885-a0d8-eab4049e7677"
+content_hash = "sha256:4db712efd06e267de618b33d7ef1b94699fb3ada6ca8220c6384c6f39049150a"
+size = 547297
+mtime_ms = 1788335136675
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/6675a9f9-d60c-4885-a0d8-eab4049e7677/df338fe0-572a-4e7e-b66b-51fe183fb95b"
+storage_version_token = "1788335194479071"
+content_type = "image/png"
+
+[[outputs]]
+id = "ZRWdVtl9-ubD7jCDZnZjz"
+uri = "file://store-screenshots/06-reports-ios-iphone69.png"
+type = "image"
+title = "Petrotrack Reports — iPhone"
+description = "Operational reports screenshot, 1290×2796 PNG; sized for the 6.9-inch iPhone App Store slot."
+logical_id = "8784988e-6143-49fd-b224-82a09b71d9a2"
+content_hash = "sha256:c00a62265f8c0d34c099028f1886aa0f1e74485f541f196d50b56fa7fa602367"
+size = 478744
+mtime_ms = 1788335138399
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/8784988e-6143-49fd-b224-82a09b71d9a2/4b5837d1-831e-4e1d-95b0-38c6211e908a"
+storage_version_token = "1788335195128489"
+content_type = "image/png"
+
+[[outputs]]
+id = "jOIkEijKROKxSvzvHI-md"
+uri = "file://store-screenshots/07-messages-ios-iphone69.png"
+type = "image"
+title = "Petrotrack Messages — iPhone"
+description = "Team messages screenshot, 1290×2796 PNG; sized for the 6.9-inch iPhone App Store slot."
+logical_id = "534b123e-31fd-41f4-9047-42547b92f608"
+content_hash = "sha256:1efe510159867e4038c8e2359848799364e44d317f603bb59c082a6c7770ea69"
+size = 556229
+mtime_ms = 1788335140339
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/534b123e-31fd-41f4-9047-42547b92f608/d9f39d16-44c0-421c-a35d-3cac40fcb4ca"
+storage_version_token = "1788335195727166"
+content_type = "image/png"
+
+[[outputs]]
+id = "InJR-G1LuTIRzlCgfvwaP"
+uri = "file://store-screenshots/08-profile-ios-iphone69.png"
+type = "image"
+title = "Petrotrack Profile — iPhone"
+description = "Account profile screenshot, 1290×2796 PNG; sized for the 6.9-inch iPhone App Store slot."
+logical_id = "99a2b367-0028-46de-ae6d-46df504c4585"
+content_hash = "sha256:a53b556e93c973d46dfefb21088b822cfc0288480b5567217af01a064d0ca5e3"
+size = 473888
+mtime_ms = 1788335142215
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/99a2b367-0028-46de-ae6d-46df504c4585/4ed05ac6-a292-4e04-843e-24948720ce29"
+storage_version_token = "1788335196341485"
+content_type = "image/png"

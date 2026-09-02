@@ -7,7 +7,7 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "test": "sh -c 'trap \"rm -f .state.test.mjs .maintenance.test.mjs\" EXIT; esbuild src/routes/state.test.ts --bundle --platform=node --format=esm --outfile=.state.test.mjs && esbuild src/routes/maintenance-workflow.test.ts --bundle --platform=node --format=esm --outfile=.maintenance.test.mjs && node --test .state.test.mjs .maintenance.test.mjs'",
+    "test": "sh -c 'trap \"rm -f .state.test.mjs .maintenance.test.mjs .maintenance.acceptance.test.cjs\" EXIT; esbuild src/routes/state.test.ts --bundle --platform=node --format=esm --outfile=.state.test.mjs && esbuild src/routes/maintenance-workflow.test.ts --bundle --platform=node --format=esm --outfile=.maintenance.test.mjs && esbuild src/routes/maintenance-workflow.acceptance.test.ts --bundle --platform=node --format=cjs --external:pino --external:pino-pretty --external:thread-stream --outfile=.maintenance.acceptance.test.cjs && node --test .state.test.mjs .maintenance.test.mjs .maintenance.acceptance.test.cjs'",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

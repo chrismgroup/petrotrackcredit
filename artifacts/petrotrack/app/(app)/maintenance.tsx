@@ -62,14 +62,17 @@ export default function MaintenanceScreen() {
       return;
     }
     requestDateConfirmation('maintenance request', form.date, async () => {
-      const ok = await addMaintenance({ title: form.title.trim(), pri: form.pri, date: form.date });
-      if (!ok) {
+      const created = await addMaintenance({ title: form.title.trim(), pri: form.pri, date: form.date });
+      if (!created) {
         Alert.alert('Not submitted', 'The request could not be saved. Please check your connection and try again.');
         return;
       }
       setForm({ title: '', pri: 'Urgent', date: '' });
       setShowForm(false);
-      Alert.alert('Request submitted', 'The MD and CEO can now acknowledge and assign this request.');
+      Alert.alert(
+        'Request submitted',
+        `${created.taskId} has been created. The MD and CEO can now acknowledge and assign this request.`,
+      );
     });
   }
 
