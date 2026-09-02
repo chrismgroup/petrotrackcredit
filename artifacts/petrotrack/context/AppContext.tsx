@@ -832,13 +832,27 @@ const DIP_STATUS_RANK: Record<DipRecord['status'], number> = {
 };
 
 function pumpReportActivityMs(report: PumpDailyReport): number {
-  const timestamps = [report.submittedAt, report.mgrAt, report.accAt, report.dateCorrectedAt]
+  const timestamps = [
+    report.submittedAt,
+    report.mgrAt,
+    report.accAt,
+    report.dateCorrectedAt,
+    report.adminReturnedAt,
+  ]
     .map(value => Date.parse(value ?? ''))
     .filter(value => Number.isFinite(value));
   return timestamps.length > 0 ? Math.max(...timestamps) : 0;
 }
 
-function mergePumpDailyReports(current: PumpDailyReport[], incoming: PumpDailyReport[]): PumpDailyReport[] {
+/**
+ * Merge the complete pump-report arrays sent by separate devices.
+ *
+ * An Admin return/date correction is an explicit exception to the approved
+ * report lock. All other stale copies must not downgrade an approved report,
+ * because the resulting client state controls both workflow visibility and
+ * which closing meter can seed the next shift.
+ */
+export function mergePumpDailyReports(current: PumpDailyReport[], incoming: PumpDailyReport[]): PumpDailyReport[] {
   const merged = new Map<number, PumpDailyReport>();
 
   const add = (report: PumpDailyReport) => {
@@ -852,6 +866,20 @@ function mergePumpDailyReports(current: PumpDailyReport[], incoming: PumpDailyRe
     const incomingActivity = pumpReportActivityMs(report);
     const currentRank = PUMP_REPORT_STATUS_RANK[existing.status] ?? 0;
     const incomingRank = PUMP_REPORT_STATUS_RANK[report.status] ?? 0;
+
+    if (existing.status === 'approved') {
+      if (report.status === 'approved' && existing.date !== report.date) {
+        const correctionMs = timestampMs(report.dateCorrectedAt);
+        if (!Number.isFinite(correctionMs) || correctionMs <= currentActivity) return;
+      } else if (report.status !== 'approved') {
+        const returnedAt = timestampMs(report.adminReturnedAt);
+        if (
+          report.status !== 'pending_accountant' ||
+          !Number.isFinite(returnedAt) ||
+          returnedAt <= currentActivity
+        ) return;
+      }
+    }
 
     if (
       incomingActivity > currentActivity ||
