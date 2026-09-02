@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import {
-  stateApi, versionApi, usersApi, notificationsApi, maintenanceApi,
+  stateApi, versionApi, usersApi, notificationsApi, maintenanceApi, realtimeApi,
   AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken,
   type MaintenanceWorkflowStatus,
 } from '@/lib/api';
@@ -1310,6 +1310,7 @@ interface AppContextType {
   unlockPumpMeter: (pumpId: string) => void;
   resetOperationalData: () => Promise<void>;
   submitPumpReport: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => boolean;
+  submitPumpReportConfirmed: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => Promise<boolean>;
   mgrForwardPumpReport: (id: number, mgrNote: string) => void;
   accApprovePumpReport: (report: PumpDailyReport, accNote: string) => void;
   accRejectPumpReport: (id: number, rejectionReason: string) => void;
@@ -1791,7 +1792,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!p.has('marketCompetitors')) setMarketCompetitors(safeArray<MarketCompetitor>(s.marketCompetitors));
       if (!p.has('meetingMinutes'))    setMeetingMinutes(safeArray<MeetingMinutes>(s.meetingMinutes));
       if (!p.has('pumpDailyReports') && Array.isArray(s.pumpDailyReports)) {
-        setPumpDailyReports(prev => mergePumpDailyReports(prev, s.pumpDailyReports as PumpDailyReport[]));
+        setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
       }
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
@@ -2032,6 +2033,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (timer) clearTimeout(timer);
     };
   }, [loaded, isServerAuthenticated, refreshNotifications]);
+
+  /* ── Realtime report invalidation: sockets improve freshness; sync remains authoritative ── */
+  useEffect(() => {
+    if (!loaded || !isServerAuthenticated || !role) return;
+    let stopped = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const connect = async () => {
+      if (stopped) return;
+      if (!realtimeApi?.connect) return;
+      socket = await realtimeApi.connect();
+      if (!socket) return;
+      if (stopped) {
+        socket.close();
+        return;
+      }
+      socket.onmessage = event => {
+        try {
+          const message = JSON.parse(String(event.data)) as { type?: string };
+          if (message.type === 'pump-report.changed') void syncFromServer();
+        } catch {
+          // Ignore malformed realtime events; the version poll remains the fallback.
+        }
+      };
+      socket.onclose = () => {
+        socket = null;
+        if (!stopped) reconnectTimer = setTimeout(() => void connect(), 2_000);
+      };
+      socket.onerror = () => socket?.close();
+    };
+
+    void connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [loaded, isServerAuthenticated, role, syncFromServer]);
 
   /* ── persistence: save each state slice to AsyncStorage + API when it changes ── */
   function syncSlice(key: string, value: unknown) {
@@ -3511,21 +3551,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Operational data reset', user: userName, detail: `All operational data cleared via System Settings; pump seed meters preserved for ${Object.keys(localSeedMeters).length} pump(s).`, ts: nowTs() }, ...a]);
   }, [userName, pumps, pumpDailyReports, pumpInitialMeters, pumpLockedMeters]);
 
-  const submitPumpReport = useCallback((r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
-    if (role === 'att' && isFutureBusinessDate(r.date)) return false;
-    const reportId = genId();
-    setPumpDailyReports(rs => [...rs, { ...r, id: reportId, status: 'pending_manager', submittedAt: nowTs() }]);
-    setAudit(a => [{ id: genId(), action: 'Pump report submitted', user: userName, detail: `${r.pumpName} · ${r.liters.toLocaleString()}L · variance: ₦${r.variance.toLocaleString()}`, ts: nowTs() }, ...a]);
+  const recordSubmittedPumpReport = useCallback((
+    report: PumpDailyReport,
+    input: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>,
+  ) => {
+    setPumpDailyReports(rs => mergePumpDailyReports(rs, [report]));
+    setAudit(a => [{ id: genId(), action: 'Pump report submitted', user: userName, detail: `${input.pumpName} · ${input.liters.toLocaleString()}L · variance: ₦${input.variance.toLocaleString()}`, ts: nowTs() }, ...a]);
     void notificationsApi.send({
       target: 'mgr',
-      branchId: r.branchId,
+      branchId: input.branchId,
       type: 'report_attention',
       title: 'Pump Report Awaiting Review',
-      body: `${r.submittedByName} submitted ${r.pumpName} for manager review.`,
-      data: { route: SCREEN_ROUTES.shift, reportId },
+      body: `${input.submittedByName} submitted ${input.pumpName} for manager review.`,
+      data: { route: SCREEN_ROUTES.shift, reportId: report.id },
     });
+  }, [userName]);
+
+  const submitPumpReport = useCallback((r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
+    if (role === 'att' && isFutureBusinessDate(r.date)) return false;
+    const report: PumpDailyReport = {
+      ...r,
+      id: genId(),
+      status: 'pending_manager',
+      submittedAt: nowTs(),
+    };
+    recordSubmittedPumpReport(report, r);
     return true;
-  }, [role, userName]);
+  }, [role, recordSubmittedPumpReport]);
+
+  const submitPumpReportConfirmed = useCallback(async (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
+    if (role === 'att' && isFutureBusinessDate(r.date)) return false;
+    const report: PumpDailyReport = {
+      ...r,
+      id: genId(),
+      status: 'pending_manager',
+      submittedAt: nowTs(),
+    };
+    const acknowledged = await stateApi.submitPumpReport(report);
+    if (!acknowledged?.ok) return false;
+    recordSubmittedPumpReport(acknowledged.report, r);
+    return true;
+  }, [role, recordSubmittedPumpReport]);
 
   const mgrForwardPumpReport = useCallback((id: number, mgrNote: string) => {
     const report = pumpDailyReports.find(r => r.id === id);
@@ -4137,7 +4203,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
         stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
         setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
-      submitPumpReport, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, adminReturnApprovedPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
+      submitPumpReport, submitPumpReportConfirmed, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, adminReturnApprovedPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
         sendMessage, addSystemNotification, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,

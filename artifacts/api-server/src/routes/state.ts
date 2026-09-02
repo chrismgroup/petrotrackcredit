@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
-import { db, appStateTable, staffUsersTable } from "@workspace/db";
+import { db, appStateTable, pumpReportsTable, staffUsersTable } from "@workspace/db";
+import { broadcastRealtime } from "../lib/realtime";
 import { createBackup, listBackups, restoreBackup } from "../lib/backup";
 import {
   validatePriceHistoryPayload,
@@ -149,6 +150,38 @@ function mergePumpDailyReports(existing: unknown, incoming: unknown, actorRole?:
   if (Array.isArray(existing)) existing.forEach(add);
   if (Array.isArray(incoming)) incoming.forEach(add);
   return Array.from(merged.values());
+}
+
+function canMutatePumpReport(
+  current: JsonRecord | undefined,
+  candidate: JsonRecord,
+  auth: { username: string; role: string; branchId?: string | null },
+): boolean {
+  if (auth.role === "admin") return true;
+  if (!current) {
+    return auth.role === "att"
+      && candidate.status === "pending_manager"
+      && candidate.submittedBy === auth.username
+      && (!auth.branchId || candidate.branchId === auth.branchId);
+  }
+  if (JSON.stringify(current) === JSON.stringify(candidate)) return true;
+  const from = String(current.status ?? "");
+  const to = String(candidate.status ?? "");
+  const sameBranch = !auth.branchId || candidate.branchId === auth.branchId;
+  if (auth.role === "att") {
+    return candidate.submittedBy === auth.username
+      && from === "returned_attendant"
+      && (to === "returned_attendant" || to === "pending_manager");
+  }
+  if (auth.role === "mgr" && sameBranch) {
+    return (
+      (from === "pending_manager" && (to === "pending_accountant" || to === "returned_attendant")) ||
+      (from === "returned" && (to === "pending_accountant" || to === "returned_attendant"))
+    );
+  }
+  return auth.role === "acc"
+    && from === "pending_accountant"
+    && (to === "approved" || to === "returned");
 }
 
 function dipActivityMs(dip: JsonRecord): number {
@@ -489,7 +522,10 @@ async function validateDipPayload(data: unknown): Promise<string | null> {
 }
 
 router.get("/state", async (req, res): Promise<void> => {
-  const rows = await db.select().from(appStateTable);
+  const [rows, durableReports] = await Promise.all([
+    db.select().from(appStateTable),
+    db.select().from(pumpReportsTable),
+  ]);
   const result: Record<string, unknown> = {};
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
   for (const row of rows) {
@@ -497,7 +533,76 @@ router.get("/state", async (req, res): Promise<void> => {
       ? messagesForIdentity(row.data, chatIdentity)
       : visibleMyFolderState(row.key, row.data, req.auth?.role);
   }
+  if (durableReports.length > 0) {
+    result.pumpDailyReports = mergePumpDailyReports(
+      result.pumpDailyReports,
+      durableReports.map(row => row.data),
+      req.auth?.role,
+    );
+  }
   res.json(result);
+});
+
+router.post("/pump-reports", async (req, res): Promise<void> => {
+  const report = req.body?.report as JsonRecord | undefined;
+  const id = String(report?.id ?? "");
+  const numericFields = [
+    "openingMeter", "closingMeter", "liters", "unitPrice", "grossAmount",
+    "posAmount", "cashAmount", "transferAmount", "creditAmount", "totalCollected", "variance",
+  ];
+  if (
+    !report ||
+    !id ||
+    report.status !== "pending_manager" ||
+    typeof report.date !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(report.date) ||
+    numericFields.some(field => !Number.isFinite(Number(report[field]))) ||
+    Number(report.closingMeter) <= Number(report.openingMeter) ||
+    Number(report.liters) <= 0
+  ) {
+    res.status(400).json({ error: "A valid pending manager report is required" });
+    return;
+  }
+  if (
+    !req.auth ||
+    (req.auth.role !== "att" && req.auth.role !== "admin") ||
+    (req.auth.role === "att" && (
+      report.submittedBy !== req.auth.username ||
+      (!!req.auth.branchId && report.branchId !== req.auth.branchId)
+    ))
+  ) {
+    res.status(403).json({ error: "This account cannot submit that report" });
+    return;
+  }
+  const saved = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
+    const [existingRow] = await tx.select().from(appStateTable)
+      .where(eq(appStateTable.key, "pumpDailyReports"));
+    const merged = mergePumpDailyReports(existingRow?.data, [report], req.auth?.role);
+    const canonical = merged.find(candidate => String(candidate.id) === id) ?? report;
+    await tx.insert(pumpReportsTable).values({
+      id,
+      status: String(canonical.status ?? "pending_manager"),
+      branchId: canonical.branchId ? String(canonical.branchId) : null,
+      data: canonical,
+    }).onConflictDoUpdate({
+      target: pumpReportsTable.id,
+      set: {
+        status: String(canonical.status ?? "pending_manager"),
+        branchId: canonical.branchId ? String(canonical.branchId) : null,
+        data: canonical,
+        updatedAt: new Date(),
+      },
+    });
+    await tx.insert(appStateTable).values({ key: "pumpDailyReports", data: merged })
+      .onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: merged, updatedAt: new Date() },
+      });
+    return canonical;
+  });
+  broadcastRealtime({ type: "pump-report.changed", reportId: id, branchId: saved.branchId ?? null });
+  res.status(201).json({ ok: true, report: saved });
 });
 
 /**
@@ -577,6 +682,8 @@ router.post("/state/reset-operational", async (req, res): Promise<void> => {
   const newAudit = [auditEntry, ...audit];
 
   await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
+    await tx.delete(pumpReportsTable);
     await tx
       .insert(appStateTable)
       .values({ key: "pumpInitialMeters", data: seedMeters })
@@ -692,6 +799,7 @@ router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> =>
   };
 
   await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
     const writeState = async (key: string, data: unknown) => {
       await tx.insert(appStateTable).values({ key, data }).onConflictDoUpdate({
         target: appStateTable.key,
@@ -705,8 +813,10 @@ router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> =>
     await writeState("pumpInitialMeters", initialMeters);
     await writeState("pumpLockedMeters", lockedMeters);
     await writeState("audit", [auditEntry, ...audit]);
+    await tx.delete(pumpReportsTable).where(eq(pumpReportsTable.id, String(reportId)));
   });
 
+  broadcastRealtime({ type: "pump-report.changed", reportId, deleted: true });
   res.json({ ok: true });
 });
 
@@ -752,6 +862,24 @@ router.post("/state/restore", async (req, res): Promise<void> => {
   }
   try {
     const { keysRestored } = await restoreBackup(objectName);
+    await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
+      const [row] = await tx.select().from(appStateTable)
+        .where(eq(appStateTable.key, "pumpDailyReports"));
+      const reports = Array.isArray(row?.data) ? row.data as JsonRecord[] : [];
+      await tx.delete(pumpReportsTable);
+      for (const report of reports) {
+        const id = String(report.id ?? "");
+        if (!id) continue;
+        await tx.insert(pumpReportsTable).values({
+          id,
+          status: String(report.status ?? ""),
+          branchId: report.branchId ? String(report.branchId) : null,
+          data: report,
+        });
+      }
+    });
+    broadcastRealtime({ type: "pump-report.changed", restored: true });
     res.json({ ok: true, keysRestored });
   } catch (err) {
     req.log.error({ err }, "Restore failed");
@@ -888,11 +1016,52 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   // array so a stale attendant/manager/accountant client cannot erase reports
   // submitted by another device between its initial sync and its next PUT.
   if (key === "pumpDailyReports" && Array.isArray(data)) {
-    const [existingRow] = await db
-      .select()
-      .from(appStateTable)
-      .where(eq(appStateTable.key, "pumpDailyReports"));
-    data = mergePumpDailyReports(existingRow?.data, data, req.auth?.role);
+    const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
+      const [existingRow] = await tx.select().from(appStateTable)
+        .where(eq(appStateTable.key, "pumpDailyReports"));
+      const existingReports = Array.isArray(existingRow?.data)
+        ? existingRow.data as JsonRecord[]
+        : [];
+      const existingById = new Map(existingReports.map(report => [String(report.id ?? ""), report]));
+      const unauthorized = (data as unknown[]).some(value => {
+        if (!value || typeof value !== "object" || Array.isArray(value) || !req.auth) return true;
+        const candidate = value as JsonRecord;
+        return !canMutatePumpReport(existingById.get(String(candidate.id ?? "")), candidate, req.auth);
+      });
+      if (unauthorized) return { error: "Forbidden" as const };
+      const next = mergePumpDailyReports(existingRow?.data, data, req.auth?.role);
+      for (const report of next) {
+        const id = String(report.id ?? "");
+        if (!id) continue;
+        await tx.insert(pumpReportsTable).values({
+          id,
+          status: String(report.status ?? ""),
+          branchId: report.branchId ? String(report.branchId) : null,
+          data: report,
+        }).onConflictDoUpdate({
+          target: pumpReportsTable.id,
+          set: {
+            status: String(report.status ?? ""),
+            branchId: report.branchId ? String(report.branchId) : null,
+            data: report,
+            updatedAt: new Date(),
+          },
+        });
+      }
+      await tx.insert(appStateTable).values({ key, data: next }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: next, updatedAt: new Date() },
+      });
+      return { reports: next };
+    });
+    if ("error" in result) {
+      res.status(403).json({ error: result.error });
+      return;
+    }
+    broadcastRealtime({ type: "pump-report.changed" });
+    res.json({ ok: true, reports: result.reports });
+    return;
   }
 
   // Tank dips are shared workflow records. Merge instead of replacing the
