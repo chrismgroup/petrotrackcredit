@@ -523,3 +523,115 @@ mtime_ms = 1788339959244
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/d5c4d87f-f483-4926-b4c6-af2dba3eb4c1/4becbf40-caa1-4990-b598-c44cbfc83a37"
 storage_version_token = "1788340001896245"
 content_type = "image/png"
+
+[[outputs]]
+id = "BaCGeoyttxmoP2ZZDqYFD"
+uri = "file://store-screenshots/google-play/tablet-10-inch/01-home.png"
+type = "image"
+title = "10-inch tablet screenshot 1 — Home"
+description = "Flat Petrotrack app-screen PNG, no device frame. 1920×1080, exact 16:9, approximately 133 KB."
+logical_id = "10da84ed-3905-435c-9163-7ab8038f6f75"
+content_hash = "sha256:63e7fdf62fde8b3c56d69f20cbb662cebbf56c8a8e14121154c98efb7c817166"
+size = 133482
+mtime_ms = 1788340387523
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/10da84ed-3905-435c-9163-7ab8038f6f75/bc018588-9e24-4799-8869-a7de927f2346"
+storage_version_token = "1788340396184463"
+content_type = "image/png"
+
+[[outputs]]
+id = "cLWWokXDQ5IqZmATxO-9u"
+uri = "file://store-screenshots/google-play/tablet-10-inch/02-operations-stock-log.png"
+type = "image"
+title = "10-inch tablet screenshot 2 — Operations"
+description = "Flat Petrotrack app-screen PNG, no device frame. 1920×1080, exact 16:9, approximately 119 KB."
+logical_id = "82744ca7-bdb4-485f-ae3a-1ae13059115b"
+content_hash = "sha256:0fc750c20136abea7b31f739fcbca42936058f1f8d2dd0a2dfcbeb00ef35908d"
+size = 119198
+mtime_ms = 1788340387539
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/82744ca7-bdb4-485f-ae3a-1ae13059115b/1f7ccc2f-98ab-4334-83d3-f11ae5c4cf0e"
+storage_version_token = "1788340397002797"
+content_type = "image/png"
+
+[[outputs]]
+id = "0eQv2t42Om2k0S5t0DQyL"
+uri = "file://store-screenshots/google-play/tablet-10-inch/03-shift-report.png"
+type = "image"
+title = "10-inch tablet screenshot 3 — Shift Report"
+description = "Flat Petrotrack app-screen PNG, no device frame. 1920×1080, exact 16:9, approximately 115 KB."
+logical_id = "4e57dc05-fa2c-4ae4-a291-fcdf3d0e3b58"
+content_hash = "sha256:03bf6c2eb960692266b1a8032cc33dfd66b6f4b9652f737d365f857716efb605"
+size = 115284
+mtime_ms = 1788340387539
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/4e57dc05-fa2c-4ae4-a291-fcdf3d0e3b58/7226cd7f-8f7f-44b6-a09e-8a785e93c15b"
+storage_version_token = "1788340397712617"
+content_type = "image/png"
+
+[[outputs]]
+id = "F98OK1Q6bu_d3H7_3Ys6H"
+uri = "file://store-screenshots/google-play/tablet-10-inch/04-reports.png"
+type = "image"
+title = "10-inch tablet screenshot 4 — Reports"
+description = "Flat Petrotrack app-screen PNG, no device frame. 1920×1080, exact 16:9, approximately 112 KB."
+logical_id = "6537fb59-564f-42ef-ba1e-424e6c9a2576"
+content_hash = "sha256:2f194a22eaf26761d4baa2806662a6a45d749155f99e10ba37e4b522acc0636c"
+size = 111880
+mtime_ms = 1788340387543
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/6537fb59-564f-42ef-ba1e-424e6c9a2576/ff54b825-9a69-4098-b11d-378cb7619cfb"
+storage_version_token = "1788340398379321"
+content_type = "image/png"
+
+[[outputs]]
+id = "vDlifZ7jDA8MpOXUFlfna"
+uri = "file://store-screenshots/google-play/tablet-10-inch/05-tank-dipping.png"
+type = "image"
+title = "10-inch tablet screenshot 5 — Tank Dipping"
+description = "Flat Petrotrack app-screen PNG, no device frame. 1920×1080, exact 16:9, approximately 107 KB."
+logical_id = "6fdc72ce-273a-40ea-b8bb-104ad1bfd530"
+content_hash = "sha256:70c46bad8776b80515a8e8b3192aabc9a9cfff4d50898a79c78c6bf1a8484b38"
+size = 107189
+mtime_ms = 1788340387547
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/6fdc72ce-273a-40ea-b8bb-104ad1bfd530/e18e25ec-bc11-4e0f-973c-bfa42b2a7863"
+storage_version_token = "1788340399031142"
+content_type = "image/png"
+
+[[outputs]]
+id = "EcrKWRdhVdQQlbiK5Hpe-"
+uri = "file://store-screenshots/google-play/tablet-10-inch/06-selling-prices.png"
+type = "image"
+title = "10-inch tablet screenshot 6 — Selling Prices"
+description = "Flat Petrotrack app-screen PNG, no device frame. 1920×1080, exact 16:9, approximately 118 KB."
+logical_id = "fb94ddbb-78db-45d9-9129-5c743342897f"
+content_hash = "sha256:bed4e0195a0e63fa2dae4997a0314e85a2e85c88e015a90e57577df3c45aedd0"
+size = 117883
+mtime_ms = 1788340387547
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/fb94ddbb-78db-45d9-9129-5c743342897f/f27a7f21-731f-4d42-9bb8-61ac45700e13"
+storage_version_token = "1788340399715883"
+content_type = "image/png"
+
+[[outputs]]
+id = "dWWdry-9hCuBHAWIHhE3Z"
+uri = "file://store-screenshots/google-play/tablet-10-inch/07-expenses.png"
+type = "image"
+title = "10-inch tablet screenshot 7 — Expenses"
+description = "Flat Petrotrack app-screen PNG, no device frame. 1920×1080, exact 16:9, approximately 118 KB."
+logical_id = "9b05dee1-9c48-4328-bc21-779b3cbb6516"
+content_hash = "sha256:63639f62493047134ca9addca7ab6b95388b7a0eee71bd89f5eba4c6933ca1ed"
+size = 118293
+mtime_ms = 1788340387551
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/9b05dee1-9c48-4328-bc21-779b3cbb6516/c477ed68-59e6-4e41-9733-35388a6f001a"
+storage_version_token = "1788340400286643"
+content_type = "image/png"
+
+[[outputs]]
+id = "qTGi2HEEAGFprp4AY7Hkq"
+uri = "file://store-screenshots/google-play/tablet-10-inch/08-budget.png"
+type = "image"
+title = "10-inch tablet screenshot 8 — Budget"
+description = "Flat Petrotrack app-screen PNG, no device frame. 1920×1080, exact 16:9, approximately 127 KB."
+logical_id = "fb9a9f33-0913-47f3-a914-3050493f342a"
+content_hash = "sha256:0c1176587652388f844e304fd8263ff4d05fbaf61d968030ccb6929c829a3c1e"
+size = 126549
+mtime_ms = 1788340387555
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/fb9a9f33-0913-47f3-a914-3050493f342a/3e93e80f-935b-46f2-b589-1d58ffc3d65b"
+storage_version_token = "1788340401031732"
+content_type = "image/png"
