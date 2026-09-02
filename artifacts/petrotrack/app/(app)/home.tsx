@@ -370,7 +370,7 @@ export default function HomeScreen() {
     deliveries, maintenance, expenses, budgets,
     financialEntry, priceProposals,
     pumpDailyReports, userAccounts, messages, notifications,
-    unreadCount, approveDip, approveExpense,
+    approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
     sales, startupStocks, stockSnapshotConfig, myFolderFiles,
   } = useApp();
@@ -532,8 +532,8 @@ export default function HomeScreen() {
     pendingPriceProps.length + pendingPumpReports.length + pendingBudgets.length +
     pendingAccounts.length;
 
-  // ── Unread messages ───────────────────────────────────────────────────
-  const unread = unreadCount() + notifications.filter(item => !item.read).length;
+  // ── Notification badge ────────────────────────────────────────────────
+  const unread = notifications.filter(item => !item.read).length;
   const unreadMessages = useMemo(() => {
     const all: { key: string; msg: Message }[] = [];
     for (const [key, thread] of Object.entries(messages)) {
