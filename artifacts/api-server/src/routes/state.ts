@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { isDeepStrictEqual } from "node:util";
 import { eq, sql } from "drizzle-orm";
 import { db, appStateTable, pumpReportsTable, staffUsersTable } from "@workspace/db";
 import { broadcastRealtime } from "../lib/realtime";
@@ -165,7 +166,19 @@ function canMutatePumpReport(
       && candidate.submittedBy === auth.username
       && (!auth.branchId || candidate.branchId === auth.branchId);
   }
-  if (JSON.stringify(current) === JSON.stringify(candidate)) return true;
+  // JSONB may return object keys in a different order from the request body,
+  // so compare the records structurally rather than by JSON serialization.
+  if (isDeepStrictEqual(current, candidate)) return true;
+
+  // A complete state sync normally includes reports from every workflow
+  // participant. If this device has an older copy of a report that has since
+  // advanced elsewhere, let the merge discard that copy instead of rejecting
+  // the entire sync. Any candidate that the merge would select still has to
+  // pass the role-specific transition checks below.
+  if (mergePumpDailyReports([current], [candidate], auth.role)[0] === current) {
+    return true;
+  }
+
   const from = String(current.status ?? "");
   const to = String(candidate.status ?? "");
   const sameBranch = !auth.branchId || candidate.branchId === auth.branchId;

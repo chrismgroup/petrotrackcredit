@@ -703,10 +703,9 @@ export function calculateStockBook(
     .filter(report =>
       (report.branchId || pumps.find(pump => pump.id === report.pumpId)?.branchId) === branchId &&
       report.product === product &&
-      // Reports withdrawn for correction (rejected or sent back to the
-      // attendant) must not count as sold stock until re-submitted.
-      report.status !== 'returned' &&
-      report.status !== 'returned_attendant',
+      // Only fully approved reports reduce operational stock. Reports still
+      // in review or withdrawn for correction must not count as sold stock.
+      report.status === 'approved',
     )
     .forEach(report => liveReportsById.set(report.id, report));
 
