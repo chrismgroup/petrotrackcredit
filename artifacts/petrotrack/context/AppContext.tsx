@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import {
-  stateApi, versionApi, usersApi, notificationsApi, maintenanceApi, realtimeApi,
+  stateApi, versionApi, usersApi, notificationsApi, sendOperationalNotification, maintenanceApi, realtimeApi,
   AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken,
   enqueueShiftReportOutbox, loadShiftReportOutbox, removeShiftReportOutbox,
   SHIFT_REPORT_OUTBOX_STORAGE_KEY,
@@ -1366,8 +1366,7 @@ interface AppContextType {
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
   updateSales: (id: number, updates: Partial<Pick<SalesEntry, 'pump' | 'L' | 'price' | 'pos' | 'dt'>>) => void;
   deleteSales: (id: number) => void;
-  sendMessage: (toName: string, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => void;
-  addSystemNotification: (from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => void;
+  sendMessage: (toName: string, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'> & { type: Exclude<Message['type'], 'alert'> }) => void;
   markRead: (peerName: string) => void;
   archiveConversation: (peerName: string) => void;
   unarchiveConversation: (peerName: string) => void;
@@ -2501,16 +2500,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPriceProposals(ps => ps.map(p =>
       p.id === id ? { ...p, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
     ));
-    const msgKey = chatKey('ceo', 'md');
-    setMessages(m => ({
-      ...m,
-      [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'ceo' as Role, to: 'md' as Role, type: 'alert' as const,
-        body: `Price approved: ${proposal.prod} is now ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)}`,
-        alrt: { title: 'Price Change Approved', pri: 'Low', detail: `${proposal.prod}: ₦${proposal.currentPrice.toLocaleString()} → ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (effective immediately)` },
-        ts: nowTime(), read: false,
-      }],
-    }));
+    void sendOperationalNotification({
+      target: 'md',
+      title: 'Price Change Approved',
+      body: `Price approved: ${proposal.prod} is now ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)}`,
+      route: SCREEN_ROUTES.prices,
+      data: { proposalId: id, product: proposal.prod },
+    });
     return { ok: true };
   }, [userName, updatePrice, priceProposals]);
 
@@ -2525,16 +2521,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       p.id === id ? { ...p, proposedPrice: updatedPrice, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
     ));
     setAudit(a => [{ id: genId(), action: 'Price proposal updated & approved', user: userName, detail: `${proposal.prod}: ₦${proposal.proposedPrice.toLocaleString()} → ₦${updatedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (CEO updated price)`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('ceo', 'md');
-    setMessages(m => ({
-      ...m,
-      [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'ceo' as Role, to: 'md' as Role, type: 'alert' as const,
-        body: `Price updated & approved: ${proposal.prod} is now ₦${updatedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (CEO adjusted from your ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)})`,
-        alrt: { title: 'Price Updated & Approved', pri: 'Low', detail: `${proposal.prod}: You proposed ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)}, CEO set it to ₦${updatedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (effective immediately)` },
-        ts: nowTime(), read: false,
-      }],
-    }));
+    void sendOperationalNotification({
+      target: 'md',
+      title: 'Price Updated & Approved',
+      body: `Price updated & approved: ${proposal.prod} is now ₦${updatedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (CEO adjusted from your ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)})`,
+      route: SCREEN_ROUTES.prices,
+      data: { proposalId: id, product: proposal.prod },
+    });
     return { ok: true };
   }, [userName, updatePrice, priceProposals]);
 
@@ -2547,16 +2540,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ));
     setAudit(a => [{ id: genId(), action: 'Price proposal rejected', user: userName, detail: `Proposal #${id}${note ? ': ' + note : ''}`, ts: nowTs() }, ...a]);
     if (proposal) {
-      const msgKey = chatKey('ceo', 'md');
-      setMessages(m => ({
-        ...m,
-        [msgKey]: [...(m[msgKey] || []), {
-          id: genId(), from: 'ceo' as Role, to: 'md' as Role, type: 'alert' as const,
-          body: `Price proposal rejected: ${proposal.prod} ₦${proposal.proposedPrice.toLocaleString()}/L was not approved${note ? ` — ${note}` : ''}`,
-          alrt: { title: 'Price Change Rejected', pri: 'Medium', detail: note || 'No reason given' },
-          ts: nowTime(), read: false,
-        }],
-      }));
+      void sendOperationalNotification({
+        target: 'md',
+        title: 'Price Change Rejected',
+        body: `Price proposal rejected: ${proposal.prod} ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)} was not approved${note ? ` — ${note}` : ''}`,
+        route: SCREEN_ROUTES.prices,
+        data: { proposalId: id, product: proposal.prod },
+      });
     }
   }, [userName, priceProposals]);
 
@@ -2682,20 +2672,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
              const unit = unitForProd(entry.product);
              const detail = `${entry.tankName} (${entry.product}): Expected ${entry.expected.toLocaleString()}${unit} · Actual ${entry.actual.toLocaleString()}${unit} · ${dir}: ${Math.abs(entry.discrepancy).toLocaleString()}${unit}`;
             for (const toRole of notifRoles) {
-              const msgKey = chatKey('admin', toRole);
-              setMessages(m => ({
-                ...m,
-                [msgKey]: [...(m[msgKey] || []), {
-                  id: genId(),
-                  from: 'admin',
-                  to: toRole,
-                  type: 'alert' as const,
-                  body: detail,
-                  ts: nowTs(),
-                  read: false,
-                  alrt: { title: `⚠️ Inventory Discrepancy — ${entry.tankName}`, pri: 'high', detail },
-                } satisfies Message],
-              }));
+              void sendOperationalNotification({
+                target: toRole,
+                title: `Inventory Discrepancy — ${entry.tankName}`,
+                body: detail,
+                route: SCREEN_ROUTES.inventory,
+                data: { dipId: id, tankId: entry.tankId, product: entry.product },
+              }).catch(() => {
+                // Notification persistence is best-effort from the client; the
+                // inventory record itself remains authoritative.
+              });
             }
           }
         }
@@ -2758,16 +2744,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!d) return;
     setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_acc' as const } : rec));
     setAudit(a => [{ id: genId(), action: 'Delivery forwarded to accountant', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L from ${d.sup}`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('mgr', 'acc');
-    setMessages(m => ({
-      ...m,
-      [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'mgr' as Role, to: 'acc' as Role, type: 'alert' as const,
-        body: `Product receipt forwarded for cost pricing: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb})`,
-        alrt: { title: 'Delivery Awaiting Cost Entry', pri: 'Medium', detail: `${d.prod} · ${d.rec.toLocaleString()}L · Supplier: ${d.sup} · WB: ${d.wb}` },
-        ts: nowTime(), read: false,
-      }],
-    }));
+    void sendOperationalNotification({
+      target: 'acc',
+      title: 'Delivery Awaiting Cost Entry',
+      body: `Product receipt forwarded for cost pricing: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb})`,
+      route: SCREEN_ROUTES.recv,
+      data: { deliveryId: id },
+    });
   }, [userName, deliveries]);
 
   const accForwardToMd = useCallback((id: number, costPrice: number, accNote: string) => {
@@ -2775,16 +2758,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!d) return;
     setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_md' as const, costPrice, accNote, accBy: userName, accAt: nowTs() } : rec));
     setAudit(a => [{ id: genId(), action: 'Delivery forwarded to MD', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L · Cost ₦${costPrice}/L`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('acc', 'md');
-    setMessages(m => ({
-      ...m,
-      [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'acc' as Role, to: 'md' as Role, type: 'alert' as const,
-        body: `Delivery record awaiting MD approval: ${d.prod} ${d.rec.toLocaleString()}L · Cost ₦${costPrice.toLocaleString()}/L (WB: ${d.wb})`,
-        alrt: { title: 'Delivery Awaiting MD Approval', pri: 'High', detail: `${d.prod} · ${d.rec.toLocaleString()}L · ₦${costPrice.toLocaleString()}/L · WB: ${d.wb}` },
-        ts: nowTime(), read: false,
-      }],
-    }));
+    void sendOperationalNotification({
+      target: 'md',
+      title: 'Delivery Awaiting MD Approval',
+      body: `Delivery record awaiting MD approval: ${d.prod} ${d.rec.toLocaleString()}L · Cost ₦${costPrice.toLocaleString()}/L (WB: ${d.wb})`,
+      route: SCREEN_ROUTES.recv,
+      data: { deliveryId: id },
+    });
   }, [userName, deliveries]);
 
   const accRecallDelivery = useCallback((id: number) => {
@@ -2837,16 +2817,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     const unit = unitForProd(d.prod);
     setAudit(a => [{ id: genId(), action: 'Delivery MD-approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}${unit} · Cost ₦${d.costPrice}/${unit} · Sell ₦${sellingPrice}/${unit} · permanently locked`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('md', 'acc');
-    setMessages(m => ({
-      ...m,
-      [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'md' as Role, to: 'acc' as Role, type: 'alert' as const,
-        body: `Delivery approved by MD: ${d.prod} ${d.rec.toLocaleString()}${unit} from ${d.sup} (WB: ${d.wb}). Selling price set to ₦${sellingPrice.toLocaleString()}/${unit}. Record locked.`,
-        alrt: { title: 'Delivery MD Approved — Price Updated', pri: 'Low', detail: `WB: ${d.wb} · ${d.prod} · ${d.rec.toLocaleString()}${unit} · Sell ₦${sellingPrice.toLocaleString()}/${unit}` },
-        ts: nowTime(), read: false,
-      }],
-    }));
+    void sendOperationalNotification({
+      target: 'acc',
+      title: 'Delivery MD Approved — Price Updated',
+      body: `Delivery approved by MD: ${d.prod} ${d.rec.toLocaleString()}${unit} from ${d.sup} (WB: ${d.wb}). Selling price set to ₦${sellingPrice.toLocaleString()}/${unit}. Record locked.`,
+      route: SCREEN_ROUTES.recv,
+      data: { deliveryId: id },
+    });
   }, [userName, deliveries, updatePrice]);
 
   const rejectDelivery = useCallback((id: number, note?: string) => {
@@ -2854,16 +2831,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!d || (role !== 'md' && role !== 'admin') || d.approvalStatus !== 'pending_md') return;
     setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'returned' as const, rejectedNote: note } : rec));
     setAudit(a => [{ id: genId(), action: 'Delivery returned to originator', user: userName, detail: `WB: ${d.wb}${note ? ' — ' + note : ''} · returned to ${d.receivedBy || 'originating manager'}`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('md', 'mgr');
-    setMessages(m => ({
-      ...m,
-      [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'md' as Role, to: 'mgr' as Role, type: 'alert' as const,
-        body: `Delivery returned to originator: ${d.prod} WB: ${d.wb}${note ? ' — ' + note : ''}. Please edit and resubmit.`,
-        alrt: { title: 'Delivery Returned for Correction', pri: 'Medium', detail: note || 'No reason given' },
-        ts: nowTime(), read: false,
-      }],
-    }));
+    void sendOperationalNotification({
+      target: d.receivedBy || 'mgr',
+      branchId: d.branchId,
+      title: 'Delivery Returned for Correction',
+      body: `Delivery returned to originator: ${d.prod} WB: ${d.wb}${note ? ' — ' + note : ''}. Please edit and resubmit.`,
+      route: SCREEN_ROUTES.recv,
+      data: { deliveryId: id },
+    });
   }, [role, userName, deliveries]);
 
   const applyMaintenanceRecord = useCallback((record: MaintenanceItem) => {
@@ -2939,7 +2914,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const sendMessage = useCallback((toName: string, msg: Omit<Message, 'id' | 'from' | 'ts' | 'read'>) => {
-    if (!userName) return;
+    if (!userName || msg.type === 'alert') return;
     const key = chatKey(userName, toName);
     const newMsg: Message = {
       ...msg, id: genId(), from: userName, ts: nowTime(), createdAt: nowTs(), read: false,
@@ -3024,16 +2999,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setBudgets(prev => [...prev, newBudget]);
     setAudit(a => [{ id: genId(), action: isDraft ? 'Budget saved as draft' : 'Budget submitted to Accountant', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
     if (!isDraft) {
-      const msgKey = chatKey(b.by, 'acc');
-      setMessages(m => ({
-        ...m,
-        [msgKey]: [...(m[msgKey] || []), {
-          id: genId(), from: b.by as Role, to: 'acc' as Role, type: 'alert' as const,
-          body: `Budget submitted for review: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
-          alrt: { title: 'Budget Awaiting Accountant Review', pri: 'Medium', detail: `${b.label} · ₦${b.total.toLocaleString()} · Submitted by ${b.byName}` },
-          ts: nowTime(), read: false,
-        }],
-      }));
+      void sendOperationalNotification({
+        target: 'acc',
+        title: 'Budget Awaiting Accountant Review',
+        body: `Budget submitted for review: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
+        route: SCREEN_ROUTES.budget,
+        data: { budgetId: newBudget.id },
+      });
     }
   }, [userName]);
 
@@ -3055,16 +3027,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       workflow: [...bud.workflow, { stage: 'Submitted to Accountant', by: userName, role: bud.by, dt: nowTs(), action: 'submit', note: `${bud.items.length} line items — ₦${bud.total.toLocaleString()}` }],
     }));
     setAudit(a => [{ id: genId(), action: 'Budget submitted to Accountant', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey(b.by, 'acc');
-    setMessages(m => ({
-      ...m,
-      [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: b.by as Role, to: 'acc' as Role, type: 'alert' as const,
-        body: `Budget submitted for review: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
-        alrt: { title: 'Budget Awaiting Accountant Review', pri: 'Medium', detail: `${b.label} · ₦${b.total.toLocaleString()} · Submitted by ${userName}` },
-        ts: nowTime(), read: false,
-      }],
-    }));
+    void sendOperationalNotification({
+      target: 'acc',
+      title: 'Budget Awaiting Accountant Review',
+      body: `Budget submitted for review: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
+      route: SCREEN_ROUTES.budget,
+      data: { budgetId: id },
+    });
   }, [userName, budgets]);
 
   const forwardBudget = useCallback((id: number, note: string) => {
@@ -3366,16 +3335,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         : a
       );
       if (acc) {
-        const msgKey = chatKey('admin', 'csm');
-        setMessages(m => ({
-          ...m,
-          [msgKey]: [...(m[msgKey] || []), {
-            id: genId(), from: 'admin' as Role, to: 'csm' as Role, type: 'alert' as const,
-            body: `Enrollment rejected: ${acc.empName} — "${reason}"`,
-            alrt: { title: 'Enrollment Rejected by Admin', pri: 'High' as const, detail: `${acc.empName} (${acc.empId ?? ''}) — Reason: ${reason}. Please update and re-submit.` },
-            ts: nowTime(), read: false,
-          }],
-        }));
+        void sendOperationalNotification({
+          target: 'csm',
+          title: 'Enrollment Rejected by Admin',
+          body: `Enrollment rejected: ${acc.empName} — "${reason}"`,
+          route: SCREEN_ROUTES.hr,
+          data: { accountId: id },
+        });
         setAudit(a => [{ id: genId(), action: 'Enrollment rejected by Admin', user: by, detail: `${acc.empName} — ${reason}`, ts: nowTs() }, ...a]);
       }
       return next;
@@ -3486,16 +3452,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!exp) return;
     setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'acc_forwarded' as const } : x));
     setAudit(a => [{ id: genId(), action: 'Expense forwarded to MD', user: userName, detail: `${exp.cat} — ₦${exp.amt.toLocaleString()}${note ? ' · ' + note : ''}`, ts: nowTs() }, ...a]);
-    const msgKey = chatKey('acc', 'md');
-    setMessages(m => ({
-      ...m,
-      [msgKey]: [...(m[msgKey] || []), {
-        id: genId(), from: 'acc' as Role, to: 'md' as Role, type: 'alert' as const,
-        body: `Expense forwarded for approval: ${exp.cat} — ₦${exp.amt.toLocaleString()} by ${exp.byName}`,
-        alrt: { title: 'Expense Awaiting MD Approval', pri: 'Medium', detail: `${exp.cat} · ₦${exp.amt.toLocaleString()} · ${exp.desc}${note ? '\nNote: ' + note : ''}` },
-        ts: nowTime(), read: false,
-      }],
-    }));
+    void sendOperationalNotification({
+      target: 'md',
+      title: 'Expense Awaiting MD Approval',
+      body: `Expense forwarded for approval: ${exp.cat} — ₦${exp.amt.toLocaleString()} by ${exp.byName}`,
+      route: SCREEN_ROUTES.exp,
+      data: { expenseId: id },
+    });
   }, [userName, expenses]);
 
   const addCompanyFile = useCallback((file: Omit<CompanyFile, 'id' | 'dt'>) => {
@@ -4238,13 +4201,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Letter generated', user: userName, detail: `${letter.type} letter for employee #${empId}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const addSystemNotification = useCallback((from: Role, msg: Omit<Message, 'id' | 'ts' | 'read'>) => {
-    if (!role) return;
-    const key = chatKey(from, role);
-    const newMsg: Message = { ...msg, id: genId(), ts: nowTime(), createdAt: nowTs(), read: false };
-    setMessages(m => ({ ...m, [key]: [...(m[key] || []), newMsg] }));
-  }, [role]);
-
   const getConversation = useCallback((peerName: string): Message[] => {
     const keys = new Set(conversationKeys(peerName));
     const seen = new Set<number>();
@@ -4254,7 +4210,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .filter(message => {
         if (seen.has(message.id)) return false;
         seen.add(message.id);
-        return true;
+        return message.type !== 'alert';
       })
       .sort((a, b) => messageActivityMs(a) - messageActivityMs(b));
   }, [conversationKeys, messages]);
@@ -4263,7 +4219,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!userName) return 0;
     return Object.values(messages).reduce((sum, msgs) => {
       if (!Array.isArray(msgs)) return sum;
-      return sum + msgs.filter(m => (m.to === userName || m.to === role) && !m.read).length;
+      return sum + msgs.filter(m => (
+        m.type !== 'alert' &&
+        (m.to === userName || m.to === role) &&
+        !m.read
+      )).length;
     }, 0);
   }, [role, userName, messages]);
 
@@ -4382,7 +4342,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
         setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, submitPumpReportConfirmed, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, adminReturnApprovedPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
-        sendMessage, addSystemNotification, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
+         sendMessage, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,

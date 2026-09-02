@@ -19,6 +19,7 @@ function iconFor(type: string): keyof typeof Ionicons.glyphMap {
   if (type === 'report_attention') return 'document-text-outline';
   if (type === 'report_update') return 'checkmark-circle-outline';
   if (type === 'document_expiry') return 'calendar-outline';
+  if (type === 'operational') return 'warning-outline';
   return 'notifications-outline';
 }
 

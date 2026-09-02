@@ -39,6 +39,14 @@ jest.mock('@/lib/api', () => {
     const raw = await storage.getItem(outboxKey);
     return raw ? JSON.parse(raw) : [];
   };
+  const mockNotificationsApi = {
+    list: jest.fn(async () => []),
+    registerToken: jest.fn(async () => ({ ok: true })),
+    unregisterToken: jest.fn(async () => ({ ok: true })),
+    send: jest.fn(async (..._args: unknown[]) => ({ ok: true, recipients: 0 })),
+    markRead: jest.fn(async () => ({ ok: true })),
+    markAllRead: jest.fn(async () => ({ ok: true })),
+  };
   return {
     SHIFT_REPORT_OUTBOX_STORAGE_KEY: outboxKey,
     loadShiftReportOutbox: jest.fn(readOutbox),
@@ -69,14 +77,22 @@ jest.mock('@/lib/api', () => {
     },
     versionApi: { get: jest.fn(async () => ({ version: 'test' })) },
     usersApi: { list: jest.fn(async () => []) },
-    notificationsApi: {
-      list: jest.fn(async () => []),
-      registerToken: jest.fn(async () => ({ ok: true })),
-      unregisterToken: jest.fn(async () => ({ ok: true })),
-      send: jest.fn(async () => ({ ok: true, recipients: 0 })),
-      markRead: jest.fn(async () => ({ ok: true })),
-      markAllRead: jest.fn(async () => ({ ok: true })),
-    },
+    notificationsApi: mockNotificationsApi,
+    sendOperationalNotification: jest.fn(async (input: {
+      target: string;
+      branchId?: string;
+      title: string;
+      body: string;
+      route: string;
+      data?: Record<string, unknown>;
+    }) => mockNotificationsApi.send({
+      target: input.target,
+      ...(input.branchId ? { branchId: input.branchId } : {}),
+      type: 'operational',
+      title: input.title,
+      body: input.body,
+      data: { route: input.route, ...(input.data ?? {}) },
+    })),
     maintenanceApi: {
       list: jest.fn(async () => []),
       create: jest.fn(async () => null),

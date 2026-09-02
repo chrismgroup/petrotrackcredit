@@ -538,7 +538,7 @@ export default function HomeScreen() {
     const all: { key: string; msg: Message }[] = [];
     for (const [key, thread] of Object.entries(messages)) {
       const peer = key.split('-').find(p => p !== role) ?? key;
-      const unreadInThread = (thread as Message[]).filter(m => m.to === role && !m.read);
+      const unreadInThread = (thread as Message[]).filter(m => m.type !== 'alert' && m.to === role && !m.read);
       for (const msg of unreadInThread) all.push({ key: peer, msg });
     }
     return all

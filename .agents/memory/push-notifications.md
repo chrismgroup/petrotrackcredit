@@ -7,7 +7,7 @@ Petrotrack notifications have two delivery paths: a server-backed recipient inbo
 
 **Why:** Web previews and Expo Go cannot fully exercise native push registration, while the app must still preserve alerts reliably when a device is offline or the app is closed.
 
-Pump-report workflow events and server-scheduled My Folder document-expiry reminders may create a notification inbox row, native push, badge, or sound. Chats—including direct, group, media, calls, and operational chat alerts—remain solely in the Chats experience.
+Pump-report workflow events, operational workflow alerts, and server-scheduled My Folder document-expiry reminders create notification inbox rows and may also trigger native push, badge, or sound. Chats contain only direct, group, media, and call conversations.
 
 **Why:** Staff need a reliable operational notification channel without chat traffic obscuring approvals, report updates, or expiring compliance documents.
 

@@ -9,8 +9,9 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
-import { DEFAULT_MGR_PERMS, getCurrentTankStock, isPhysicalDeliveryReceipt, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, getCurrentTankStock, isPhysicalDeliveryReceipt, ROLE_COLORS, SCREEN_ROUTES, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { sendOperationalNotification } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
 
 const TABS = ['Dip Form', 'Log & Delivery', 'Inventory'];
@@ -21,7 +22,7 @@ const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', 
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, sales, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms, sendMessage } = useApp();
+  const { role, tanks, lpgTanks, dips, deliveries, sales, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms } = useApp();
 
   async function pickCameraEvidence(delivId: number) {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -206,15 +207,13 @@ export default function TanksScreen() {
         }).join('\n');
         const alertBody = `Dip submitted by ${userName}:\n\n${lines}`;
         (['md', 'ceo'] as const).forEach(to => {
-          sendMessage(to, {
-            to,
-            type: 'alert',
+          void sendOperationalNotification({
+            target: to,
+            title: `Tank Dip Report — ${analysis.some(a => !a.complete) ? 'SHORTAGE DETECTED' : 'All Complete'}`,
             body: alertBody,
-            alrt: {
-              title: `Tank Dip Report — ${analysis.some(a => !a.complete) ? 'SHORTAGE DETECTED' : 'All Complete'}`,
-              pri: analysis.some(a => !a.complete) ? 'High' : 'Low',
-              detail: lines,
-            },
+            route: SCREEN_ROUTES.inventory,
+          }).catch(() => {
+            // The dip remains saved locally and will sync independently.
           });
         });
       }
