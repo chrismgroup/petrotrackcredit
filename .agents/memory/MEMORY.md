@@ -2,6 +2,7 @@
 - [Shared operational sync](shared-operational-sync.md) — shared workflow arrays must merge by record ID and flush locally restored records after authenticated sync
 - [Inventory log & discrepancy alerts](inventory-log.md) — InventoryLogEntry snapshots created on every approveDip; discrepancy >50L triggers chat alerts to md/ceo/acc/csm
 - [Notification sound](notification-sound.md) — expo-audio (not expo-av, deprecated in SDK 54); bundled WAV at assets/sounds/notification.wav; hook in hooks/useNotificationSound.ts
+- [Native audio verification](native-audio-verification.md) — bundle/export checks cannot prove audible playback without an installed iOS or Android target
 - [LPG unit convention](lpg-unit-convention.md) — LPG tank capacity and delivery quantities are tracked in kg, not litres; use `unitForProd` / `PROD_UNIT` helpers to render labels
 - [Authenticated state sync](authenticated-state-sync.md) — refresh full app state after login because initial unauthenticated sync can leave empty local defaults
 - [Primary dashboard navigation](four-dashboard-navigation.md) — primary navigation is Home, My Jobs, My Messages, My Folder, and My Profile; operational modules remain grouped beneath My Jobs

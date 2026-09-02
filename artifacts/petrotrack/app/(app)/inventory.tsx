@@ -193,13 +193,13 @@ export default function InventoryScreen() {
   const productCount = inventory.reduce((sum, branch) => sum + branch.products.length, 0);
 
   return (
-    <ScreenLayout title="Inventory">
+    <ScreenLayout title="Product inventory">
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={[styles.hero, { backgroundColor: roleColor }]}>
           <View style={styles.heroOrb} />
           <Text style={styles.eyebrow}>OPERATIONS · STOCK CONTROL</Text>
-          <Text style={styles.heroTitle}>Live inventory position</Text>
-          <Text style={styles.heroSubtitle}>Current tank readings and branch stock balances, separated from delivery approvals.</Text>
+          <Text style={styles.heroTitle}>Live product inventory</Text>
+          <Text style={styles.heroSubtitle}>Current product stock from the latest approved dip readings, separated from delivery approvals.</Text>
           <View style={styles.metrics}>
             <View><Text style={styles.metricValue}>{productCount}</Text><Text style={styles.metricLabel}>Products tracked</Text></View>
             <View><Text style={styles.metricValue}>{inventory.length}</Text><Text style={styles.metricLabel}>Branches</Text></View>
@@ -225,7 +225,7 @@ export default function InventoryScreen() {
           </View>
         ) : null}
 
-        <SectionHeading icon="layers-outline" title="Current inventory by branch" subtitle="Latest approved physical dip reading" color={roleColor} />
+        <SectionHeading icon="layers-outline" title="Product inventory by branch" subtitle="Latest approved physical dip reading" color={roleColor} />
         {inventory.map(branch => (
           <View key={branch.id ?? 'unassigned'} style={styles.branchBlock}>
             {isGlobal ? <BranchHeading name={branch.name} color={roleColor} colors={colors} /> : null}
