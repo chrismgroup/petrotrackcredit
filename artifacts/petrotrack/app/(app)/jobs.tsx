@@ -24,6 +24,7 @@ const operations: JobItem[] = [
   { id: 'maint', label: 'Maintenance', description: 'Log and follow up on station issues', icon: 'construct-outline', route: SCREEN_ROUTES.maint, accent: '#B45309' },
   { id: 'dips', label: 'Tank dipping approvals', description: 'Review physical tank readings and approvals', icon: 'water-outline', route: SCREEN_ROUTES.ops, accent: '#28698B' },
   { id: 'receiving', label: 'Products receiving', description: 'Track deliveries, costs and variances', icon: 'truck-outline', route: SCREEN_ROUTES.recv, accent: '#7C3AED' },
+  { id: 'inventory', label: 'Inventory', description: 'View live stock, dips and branch balances', icon: 'layers-outline', route: SCREEN_ROUTES.inventory, accent: '#0F6E56' },
 ];
 
 const sales: JobItem[] = [
@@ -109,6 +110,7 @@ export default function JobsScreen() {
     return Object.values(SCREEN_ROUTES).includes(item.route) && (
       item.id === 'maint' ? allowed.has('maint') || allowed.has('ops') :
       item.id === 'receiving' ? allowed.has('recv') :
+      item.id === 'inventory' ? allowed.has('recv') :
       item.id === 'budgets' ? allowed.has('budget') :
       item.id === 'expenses' ? allowed.has('exp') :
       item.id === 'sales' ? allowed.has('sales') :

@@ -1111,6 +1111,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
   tasks: '/(app)/tasks',
   recv: '/(app)/receiving',
+  inventory: '/(app)/inventory',
   hr: '/(app)/hr',
   prices: '/(app)/prices',
   comms: '/(app)/comms',
