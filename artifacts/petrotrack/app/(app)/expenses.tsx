@@ -15,7 +15,7 @@ import { safeNum } from '@/lib/report-helpers';
 
 const EXPENSE_CATS = [
   'Generator fuel', 'Security & guarding', 'Utilities',
-  'Staff welfare', 'Maintenance & repairs', 'Office supplies',
+  'Staff welfare', 'Salaries and wages', 'Maintenance & repairs', 'Office supplies',
   'Transport', 'Miscellaneous',
 ];
 
