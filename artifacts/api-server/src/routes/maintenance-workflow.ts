@@ -300,4 +300,38 @@ router.post("/maintenance/:taskId/status", async (req, res): Promise<void> => {
   res.json({ maintenance: result.item });
 });
 
+router.delete("/maintenance/:taskId", async (req, res): Promise<void> => {
+  if (req.auth!.role !== "admin") {
+    res.status(403).json({ error: "Only an admin can delete maintenance requests" });
+    return;
+  }
+
+  const taskId = req.params.taskId;
+  const result = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:maintenance-workflow'))`);
+    const [row] = await tx.select().from(appStateTable).where(eq(appStateTable.key, "maintenance"));
+    const records = asMaintenanceRecords(row?.data);
+    const found = findRecord(records, taskId);
+    if (!found) return null;
+
+    const nextRecords = records.filter((_item, index) => index !== found.index);
+    await saveMaintenance(tx, nextRecords);
+    const now = new Date().toISOString();
+    await updateAudit(tx, {
+      id: randomUUID(),
+      action: "Maintenance request deleted",
+      user: req.auth!.username,
+      detail: `${taskId}: ${String(found.item.title ?? "maintenance request")}`,
+      ts: now,
+    });
+    return found.item;
+  });
+
+  if (!result) {
+    res.status(404).json({ error: "Maintenance task not found" });
+    return;
+  }
+  res.status(204).send();
+});
+
 export default router;
