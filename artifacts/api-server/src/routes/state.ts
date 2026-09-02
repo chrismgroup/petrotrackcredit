@@ -566,6 +566,7 @@ router.get("/state", async (req, res): Promise<void> => {
 router.post("/pump-reports", async (req, res): Promise<void> => {
   const report = req.body?.report as JsonRecord | undefined;
   const id = String(report?.id ?? "");
+  const idempotencyKey = String(req.body?.idempotencyKey ?? report?.id ?? "").trim();
   const numericFields = [
     "openingMeter", "closingMeter", "liters", "unitPrice", "grossAmount",
     "posAmount", "cashAmount", "transferAmount", "creditAmount", "totalCollected", "variance",
@@ -573,6 +574,8 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
   if (
     !report ||
     !id ||
+    !idempotencyKey ||
+    idempotencyKey !== id ||
     report.status !== "pending_manager" ||
     typeof report.date !== "string" ||
     !/^\d{4}-\d{2}-\d{2}$/.test(report.date) ||
@@ -594,12 +597,14 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     res.status(403).json({ error: "This account cannot submit that report" });
     return;
   }
+  const reportForPersistence = { ...report };
+  delete reportForPersistence.deliveryStatus;
   const saved = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
     const [existingRow] = await tx.select().from(appStateTable)
       .where(eq(appStateTable.key, "pumpDailyReports"));
-    const merged = mergePumpDailyReports(existingRow?.data, [report], req.auth?.role);
-    const canonical = merged.find(candidate => String(candidate.id) === id) ?? report;
+    const merged = mergePumpDailyReports(existingRow?.data, [reportForPersistence], req.auth?.role);
+    const canonical = merged.find(candidate => String(candidate.id) === id) ?? reportForPersistence;
     await tx.insert(pumpReportsTable).values({
       id,
       status: String(canonical.status ?? "pending_manager"),
@@ -622,7 +627,7 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     return canonical;
   });
   broadcastRealtime({ type: "pump-report.changed", reportId: id, branchId: saved.branchId ?? null });
-  res.status(201).json({ ok: true, report: saved });
+  res.status(201).json({ ok: true, idempotencyKey, report: saved });
 });
 
 /**
