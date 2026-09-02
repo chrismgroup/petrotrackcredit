@@ -243,3 +243,129 @@ mtime_ms = 1788335553431
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/88fada12-950c-4e42-aaeb-90c7eae13426/fc914c48-f63b-423c-8a36-381f568f59be"
 storage_version_token = "1788335563014857"
 content_type = "image/png"
+
+[[outputs]]
+id = "apB540fCS81dLRktzFFso"
+uri = "file://store-screenshots/google-play/featured-graphic-1024x500.png"
+type = "image"
+title = "Petrotrack featured graphic — Google Play"
+description = "Google Play featured graphic: exact 1024×500 opaque RGB PNG, 121 KB."
+logical_id = "caaa11f3-868d-4200-8401-96ac67e77ad4"
+content_hash = "sha256:805946885b6f46ee894a45fdc3be4e1826afb9d02a23dc5bbe992fa4aefcdcdb"
+size = 121354
+mtime_ms = 1788336829899
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/caaa11f3-868d-4200-8401-96ac67e77ad4/3decd031-6b35-436f-b75b-31d401c66332"
+storage_version_token = "1788336857350669"
+content_type = "image/png"
+
+[[outputs]]
+id = "mJtrpHD7_C6Va03CnMikj"
+uri = "file://store-screenshots/google-play/01-home.png"
+type = "image"
+title = "Petrotrack screenshot 1 — Home"
+description = "Home dashboard phone screenshot: 1080×1920 opaque RGB PNG."
+logical_id = "c3ecd801-b1e1-4f7d-a589-fc801bc9e9ee"
+content_hash = "sha256:f7dcd68511ec0df29ab126dabefabe39aa740bff43e8ae78202c1497225e7099"
+size = 128377
+mtime_ms = 1788336827603
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/c3ecd801-b1e1-4f7d-a589-fc801bc9e9ee/4be8f7b3-d63c-43b3-967a-5a83ed38a5a8"
+storage_version_token = "1788336858096346"
+content_type = "image/png"
+
+[[outputs]]
+id = "_Kdx8hkj1E2lAQduN1Oas"
+uri = "file://store-screenshots/google-play/02-operations-stock-log.png"
+type = "image"
+title = "Petrotrack screenshot 2 — Operations"
+description = "Stock log and branch product ledger phone screenshot: 1080×1920 opaque RGB PNG."
+logical_id = "9417f04c-8642-4578-89db-06ebc26c1d91"
+content_hash = "sha256:a080845f4d84085e2a4c0e48dabd8c0d6d7dcd13cc27c2560fa30152d4636bd6"
+size = 117045
+mtime_ms = 1788336827911
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/9417f04c-8642-4578-89db-06ebc26c1d91/01b9df9e-5742-4265-95ae-764432b51f14"
+storage_version_token = "1788336858729164"
+content_type = "image/png"
+
+[[outputs]]
+id = "d-XDD_D3S3pcn7XI2RtdZ"
+uri = "file://store-screenshots/google-play/03-shift-report.png"
+type = "image"
+title = "Petrotrack screenshot 3 — Shift Report"
+description = "Pump readings and payment reconciliation phone screenshot: 1080×1920 opaque RGB PNG."
+logical_id = "e543a057-7b29-4c72-b312-3c2b3861fd96"
+content_hash = "sha256:71e328ad8de3635db6cc44e3cf55ba6793ef2a2c7fbb4e3cdcc463896132385e"
+size = 114979
+mtime_ms = 1788336828219
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/e543a057-7b29-4c72-b312-3c2b3861fd96/4963812c-8ce2-4ba8-acb1-ad8099074ad1"
+storage_version_token = "1788336859394659"
+content_type = "image/png"
+
+[[outputs]]
+id = "vxjDI-Nd2gq8XeP44mJze"
+uri = "file://store-screenshots/google-play/04-reports.png"
+type = "image"
+title = "Petrotrack screenshot 4 — Reports"
+description = "Sales performance and profit-and-loss phone screenshot: 1080×1920 opaque RGB PNG."
+logical_id = "1c098ad1-452e-440b-a13c-b33e9824a59d"
+content_hash = "sha256:ad8a118963b71e4db842171a7c2e5d3735ffa5124add26d0f2ca91b0fa9d93ba"
+size = 110934
+mtime_ms = 1788336828531
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/1c098ad1-452e-440b-a13c-b33e9824a59d/96f9cf0a-9260-4fdf-8256-ecf6ea2cabee"
+storage_version_token = "1788336860102654"
+content_type = "image/png"
+
+[[outputs]]
+id = "ovFhki5fUTIDGq4uNeupL"
+uri = "file://store-screenshots/google-play/05-tank-dipping.png"
+type = "image"
+title = "Petrotrack screenshot 5 — Tank Dipping"
+description = "Physical fuel inventory and approval phone screenshot: 1080×1920 opaque RGB PNG."
+logical_id = "d52760b9-c85e-4672-823a-56369870c960"
+content_hash = "sha256:354cf74c8fc48e0e906097da83bdc18153d701e0f939239eada3c50baf1d971d"
+size = 109601
+mtime_ms = 1788336828847
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/d52760b9-c85e-4672-823a-56369870c960/91cb1395-129c-4cd8-8275-77a2e066ea8c"
+storage_version_token = "1788336860737829"
+content_type = "image/png"
+
+[[outputs]]
+id = "wiZjhJQZ8rBgNlcGAKWHQ"
+uri = "file://store-screenshots/google-play/06-selling-prices.png"
+type = "image"
+title = "Petrotrack screenshot 6 — Selling Prices"
+description = "Current prices, proposals, and approval history phone screenshot: 1080×1920 opaque RGB PNG."
+logical_id = "13d85497-c375-4ca3-b756-3d9fae54b8a4"
+content_hash = "sha256:2c72335914638582580e7023a697619b68cde128c7ee9035a09d6518b0441e67"
+size = 112579
+mtime_ms = 1788336829159
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/13d85497-c375-4ca3-b756-3d9fae54b8a4/951f1765-70fc-4e43-91e8-b59b0c7d2300"
+storage_version_token = "1788336861428200"
+content_type = "image/png"
+
+[[outputs]]
+id = "1qsXVSNd74h18khEEdktE"
+uri = "file://store-screenshots/google-play/07-expenses.png"
+type = "image"
+title = "Petrotrack screenshot 7 — Expenses"
+description = "Expense claims, budget controls, and approvals phone screenshot: 1080×1920 opaque RGB PNG."
+logical_id = "d8c12373-42ae-4ead-be8a-fc1469a3acbb"
+content_hash = "sha256:0aa0b6177b48dff5c03f5c495e8ee0ed14e370ba45b369d2add662eec4c2566c"
+size = 114030
+mtime_ms = 1788336829471
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/d8c12373-42ae-4ead-be8a-fc1469a3acbb/f97db7bb-4b38-4766-9cb4-1882c890752e"
+storage_version_token = "1788336862064484"
+content_type = "image/png"
+
+[[outputs]]
+id = "sKT8tsAlETde5zwfSHcBc"
+uri = "file://store-screenshots/google-play/08-budget.png"
+type = "image"
+title = "Petrotrack screenshot 8 — Budget"
+description = "Branch budget, utilisation, and approval trail phone screenshot: 1080×1920 opaque RGB PNG."
+logical_id = "a1166223-01f4-4833-9981-2da23185027a"
+content_hash = "sha256:96cffb13a34bc856a568417cac03ab810f0b459f222f82250f22612c3070ad35"
+size = 111622
+mtime_ms = 1788336829779
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/a1166223-01f4-4833-9981-2da23185027a/c26cd6a9-777d-4322-bbf3-e7c9afbcff33"
+storage_version_token = "1788336863769362"
+content_type = "image/png"
