@@ -31,3 +31,4 @@
 - [Dashboard approval routing](dashboard-approval-routing.md) — approval summaries must open actionable workflow queues, never analytics-only report views
 - [Returned record permissions](returned-record-permissions.md) — returned records go to their originator for correction; approved records are locked except for admin deletion
 - [Durable report delivery](durable-report-delivery.md) — database acknowledgements are authoritative; sockets only invalidate caches and must retain polling catch-up
+- [JSONB state comparisons](jsonb-state-comparisons.md) — compare synced records structurally because PostgreSQL JSONB can reorder object keys
