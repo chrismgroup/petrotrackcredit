@@ -761,6 +761,25 @@ describe('daily stock log balance', () => {
     });
   });
 
+  it('rolls forward across a day with no saved movements', () => {
+    const result = calculateDailyOperationalStock(
+      startupSeed,
+      'PMS',
+      'branch-1',
+      [],
+      [{ ...reportWithStatus('approved'), date: '2026-08-14', openingMeter: 0, closingMeter: 1_000, liters: 1_000 }],
+      '2026-08-16',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+
+    expect(result).toEqual({
+      startupStock: 1_000,
+      delivered: 0,
+      sold: 0,
+      bookStock: 1_000,
+    });
+  });
+
   it('uses same-day movements after the rollover opening', () => {
     const result = calculateDailyOperationalStock(
       startupSeed,
@@ -790,6 +809,82 @@ describe('daily stock log balance', () => {
       sold: 0,
       bookStock: 1_300,
     });
+  });
+
+  it('counts only approved same-day sales in the selected branch and product', () => {
+    const result = calculateDailyOperationalStock(
+      startupSeed,
+      'PMS',
+      'branch-1',
+      [],
+      [
+        { ...reportWithStatus('approved'), date: '2026-08-15', openingMeter: 0, closingMeter: 300, liters: 300 },
+        { ...reportWithStatus('pending_manager'), id: 102, date: '2026-08-15', liters: 200 },
+        { ...reportWithStatus('returned'), id: 103, date: '2026-08-15', liters: 100 },
+        { ...reportWithStatus('approved'), id: 104, date: '2026-08-15', product: 'AGO', liters: 400 },
+        { ...reportWithStatus('approved'), id: 105, date: '2026-08-15', branchId: 'branch-2', liters: 500 },
+      ],
+      '2026-08-15',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+
+    expect(result.sold).toBe(300);
+    expect(result.bookStock).toBe(1_700);
+  });
+
+  it('isolates deliveries by branch and product while rolling the selected ledger', () => {
+    const result = calculateDailyOperationalStock(
+      startupSeed,
+      'PMS',
+      'branch-1',
+      [
+        {
+          id: 31,
+          dt: '2026-08-15',
+          sup: 'Selected supplier',
+          prod: 'PMS',
+          wb: 'WB-31',
+          rec: 250,
+          ord: 250,
+          st: 'ok',
+          notes: '',
+          approvalStatus: 'approved',
+          branchId: 'branch-1',
+        },
+        {
+          id: 32,
+          dt: '2026-08-15',
+          sup: 'Other branch',
+          prod: 'PMS',
+          wb: 'WB-32',
+          rec: 900,
+          ord: 900,
+          st: 'ok',
+          notes: '',
+          approvalStatus: 'approved',
+          branchId: 'branch-2',
+        },
+        {
+          id: 33,
+          dt: '2026-08-15',
+          sup: 'Other product',
+          prod: 'AGO',
+          wb: 'WB-33',
+          rec: 700,
+          ord: 700,
+          st: 'ok',
+          notes: '',
+          approvalStatus: 'approved',
+          branchId: 'branch-1',
+        },
+      ],
+      [],
+      '2026-08-15',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+
+    expect(result.delivered).toBe(250);
+    expect(result.bookStock).toBe(2_250);
   });
 
   it('counts received delivery stock when submitted and keeps it counted after approval', () => {
