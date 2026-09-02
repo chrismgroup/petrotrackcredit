@@ -411,3 +411,115 @@ mtime_ms = 1788339019247
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/2648fdf9-6521-48d1-9ffe-0a5db399bcb0/3cab72c2-c727-4162-8fe3-fbbd819f91ef"
 storage_version_token = "1788339099676957"
 content_type = "image/png"
+
+[[outputs]]
+id = "BVY-QRTcMAwe1jH9iJj5r"
+uri = "file://store-screenshots/google-play/tablet-7-inch/01-home.png"
+type = "image"
+title = "7-inch tablet screenshot 1 — Home"
+description = "Flat Petrotrack app-screen PNG, no phone frame. 1920×1080, exact 16:9, approximately 132 KB."
+logical_id = "14e66bbf-7ecc-49c4-97a2-afb66424270a"
+content_hash = "sha256:63e7fdf62fde8b3c56d69f20cbb662cebbf56c8a8e14121154c98efb7c817166"
+size = 133482
+mtime_ms = 1788339956632
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/14e66bbf-7ecc-49c4-97a2-afb66424270a/d9dbeb0f-d58b-4a28-873b-905c5ec83829"
+storage_version_token = "1788339997297875"
+content_type = "image/png"
+
+[[outputs]]
+id = "hX8kyM46VViwd5TKbUPnp"
+uri = "file://store-screenshots/google-play/tablet-7-inch/02-operations-stock-log.png"
+type = "image"
+title = "7-inch tablet screenshot 2 — Operations"
+description = "Flat Petrotrack app-screen PNG, no phone frame. 1920×1080, exact 16:9, approximately 120 KB."
+logical_id = "308f407c-2584-4590-898a-e79f0eef1ca7"
+content_hash = "sha256:0fc750c20136abea7b31f739fcbca42936058f1f8d2dd0a2dfcbeb00ef35908d"
+size = 119198
+mtime_ms = 1788339957156
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/308f407c-2584-4590-898a-e79f0eef1ca7/70ed56ba-0e83-441e-9ec1-d618988a75f7"
+storage_version_token = "1788339998007698"
+content_type = "image/png"
+
+[[outputs]]
+id = "DyOEM1tL3A3LRHCxQM4eN"
+uri = "file://store-screenshots/google-play/tablet-7-inch/03-shift-report.png"
+type = "image"
+title = "7-inch tablet screenshot 3 — Shift Report"
+description = "Flat Petrotrack app-screen PNG, no phone frame. 1920×1080, exact 16:9, approximately 116 KB."
+logical_id = "8c1c4c88-3688-4739-935b-862ae813df21"
+content_hash = "sha256:03bf6c2eb960692266b1a8032cc33dfd66b6f4b9652f737d365f857716efb605"
+size = 115284
+mtime_ms = 1788339957532
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/8c1c4c88-3688-4739-935b-862ae813df21/1e4f27a5-9427-4581-bf60-9a4321c3968b"
+storage_version_token = "1788339998666765"
+content_type = "image/png"
+
+[[outputs]]
+id = "bqyfm-n0EPj65KcrvecNd"
+uri = "file://store-screenshots/google-play/tablet-7-inch/04-reports.png"
+type = "image"
+title = "7-inch tablet screenshot 4 — Reports"
+description = "Flat Petrotrack app-screen PNG, no phone frame. 1920×1080, exact 16:9, approximately 112 KB."
+logical_id = "0d4bcfe7-6dab-4f72-9a2c-b043b2a5faa8"
+content_hash = "sha256:2f194a22eaf26761d4baa2806662a6a45d749155f99e10ba37e4b522acc0636c"
+size = 111880
+mtime_ms = 1788339957876
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/0d4bcfe7-6dab-4f72-9a2c-b043b2a5faa8/5c07fe05-783e-40da-be25-0458f658e4bc"
+storage_version_token = "1788339999347815"
+content_type = "image/png"
+
+[[outputs]]
+id = "7awTG_LSTpbOvYLo-40VX"
+uri = "file://store-screenshots/google-play/tablet-7-inch/05-tank-dipping.png"
+type = "image"
+title = "7-inch tablet screenshot 5 — Tank Dipping"
+description = "Flat Petrotrack app-screen PNG, no phone frame. 1920×1080, exact 16:9, approximately 108 KB."
+logical_id = "6bb42fed-b77f-4e99-a81c-76aafffec108"
+content_hash = "sha256:70c46bad8776b80515a8e8b3192aabc9a9cfff4d50898a79c78c6bf1a8484b38"
+size = 107189
+mtime_ms = 1788339958220
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/6bb42fed-b77f-4e99-a81c-76aafffec108/f1d83bfa-4e23-4406-b93c-4907f9613851"
+storage_version_token = "1788339999991666"
+content_type = "image/png"
+
+[[outputs]]
+id = "-FWOljFPPTAaUmQhXxUQK"
+uri = "file://store-screenshots/google-play/tablet-7-inch/06-selling-prices.png"
+type = "image"
+title = "7-inch tablet screenshot 6 — Selling Prices"
+description = "Flat Petrotrack app-screen PNG, no phone frame. 1920×1080, exact 16:9, approximately 116 KB."
+logical_id = "50777c09-98f0-40ef-8437-9362773bffba"
+content_hash = "sha256:bed4e0195a0e63fa2dae4997a0314e85a2e85c88e015a90e57577df3c45aedd0"
+size = 117883
+mtime_ms = 1788339958552
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/50777c09-98f0-40ef-8437-9362773bffba/5e2d0764-bcda-4239-adfc-34a594566f0d"
+storage_version_token = "1788340000631661"
+content_type = "image/png"
+
+[[outputs]]
+id = "H7lNY0ntOYH8sGlPVzWBp"
+uri = "file://store-screenshots/google-play/tablet-7-inch/07-expenses.png"
+type = "image"
+title = "7-inch tablet screenshot 7 — Expenses"
+description = "Flat Petrotrack app-screen PNG, no phone frame. 1920×1080, exact 16:9, approximately 116 KB."
+logical_id = "7f40e0f8-a605-4129-be3b-361be068e1f8"
+content_hash = "sha256:63639f62493047134ca9addca7ab6b95388b7a0eee71bd89f5eba4c6933ca1ed"
+size = 118293
+mtime_ms = 1788339958904
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/7f40e0f8-a605-4129-be3b-361be068e1f8/3f4c5f0f-2a53-40b9-b911-36f05c47169e"
+storage_version_token = "1788340001290105"
+content_type = "image/png"
+
+[[outputs]]
+id = "-mbRxmeYix22OsNmATvVL"
+uri = "file://store-screenshots/google-play/tablet-7-inch/08-budget.png"
+type = "image"
+title = "7-inch tablet screenshot 8 — Budget"
+description = "Flat Petrotrack app-screen PNG, no phone frame. 1920×1080, exact 16:9, approximately 127 KB."
+logical_id = "d5c4d87f-f483-4926-b4c6-af2dba3eb4c1"
+content_hash = "sha256:0c1176587652388f844e304fd8263ff4d05fbaf61d968030ccb6929c829a3c1e"
+size = 126549
+mtime_ms = 1788339959244
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/d5c4d87f-f483-4926-b4c6-af2dba3eb4c1/4becbf40-caa1-4990-b598-c44cbfc83a37"
+storage_version_token = "1788340001896245"
+content_type = "image/png"
