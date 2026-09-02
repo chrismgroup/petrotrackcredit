@@ -8,6 +8,7 @@ import {
   createMaintenanceTaskId,
   isAllowedMaintenanceTransition,
   isMaintenanceDecisionRole,
+  normalizeMaintenanceRecord,
   type MaintenanceStatus,
 } from "./maintenance-workflow-rules";
 
@@ -20,8 +21,9 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 
 function asMaintenanceRecords(value: unknown): JsonRecord[] {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
+  return Array.isArray(value) ? value.filter(isRecord).map(normalizeMaintenanceRecord) : [];
 }
+
 
 function displayStatus(status: MaintenanceStatus): "Open" | "Done" {
   return status === "done" || status === "closed" ? "Done" : "Open";
