@@ -1675,6 +1675,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
      initial syncFromServer resolves, so every subsequent user-triggered change flows
      through to the server normally. */
   const initialSyncDoneRef = useRef(false);
+  // State setters used during a server refresh must not echo the same
+  // snapshot back through the persistence effects as API writes.
+  const serverHydrationRef = useRef(false);
 
   /* ── syncFromServer: fetch ALL state from the server and apply it locally ── */
   // Called once on startup and then every 3 s so every device stays in sync.
@@ -1686,6 +1689,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         usersApi.list(),
       ]);
       if (!s) return false;
+      serverHydrationRef.current = true;
       if (s.companyInfo && !p.has('companyInfo'))             setCompanyInfo(s.companyInfo as CompanyInfo);
       if (s.tanks && !p.has('tanks'))                         setTanks(s.tanks as Tank[]);
       if (s.lpgTanks && !p.has('lpgTanks'))                   setLpgTanks(s.lpgTanks as LPGTank[]);
@@ -1844,11 +1848,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // If syncFromServer fails (no network, 500, etc.), the gate stays DOWN so the app's empty defaults
       // cannot overwrite whatever real data is on the server. The next poll (3 s) will retry.
       initialSyncDoneRef.current = true;
-      // Trigger deferred writes for records created while the app was still
-      // unauthenticated and therefore blocked by the startup write gate.
+      // Advance the hydration generation. Persistence effects use this to
+      // release the server-snapshot write guard after React commits.
       setStateSyncReadyTick(t => t + 1);
       return true;
     } catch {
+      serverHydrationRef.current = false;
       // silently ignore — network errors must not break the UI.
       // CRITICAL: DO NOT lift the gate on error. If we do, the empty default state in useState([])
       // will be PUT to the server by the syncSlice effects, wiping all real data permanently.
@@ -2189,6 +2194,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   /* ── persistence: save each state slice to AsyncStorage + API when it changes ── */
   function syncSlice(key: string, value: unknown) {
     AsyncStorage.setItem(key, JSON.stringify(value));
+     if (serverHydrationRef.current) return;
     // Block server writes until the initial syncFromServer has completed so that
     // stale AsyncStorage snapshots can't overwrite data written by other users.
     if (!initialSyncDoneRef.current) return;
@@ -2244,30 +2250,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('corpProjects',      corpProjects); },      [corpProjects, loaded]);
   useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
   useEffect(() => {
-    if (loaded) {
+     if (loaded) {
       syncSlice('pumpDailyReports', pumpDailyReports.filter(report => report.deliveryStatus !== 'queued'));
     }
   }, [pumpDailyReports, loaded]);
-  // If a report was submitted before the JWT-backed initial sync completed,
-  // its local value may not change during syncFromServer (safeArray preserves
-  // it when the server is empty), so the normal dependency effect above will
-  // not run. Flush it once the authenticated sync has completed.
-  useEffect(() => {
-    if (loaded && stateSyncReadyTick > 0) {
-      syncSlice('pumpDailyReports', pumpDailyReports.filter(report => report.deliveryStatus !== 'queued'));
-    }
-  }, [loaded, stateSyncReadyTick, pumpDailyReports]);
-  // A dip can be submitted from a locally restored session before the first
-  // authenticated sync completes. safeArray intentionally preserves that
-  // local record when the server is empty, so flush it once the sync gate opens.
-  useEffect(() => {
-    if (loaded && stateSyncReadyTick > 0) syncSlice('dips', dips);
-  }, [dips, loaded, stateSyncReadyTick]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
   useEffect(() => { if (loaded) syncSlice('startupStocks',    startupStocks); },      [startupStocks, loaded]);
   useEffect(() => { if (loaded) syncSlice('stockSnapshotConfig', stockSnapshotConfig); }, [stockSnapshotConfig, loaded]);
+   // This effect is declared after every ordinary slice effect so a server
+   // refresh can suppress their writes before user edits are persisted.
+   useEffect(() => {
+     if (serverHydrationRef.current) serverHydrationRef.current = false;
+   }, [stateSyncReadyTick]);
+   // If a report was submitted before the JWT-backed initial sync completed,
+   // its local value may not change during syncFromServer (safeArray preserves
+   // it when the server is empty), so the normal dependency effect above will
+   // not run. Flush it once the authenticated sync has completed.
+   useEffect(() => {
+     if (loaded && stateSyncReadyTick === 1) {
+       syncSlice('pumpDailyReports', pumpDailyReports.filter(report => report.deliveryStatus !== 'queued'));
+     }
+   }, [loaded, stateSyncReadyTick, pumpDailyReports]);
+   // A dip can be submitted from a locally restored session before the first
+   // authenticated sync completes. safeArray intentionally preserves that
+   // local record when the server is empty, so flush it once the sync gate opens.
+   useEffect(() => {
+     if (loaded && stateSyncReadyTick === 1) syncSlice('dips', dips);
+   }, [dips, loaded, stateSyncReadyTick]);
 
   /* ── Version-check poll: 3 s lightweight ping → full sync only when data changed ── */
   // /api/version returns a ~50-byte timestamp. syncFromServer() only fires when it changes,

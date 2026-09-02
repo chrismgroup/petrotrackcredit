@@ -6,6 +6,7 @@
 - [Authenticated state sync](authenticated-state-sync.md) — refresh full app state after login because initial unauthenticated sync can leave empty local defaults
 - [Primary dashboard navigation](four-dashboard-navigation.md) — primary navigation is Home, My Jobs, My Messages, My Folder, and My Profile; operational modules remain grouped beneath My Jobs
 - [Startup health readiness](startup-health-readiness.md) — bind the API and serve health before database seeding or migrations
+- [Startup sync write guard](startup-sync-write-storm.md) — server hydration must not echo refreshed slices into API PUTs or version polling can amplify into a loading outage
 - [EAS iOS credentials](eas-ios-credentials.md) — Expo tokens do not replace Apple signing setup for a newly linked EAS project
 - [App Store build numbers](app-store-build-numbers.md) — iOS uploads must use a build number higher than the latest App Store Connect upload
 - [Replit Launch versioning](replit-launch-versioning.md) — Launch may use managed build state separate from app.json; trust the submitted build number in Launch logs
