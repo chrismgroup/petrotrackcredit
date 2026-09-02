@@ -16,7 +16,7 @@ const PRIMARY_TABS = [
 ] as const;
 
 const JOB_PATHS = [
-  'jobs', 'operations', 'maintenance', 'tanks', 'receiving', 'sales', 'shift',
+  'jobs', 'operations', 'maintenance', 'tanks', 'receiving', 'inventory', 'sales', 'shift',
   'accounts', 'expenses', 'budget', 'reports', 'pump-report', 'tasks', 'users',
   'departments', 'branches', 'marketing', 'prices', 'audit',
   'system-settings', 'hr',

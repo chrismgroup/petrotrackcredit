@@ -653,6 +653,49 @@ export default function ReceivingScreen() {
   const isLocked = (d: Delivery) =>
     d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved';
 
+  const submittedGroups = [
+    {
+      key: 'draft',
+      title: 'Submitted · Drafts',
+      subtitle: 'Saved by the receiving manager and not yet forwarded',
+      items: sortedDeliveries.filter(d => !isLocked(d) && (d.approvalStatus === 'draft' || !d.approvalStatus)),
+    },
+    {
+      key: 'accountant',
+      title: 'Submitted · Awaiting accountant',
+      subtitle: 'Cost price still needs to be entered',
+      items: sortedDeliveries.filter(d => !isLocked(d) && (d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending')),
+    },
+    {
+      key: 'md',
+      title: 'Submitted · Awaiting MD approval',
+      subtitle: 'Cost has been entered and the record is ready for final approval',
+      items: sortedDeliveries.filter(d => !isLocked(d) && d.approvalStatus === 'pending_md'),
+    },
+    {
+      key: 'returned',
+      title: 'Submitted · Returned for correction',
+      subtitle: 'These records need attention before they can move forward',
+      items: sortedDeliveries.filter(d => !isLocked(d) && (d.approvalStatus === 'returned' || d.approvalStatus === 'rejected')),
+    },
+  ].filter(group => group.items.length > 0);
+
+  const approvedByBranch = new Map<string, { name: string; items: Delivery[] }>();
+  sortedDeliveries.filter(isLocked).forEach(delivery => {
+    const key = delivery.branchId ?? 'unassigned';
+    const name = branches.find(branch => branch.id === delivery.branchId)?.name ?? 'Unassigned branch';
+    const existing = approvedByBranch.get(key);
+    if (existing) existing.items.push(delivery);
+    else approvedByBranch.set(key, { name, items: [delivery] });
+  });
+  const approvedGroups = [...approvedByBranch.entries()].map(([key, group]) => ({
+    key: `approved-${key}`,
+    title: `Approved · ${group.name}`,
+    subtitle: `${group.items.length} locked delivery record${group.items.length === 1 ? '' : 's'} counted in this branch inventory`,
+    items: group.items,
+  }));
+  const deliveryGroups = [...submittedGroups, ...approvedGroups];
+
   return (
     <ScreenLayout
       title="Product Receiving"
@@ -749,152 +792,7 @@ export default function ReceivingScreen() {
           </View>
         ) : null}
 
-        {branchInventories.length > 0 ? (
-          <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Inventory by Dip Reading</Text>
-            {branchInventories.map(branch => (
-              <View key={branch.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>
-                {isGlobalViewer ? (
-                  <View style={[styles.branchHeader, { backgroundColor: roleColor + '12', borderColor: roleColor + '30' }]}>
-                    <Ionicons name="business-outline" size={13} color={roleColor} />
-                    <Text style={[styles.branchHeaderText, { color: roleColor }]}>{branch.branchName}</Text>
-                  </View>
-                ) : null}
-                <View style={styles.inventoryGrid}>
-                  {branch.prods.map(inv => {
-                    const pc  = PROD_COLORS[inv.prod] || roleColor;
-                    const pct = inv.totalCap > 0 ? Math.min(100, Math.round((inv.totalStock / inv.totalCap) * 100)) : null;
-                    const low = pct !== null ? pct < 20 : false;
-                    return (
-                      <View key={inv.prod} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: low ? '#BA7517' : colors.border }]}>
-                        <View style={styles.invCardTop}>
-                          <View style={[styles.invProdBadge, { backgroundColor: pc + '18' }]}>
-                            <Ionicons name="cube-outline" size={12} color={pc} />
-                            <Text style={[styles.invProdText, { color: pc }]}>{inv.prod}</Text>
-                          </View>
-                          {!inv.dipBased ? (
-                            <View style={[styles.invSourceBadge, { backgroundColor: '#F4F4F4', borderColor: '#CCC' }]}>
-                              <Text style={[styles.invSourceText, { color: '#666' }]}>Delivery-based</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <Text style={[styles.invAvail, { color: low ? '#BA7517' : '#27500A' }]}>
-                          {inv.totalStock.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          <Text style={[styles.invUnit, { color: colors.textMuted }]}>{' ' + inv.unit}</Text>
-                        </Text>
-                        {pct !== null ? (
-                          <>
-                            <View style={[styles.progressBg, { backgroundColor: colors.border }]}>
-                              <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: low ? '#BA7517' : pc }]} />
-                            </View>
-                            <Text style={[styles.invCapText, { color: colors.textSubtle }]}>
-                              {pct}{'% of '}{inv.totalCap.toLocaleString()}{' ' + inv.unit + ' cap · '}{inv.tanks.length}{inv.tanks.length === 1 ? ' tank' : ' tanks'}
-                            </Text>
-                          </>
-                        ) : null}
-                        {inv.tanks.length > 1 ? (
-                          <View style={[styles.tankBreakdown, { borderTopColor: colors.border }]}>
-                            {inv.tanks.map(t => (
-                              <View key={t.id} style={styles.tankRow}>
-                                <Text style={[styles.tankName, { color: colors.textMuted }]} numberOfLines={1}>{t.name}</Text>
-                                <Text style={[styles.tankStock, { color: colors.text }]}>{t.stock.toLocaleString()}{' '}{inv.unit}</Text>
-                                {t.dipDt
-                                  ? <Text style={[styles.tankDipDt, { color: colors.textSubtle }]}>{fmtDate(t.dipDt)}</Text>
-                                  : <Text style={[styles.tankDipDt, { color: '#BA7517' }]}>No dip</Text>}
-                              </View>
-                            ))}
-                          </View>
-                        ) : null}
-                        <View style={styles.invFooter}>
-                          {inv.lastDipDt
-                            ? <Text style={[styles.invDipDate, { color: colors.textSubtle }]}>{'Last dip: '}{fmtDate(inv.lastDipDt)}</Text>
-                            : <Text style={[styles.invDipDate, { color: '#BA7517' }]}>No dip on record</Text>}
-                          {low ? (
-                            <View style={[styles.lowBadge, { backgroundColor: '#FAEEDA' }]}>
-                              <Ionicons name="warning-outline" size={10} color="#BA7517" />
-                              <Text style={[styles.lowText, { color: '#BA7517' }]}>Low</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            ))}
-          </>
-        ) : null}
-
-        {canSeeStock && branchStockReports.length > 0 ? (
-          <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock Snapshot (Book Stock + Variance)</Text>
-            {branchStockReports.map(bsr => (
-              <View key={bsr.branchId ?? 'unassigned'} style={{ marginBottom: 4 }}>
-                {isGlobalViewer ? (
-                  <View style={[styles.branchHeader, { backgroundColor: roleColor + '12', borderColor: roleColor + '30' }]}>
-                    <Ionicons name="business-outline" size={13} color={roleColor} />
-                    <Text style={[styles.branchHeaderText, { color: roleColor }]}>{bsr.branchName}</Text>
-                  </View>
-                ) : null}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={[styles.stockTable, { minWidth: 720, backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={[styles.stockTableHeader, { borderBottomColor: colors.border }]}>
-                      <Text style={[styles.stockColProd, styles.stockHeaderText, { color: colors.textMuted }]}>Product</Text>
-                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Opening</Text>
-                       <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Delivered today</Text>
-                        <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Sold today</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Book Stock</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Dip</Text>
-                      <Text style={[styles.stockColNum, styles.stockHeaderText, { color: colors.textMuted }]}>Variance / Status</Text>
-                      {isMdOrCeo ? <Text style={[styles.stockColFlag, styles.stockHeaderText, { color: colors.textMuted }]}>Alert</Text> : null}
-                    </View>
-                    {bsr.rows.map(row => {
-                      const pc = PROD_COLORS[row.prod] || roleColor;
-                      const mismatch = isMdOrCeo ? mismatches.find(m => m.branchName === bsr.branchName && m.prod === row.prod) : null;
-                      const varianceColor = row.variance === null
-                        ? colors.textSubtle
-                        : row.variance > 0 ? '#791F1F' : row.variance < 0 ? '#BA7517' : '#27500A';
-                      return (
-                        <View key={row.prod} style={[styles.stockTableRow, { borderBottomColor: colors.border }]}>
-                          <View style={styles.stockColProd}>
-                            <View style={[styles.stockProdDot, { backgroundColor: pc }]} />
-                            <Text style={[styles.stockProdText, { color: colors.text }]}>{row.prod}</Text>
-                          </View>
-                          <Text style={[styles.stockColNum, styles.stockNum, { color: colors.textMuted }]}>{row.startupStock === null ? '—' : row.startupStock.toLocaleString()}</Text>
-                          <Text style={[styles.stockColNum, styles.stockNum, { color: colors.textMuted }]}>{row.delivered.toLocaleString()}</Text>
-                          <Text style={[styles.stockColNum, styles.stockNum, { color: '#791F1F' }]}>{row.sold.toLocaleString()}</Text>
-                          <Text style={[styles.stockColNum, styles.stockNum, { color: '#27500A', fontWeight: '800' }]}>{row.bookStock === null ? '—' : row.bookStock.toLocaleString()}</Text>
-                          <Text style={[styles.stockColNum, styles.stockNum, { color: colors.textMuted }]}>{row.submittedTankDip === null ? '—' : row.submittedTankDip.toLocaleString()}</Text>
-                          <View style={styles.stockColNum}>
-                            <Text style={[styles.stockNum, { color: varianceColor, fontWeight: '800' }]}>
-                              {row.variance === null ? '—' : `${row.variance > 0 ? '+' : ''}${row.variance.toLocaleString()}`}
-                            </Text>
-                            {row.variance !== null ? (
-                              <Text style={{ color: varianceColor, fontSize: 10, fontWeight: '700' }}>
-                                {row.variance > 0 ? 'Excess' : row.variance < 0 ? 'Shortage' : 'Balanced'}
-                              </Text>
-                            ) : null}
-                          </View>
-                          {isMdOrCeo ? (
-                            <View style={styles.stockColFlag}>
-                              {mismatch ? (
-                                <Ionicons name="warning" size={14} color="#791F1F" />
-                              ) : (
-                                <Ionicons name="checkmark-circle" size={14} color="#27500A" />
-                              )}
-                            </View>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
-              </View>
-            ))}
-          </>
-        ) : null}
-
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Delivery Records</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Delivery Reports</Text>
         {sortedDeliveries.length === 0 ? (
           <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="cube-outline" size={36} color={colors.textSubtle} />
@@ -903,7 +801,18 @@ export default function ReceivingScreen() {
           </View>
         ) : null}
 
-        {sortedDeliveries.map(d => {
+        {deliveryGroups.map(group => (
+          <View key={group.key} style={styles.deliveryGroup}>
+            <View style={styles.deliveryGroupHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.deliveryGroupTitle, { color: colors.text }]}>{group.title}</Text>
+                <Text style={[styles.deliveryGroupSubtitle, { color: colors.textMuted }]}>{group.subtitle}</Text>
+              </View>
+              <View style={[styles.deliveryGroupCount, { backgroundColor: roleColor + '16' }]}>
+                <Text style={[styles.deliveryGroupCountText, { color: roleColor }]}>{group.items.length}</Text>
+              </View>
+            </View>
+            {group.items.map(d => {
           const st = ST_MAP[d.st] || ST_MAP.ok;
           const pc = PROD_COLORS[d.prod] || roleColor;
           const apSt = d.approvalStatus || 'draft';
@@ -1171,7 +1080,9 @@ export default function ReceivingScreen() {
               ) : null}
             </View>
           );
-        })}
+            })}
+          </View>
+        ))}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -1451,6 +1362,12 @@ const styles = StyleSheet.create({
   banner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 12 },
   bannerText: { fontSize: 13, fontWeight: '600', flex: 1 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, marginTop: 4 },
+  deliveryGroup: { gap: 1, marginTop: 5 },
+  deliveryGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
+  deliveryGroupTitle: { fontSize: 14, fontWeight: '800' },
+  deliveryGroupSubtitle: { fontSize: 11, lineHeight: 16, marginTop: 2 },
+  deliveryGroupCount: { minWidth: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  deliveryGroupCountText: { fontSize: 12, fontWeight: '800' },
   branchHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8 },
   branchHeaderText: { fontSize: 13, fontWeight: '700', flex: 1 },
   inventoryGrid: { gap: 8, marginBottom: 16 },
