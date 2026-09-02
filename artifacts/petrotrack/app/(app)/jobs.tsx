@@ -21,6 +21,7 @@ type JobItem = {
 
 const operations: JobItem[] = [
   { id: 'stock-log', label: 'Daily stock log', description: 'Trace opening stock, deliveries, sales and tank-dip variance', icon: 'analytics-outline', route: SCREEN_ROUTES.ops, accent: '#0D6E56' },
+  { id: 'stock-snapshot', label: 'Stock snapshot', description: 'Compare book stock, tank dips and variance', icon: 'analytics-outline', route: SCREEN_ROUTES.stockSnapshot, accent: '#0F6E56' },
   { id: 'maint', label: 'Maintenance', description: 'Log and follow up on station issues', icon: 'construct-outline', route: SCREEN_ROUTES.maint, accent: '#B45309' },
   { id: 'dips', label: 'Tank dipping approvals', description: 'Review physical tank readings and approvals', icon: 'water-outline', route: SCREEN_ROUTES.ops, accent: '#28698B' },
   { id: 'receiving', label: 'Products receiving', description: 'Track deliveries, costs and variances', icon: 'truck-outline', route: SCREEN_ROUTES.recv, accent: '#7C3AED' },
@@ -104,6 +105,7 @@ export default function JobsScreen() {
 
   const allowed = new Set(navItems.map(item => item.id));
   const canSee = (item: JobItem) => {
+    if (item.id === 'stock-snapshot') return allowed.has('recv');
     if (item.id === 'dips') return (role === 'md' || role === 'admin') && (allowed.has('ops') || allowed.has('tanks'));
     if (item.id === 'financial-status') return allowed.has('acct') || allowed.has('home');
     if (item.id === 'people') return allowed.has('hr') || allowed.has('users');

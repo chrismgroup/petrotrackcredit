@@ -8,9 +8,8 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
-import { calculateDailyOperationalStock, calculateDailyStockLogBalance, Delivery, isPhysicalDeliveryReceipt, LPGTank, Tank, ROLE_COLORS, dipReadingToLiters, fmt, fmtDate, fmtDateTime, getPriceForProduct, useBusinessDateKey, useApp } from '@/context/AppContext';
+import { Delivery, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForProduct, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { findLatestDipForProduct } from '@/lib/dip-helpers';
 import { safeNum } from '@/lib/report-helpers';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
@@ -33,22 +32,6 @@ const APPR_MAP: Record<string, { label: string; color: string; bg: string; icon:
 const PROD_COLORS: Record<string, string> = {
   PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11',
 };
-
-type TankRow        = { id: string; name: string; stock: number; cap: number; dipDt: string | null };
-type ProdInv        = { prod: string; unit: string; totalStock: number; totalCap: number; tanks: TankRow[]; lastDipDt: string | null; dipBased: boolean };
-type BranchInv      = { branchId: string | null; branchName: string; prods: ProdInv[] };
-type StockProdRow   = {
-  prod: string;
-  unit: string;
-  startupStock: number | null;
-  delivered: number;
-  sold: number;
-  bookStock: number | null;
-  submittedTankDip: number | null;
-  variance: number | null;
-};
-type BranchStockRpt = { branchId: string | null; branchName: string; rows: StockProdRow[] };
-type MismatchRow    = { branchName: string; prod: string; dipStock: number; bookStock: number; variance: number; unit: string };
 
 type MgrFormState = {
   prod: string; sup: string; wb: string;
@@ -187,8 +170,7 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
 export default function ReceivingScreen() {
   const {
     role, userName, branchId,
-    tanks, lpgTanks, dips, deliveries, prices, branches, pumps,
-    pumpDailyReports, startupStocks,
+    deliveries, prices, branches,
     deliveryEvidences, addDeliveryEvidence,
     addDelivery, updateDelivery, deleteDelivery,
     submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery,
@@ -196,15 +178,12 @@ export default function ReceivingScreen() {
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
-  const todayKey = useBusinessDateKey();
   const [filterDate, setFilterDate] = useState('');
 
   const isMgr        = role === 'mgr' || role === 'csm' || role === 'admin';
   const isAcc        = role === 'acc' || role === 'admin';
   const isMd         = role === 'md'  || role === 'ceo' || role === 'admin';
   const isAdmin      = role === 'admin';
-  const canSeeStock  = role === 'acc' || role === 'md' || role === 'ceo' || role === 'csm' || role === 'admin';
-  const isMdOrCeo    = role === 'md'  || role === 'ceo' || role === 'admin';
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<MgrFormState>(blankMgrForm());
@@ -243,201 +222,6 @@ export default function ReceivingScreen() {
 
   const pendingAccCount = sortedDeliveries.filter(d => d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending').length;
   const pendingMdCount  = sortedDeliveries.filter(d => d.approvalStatus === 'pending_md').length;
-
-  // Branch-scoped tanks (used for evidence uploads and branch-user inventory)
-  const canSeeAllTanks = role === 'admin' || role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'mktg';
-  const myTanks    = canSeeAllTanks ? tanks : tanks.filter(t => !branchId || !t.branchId || t.branchId === branchId);
-  const myLpgTanks = canSeeAllTanks ? lpgTanks : lpgTanks.filter(l => !branchId || !l.branchId || l.branchId === branchId);
-
-  // ── Dip-based inventory ─────────────────────────────────────────────────────
-  // Inventory = latest available non-rejected dip reading per tank, summed per product per branch.
-  // Multiple PMS tanks are summed. LPG uses its own tank array.
-  // Lube Oil falls back to net approved deliveries if no tanks are configured.
-
-  function dipStockForTank(tankId: string): { stock: number; dt: string | null } {
-    const r = dips
-      .filter(d => d.status === 'approved' && (d.rd ?? {})[tankId] !== undefined)
-      .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime())[0];
-    return { stock: r ? ((r.rd ?? {})[tankId] ?? 0) : 0, dt: r?.dt ?? null };
-  }
-
-  function dipStockForLpgTank(tankId: string): { stock: number; dt: string | null } {
-    const r = dips
-      .filter(d => d.status === 'approved' && (d.lpg ?? {})[tankId] !== undefined)
-      .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime())[0];
-    return { stock: r ? ((r.lpg ?? {})[tankId] ?? 0) : 0, dt: r?.dt ?? null };
-  }
-
-  function buildProdInventory(scopeTanks: Tank[], scopeLpgTanks: LPGTank[], scopeDeliveries: Delivery[]): ProdInv[] {
-    const result: ProdInv[] = [];
-    const PROD_ORDER = ['PMS', 'AGO', 'DPK', 'Lube Oil'] as const;
-    for (const prod of PROD_ORDER) {
-      const prodTanks = scopeTanks.filter(t => t.prod === prod);
-      if (prodTanks.length > 0) {
-        const rows: TankRow[] = prodTanks.map(t => {
-          const { stock, dt } = dipStockForTank(t.id);
-          return { id: t.id, name: t.name, stock, cap: t.cap, dipDt: dt };
-        });
-        const lastDipDt = rows.map(r => r.dipDt).filter((d): d is string => !!d).sort().reverse()[0] ?? null;
-        result.push({ prod, unit: 'L', totalStock: rows.reduce((s, r) => s + r.stock, 0), totalCap: rows.reduce((s, r) => s + r.cap, 0), tanks: rows, lastDipDt, dipBased: true });
-      } else if (prod === 'Lube Oil') {
-        const recv = scopeDeliveries
-          .filter(d => d.prod === 'Lube Oil' && isPhysicalDeliveryReceipt(d))
-          .reduce((s, d) => s + safeNum(d.rec), 0);
-        if (recv > 0) result.push({ prod: 'Lube Oil', unit: 'L', totalStock: recv, totalCap: 0, tanks: [], lastDipDt: null, dipBased: false });
-      }
-    }
-    if (scopeLpgTanks.length > 0) {
-      const rows: TankRow[] = scopeLpgTanks.map(l => {
-        const { stock, dt } = dipStockForLpgTank(l.id);
-        return { id: l.id, name: l.name, stock, cap: l.cap, dipDt: dt };
-      });
-      const lastDipDt = rows.map(r => r.dipDt).filter((d): d is string => !!d).sort().reverse()[0] ?? null;
-      result.push({ prod: 'LPG', unit: 'kg', totalStock: rows.reduce((s, r) => s + r.stock, 0), totalCap: rows.reduce((s, r) => s + r.cap, 0), tanks: rows, lastDipDt, dipBased: true });
-    }
-    return result;
-  }
-
-  // Global viewers see every branch separately; branch users see only their branch.
-  const branchInventories: BranchInv[] = isGlobalViewer
-    ? (() => {
-        const bmap = new Map<string | null, { name: string; ts: Tank[]; ls: LPGTank[]; ds: Delivery[] }>();
-        for (const b of branches) bmap.set(b.id, { name: b.name, ts: [], ls: [], ds: [] });
-        if (!bmap.has(null)) bmap.set(null, { name: 'Unassigned', ts: [], ls: [], ds: [] });
-        tanks.forEach(t => { const slot = bmap.get(t.branchId ?? null) ?? bmap.get(null)!; slot.ts.push(t); });
-        lpgTanks.forEach(l => { const slot = bmap.get(l.branchId ?? null) ?? bmap.get(null)!; slot.ls.push(l); });
-        deliveries.forEach(d => { const slot = bmap.get(d.branchId ?? null) ?? bmap.get(null)!; slot.ds.push(d); });
-        return [...bmap.entries()]
-          .filter(([, { ts, ls }]) => ts.length > 0 || ls.length > 0)
-          .map(([bid, { name, ts, ls, ds }]) => ({ branchId: bid, branchName: name, prods: buildProdInventory(ts, ls, ds) }))
-          .filter(b => b.prods.length > 0);
-      })()
-    : [{
-        branchId: branchId ?? null,
-        branchName: branches.find(b => b.id === branchId)?.name ?? 'This Branch',
-        prods: buildProdInventory(myTanks, myLpgTanks, visibleDeliveries),
-      }].filter(b => b.prods.length > 0);
-
-  // ── Stock Snapshot (same business-date formula used on Home) ────────────────
-  const ALL_PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
-  const PROD_UNIT: Record<string, string> = { PMS: 'L', AGO: 'L', DPK: 'L', LPG: 'kg', 'Lube Oil': 'L' };
-
-  function dipForProduct(
-    record: typeof dips[number] | undefined,
-    product: string,
-    scopeTanks: Tank[],
-    scopeLpgTanks: LPGTank[],
-  ): number | null {
-    if (!record) return null;
-    const readings = product === 'LPG'
-      ? scopeLpgTanks.map(tank => record.lpg?.[tank.id])
-      : scopeTanks
-          .filter(tank => tank.prod === product)
-          .map(tank => {
-            const reading = record.rd?.[tank.id];
-            return reading === undefined ? undefined : dipReadingToLiters(reading);
-          });
-    const numericReadings = readings
-      .map(value => typeof value === 'number' ? value : Number(value))
-      .filter((value): value is number => Number.isFinite(value));
-    return numericReadings.length > 0
-      ? numericReadings.reduce((sum, reading) => sum + reading, 0)
-      : null;
-  }
-
-  function buildStockRows(
-    scopeBranchId: string | null,
-    scopeTanks: Tank[],
-    scopeLpgTanks: LPGTank[],
-    scopeDeliveries: Delivery[],
-    scopeReports: typeof pumpDailyReports,
-  ): StockProdRow[] {
-    return ALL_PRODS
-      .map(prod => {
-        const todaySubmittedDip = findLatestDipForProduct(
-          dips, todayKey, scopeBranchId, prod, scopeTanks, scopeLpgTanks,
-          { approvedOnly: false },
-        );
-        const startupRecord = startupStocks.find(stock => stock.product === prod && stock.branchId === scopeBranchId);
-        const stockBook = calculateDailyOperationalStock(
-          startupRecord,
-          prod as 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil',
-          scopeBranchId,
-          scopeDeliveries,
-          scopeReports,
-          todayKey,
-          pumps,
-        );
-        const submittedTankDip = dipForProduct(todaySubmittedDip, prod, scopeTanks, scopeLpgTanks);
-        const variance = calculateDailyStockLogBalance(
-           stockBook.startupStock,
-          stockBook.delivered,
-          stockBook.sold,
-          submittedTankDip,
-        ).variance;
-        if (stockBook.startupStock === null && stockBook.delivered === 0 && stockBook.sold === 0 && submittedTankDip === null) return null;
-        return {
-          prod,
-          unit: PROD_UNIT[prod] ?? 'L',
-          startupStock: stockBook.startupStock,
-          delivered: stockBook.delivered,
-          sold: stockBook.sold,
-          bookStock: stockBook.bookStock,
-          submittedTankDip,
-          variance,
-        };
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
-  }
-
-  const branchStockReports: BranchStockRpt[] = isGlobalViewer
-    ? branches
-         .map(b => ({
-           branchId: b.id,
-           branchName: b.name,
-           rows: buildStockRows(
-             b.id,
-             tanks.filter(t => t.branchId === b.id),
-             lpgTanks.filter(t => t.branchId === b.id),
-             deliveries,
-             pumpDailyReports,
-           ),
-         }))
-        .filter(b => b.rows.length > 0)
-    : [{
-        branchId: branchId ?? null,
-        branchName: branches.find(b => b.id === branchId)?.name ?? 'This Branch',
-         rows: buildStockRows(
-           branchId ?? null,
-           tanks.filter(t => t.branchId === (branchId ?? null)),
-           lpgTanks.filter(t => t.branchId === (branchId ?? null)),
-            deliveries,
-           pumpDailyReports,
-         ),
-      }].filter(b => b.rows.length > 0);
-
-  // ── Mismatch alarms (Home formula variance, per product per branch) ─────────
-  const MISMATCH_THRESHOLD_L   = 200;  // litres — flag if diff > 200 L
-  const MISMATCH_THRESHOLD_KG  = 50;   // kg for LPG
-
-  const mismatches: MismatchRow[] = [];
-  for (const stockReport of branchStockReports) {
-    for (const row of stockReport.rows) {
-      if (row.variance === null || row.bookStock === null || row.submittedTankDip === null) continue;
-      const diff = Math.abs(row.variance);
-      const threshold = row.unit === 'kg' ? MISMATCH_THRESHOLD_KG : MISMATCH_THRESHOLD_L;
-      if (diff > threshold) {
-        mismatches.push({
-          branchName: stockReport.branchName,
-          prod: row.prod,
-          dipStock: row.submittedTankDip,
-          bookStock: row.bookStock,
-          variance: row.variance,
-          unit: row.unit,
-        });
-      }
-    }
-  }
 
   function fmtSize(bytes?: number): string {
     if (!bytes) return '';
@@ -765,32 +549,6 @@ export default function ReceivingScreen() {
           accent={roleColor}
           helper="Filter by the date the delivery applies to."
         />
-
-        {isMdOrCeo && mismatches.length > 0 ? (
-          <View style={[styles.mismatchBanner, { backgroundColor: '#FCEBEB', borderColor: '#791F1F' }]}>
-            <View style={styles.mismatchBannerHeader}>
-              <Ionicons name="alert-circle" size={18} color="#791F1F" />
-              <Text style={[styles.mismatchBannerTitle, { color: '#791F1F' }]}>
-                {'Stock Discrepancy Alert — '}{mismatches.length}{' product'}{mismatches.length > 1 ? 's' : ''}
-              </Text>
-            </View>
-            <Text style={[styles.mismatchBannerSub, { color: '#791F1F' }]}>Dip reading differs from book stock by more than the accepted threshold</Text>
-            {mismatches.map((m, i) => {
-              const pc = PROD_COLORS[m.prod] || '#791F1F';
-              return (
-                <View key={i} style={[styles.mismatchRow, { backgroundColor: '#fff3' }]}>
-                  <View style={[styles.mismatchProdDot, { backgroundColor: pc }]} />
-                  <Text style={[styles.mismatchProdName, { color: '#791F1F' }]}>{m.prod}</Text>
-                  {isGlobalViewer ? <Text style={[styles.mismatchBranch, { color: '#791F1F' }]}>{m.branchName}</Text> : null}
-                  <Text style={[styles.mismatchDiff, { color: '#791F1F' }]}>
-                    {m.variance > 0 ? '+' : '−'}{Math.abs(m.variance).toLocaleString(undefined, { maximumFractionDigits: 0 })}{' ' + m.unit}
-                    <Text style={{ fontWeight: '500', fontSize: 10 }}>{m.variance > 0 ? ' excess in dip' : ' shortage in dip'}</Text>
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Delivery Reports</Text>
         {sortedDeliveries.length === 0 ? (
@@ -1368,48 +1126,6 @@ const styles = StyleSheet.create({
   deliveryGroupSubtitle: { fontSize: 11, lineHeight: 16, marginTop: 2 },
   deliveryGroupCount: { minWidth: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   deliveryGroupCountText: { fontSize: 12, fontWeight: '800' },
-  branchHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8 },
-  branchHeaderText: { fontSize: 13, fontWeight: '700', flex: 1 },
-  inventoryGrid: { gap: 8, marginBottom: 16 },
-  invCard: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 6 },
-  invCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  invSourceBadge: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2 },
-  invSourceText: { fontSize: 10, fontWeight: '600' },
-  progressBg:  { height: 6, borderRadius: 3, overflow: 'hidden' },
-  progressBar: { height: 6, borderRadius: 3 },
-  invProdBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  invProdText: { fontSize: 12, fontWeight: '700' },
-  invAvail: { fontSize: 26, fontWeight: '800' },
-  invUnit: { fontSize: 14, fontWeight: '500' },
-  invCapText: { fontSize: 11, fontWeight: '500' },
-  tankBreakdown: { borderTopWidth: 1, paddingTop: 8, gap: 5 },
-  tankRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  tankName: { fontSize: 11, flex: 1 },
-  tankStock: { fontSize: 12, fontWeight: '700' },
-  tankDipDt: { fontSize: 10, minWidth: 56, textAlign: 'right' },
-  invFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  invDipDate: { fontSize: 11, fontWeight: '500' },
-  lowBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  lowText: { fontSize: 11, fontWeight: '700' },
-  mismatchBanner: { borderRadius: 12, borderWidth: 1.5, padding: 14, gap: 8, marginBottom: 14 },
-  mismatchBannerHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  mismatchBannerTitle: { fontSize: 14, fontWeight: '800', flex: 1 },
-  mismatchBannerSub: { fontSize: 12, fontWeight: '400', opacity: 0.85, marginBottom: 2 },
-  mismatchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
-  mismatchProdDot: { width: 9, height: 9, borderRadius: 5 },
-  mismatchProdName: { fontSize: 13, fontWeight: '700', minWidth: 52 },
-  mismatchBranch: { fontSize: 12, flex: 1, opacity: 0.8 },
-  mismatchDiff: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
-  stockTable: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 14 },
-  stockTableHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1 },
-  stockHeaderText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
-  stockTableRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  stockColProd: { flex: 2, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  stockColNum: { flex: 2, textAlign: 'right' },
-  stockColFlag: { flex: 0.6, alignItems: 'center' },
-  stockProdDot: { width: 8, height: 8, borderRadius: 4 },
-  stockProdText: { fontSize: 12, fontWeight: '600' },
-  stockNum: { fontSize: 12 },
   delivCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10, gap: 8 },
   delivHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   prodTag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },

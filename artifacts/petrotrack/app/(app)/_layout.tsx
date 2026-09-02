@@ -8,6 +8,7 @@ const ROUTE_ACCESS: Record<string, string> = {
   '/tanks': 'ops',
   '/maintenance': 'maint',
   '/receiving': 'recv',
+  '/stock-snapshot': 'recv',
   '/inventory': 'recv',
   '/sales': 'sales',
   '/shift': 'shift',
