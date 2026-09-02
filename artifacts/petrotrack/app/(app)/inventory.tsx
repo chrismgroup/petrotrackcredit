@@ -93,7 +93,7 @@ export default function InventoryScreen() {
           });
         } else if (product === 'Lube Oil') {
           const stock = branchDeliveries
-            .filter(isPhysicalDeliveryReceipt)
+            .filter(delivery => delivery.prod === 'Lube Oil' && isPhysicalDeliveryReceipt(delivery))
             .reduce((sum, delivery) => sum + Number(delivery.rec || 0), 0);
           if (stock > 0) products.push({ product, unit: 'L', stock, capacity: 0, tanks: [], lastDip: null, dipBased: false });
         }
