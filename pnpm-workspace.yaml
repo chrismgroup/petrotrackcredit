@@ -162,3 +162,6 @@ overrides:
   postcss: "^8.5.16"
   # uuid <=10.0.0 has insufficient randomness (GHSA-w5hq-g745-h8pq); force all transitive deps to v11+
   uuid: "^11.0.0"
+
+patchedDependencies:
+  '@daily-co/react-native-daily-js@0.86.0': patches/@daily-co__react-native-daily-js@0.86.0.patch

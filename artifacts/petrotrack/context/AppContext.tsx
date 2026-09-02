@@ -10,6 +10,7 @@ import {
   type MaintenanceWorkflowStatus,
 } from '@/lib/api';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
+import { startForegroundTimer } from '@/lib/foreground-timer';
 import {
   isMissingNum,
   safeNum,
@@ -496,14 +497,11 @@ export function useBusinessDateKey(): string {
       const nextDateKey = currentBusinessDateKey();
       setDateKey(previousDateKey => previousDateKey === nextDateKey ? previousDateKey : nextDateKey);
     };
-    const timer = setInterval(refresh, 60_000);
-    const appStateSubscription = AppState.addEventListener('change', state => {
-      if (state === 'active') refresh();
+    return startForegroundTimer({
+      delayMs: 60_000,
+      callback: refresh,
+      runOnResume: true,
     });
-    return () => {
-      clearInterval(timer);
-      appStateSubscription.remove();
-    };
   }, []);
 
   return dateKey;
@@ -2123,18 +2121,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loaded || !isServerAuthenticated) return;
     void refreshNotifications();
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = async () => {
-      if (stopped) return;
-      await refreshNotifications();
-      if (!stopped) timer = setTimeout(poll, 5_000);
-    };
-    timer = setTimeout(poll, 5_000);
-    return () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-    };
+    return startForegroundTimer({
+      delayMs: 5_000,
+      callback: refreshNotifications,
+      runOnResume: false,
+    });
   }, [loaded, isServerAuthenticated, refreshNotifications]);
 
   /* ── Realtime report invalidation: sockets improve freshness; sync remains authoritative ── */
@@ -2304,16 +2295,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Fire immediately on login/app-open so new data appears within ~300 ms,
-    // not after the first 3-second interval tick.
-    void check();
-
-    // Schedule the next check only after the previous one has finished so
-    // slow full-sync requests cannot overlap and reorder state updates.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
-      if (!stopped) timer = setTimeout(async () => { await check(); schedule(); }, 3_000);
-    };
-    schedule();
+    // not after the first 3-second interval tick. The scheduler waits for
+    // each check to finish before scheduling the next one.
+    const stopTimer = startForegroundTimer({
+      delayMs: 3_000,
+      callback: check,
+      runImmediately: true,
+      runOnResume: true,
+    });
 
     // Also re-sync the moment the user brings the app to the foreground
     const sub = AppState.addEventListener('change', state => {
@@ -2323,7 +2312,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => { stopped = true; if (timer) clearTimeout(timer); sub.remove(); };
+    return () => { stopped = true; stopTimer(); sub.remove(); };
   }, [flushPumpReportOutbox, role, loaded, isServerAuthenticated, syncFromServer]);
 
   const DRAFT_APPROVAL: CorpApproval = { status: 'draft' };
