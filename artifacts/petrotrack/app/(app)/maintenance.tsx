@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
@@ -35,7 +35,7 @@ function statusLabel(item: MaintenanceItem) {
 export default function MaintenanceScreen() {
   const {
     role, userName, maintenance, userAccounts,
-    addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus,
+    addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, deleteMaintenance,
   } = useApp();
   const colors = useColors();
   const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
@@ -43,6 +43,7 @@ export default function MaintenanceScreen() {
   const [showForm, setShowForm] = useState(false);
   const [filterDate, setFilterDate] = useState('');
   const [assigningTaskId, setAssigningTaskId] = useState<string | null>(null);
+  const [workingTaskId, setWorkingTaskId] = useState<string | null>(null);
   const [form, setForm] = useState({ title: '', pri: 'Urgent' as typeof PRIORITIES[number], date: '' });
 
   const items = maintenance
@@ -77,23 +78,70 @@ export default function MaintenanceScreen() {
   }
 
   async function acknowledge(taskId: string) {
-    const ok = await acknowledgeMaintenance(taskId);
-    if (!ok) Alert.alert('Acknowledgement failed', 'This request could not be acknowledged. Refresh and try again.');
+    setWorkingTaskId(taskId);
+    try {
+      const ok = await acknowledgeMaintenance(taskId);
+      if (!ok) Alert.alert('Acknowledgement failed', 'This request could not be acknowledged. Refresh and try again.');
+    } finally {
+      setWorkingTaskId(null);
+    }
   }
 
   async function assign(taskId: string, username: string, name: string) {
-    const ok = await assignMaintenance(taskId, username);
-    if (!ok) {
-      Alert.alert('Assignment failed', 'Choose an active staff member and try again.');
-      return;
+    setWorkingTaskId(taskId);
+    try {
+      const ok = await assignMaintenance(taskId, username);
+      if (!ok) {
+        Alert.alert('Assignment failed', 'Choose an active staff member and try again.');
+        return;
+      }
+      setAssigningTaskId(null);
+      Alert.alert('Assigned', `This maintenance task is now assigned to ${name}.`);
+    } finally {
+      setWorkingTaskId(null);
     }
-    setAssigningTaskId(null);
-    Alert.alert('Assigned', `This maintenance task is now assigned to ${name}.`);
   }
 
   async function changeStatus(taskId: string, status: MaintenanceWorkflowStatus) {
-    const ok = await updateMaintenanceStatus(taskId, status);
-    if (!ok) Alert.alert('Status not updated', 'Only the assigned staff member can update an open task.');
+    setWorkingTaskId(taskId);
+    try {
+      const ok = await updateMaintenanceStatus(taskId, status);
+      if (!ok) Alert.alert('Status not updated', 'Only the assigned staff member can update an open task.');
+    } finally {
+      setWorkingTaskId(null);
+    }
+  }
+
+  function confirmDelete(taskId: string, title: string) {
+    const remove = async () => {
+      setWorkingTaskId(taskId);
+      try {
+        const ok = await deleteMaintenance(taskId, itemIdForTask(taskId));
+        if (!ok) Alert.alert('Delete failed', 'The request could not be deleted. Refresh and try again.');
+      } finally {
+        setWorkingTaskId(null);
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(`This permanently removes “${title}” from the maintenance list.`)) void remove();
+      return;
+    }
+    Alert.alert(
+      'Delete maintenance request?',
+      `This permanently removes “${title}” from the maintenance list.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => void remove(),
+        },
+      ],
+    );
+  }
+
+  function itemIdForTask(taskId: string) {
+    return maintenance.find(item => item.taskId === taskId)?.id;
   }
 
   function renderItem(item: MaintenanceItem) {
@@ -101,6 +149,7 @@ export default function MaintenanceScreen() {
     const isAssignedUser = !!item.assignedToName && item.assignedToName === userName;
     const currentStatus = item.status ?? (item.st === 'Done' ? 'done' : 'open');
     const canUpdate = !!taskId && isAssignedUser && currentStatus !== 'closed';
+    const isWorking = workingTaskId === taskId;
     const nextStatuses = STATUS_TRANSITIONS[currentStatus] ?? [];
     const history = item.history ?? [];
     return (
@@ -130,14 +179,14 @@ export default function MaintenanceScreen() {
         </View>
 
         {!!taskId && isDecisionMaker && !item.acknowledgedAt && (
-          <TouchableOpacity style={[styles.primaryAction, { backgroundColor: colors.primary }]} onPress={() => acknowledge(taskId)}>
+          <TouchableOpacity disabled={isWorking} style={[styles.primaryAction, { backgroundColor: colors.primary, opacity: isWorking ? 0.6 : 1 }]} onPress={() => acknowledge(taskId)}>
             <Ionicons name="receipt-outline" size={16} color="#fff" />
-            <Text style={styles.primaryActionText}>Acknowledge receipt</Text>
+            <Text style={styles.primaryActionText}>{isWorking ? 'Saving…' : 'Acknowledge receipt'}</Text>
           </TouchableOpacity>
         )}
         {!!taskId && isDecisionMaker && !!item.acknowledgedAt && (
           <>
-            <TouchableOpacity style={[styles.outlineAction, { borderColor: colors.primary }]} onPress={() => setAssigningTaskId(assigningTaskId === taskId ? null : taskId)}>
+            <TouchableOpacity disabled={isWorking} style={[styles.outlineAction, { borderColor: colors.primary, opacity: isWorking ? 0.6 : 1 }]} onPress={() => setAssigningTaskId(assigningTaskId === taskId ? null : taskId)}>
               <Ionicons name="person-add-outline" size={16} color={colors.primary} />
               <Text style={[styles.outlineActionText, { color: colors.primary }]}>{item.assignedToName ? 'Reassign task' : 'Assign task'}</Text>
             </TouchableOpacity>
@@ -145,7 +194,7 @@ export default function MaintenanceScreen() {
               <View style={[styles.assignmentPanel, { borderColor: colors.border, backgroundColor: colors.background }]}>
                 <Text style={[styles.assignmentTitle, { color: colors.text }]}>Assign to active staff</Text>
                 {activeStaff.map(staff => (
-                  <TouchableOpacity key={staff.id} style={[styles.staffRow, { borderColor: colors.border }]} onPress={() => assign(taskId, staff.username, staff.empName)}>
+                   <TouchableOpacity disabled={isWorking} key={staff.id} style={[styles.staffRow, { borderColor: colors.border, opacity: isWorking ? 0.6 : 1 }]} onPress={() => assign(taskId, staff.username, staff.empName)}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.staffName, { color: colors.text }]}>{staff.empName}</Text>
                       <Text style={[styles.metaText, { color: colors.textMuted }]}>{staff.jobTitle || staff.role || 'Staff member'}</Text>
@@ -162,12 +211,23 @@ export default function MaintenanceScreen() {
             <Text style={[styles.assignmentTitle, { color: colors.text }]}>Update work status</Text>
             <View style={styles.statusChips}>
               {STATUSES.filter(status => nextStatuses.includes(status.value)).map(status => (
-                <TouchableOpacity key={status.value} style={[styles.statusChip, { borderColor: colors.border, backgroundColor: colors.background }]} onPress={() => changeStatus(taskId, status.value)}>
-                  <Text style={[styles.chipText, { color: colors.text }]}>{status.label}</Text>
+                <TouchableOpacity disabled={isWorking} key={status.value} style={[styles.statusChip, { borderColor: colors.border, backgroundColor: colors.background, opacity: isWorking ? 0.6 : 1 }]} onPress={() => changeStatus(taskId, status.value)}>
+                  <Text style={[styles.chipText, { color: colors.text }]}>{isWorking ? 'Saving…' : status.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
+        )}
+
+        {!!taskId && role === 'admin' && (
+          <TouchableOpacity
+            disabled={isWorking}
+            style={[styles.deleteAction, { borderColor: colors.error, opacity: isWorking ? 0.6 : 1 }]}
+            onPress={() => confirmDelete(taskId, item.title)}
+          >
+            <Ionicons name="trash-outline" size={15} color={colors.error} />
+            <Text style={[styles.deleteActionText, { color: colors.error }]}>{isWorking ? 'Deleting…' : 'Delete request'}</Text>
+          </TouchableOpacity>
         )}
 
         <View style={[styles.history, { borderTopColor: colors.border }]}>
@@ -277,6 +337,8 @@ const styles = StyleSheet.create({
   statusChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   statusChip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 6 },
   chipText: { fontSize: 11, fontWeight: '700' },
+  deleteAction: { minHeight: 38, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  deleteActionText: { fontSize: 12, fontWeight: '800' },
   history: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 9, gap: 5 },
   historyTitle: { fontSize: 10, fontWeight: '800', letterSpacing: 0.7 },
   historyRow: { flexDirection: 'row', gap: 5, alignItems: 'flex-start' },

@@ -1356,6 +1356,7 @@ interface AppContextType {
   acknowledgeMaintenance: (taskId: string) => Promise<boolean>;
   assignMaintenance: (taskId: string, username: string) => Promise<boolean>;
   updateMaintenanceStatus: (taskId: string, status: MaintenanceWorkflowStatus) => Promise<boolean>;
+  deleteMaintenance: (taskId: string, legacyId?: number) => Promise<boolean>;
   addSales: (entry: Omit<SalesEntry, 'id'>) => void;
   updateSales: (id: number, updates: Partial<Pick<SalesEntry, 'pump' | 'L' | 'price' | 'pos' | 'dt'>>) => void;
   deleteSales: (id: number) => void;
@@ -2735,9 +2736,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const applyMaintenanceRecord = useCallback((record: MaintenanceItem) => {
     setMaintenance(previous => {
-      const exists = previous.some(item => item.taskId === record.taskId);
+      const matchesRecord = (item: MaintenanceItem) =>
+        item.taskId === record.taskId ||
+        (!item.taskId && item.id === record.id);
+      const exists = previous.some(matchesRecord);
       const next = exists
-        ? previous.map(item => item.taskId === record.taskId ? record : item)
+        ? previous.map(item => matchesRecord(item) ? record : item)
         : [record, ...previous];
       void AsyncStorage.setItem('maintenance', JSON.stringify(next));
       return next;
@@ -2772,6 +2776,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     applyMaintenanceRecord(result.maintenance as MaintenanceItem);
     return true;
   }, [applyMaintenanceRecord]);
+
+  const deleteMaintenance = useCallback(async (taskId: string, legacyId?: number) => {
+    const ok = await maintenanceApi.remove(taskId);
+    if (!ok) return false;
+    setMaintenance(previous => {
+      const next = previous.filter(item =>
+        item.taskId !== taskId && (legacyId === undefined || item.id !== legacyId),
+      );
+      void AsyncStorage.setItem('maintenance', JSON.stringify(next));
+      return next;
+    });
+    return true;
+  }, []);
 
   const addSales = useCallback((entry: Omit<SalesEntry, 'id'>) => {
     setSales(s => [...s, { ...entry, id: genId(), branchId: entry.branchId ?? branchId ?? undefined }]);
@@ -4197,7 +4214,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
-      addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, addSales, updateSales, deleteSales,
+       addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
         stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,

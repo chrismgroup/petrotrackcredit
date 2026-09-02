@@ -212,6 +212,8 @@ export const maintenanceApi = {
     post<{ maintenance: MaintenanceWorkflowRecord }>(`/maintenance/${encodeURIComponent(taskId)}/assign`, { username }),
   updateStatus: (taskId: string, status: MaintenanceWorkflowStatus) =>
     post<{ maintenance: MaintenanceWorkflowRecord }>(`/maintenance/${encodeURIComponent(taskId)}/status`, { status }),
+  remove: (taskId: string) =>
+    del(`/maintenance/${encodeURIComponent(taskId)}`),
 };
 
 export const versionApi = {
