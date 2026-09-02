@@ -229,3 +229,17 @@ mtime_ms = 1788335142215
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/99a2b367-0028-46de-ae6d-46df504c4585/4ed05ac6-a292-4e04-843e-24948720ce29"
 storage_version_token = "1788335196341485"
 content_type = "image/png"
+
+[[outputs]]
+id = "fqgE0PxHOhFpAFnO_k-hC"
+uri = "file://store-assets/petrotrack-google-play-icon.png"
+type = "image"
+title = "Petrotrack Google Play app icon"
+description = "512×512 RGB PNG, 198 KB, full-bleed square icon with no transparency, no text, and a high-contrast fuel-pump mark. Ready to upload as the Google Play main store listing icon."
+logical_id = "88fada12-950c-4e42-aaeb-90c7eae13426"
+content_hash = "sha256:f0eda80d451c9b662af2b99b590f391888dfa01365769b971f288b632533fab4"
+size = 197790
+mtime_ms = 1788335553431
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/88fada12-950c-4e42-aaeb-90c7eae13426/fc914c48-f63b-423c-8a36-381f568f59be"
+storage_version_token = "1788335563014857"
+content_type = "image/png"
