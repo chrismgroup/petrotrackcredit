@@ -1,0 +1,25 @@
+appId: petrotrack.replit.app
+---
+# The runner restores connectivity and restarts the app before invoking this
+# flow. A confirmed badge proves the retry was acknowledged and the outbox
+# item was removed by the provider.
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: My Jobs
+    timeout: 30000
+- tapOn: My Jobs
+- tapOn: Shift reports
+- extendedWaitUntil:
+    visible: Shift Report
+    timeout: 30000
+- tapOn:
+    id: shift-tab-history
+- extendedWaitUntil:
+    visible: Confirmed
+    timeout: 30000
+- assertNotVisible: Queued
+- tapOn: ${PETROTRACK_TEST_PUMP}
+- extendedWaitUntil:
+    visible: ${PETROTRACK_TEST_NOTE}
+    timeout: 30000

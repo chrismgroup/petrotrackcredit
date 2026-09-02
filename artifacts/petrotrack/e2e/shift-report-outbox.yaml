@@ -1,0 +1,26 @@
+appId: petrotrack.replit.app
+---
+# This flow signs in and opens the shift report screen. The runner then
+# disables connectivity before invoking the offline submission flow.
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: login-username
+    timeout: 30000
+- tapOn:
+    id: login-username
+- inputText: ${PETROTRACK_TEST_USERNAME}
+- tapOn:
+    id: login-password
+- inputText: ${PETROTRACK_TEST_PASSWORD}
+- tapOn:
+    id: login-submit
+- extendedWaitUntil:
+    visible: My Jobs
+    timeout: 30000
+- tapOn: My Jobs
+- tapOn: Shift reports
+- extendedWaitUntil:
+    visible: Shift Report
+    timeout: 30000

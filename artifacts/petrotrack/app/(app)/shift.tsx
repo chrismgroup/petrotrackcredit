@@ -857,6 +857,7 @@ export default function ShiftReportScreen() {
           const active = tab === t.key;
           return (
             <TouchableOpacity key={t.key} onPress={() => setTab(t.key)}
+              testID={`shift-tab-${t.key}`}
               style={[c.tabBtn, { borderBottomColor: active ? roleColor : 'transparent' }]}>
               <Text style={[c.tabLabel, { color: active ? roleColor : colors.textMuted, fontWeight: active ? '700' : '400' }]}>
                 {t.label}
@@ -1099,6 +1100,7 @@ export default function ShiftReportScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={[c.inputLabel, { color: colors.textMuted }]}>Closing Meter (L) *</Text>
                         <TextInput
+                          testID="shift-closing-meter"
                           style={[c.textInput, { backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border, color: colors.text }]}
                           placeholder="Enter reading" placeholderTextColor={colors.textSubtle}
                           keyboardType="decimal-pad" value={closeMeter} onChangeText={setCloseMeter}
@@ -1132,6 +1134,7 @@ export default function ShiftReportScreen() {
                         <View style={[c.payInputWrap, { backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border }]}>
                           <Ionicons name={f.icon as any} size={15} color={f.color} />
                           <TextInput
+                            testID={`shift-payment-${f.label.split(' ')[0].toLowerCase()}`}
                             style={[c.payInput, { color: colors.text }]}
                             placeholder="0.00" placeholderTextColor={colors.textSubtle}
                             keyboardType="decimal-pad" value={f.val} onChangeText={f.set}
@@ -1173,6 +1176,7 @@ export default function ShiftReportScreen() {
                   {/* Notes */}
                   <Text style={[c.inputLabel, { color: colors.textMuted }]}>Notes (optional)</Text>
                   <TextInput
+                    testID="shift-note"
                     style={[c.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
                     placeholder="Any remarks for your manager…" placeholderTextColor={colors.textSubtle}
                     multiline numberOfLines={3} value={noteAtt} onChangeText={setNoteAtt}
