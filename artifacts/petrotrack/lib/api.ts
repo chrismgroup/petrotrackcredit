@@ -151,8 +151,20 @@ export const stateApi = {
   getAll: () => get<Record<string, unknown>>('/state'),
   get: <T>(key: string) => get<T>(`/state/${key}`),
   put: (key: string, data: unknown) => put(`/state/${key}`, data),
+  submitPumpReport: <T>(report: T) =>
+    post<{ ok: boolean; report: T }>('/pump-reports', { report }),
   resetOperational: () => post<{ ok: boolean; seedMeters?: Record<string, number> }>('/state/reset-operational', {}),
   deleteApprovedPumpReport: (id: number) => post<{ ok: boolean }>(`/state/pump-reports/${id}/delete`, {}),
+};
+
+export const realtimeApi = {
+  connect: async (): Promise<WebSocket | null> => {
+    const token = await getToken();
+    if (!token) return null;
+    const httpBase = BASE.replace(/\/api$/, '');
+    const wsBase = httpBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+    return new WebSocket(`${wsBase}/api/realtime`, ['petrotrack', token]);
+  },
 };
 
 export type MaintenanceWorkflowStatus =

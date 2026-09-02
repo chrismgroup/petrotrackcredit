@@ -7,6 +7,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { createBackup } from "./lib/backup";
 import { dispatchMyFolderExpiryReminders } from "./routes/notifications";
+import { attachRealtimeServer } from "./lib/realtime";
 
 const rawPort = process.env["PORT"];
 
@@ -188,7 +189,7 @@ async function seedAndMigrateUsers(): Promise<void> {
 // Start listening before database seeding/migration. The health endpoint does
 // not depend on the database, so deployments can become ready immediately
 // instead of returning 500 while seedAndMigrateUsers is still running.
-app.listen(port, (err) => {
+const server = app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
@@ -227,3 +228,4 @@ app.listen(port, (err) => {
       logger.error({ err }, "Startup user seeding failed");
     });
 });
+attachRealtimeServer(server);

@@ -324,7 +324,7 @@ export default function ShiftReportScreen() {
   const {
     role, userName, branchId, pumps, prices, branches,
     pumpDailyReports, pumpInitialMeters, pumpLockedMeters,
-    submitPumpReport, mgrForwardPumpReport,
+    submitPumpReportConfirmed, mgrForwardPumpReport,
     accApprovePumpReport, accRejectPumpReport,
     mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport,
     setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, adminReturnApprovedPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
@@ -404,8 +404,8 @@ export default function ShiftReportScreen() {
     }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
     if (totalColl + creditVal <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, transfer, or credit).'); return; }
-    requestDateConfirmation('shift report', appliesOn, () => {
-      const submitted = submitPumpReport({
+    requestDateConfirmation('shift report', appliesOn, async () => {
+      const submitted = await submitPumpReportConfirmed({
          date: appliesOn,
         pumpId: pump.id, pumpName: pump.name, product: pump.prod,
         branchId: branchId ?? pump.branchId ?? '',
@@ -417,7 +417,7 @@ export default function ShiftReportScreen() {
         submittedBy: userName ?? '', submittedByName: userName ?? '',
       });
       if (!submitted) {
-        Alert.alert('Future date not allowed', `Attendants can only submit shift reports dated ${fmtDate(today)} or earlier.`);
+        Alert.alert('Report not sent', 'The server did not confirm this report. Your entries are still on screen—check your connection and try again.');
         return;
       }
       setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditAmt(''); setNoteAtt('');
