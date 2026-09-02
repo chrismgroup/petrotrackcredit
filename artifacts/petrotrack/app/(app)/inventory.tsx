@@ -2,20 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppliedDateField } from '@/components/AppliedDateField';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  calculateDailyOperationalStock,
-  calculateDailyStockLogBalance,
-  dipReadingToLiters,
   isPhysicalDeliveryReceipt,
   ROLE_COLORS,
   StockProduct,
-  useBusinessDateKey,
   useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { findLatestDipForProduct } from '@/lib/dip-helpers';
 
 const PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const GLOBAL_ROLES = new Set(['admin', 'ceo', 'md', 'acc', 'csm', 'mktg']);
@@ -39,17 +33,6 @@ type InventoryProduct = {
   dipBased: boolean;
 };
 type InventoryBranch = { id: string | null; name: string; products: InventoryProduct[] };
-type SnapshotRow = {
-  product: StockProduct;
-  unit: string;
-  opening: number | null;
-  delivered: number;
-  sold: number;
-  bookStock: number | null;
-  dip: number | null;
-  variance: number | null;
-};
-type SnapshotBranch = { id: string | null; name: string; rows: SnapshotRow[] };
 
 function latestDipValue(
   dips: ReturnType<typeof useApp>['dips'],
@@ -65,39 +48,12 @@ function latestDipValue(
   };
 }
 
-function dipForProduct(
-  record: ReturnType<typeof useApp>['dips'][number] | undefined,
-  product: StockProduct,
-  tanks: ReturnType<typeof useApp>['tanks'],
-  lpgTanks: ReturnType<typeof useApp>['lpgTanks'],
-): number | null {
-  if (!record) return null;
-  const readings = product === 'LPG'
-    ? lpgTanks.map(tank => record.lpg?.[tank.id])
-    : tanks.filter(tank => tank.prod === product).map(tank => {
-        const reading = record.rd?.[tank.id];
-        return reading === undefined ? undefined : dipReadingToLiters(reading);
-      });
-  const values = readings.map(Number).filter(Number.isFinite);
-  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
-}
-
-function statusForVariance(variance: number | null, dip: number | null): { label: string; color: string } {
-  if (variance === null || dip === null) return { label: 'Awaiting dip', color: '#BA7517' };
-  if (variance < -0.01) return { label: 'Shortage', color: '#BA7517' };
-  if (variance > 0.01) return { label: 'Excess', color: '#791F1F' };
-  return { label: 'Balanced', color: '#27500A' };
-}
-
 export default function InventoryScreen() {
   const {
-    role, branchId, branches, tanks, lpgTanks, dips, deliveries, pumps,
-    pumpDailyReports, startupStocks,
+    role, branchId, branches, tanks, lpgTanks, dips, deliveries,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
-  const businessDate = useBusinessDateKey();
-  const [selectedDate, setSelectedDate] = useState(businessDate);
   const isGlobal = GLOBAL_ROLES.has(role ?? '');
 
   const scopedBranches = useMemo(() => {
@@ -162,34 +118,6 @@ export default function InventoryScreen() {
     })
     .filter(branch => branch.products.length > 0), [branches, deliveries, dips, lpgTanks, scopedBranches, tanks]);
 
-  const snapshotBranches = useMemo<SnapshotBranch[]>(() => scopedBranches
-    .map(branch => {
-      const branchTanks = tanks.filter(tank => tank.branchId === branch.id);
-      const branchLpgTanks = lpgTanks.filter(tank => tank.branchId === branch.id);
-      const branchPumps = pumps.filter(pump => pump.branchId === branch.id);
-      const rows = PRODUCTS.map(product => {
-        const latestDip = findLatestDipForProduct(
-          dips, selectedDate, branch.id, product, branchTanks, branchLpgTanks, { approvedOnly: false },
-        );
-        const opening = startupStocks.find(stock => stock.product === product && stock.branchId === branch.id);
-        const book = calculateDailyOperationalStock(
-          opening, product, branch.id, deliveries, pumpDailyReports, selectedDate, branchPumps,
-        );
-        const dip = dipForProduct(latestDip, product, branchTanks, branchLpgTanks);
-        const balance = calculateDailyStockLogBalance(book.startupStock, book.delivered, book.sold, dip);
-        if (book.startupStock === null && book.delivered === 0 && book.sold === 0 && dip === null) return null;
-        return {
-          product, unit: UNITS[product], opening: book.startupStock, delivered: book.delivered,
-          sold: book.sold, bookStock: book.bookStock, dip, variance: balance.variance,
-        };
-      }).filter((row): row is SnapshotRow => row !== null);
-      return { id: branch.id, name: branch.name, rows };
-    })
-    .filter(branch => branch.rows.length > 0), [deliveries, dips, lpgTanks, pumps, pumpDailyReports, selectedDate, scopedBranches, startupStocks, tanks]);
-
-  const discrepancyCount = snapshotBranches.reduce(
-    (sum, branch) => sum + branch.rows.filter(row => row.variance !== null && Math.abs(row.variance) > (row.unit === 'kg' ? 50 : 200)).length, 0,
-  );
   const productCount = inventory.reduce((sum, branch) => sum + branch.products.length, 0);
 
   return (
@@ -203,27 +131,9 @@ export default function InventoryScreen() {
           <View style={styles.metrics}>
             <View><Text style={styles.metricValue}>{productCount}</Text><Text style={styles.metricLabel}>Products tracked</Text></View>
             <View><Text style={styles.metricValue}>{inventory.length}</Text><Text style={styles.metricLabel}>Branches</Text></View>
-            <View><Text style={styles.metricValue}>{discrepancyCount}</Text><Text style={styles.metricLabel}>Alerts</Text></View>
+            <View><Text style={styles.metricValue}>{inventory.reduce((sum, branch) => sum + branch.products.filter(product => product.dipBased).length, 0)}</Text><Text style={styles.metricLabel}>Dip tracked</Text></View>
           </View>
         </View>
-
-        <AppliedDateField
-          value={selectedDate}
-          onChange={setSelectedDate}
-          label="Stock snapshot date"
-          accent={roleColor}
-          helper="Book stock rolls forward from the configured opening quantity using approved deliveries and approved sales."
-        />
-
-        {discrepancyCount > 0 ? (
-          <View style={styles.alertBox}>
-            <Ionicons name="warning-outline" size={18} color="#791F1F" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.alertTitle}>{discrepancyCount} stock discrepancy alert{discrepancyCount === 1 ? '' : 's'}</Text>
-              <Text style={styles.alertText}>Review the branch rows below where the book balance differs materially from the latest dip.</Text>
-            </View>
-          </View>
-        ) : null}
 
         <SectionHeading icon="layers-outline" title="Product inventory by branch" subtitle="Latest approved physical dip reading" color={roleColor} />
         {inventory.map(branch => (
@@ -270,31 +180,6 @@ export default function InventoryScreen() {
           </View>
         ))}
         {inventory.length === 0 ? <EmptyState text="No inventory data is available for the selected branch." colors={colors} /> : null}
-
-        <SectionHeading icon="analytics-outline" title="Stock snapshot by branch" subtitle={`Opening + deliveries − sales for ${selectedDate}`} color={roleColor} />
-        {snapshotBranches.map(branch => (
-          <View key={branch.id ?? 'unassigned'} style={[styles.snapshotCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <BranchHeading name={branch.name} color={roleColor} colors={colors} />
-            {branch.rows.map(row => {
-              const varianceStatus = statusForVariance(row.variance, row.dip);
-              return (
-                <View key={row.product} style={[styles.snapshotRow, { borderTopColor: colors.border }]}>
-                  <View style={styles.snapshotProduct}>
-                    <View style={[styles.productDot, { backgroundColor: PRODUCT_COLORS[row.product] || roleColor }]} />
-                    <Text style={[styles.snapshotProductName, { color: colors.text }]}>{row.product}</Text>
-                  </View>
-                  <Metric label="Book" value={row.bookStock === null ? '—' : row.bookStock.toLocaleString()} colors={colors} />
-                  <Metric label="Dip" value={row.dip === null ? '—' : row.dip.toLocaleString()} colors={colors} />
-                  <View style={styles.snapshotStatus}>
-                    <Text style={[styles.snapshotVariance, { color: varianceStatus.color }]}>{row.variance === null ? '—' : `${row.variance > 0 ? '+' : ''}${row.variance.toLocaleString()}`}</Text>
-                    <Text style={[styles.snapshotStatusLabel, { color: varianceStatus.color }]}>{varianceStatus.label}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        ))}
-        {snapshotBranches.length === 0 ? <EmptyState text="No stock activity is available for this date." colors={colors} /> : null}
         <View style={{ height: 18 }} />
       </ScrollView>
     </ScreenLayout>
@@ -323,10 +208,6 @@ function BranchHeading({ name, color, colors }: { name: string; color: string; c
   );
 }
 
-function Metric({ label, value, colors }: { label: string; value: string; colors: ReturnType<typeof useColors> }) {
-  return <View style={styles.metric}><Text style={[styles.metricLabelSmall, { color: colors.textSubtle }]}>{label}</Text><Text style={[styles.metricValueSmall, { color: colors.text }]}>{value}</Text></View>;
-}
-
 function EmptyState({ text, colors }: { text: string; colors: ReturnType<typeof useColors> }) {
   return (
     <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -346,9 +227,6 @@ const styles = StyleSheet.create({
   metrics: { flexDirection: 'row', gap: 30, marginTop: 20, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)' },
   metricValue: { color: '#fff', fontSize: 20, fontWeight: '800' },
   metricLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, marginTop: 2 },
-  alertBox: { flexDirection: 'row', gap: 10, borderRadius: 13, borderWidth: 1, borderColor: '#791F1F', backgroundColor: '#FCEBEB', padding: 13 },
-  alertTitle: { color: '#791F1F', fontSize: 13, fontWeight: '800' },
-  alertText: { color: '#791F1F', fontSize: 11, lineHeight: 16, marginTop: 3 },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 },
   sectionIcon: { width: 35, height: 35, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { fontSize: 16, fontWeight: '800' },
@@ -371,17 +249,6 @@ const styles = StyleSheet.create({
   tankStock: { fontSize: 11, fontWeight: '700' },
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   lowLabel: { color: '#BA7517', backgroundColor: '#FAEEDA', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, fontSize: 10, fontWeight: '800' },
-  snapshotCard: { borderRadius: 15, borderWidth: 1, padding: 12, gap: 2 },
-  snapshotRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 10 },
-  snapshotProduct: { flex: 1.35, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  productDot: { width: 8, height: 8, borderRadius: 4 },
-  snapshotProductName: { fontSize: 12, fontWeight: '700' },
-  metric: { flex: 0.8 },
-  metricLabelSmall: { fontSize: 9, textTransform: 'uppercase' },
-  metricValueSmall: { fontSize: 12, fontWeight: '700', marginTop: 2 },
-  snapshotStatus: { flex: 0.9, alignItems: 'flex-end' },
-  snapshotVariance: { fontSize: 12, fontWeight: '800' },
-  snapshotStatusLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
   emptyBox: { alignItems: 'center', gap: 8, borderRadius: 15, borderWidth: 1, borderStyle: 'dashed', padding: 28 },
   emptyText: { fontSize: 13, textAlign: 'center' },
 });
