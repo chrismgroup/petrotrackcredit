@@ -12,6 +12,7 @@ import {
   getLatestPumpReportForOpeningMeter,
   getPumpOpeningMeter,
   isFutureBusinessDate,
+  mergePumpDailyReports,
   mergeDipRecords,
   useApp,
 } from './AppContext';
@@ -482,6 +483,25 @@ describe('stock book report eligibility', () => {
 });
 
 describe('pump opening meter rollover', () => {
+  it('applies a report received during authenticated sync as the next opening meter', async () => {
+    await renderProvider();
+    const remoteReport = {
+      ...reportWithStatus('pending_manager', 'Remote Attendant'),
+      id: 301,
+      closingMeter: 1250,
+      liters: 250,
+      submittedAt: '2026-08-20T12:00:00.000Z',
+    };
+    jest.mocked(stateApi.getAll).mockResolvedValue({ pumpDailyReports: [remoteReport] });
+
+    await act(async () => {
+      expect(await app().login('att', 'Second Attendant', 2, 'branch-1')).toBe(true);
+    });
+
+    expect(app().pumpDailyReports).toEqual([remoteReport]);
+    expect(getPumpOpeningMeter(app().pumpDailyReports, remoteReport.pumpId, {}, {})).toBe(1250);
+  });
+
   it('carries a valid pending-manager submission into the next shift', async () => {
     await renderProvider();
 
@@ -538,6 +558,75 @@ describe('pump opening meter rollover', () => {
       expect(getPumpOpeningMeter([returned], returned.pumpId, {}, { [returned.pumpId]: 1000 })).toBe(1000);
     },
   );
+
+  it('does not let a returned replacement hide the prior usable closing meter', () => {
+    const priorUsable = {
+      ...reportWithStatus('pending_manager'),
+      id: 204,
+      date: '2026-08-19',
+      closingMeter: 1100,
+      submittedAt: '2026-08-19T18:00:00.000Z',
+    };
+    const returnedReplacement = {
+      ...reportWithStatus('returned_attendant'),
+      id: 205,
+      date: '2026-08-20',
+      openingMeter: 1100,
+      closingMeter: 1200,
+      submittedAt: '2026-08-20T08:00:00.000Z',
+      mgrAt: '2026-08-20T12:00:00.000Z',
+    };
+
+    expect(getPumpOpeningMeter(
+      mergePumpDailyReports([priorUsable], [returnedReplacement]),
+      priorUsable.pumpId,
+      {},
+      { [priorUsable.pumpId]: 1000 },
+    )).toBe(1100);
+  });
+
+  it('keeps an approved reading on a stale device when a later stale copy downgrades it', () => {
+    const approved = {
+      ...reportWithStatus('approved'),
+      id: 206,
+      closingMeter: 1300,
+      accAt: '2026-08-20T12:00:00.000Z',
+    };
+    const stalePending = {
+      ...approved,
+      status: 'pending_manager' as const,
+      submittedAt: '2026-08-20T13:00:00.000Z',
+      accAt: undefined,
+      closingMeter: 1150,
+    };
+
+    expect(mergePumpDailyReports([approved], [stalePending])).toEqual([approved]);
+    expect(getPumpOpeningMeter(
+      mergePumpDailyReports([approved], [stalePending]),
+      approved.pumpId,
+      {},
+      {},
+    )).toBe(1300);
+  });
+
+  it('accepts an explicit Admin return during sync instead of keeping a stale approved copy', () => {
+    const approved = {
+      ...reportWithStatus('approved'),
+      id: 207,
+      closingMeter: 1400,
+      accAt: '2026-08-20T12:00:00.000Z',
+    };
+    const adminReturned = {
+      ...approved,
+      status: 'pending_accountant' as const,
+      adminReturnedAt: '2026-08-20T13:00:00.000Z',
+      adminReturnedBy: 'Operations Admin',
+    };
+    const merged = mergePumpDailyReports([approved], [adminReturned]);
+
+    expect(merged).toEqual([adminReturned]);
+    expect(getPumpOpeningMeter(merged, approved.pumpId, {}, { [approved.pumpId]: 1000 })).toBe(1400);
+  });
 
   it('ignores incomplete meter intervals and falls back to the configured meter', () => {
     const incomplete = {

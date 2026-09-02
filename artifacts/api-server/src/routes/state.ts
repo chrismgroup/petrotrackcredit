@@ -68,9 +68,9 @@ export { validatePriceHistoryPayload, validatePriceProposalsPayload } from "./pr
 const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   pending_manager: 1,
   returned: 2,
-  returned_attendant: 2,
-  pending_accountant: 3,
-  approved: 4,
+  returned_attendant: 3,
+  pending_accountant: 4,
+  approved: 5,
 };
 
 const DIP_STATUS_RANK: Record<string, number> = {
