@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
 import { db, appStateTable, pumpReportsTable, staffUsersTable } from "@workspace/db";
 import { broadcastRealtime } from "../lib/realtime";
+import { normalizeMaintenanceRecord } from "./maintenance-workflow-rules";
 import { createBackup, listBackups, restoreBackup } from "../lib/backup";
 import {
   validatePriceHistoryPayload,
@@ -529,7 +530,13 @@ router.get("/state", async (req, res): Promise<void> => {
   const result: Record<string, unknown> = {};
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
   for (const row of rows) {
-    result[row.key] = row.key === "messages" && chatIdentity
+    result[row.key] = row.key === "maintenance" && Array.isArray(row.data)
+      ? row.data.map(value => (
+          value && typeof value === "object" && !Array.isArray(value)
+            ? normalizeMaintenanceRecord(value as JsonRecord)
+            : value
+        ))
+      : row.key === "messages" && chatIdentity
       ? messagesForIdentity(row.data, chatIdentity)
       : visibleMyFolderState(row.key, row.data, req.auth?.role);
   }
