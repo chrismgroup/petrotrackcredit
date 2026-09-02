@@ -19,7 +19,10 @@
       "buildNumber": "54",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSFaceIDUsageDescription": "Petrotrack uses Face ID to let you sign in quickly and securely."
+        "NSFaceIDUsageDescription": "Petrotrack uses Face ID to let you sign in quickly and securely.",
+        "UIBackgroundModes": [
+          "voip"
+        ]
       }
     },
     "android": {
