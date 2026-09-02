@@ -1012,6 +1012,7 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'home',     icon: 'home',             label: 'Home'       },
   { id: 'revenue',  icon: 'cash',              label: 'Total Revenue' },
   { id: 'ops',      icon: 'construct',        label: 'Operations' },
+  { id: 'maint',    icon: 'build',            label: 'Maintenance' },
   { id: 'tasks',    icon: 'checkmark-circle', label: 'Tasks'      },
   { id: 'hr',       icon: 'people-circle',    label: 'HR'         },
   { id: 'acct',     icon: 'calculator',       label: 'Accounts'   },
@@ -1323,7 +1324,7 @@ interface AppContextType {
   accForwardToMd: (id: number, costPrice: number, accNote: string) => void;
   approveDelivery: (id: number, sellingPrice: number, mdNote?: string) => void;
   rejectDelivery: (id: number, note?: string) => void;
-  addMaintenance: (item: { title: string; pri: MaintenanceItem['pri']; date: string }) => Promise<boolean>;
+  addMaintenance: (item: { title: string; pri: MaintenanceItem['pri']; date: string }) => Promise<MaintenanceItem | null>;
   acknowledgeMaintenance: (taskId: string) => Promise<boolean>;
   assignMaintenance: (taskId: string, username: string) => Promise<boolean>;
   updateMaintenanceStatus: (taskId: string, status: MaintenanceWorkflowStatus) => Promise<boolean>;
@@ -2678,9 +2679,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addMaintenance = useCallback(async (item: { title: string; pri: MaintenanceItem['pri']; date: string }) => {
     const result = await maintenanceApi.create(item);
-    if (!result?.maintenance) return false;
-    applyMaintenanceRecord(result.maintenance as MaintenanceItem);
-    return true;
+    if (!result?.maintenance) return null;
+    const maintenanceRecord = result.maintenance as MaintenanceItem;
+    applyMaintenanceRecord(maintenanceRecord);
+    return maintenanceRecord;
   }, [applyMaintenanceRecord]);
 
   const acknowledgeMaintenance = useCallback(async (taskId: string) => {

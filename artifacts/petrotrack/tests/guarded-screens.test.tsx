@@ -37,6 +37,13 @@ jest.mock('@/components/AppliedDateField', () => ({
   AppliedDateField: () => null,
 }));
 
+jest.mock('@/components/BusinessDateConfirmation', () => ({
+  useBusinessDateConfirmation: () => ({
+    requestDateConfirmation: (_label: string, _date: string, callback: () => void) => callback(),
+    confirmationModal: null,
+  }),
+}));
+
 jest.mock('@/components/FormSheet', () => ({
   ModalSheet: () => null,
 }));
@@ -113,6 +120,7 @@ import TanksScreen from '../app/(app)/tanks';
 import HRScreen from '../app/(app)/hr';
 import PricesScreen from '../app/(app)/prices';
 import SalesScreen from '../app/(app)/sales';
+import MaintenanceScreen from '../app/(app)/maintenance';
 import { useApp } from '@/context/AppContext';
 
 const mockedUseApp = jest.mocked(useApp);
@@ -177,6 +185,11 @@ function baseAppState() {
     approveDelivery: jest.fn(),
     rejectDelivery: jest.fn(),
     sales: [],
+    maintenance: [],
+    addMaintenance: jest.fn(),
+    acknowledgeMaintenance: jest.fn(),
+    assignMaintenance: jest.fn(),
+    updateMaintenanceStatus: jest.fn(),
     sendMessage: jest.fn(),
     addDip: jest.fn(),
     updateDip: jest.fn(),
@@ -210,6 +223,117 @@ function baseAppState() {
 
 afterEach(() => {
   jest.clearAllMocks();
+});
+
+describe('maintenance handoff controls follow the signed-in staff role', () => {
+  const submitted = {
+    id: 91,
+    taskId: 'MNT-2026-ABC12345',
+    title: 'Repair forecourt light',
+    pri: 'Urgent' as const,
+    by: 'requester',
+    date: '2026-09-01',
+    submittedBy: 'requester',
+    submittedByName: 'Maintenance Requester',
+    submittedAt: '2026-09-01T08:00:00.000Z',
+    status: 'pending' as const,
+    st: 'Open' as const,
+    history: [{
+      id: 'history-1',
+      action: 'Request submitted',
+      actor: 'requester',
+      at: '2026-09-01T08:00:00.000Z',
+    }],
+  };
+
+  it.each(['md', 'ceo'] as const)('shows acknowledgement to the %s', role => {
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role,
+      userName: role === 'md' ? 'Maintenance MD' : 'Maintenance CEO',
+      maintenance: [submitted],
+    } as any);
+
+    expectScreenToRender(<MaintenanceScreen />, 'Acknowledge receipt');
+    expectScreenToRender(<MaintenanceScreen />, submitted.taskId);
+  });
+
+  it.each(['mgr', 'acc', 'csm', 'mktg', 'att'] as const)(
+    'hides decision controls from the %s role',
+    role => {
+      mockedUseApp.mockReturnValue({
+        ...baseAppState(),
+        role,
+        userName: `Maintenance ${role}`,
+        maintenance: [submitted],
+      } as any);
+
+      let renderer: ReactTestRenderer | null = null;
+      act(() => {
+        renderer = create(<MaintenanceScreen />);
+      });
+      const mounted = renderer as unknown as ReactTestRenderer;
+      const text = renderedText(mounted);
+      expect(text).toContain(submitted.taskId);
+      expect(text).not.toContain('Acknowledge receipt');
+      expect(text).not.toContain('Assign task');
+      act(() => mounted.unmount());
+    },
+  );
+
+  it.each(['md', 'ceo'] as const)('shows assignment after acknowledgement to the %s', role => {
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role,
+      userName: role === 'md' ? 'Maintenance MD' : 'Maintenance CEO',
+      maintenance: [{
+        ...submitted,
+        status: 'open',
+        acknowledgedBy: 'maint_e2e_md',
+        acknowledgedAt: '2026-09-01T08:05:00.000Z',
+      }],
+    } as any);
+
+    expectScreenToRender(<MaintenanceScreen />, 'Assign task');
+  });
+
+  it('shows status transitions only to the assigned staff member', () => {
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role: 'att',
+      userName: 'Maintenance Assignee',
+      maintenance: [{
+        ...submitted,
+        status: 'open',
+        acknowledgedAt: '2026-09-01T08:05:00.000Z',
+        assignedTo: 'maint_e2e_assignee',
+        assignedToName: 'Maintenance Assignee',
+      }],
+    } as any);
+
+    expectScreenToRender(<MaintenanceScreen />, 'Commenced');
+
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role: 'att',
+      userName: 'Maintenance Requester',
+      maintenance: [{
+        ...submitted,
+        status: 'open',
+        acknowledgedAt: '2026-09-01T08:05:00.000Z',
+        assignedTo: 'maint_e2e_assignee',
+        assignedToName: 'Maintenance Assignee',
+      }],
+    } as any);
+
+    let renderer: ReactTestRenderer | null = null;
+    act(() => {
+      renderer = create(<MaintenanceScreen />);
+    });
+    const mounted = renderer as unknown as ReactTestRenderer;
+    expect(renderedText(mounted)).not.toContain('Update status');
+    act(() => mounted.unmount());
+  });
 });
 
 describe('screens tolerate incomplete synced records', () => {

@@ -6,7 +6,7 @@ import { SCREEN_ROUTES, useApp } from '@/context/AppContext';
 const ROUTE_ACCESS: Record<string, string> = {
   '/operations': 'ops',
   '/tanks': 'ops',
-  '/maintenance': 'ops',
+  '/maintenance': 'maint',
   '/receiving': 'recv',
   '/sales': 'sales',
   '/shift': 'shift',

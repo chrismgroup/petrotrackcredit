@@ -32,6 +32,13 @@ jest.mock('@/lib/api', () => ({
     markRead: jest.fn(async () => ({ ok: true })),
     markAllRead: jest.fn(async () => ({ ok: true })),
   },
+  maintenanceApi: {
+    list: jest.fn(async () => []),
+    create: jest.fn(async () => null),
+    acknowledge: jest.fn(async () => null),
+    assign: jest.fn(async () => null),
+    updateStatus: jest.fn(async () => null),
+  },
   apiLogin: jest.fn(),
   saveToken: jest.fn(async () => undefined),
   clearToken: jest.fn(async () => undefined),
