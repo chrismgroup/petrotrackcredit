@@ -248,14 +248,14 @@ content_type = "image/png"
 id = "apB540fCS81dLRktzFFso"
 uri = "file://store-screenshots/google-play/featured-graphic-1024x500.png"
 type = "image"
-title = "Petrotrack featured graphic — Google Play"
-description = "Google Play featured graphic: exact 1024×500 opaque RGB PNG, 121 KB."
+title = "Petrotrack Google Play featured graphic"
+description = "Exact 1024×500 opaque RGB PNG, 121 KB, designed for the Google Play Featured graphic field."
 logical_id = "caaa11f3-868d-4200-8401-96ac67e77ad4"
 content_hash = "sha256:805946885b6f46ee894a45fdc3be4e1826afb9d02a23dc5bbe992fa4aefcdcdb"
 size = 121354
 mtime_ms = 1788336829899
-storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/caaa11f3-868d-4200-8401-96ac67e77ad4/3decd031-6b35-436f-b75b-31d401c66332"
-storage_version_token = "1788336857350669"
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:c507aa05-c66d-4269-8520-c4949670fbaa/caaa11f3-868d-4200-8401-96ac67e77ad4/fa249396-affa-4d02-b5d8-3bff32f2d7d5"
+storage_version_token = "1788338884770545"
 content_type = "image/png"
 
 [[outputs]]
