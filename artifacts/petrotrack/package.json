@@ -8,7 +8,8 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "test": "jest --config jest.config.js --runInBand",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:device:outbox": "bash scripts/run-native-outbox-test.sh"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -60,6 +61,7 @@
     "@daily-co/config-plugin-rn-daily-js": "^0.0.11",
     "@daily-co/react-native-daily-js": "^0.86.0",
     "@daily-co/react-native-webrtc": "124.0.6-daily.1",
+    "expo-asset": "~12.0.13",
     "expo-audio": "~1.1.1",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.24",
@@ -68,7 +70,6 @@
     "expo-print": "~15.0.8",
     "expo-secure-store": "^15.0.8",
     "expo-sharing": "~14.0.8",
-    "react-native-background-timer": "^2.4.1",
     "react-native-get-random-values": "^1.11.0"
   }
 }

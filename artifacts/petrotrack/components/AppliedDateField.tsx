@@ -69,6 +69,7 @@ export function AppliedDateField({
     <>
       <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
       <TouchableOpacity
+        testID={label.startsWith('View shift reports') ? 'report-history-date' : 'report-business-date'}
         onPress={() => setOpen(true)}
         activeOpacity={0.8}
         style={[styles.field, { backgroundColor: colors.surface, borderColor: value ? color : colors.border }]}
@@ -133,6 +134,7 @@ export function AppliedDateField({
                   dateKey(new Date(month.getFullYear(), month.getMonth(), day)) === value;
                 return (
                   <TouchableOpacity
+                    testID={day === null ? undefined : `report-business-date-day-${day}`}
                     key={`${month.toISOString()}-${index}`}
                     disabled={day === null}
                     onPress={() => day !== null && selectDay(day)}

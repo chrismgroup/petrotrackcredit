@@ -1,0 +1,24 @@
+appId: petrotrack.replit.app
+---
+# The runner force-stops the app before invoking this flow. The first
+# assertion therefore proves that the durable outbox restored the report
+# before connectivity is restored.
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: My Jobs
+    timeout: 30000
+- tapOn: My Jobs
+- tapOn: Shift reports
+- extendedWaitUntil:
+    visible: Shift Report
+    timeout: 30000
+- tapOn:
+    id: shift-tab-history
+- extendedWaitUntil:
+    visible: Queued
+    timeout: 30000
+- tapOn: ${PETROTRACK_TEST_PUMP}
+- extendedWaitUntil:
+    visible: ${PETROTRACK_TEST_NOTE}
+    timeout: 30000

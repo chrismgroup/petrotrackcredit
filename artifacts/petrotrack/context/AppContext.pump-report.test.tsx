@@ -1,8 +1,10 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState as NativeAppState } from 'react-native';
 
-import { stateApi } from '@/lib/api';
+import { SHIFT_REPORT_OUTBOX_STORAGE_KEY, stateApi } from '@/lib/api';
 import {
   AppProvider,
   calculateDailyOperationalStock,
@@ -98,7 +100,7 @@ function app(): AppState {
   return capturedApp;
 }
 
-async function renderProvider() {
+async function renderProvider(expectEmpty = true) {
   await act(async () => {
     renderer = create(
       <ProviderErrorBoundary>
@@ -110,7 +112,7 @@ async function renderProvider() {
   });
 
   if (providerError) throw providerError;
-  expect(app().pumpDailyReports).toEqual([]);
+  if (expectEmpty) expect(app().pumpDailyReports).toEqual([]);
 }
 
 async function submitReport(submittedBy = 'Original Attendant') {
@@ -155,7 +157,171 @@ afterEach(() => {
   renderer = null;
   capturedApp = null;
   providerError = null;
+  const storage = (AsyncStorage as typeof AsyncStorage & { __storage?: Map<string, string> }).__storage;
+  storage?.clear();
   jest.clearAllMocks();
+});
+
+describe('shift report delivery outbox', () => {
+  beforeEach(() => {
+    jest.mocked(stateApi.getAll).mockReset().mockResolvedValue(null);
+    jest.mocked(stateApi.submitPumpReport).mockReset()
+      .mockImplementation(async report => ({ ok: true, report }));
+  });
+
+  function pendingReportInput(submittedBy = 'Offline Attendant') {
+    const {
+      id: _id,
+      status: _status,
+      submittedAt: _submittedAt,
+      ...input
+    } = reportWithStatus('pending_manager', submittedBy);
+    return input;
+  }
+
+  async function settleEffects() {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  it('restores a queued report after the provider restarts', async () => {
+    jest.mocked(stateApi.submitPumpReport).mockResolvedValueOnce(null);
+    await renderProvider();
+
+    let result: Awaited<ReturnType<AppState['submitPumpReportConfirmed']>>;
+    await act(async () => {
+      result = await app().submitPumpReportConfirmed(pendingReportInput());
+    });
+    expect(result!).toBe('queued');
+    const queued = app().pumpDailyReports[0];
+    expect(queued.deliveryStatus).toBe('queued');
+    expect(queued.idempotencyKey).toBe(String(queued.id));
+    expect(await AsyncStorage.getItem(SHIFT_REPORT_OUTBOX_STORAGE_KEY)).toContain(queued.idempotencyKey);
+
+    act(() => renderer?.unmount());
+    renderer = null;
+    capturedApp = null;
+    await renderProvider(false);
+
+    expect(app().pumpDailyReports).toEqual(
+      expect.arrayContaining([expect.objectContaining({
+        id: queued.id,
+        idempotencyKey: queued.idempotencyKey,
+        deliveryStatus: 'queued',
+      })]),
+    );
+  });
+
+  it('repeats the same idempotent request until one retry is acknowledged', async () => {
+    jest.mocked(stateApi.getAll).mockResolvedValue({ pumpDailyReports: [] });
+    jest.mocked(stateApi.submitPumpReport)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockImplementationOnce(async report => ({ ok: true, report }));
+    await renderProvider();
+
+    await act(async () => {
+      expect(await app().submitPumpReportConfirmed(pendingReportInput())).toBe('queued');
+    });
+    const queued = app().pumpDailyReports[0];
+
+    await act(async () => {
+      expect(await app().login('att', 'Offline Attendant', 1, 'branch-1')).toBe(true);
+    });
+    await settleEffects();
+    expect(app().pumpDailyReports[0].deliveryStatus).toBe('queued');
+
+    await act(async () => {
+      (NativeAppState as typeof NativeAppState & { __emitChange: (state: string) => void })
+        .__emitChange('active');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await settleEffects();
+
+    const calls = jest.mocked(stateApi.submitPumpReport).mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(new Set(calls.map(call => call[1]))).toEqual(new Set([queued.idempotencyKey]));
+    expect(calls.every(call => (call[0] as PumpDailyReport).id === queued.id)).toBe(true);
+    expect(app().pumpDailyReports[0].deliveryStatus).toBe('confirmed');
+    expect(await AsyncStorage.getItem(SHIFT_REPORT_OUTBOX_STORAGE_KEY)).toBe('[]');
+  });
+
+  it('keeps queued reports immutable so a retry cannot resurrect stale edits or deletions', async () => {
+    jest.mocked(stateApi.getAll).mockResolvedValue({ pumpDailyReports: [] });
+    jest.mocked(stateApi.submitPumpReport)
+      .mockResolvedValueOnce(null)
+      .mockImplementationOnce(async report => ({ ok: true, report }));
+    await renderProvider();
+
+    await act(async () => {
+      expect(await app().submitPumpReportConfirmed(pendingReportInput())).toBe('queued');
+    });
+    const queued = app().pumpDailyReports[0];
+    let deleted = true;
+    await act(async () => {
+      app().updatePumpReport(queued.id, { closingMeter: 9999, note: 'Must not be retried' });
+      deleted = await app().deletePumpReport(queued.id);
+    });
+
+    expect(deleted).toBe(false);
+    expect(app().pumpDailyReports[0]).toMatchObject({
+      id: queued.id,
+      closingMeter: queued.closingMeter,
+      note: queued.note,
+      deliveryStatus: 'queued',
+    });
+
+    await act(async () => {
+      expect(await app().login('att', 'Offline Attendant', 1, 'branch-1')).toBe(true);
+    });
+    await settleEffects();
+
+    const retried = jest.mocked(stateApi.submitPumpReport).mock.calls[1][0] as PumpDailyReport;
+    expect(retried).toMatchObject({
+      id: queued.id,
+      closingMeter: queued.closingMeter,
+      note: queued.note,
+    });
+    expect(retried.note).not.toBe('Must not be retried');
+    expect(app().pumpDailyReports[0].deliveryStatus).toBe('confirmed');
+  });
+
+  it('clears the outbox when sync finds a report committed after its response was lost', async () => {
+    let committedReport: PumpDailyReport | null = null;
+    jest.mocked(stateApi.submitPumpReport).mockImplementationOnce(async report => {
+      committedReport = { ...(report as PumpDailyReport) };
+      delete committedReport.deliveryStatus;
+      return null;
+    });
+    await renderProvider();
+
+    await act(async () => {
+      expect(await app().submitPumpReportConfirmed(pendingReportInput())).toBe('queued');
+    });
+    expect(committedReport).not.toBeNull();
+
+    act(() => renderer?.unmount());
+    renderer = null;
+    capturedApp = null;
+    jest.mocked(stateApi.getAll).mockResolvedValue({ pumpDailyReports: [committedReport!] });
+    await renderProvider(false);
+
+    await act(async () => {
+      expect(await app().login('att', 'Offline Attendant', 1, 'branch-1')).toBe(true);
+    });
+    await settleEffects();
+
+    expect(app().pumpDailyReports).toEqual([
+      expect.objectContaining({ id: committedReport!.id }),
+    ]);
+    expect(app().pumpDailyReports[0].deliveryStatus).not.toBe('queued');
+    expect(await AsyncStorage.getItem(SHIFT_REPORT_OUTBOX_STORAGE_KEY)).toBe('[]');
+    expect(jest.mocked(stateApi.submitPumpReport)).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('approved pump report lock', () => {

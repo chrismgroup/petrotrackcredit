@@ -4,9 +4,13 @@ import { AppState } from 'react-native';
 import {
   stateApi, versionApi, usersApi, notificationsApi, maintenanceApi, realtimeApi,
   AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken,
+  enqueueShiftReportOutbox, loadShiftReportOutbox, removeShiftReportOutbox,
+  SHIFT_REPORT_OUTBOX_STORAGE_KEY,
+  type ShiftReportOutboxItem,
   type MaintenanceWorkflowStatus,
 } from '@/lib/api';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
+import { startForegroundTimer } from '@/lib/foreground-timer';
 import {
   isMissingNum,
   safeNum,
@@ -346,6 +350,10 @@ export interface PumpDailyReport {
   submittedBy: string;
   submittedByName: string;
   submittedAt: string;
+  /** Stable client identity used to safely retry an unacknowledged submission. */
+  idempotencyKey?: string;
+  /** Delivery state is local-only; missing means a legacy/server-confirmed report. */
+  deliveryStatus?: 'queued' | 'confirmed';
   status: PumpReportStatus;
   mgrNote?: string;
   mgrBy?: string;
@@ -489,14 +497,11 @@ export function useBusinessDateKey(): string {
       const nextDateKey = currentBusinessDateKey();
       setDateKey(previousDateKey => previousDateKey === nextDateKey ? previousDateKey : nextDateKey);
     };
-    const timer = setInterval(refresh, 60_000);
-    const appStateSubscription = AppState.addEventListener('change', state => {
-      if (state === 'active') refresh();
+    return startForegroundTimer({
+      delayMs: 60_000,
+      callback: refresh,
+      runOnResume: true,
     });
-    return () => {
-      clearInterval(timer);
-      appStateSubscription.remove();
-    };
   }, []);
 
   return dateKey;
@@ -1309,7 +1314,7 @@ interface AppContextType {
   unlockPumpMeter: (pumpId: string) => void;
   resetOperationalData: () => Promise<void>;
   submitPumpReport: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => boolean;
-  submitPumpReportConfirmed: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => Promise<boolean>;
+  submitPumpReportConfirmed: (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => Promise<'confirmed' | 'queued' | false>;
   mgrForwardPumpReport: (id: number, mgrNote: string) => void;
   accApprovePumpReport: (report: PumpDailyReport, accNote: string) => void;
   accRejectPumpReport: (id: number, rejectionReason: string) => void;
@@ -1542,6 +1547,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }
   const [stateSyncReadyTick, setStateSyncReadyTick] = useState(0);
+  const shiftReportOutboxRef = useRef<ShiftReportOutboxItem<PumpDailyReport>[]>([]);
+  const outboxLoadedRef = useRef(false);
+  const outboxFlushRef = useRef<Promise<void> | null>(null);
+  const confirmedPumpReportEffectsRef = useRef<Set<number>>(new Set());
   const stockBaselineRepairRef = useRef(false);
   useEffect(() => {
     const KEYS = [
@@ -1553,6 +1562,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
       'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks', 'stockSnapshotConfig', 'stockLogs',
+       SHIFT_REPORT_OUTBOX_STORAGE_KEY,
     ] as const;
     const markLoaded = () => {
       loadedRef.current = true;
@@ -1634,10 +1644,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.callLog)           setCallLog(s.callLog);
       if (s.marketCompetitors) setMarketCompetitors(s.marketCompetitors);
        if (s.financialEntry)    setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
+        if (Array.isArray(s[SHIFT_REPORT_OUTBOX_STORAGE_KEY])) {
+          shiftReportOutboxRef.current = s[SHIFT_REPORT_OUTBOX_STORAGE_KEY] as ShiftReportOutboxItem<PumpDailyReport>[];
+          const restoredQueuedReports = shiftReportOutboxRef.current.map(item => ({
+            ...item.report,
+            deliveryStatus: 'queued' as const,
+          }));
+          setPumpDailyReports(current => mergePumpDailyReports(current, restoredQueuedReports));
+        }
+        outboxLoadedRef.current = true;
        markLoaded();
      }).catch(() => {
        // The authenticated server sync can still recover the app if the local
        // cache is unavailable, so never leave login waiting indefinitely.
+       outboxLoadedRef.current = true;
        markLoaded();
      });
   }, []);
@@ -1655,6 +1675,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
      initial syncFromServer resolves, so every subsequent user-triggered change flows
      through to the server normally. */
   const initialSyncDoneRef = useRef(false);
+  // State setters used during a server refresh must not echo the same
+  // snapshot back through the persistence effects as API writes.
+  const serverHydrationRef = useRef(false);
 
   /* ── syncFromServer: fetch ALL state from the server and apply it locally ── */
   // Called once on startup and then every 3 s so every device stays in sync.
@@ -1666,6 +1689,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         usersApi.list(),
       ]);
       if (!s) return false;
+      serverHydrationRef.current = true;
       if (s.companyInfo && !p.has('companyInfo'))             setCompanyInfo(s.companyInfo as CompanyInfo);
       if (s.tanks && !p.has('tanks'))                         setTanks(s.tanks as Tank[]);
       if (s.lpgTanks && !p.has('lpgTanks'))                   setLpgTanks(s.lpgTanks as LPGTank[]);
@@ -1791,9 +1815,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!p.has('callLog'))           setCallLog(safeArray<CallRecord>(s.callLog));
       if (!p.has('marketCompetitors')) setMarketCompetitors(safeArray<MarketCompetitor>(s.marketCompetitors));
       if (!p.has('meetingMinutes'))    setMeetingMinutes(safeArray<MeetingMinutes>(s.meetingMinutes));
-      if (!p.has('pumpDailyReports') && Array.isArray(s.pumpDailyReports)) {
-        setPumpDailyReports(s.pumpDailyReports as PumpDailyReport[]);
-      }
+       if (!p.has('pumpDailyReports') && Array.isArray(s.pumpDailyReports)) {
+         const rawServerReports = s.pumpDailyReports as PumpDailyReport[];
+         const committedOutboxItems = shiftReportOutboxRef.current.filter(item =>
+           rawServerReports.some(report => report.id === item.report.id),
+         );
+         const committedReportIds = new Set(committedOutboxItems.map(item => item.report.id));
+         const serverReports = rawServerReports.map(report =>
+           committedReportIds.has(report.id)
+             ? { ...report, deliveryStatus: 'confirmed' as const }
+             : report,
+         );
+         if (committedOutboxItems.length > 0) {
+           void Promise.all(committedOutboxItems.map(item => removeShiftReportOutbox(item.idempotencyKey)))
+             .then(() => {
+               const committedKeys = new Set(committedOutboxItems.map(item => item.idempotencyKey));
+               shiftReportOutboxRef.current = shiftReportOutboxRef.current
+                 .filter(item => !committedKeys.has(item.idempotencyKey));
+             });
+         }
+         const pendingReports = shiftReportOutboxRef.current
+           .filter(item => !serverReports.some(report => report.id === item.report.id))
+           .map(item => ({ ...item.report, deliveryStatus: 'queued' as const }));
+         setPumpDailyReports(mergePumpDailyReports(serverReports, pendingReports));
+       }
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
       if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
@@ -1803,11 +1848,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // If syncFromServer fails (no network, 500, etc.), the gate stays DOWN so the app's empty defaults
       // cannot overwrite whatever real data is on the server. The next poll (3 s) will retry.
       initialSyncDoneRef.current = true;
-      // Trigger deferred writes for records created while the app was still
-      // unauthenticated and therefore blocked by the startup write gate.
+      // Advance the hydration generation. Persistence effects use this to
+      // release the server-snapshot write guard after React commits.
       setStateSyncReadyTick(t => t + 1);
       return true;
     } catch {
+      serverHydrationRef.current = false;
       // silently ignore — network errors must not break the UI.
       // CRITICAL: DO NOT lift the gate on error. If we do, the empty default state in useState([])
       // will be PUT to the server by the syncSlice effects, wiping all real data permanently.
@@ -1817,10 +1863,70 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const confirmPumpReportDelivery = useCallback((report: PumpDailyReport) => {
+    const confirmedReport: PumpDailyReport = {
+      ...report,
+      idempotencyKey: report.idempotencyKey ?? String(report.id),
+      deliveryStatus: 'confirmed',
+    };
+    setPumpDailyReports(current => mergePumpDailyReports(current, [confirmedReport]));
+    if (confirmedPumpReportEffectsRef.current.has(report.id)) return;
+    confirmedPumpReportEffectsRef.current.add(report.id);
+    setAudit(a => [{
+      id: genId(),
+      action: 'Pump report confirmed by server',
+      user: userName,
+      detail: `${report.pumpName} · ${report.liters.toLocaleString()}${report.product === 'LPG' ? 'kg' : 'L'} · queued delivery completed`,
+      ts: nowTs(),
+    }, ...a]);
+    void notificationsApi.send({
+      target: 'mgr',
+      branchId: report.branchId,
+      type: 'report_attention',
+      title: 'Pump Report Awaiting Review',
+      body: `${report.submittedByName} submitted ${report.pumpName} for manager review.`,
+      data: { route: SCREEN_ROUTES.shift, reportId: report.id },
+    });
+  }, [userName]);
+
+  const flushPumpReportOutbox = useCallback(async (): Promise<void> => {
+    if (!loadedRef.current || !outboxLoadedRef.current || !isServerAuthenticated || !userName) return;
+    if (outboxFlushRef.current) return outboxFlushRef.current;
+
+    const run = (async () => {
+      const items = await loadShiftReportOutbox<PumpDailyReport>();
+      shiftReportOutboxRef.current = items;
+      for (const item of items) {
+        // Outbox records remain on the device when somebody else signs in, but
+        // must never be sent under the wrong user's credentials.
+        if (item.report.submittedBy !== userName) continue;
+        const response = await stateApi.submitPumpReport(item.report, item.idempotencyKey);
+        if (!response?.ok || !response.report) continue;
+        await removeShiftReportOutbox(item.idempotencyKey);
+        shiftReportOutboxRef.current = shiftReportOutboxRef.current.filter(
+          current => current.idempotencyKey !== item.idempotencyKey,
+        );
+        confirmPumpReportDelivery(response.report);
+      }
+    })();
+    outboxFlushRef.current = run;
+    try {
+      await run;
+    } finally {
+      if (outboxFlushRef.current === run) outboxFlushRef.current = null;
+    }
+  }, [confirmPumpReportDelivery, isServerAuthenticated, userName]);
+
   /* ── Initial server sync once AsyncStorage has loaded ── */
   useEffect(() => {
     if (loaded && isServerAuthenticated) syncFromServer();
   }, [loaded, isServerAuthenticated, syncFromServer]);
+
+  // A queued report is retried after login and after the authenticated initial
+  // sync. The same single-flight function is also used by reconnect/resume.
+  useEffect(() => {
+    if (loaded && isServerAuthenticated && userName) void flushPumpReportOutbox();
+  }, [flushPumpReportOutbox, isServerAuthenticated, loaded, userName]);
 
   /**
    * One-time repair for historical baselines whose administrative save date
@@ -2020,18 +2126,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loaded || !isServerAuthenticated) return;
     void refreshNotifications();
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = async () => {
-      if (stopped) return;
-      await refreshNotifications();
-      if (!stopped) timer = setTimeout(poll, 5_000);
-    };
-    timer = setTimeout(poll, 5_000);
-    return () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-    };
+    return startForegroundTimer({
+      delayMs: 5_000,
+      callback: refreshNotifications,
+      runOnResume: false,
+    });
   }, [loaded, isServerAuthenticated, refreshNotifications]);
 
   /* ── Realtime report invalidation: sockets improve freshness; sync remains authoritative ── */
@@ -2050,6 +2149,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         socket.close();
         return;
       }
+      socket.onopen = () => {
+        void flushPumpReportOutbox();
+      };
       socket.onmessage = event => {
         try {
           const message = JSON.parse(String(event.data)) as { type?: string };
@@ -2071,11 +2173,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [loaded, isServerAuthenticated, role, syncFromServer]);
+  }, [flushPumpReportOutbox, loaded, isServerAuthenticated, role, syncFromServer]);
+
+  // React Native does not expose a universal online event, but realtime
+  // reconnect covers native devices. React Native Web also gets the browser's
+  // immediate online notification instead of waiting for the next poll.
+  useEffect(() => {
+    if (
+      !loaded ||
+      !isServerAuthenticated ||
+      typeof window === 'undefined' ||
+      typeof window.addEventListener !== 'function' ||
+      typeof window.removeEventListener !== 'function'
+    ) return;
+    const retry = () => void flushPumpReportOutbox();
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [flushPumpReportOutbox, isServerAuthenticated, loaded]);
 
   /* ── persistence: save each state slice to AsyncStorage + API when it changes ── */
   function syncSlice(key: string, value: unknown) {
     AsyncStorage.setItem(key, JSON.stringify(value));
+     if (serverHydrationRef.current) return;
     // Block server writes until the initial syncFromServer has completed so that
     // stale AsyncStorage snapshots can't overwrite data written by other users.
     if (!initialSyncDoneRef.current) return;
@@ -2130,25 +2249,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('legalMatters',      legalMatters); },      [legalMatters, loaded]);
   useEffect(() => { if (loaded) syncSlice('corpProjects',      corpProjects); },      [corpProjects, loaded]);
   useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
-  useEffect(() => { if (loaded) syncSlice('pumpDailyReports', pumpDailyReports); },  [pumpDailyReports, loaded]);
-  // If a report was submitted before the JWT-backed initial sync completed,
-  // its local value may not change during syncFromServer (safeArray preserves
-  // it when the server is empty), so the normal dependency effect above will
-  // not run. Flush it once the authenticated sync has completed.
   useEffect(() => {
-    if (loaded && stateSyncReadyTick > 0) syncSlice('pumpDailyReports', pumpDailyReports);
-  }, [loaded, stateSyncReadyTick, pumpDailyReports]);
-  // A dip can be submitted from a locally restored session before the first
-  // authenticated sync completes. safeArray intentionally preserves that
-  // local record when the server is empty, so flush it once the sync gate opens.
-  useEffect(() => {
-    if (loaded && stateSyncReadyTick > 0) syncSlice('dips', dips);
-  }, [dips, loaded, stateSyncReadyTick]);
+     if (loaded) {
+      syncSlice('pumpDailyReports', pumpDailyReports.filter(report => report.deliveryStatus !== 'queued'));
+    }
+  }, [pumpDailyReports, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
   useEffect(() => { if (loaded) syncSlice('startupStocks',    startupStocks); },      [startupStocks, loaded]);
   useEffect(() => { if (loaded) syncSlice('stockSnapshotConfig', stockSnapshotConfig); }, [stockSnapshotConfig, loaded]);
+   // This effect is declared after every ordinary slice effect so a server
+   // refresh can suppress their writes before user edits are persisted.
+   useEffect(() => {
+     if (serverHydrationRef.current) serverHydrationRef.current = false;
+   }, [stateSyncReadyTick]);
+   // If a report was submitted before the JWT-backed initial sync completed,
+   // its local value may not change during syncFromServer (safeArray preserves
+   // it when the server is empty), so the normal dependency effect above will
+   // not run. Flush it once the authenticated sync has completed.
+   useEffect(() => {
+     if (loaded && stateSyncReadyTick === 1) {
+       syncSlice('pumpDailyReports', pumpDailyReports.filter(report => report.deliveryStatus !== 'queued'));
+     }
+   }, [loaded, stateSyncReadyTick, pumpDailyReports]);
+   // A dip can be submitted from a locally restored session before the first
+   // authenticated sync completes. safeArray intentionally preserves that
+   // local record when the server is empty, so flush it once the sync gate opens.
+   useEffect(() => {
+     if (loaded && stateSyncReadyTick === 1) syncSlice('dips', dips);
+   }, [dips, loaded, stateSyncReadyTick]);
 
   /* ── Version-check poll: 3 s lightweight ping → full sync only when data changed ── */
   // /api/version returns a ~50-byte timestamp. syncFromServer() only fires when it changes,
@@ -2176,24 +2306,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Fire immediately on login/app-open so new data appears within ~300 ms,
-    // not after the first 3-second interval tick.
-    void check();
-
-    // Schedule the next check only after the previous one has finished so
-    // slow full-sync requests cannot overlap and reorder state updates.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
-      if (!stopped) timer = setTimeout(async () => { await check(); schedule(); }, 3_000);
-    };
-    schedule();
+    // not after the first 3-second interval tick. The scheduler waits for
+    // each check to finish before scheduling the next one.
+    const stopTimer = startForegroundTimer({
+      delayMs: 3_000,
+      callback: check,
+      runImmediately: true,
+      runOnResume: true,
+    });
 
     // Also re-sync the moment the user brings the app to the foreground
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') void check();
+      if (state === 'active') {
+        void check();
+        void flushPumpReportOutbox();
+      }
     });
 
-    return () => { stopped = true; if (timer) clearTimeout(timer); sub.remove(); };
-  }, [role, loaded, isServerAuthenticated, syncFromServer]);
+    return () => { stopped = true; stopTimer(); sub.remove(); };
+  }, [flushPumpReportOutbox, role, loaded, isServerAuthenticated, syncFromServer]);
 
   const DRAFT_APPROVAL: CorpApproval = { status: 'draft' };
 
@@ -3597,17 +3728,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const submitPumpReportConfirmed = useCallback(async (r: Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt'>) => {
     if (role === 'att' && isFutureBusinessDate(r.date)) return false;
+    const id = genId();
+    const idempotencyKey = String(id);
     const report: PumpDailyReport = {
       ...r,
-      id: genId(),
+      id,
       status: 'pending_manager',
       submittedAt: nowTs(),
+      idempotencyKey,
+      deliveryStatus: 'queued',
     };
-    const acknowledged = await stateApi.submitPumpReport(report);
-    if (!acknowledged?.ok) return false;
-    recordSubmittedPumpReport(acknowledged.report, r);
-    return true;
-  }, [role, recordSubmittedPumpReport]);
+    try {
+      shiftReportOutboxRef.current = await enqueueShiftReportOutbox({
+        idempotencyKey,
+        report,
+        queuedAt: report.submittedAt,
+      });
+    } catch {
+      return false;
+    }
+    setPumpDailyReports(current => mergePumpDailyReports(current, [report]));
+    setAudit(current => [{
+      id: genId(),
+      action: 'Pump report queued for delivery',
+      user: userName,
+      detail: `${report.pumpName} · ${report.liters.toLocaleString()}${report.product === 'LPG' ? 'kg' : 'L'} · awaiting server confirmation`,
+      ts: nowTs(),
+    }, ...current]);
+
+    const acknowledged = await stateApi.submitPumpReport(report, idempotencyKey);
+    if (!acknowledged?.ok || !acknowledged.report) return 'queued';
+    await removeShiftReportOutbox(idempotencyKey);
+    shiftReportOutboxRef.current = shiftReportOutboxRef.current.filter(
+      item => item.idempotencyKey !== idempotencyKey,
+    );
+    confirmPumpReportDelivery(acknowledged.report);
+    return 'confirmed';
+  }, [confirmPumpReportDelivery, role, userName]);
 
   const mgrForwardPumpReport = useCallback((id: number, mgrNote: string) => {
     const report = pumpDailyReports.find(r => r.id === id);
@@ -3830,6 +3987,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deletePumpReport = useCallback((id: number) => {
     const report = pumpDailyReports.find(r => r.id === id);
     if (!report) return Promise.resolve(false);
+    // The persisted outbox payload is immutable until the server acknowledges
+    // it. Editing or deleting only the visible copy could make a later retry
+    // resurrect stale data.
+    if (report.deliveryStatus === 'queued') return Promise.resolve(false);
     if (report.status === 'approved' && role !== 'admin') return Promise.resolve(false);
     if (report.status === 'returned_attendant' && role !== 'admin' && report.submittedBy !== userName) {
       return Promise.resolve(false);
@@ -3872,7 +4033,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const prev = pumpDailyReports.find(r => r.id === id);
     // Accountant-approved reports are permanently locked — no role, including
     // Admin, may edit them.
-    if (!prev || prev.status === 'approved') return;
+    if (!prev || prev.status === 'approved' || prev.deliveryStatus === 'queued') return;
     // A report returned to the attendant may only be corrected by the
     // attendant who originally submitted it (admins retain controlled
     // workflow access to non-approved records).

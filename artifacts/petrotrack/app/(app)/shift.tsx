@@ -63,6 +63,18 @@ function StatusBadge({ status }: StatusBadgeProps) {
   );
 }
 
+function DeliveryBadge({ status }: { status?: PumpDailyReport['deliveryStatus'] }) {
+  const queued = status === 'queued';
+  const color = queued ? '#8A3B0F' : '#27500A';
+  const backgroundColor = queued ? '#FBEADD' : '#EAF3DE';
+  return (
+    <View style={[c.badge, { backgroundColor }]}>
+      <Ionicons name={queued ? 'cloud-upload-outline' : 'cloud-done-outline'} size={10} color={color} />
+      <Text style={[c.badgeTxt, { color }]}>{queued ? 'Queued' : 'Confirmed'}</Text>
+    </View>
+  );
+}
+
 interface ReportCardProps {
   report: PumpDailyReport;
   onPress: () => void;
@@ -83,7 +95,10 @@ function ReportCard({ report, onPress, roleColor, colors }: ReportCardProps) {
             {report.product} · {fmtDate(report.date)} · {fmtL(report.liters)} {unitForProd(report.product)}
           </Text>
         </View>
-        <StatusBadge status={report.status} />
+        <View style={c.statusColumn}>
+          <StatusBadge status={report.status} />
+          <DeliveryBadge status={report.deliveryStatus} />
+        </View>
       </View>
       <View style={[c.cardFooter, { borderTopColor: colors.border }]}>
         <Text style={[c.cardMeta, { color: colors.textMuted }]}>Gross: {fmt(report.grossAmount)}</Text>
@@ -417,13 +432,20 @@ export default function ShiftReportScreen() {
         submittedBy: userName ?? '', submittedByName: userName ?? '',
       });
       if (!submitted) {
-        Alert.alert('Report not sent', 'The server did not confirm this report. Your entries are still on screen—check your connection and try again.');
+        Alert.alert('Report not saved', 'This report could not be stored on the device. Your entries are still on screen—please try again.');
         return;
       }
       setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditAmt(''); setNoteAtt('');
       setAppliesOn('');
       const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
-      Alert.alert('Shift Report Submitted', `${pump.name} · ${fmtL(liters)}${unitForProd(pump.prod)}\nGross: ${fmt(grossAmt)}\n${vLabel}\nSent to branch manager for review.`);
+      if (submitted === 'queued') {
+        Alert.alert(
+          'Shift Report Queued',
+          `${pump.name} · ${fmtL(liters)}${unitForProd(pump.prod)}\nGross: ${fmt(grossAmt)}\n${vLabel}\nSaved on this device and will retry automatically when the connection returns.`,
+        );
+      } else {
+        Alert.alert('Shift Report Confirmed', `${pump.name} · ${fmtL(liters)}${unitForProd(pump.prod)}\nGross: ${fmt(grossAmt)}\n${vLabel}\nConfirmed by the server and sent to the branch manager for review.`);
+      }
       setTab('history');
     });
   }
@@ -835,6 +857,7 @@ export default function ShiftReportScreen() {
           const active = tab === t.key;
           return (
             <TouchableOpacity key={t.key} onPress={() => setTab(t.key)}
+              testID={`shift-tab-${t.key}`}
               style={[c.tabBtn, { borderBottomColor: active ? roleColor : 'transparent' }]}>
               <Text style={[c.tabLabel, { color: active ? roleColor : colors.textMuted, fontWeight: active ? '700' : '400' }]}>
                 {t.label}
@@ -910,9 +933,12 @@ export default function ShiftReportScreen() {
                   )}
                 </View>
                 {submitted && sm ? (
-                  <View style={[c.badge, { backgroundColor: sm.bg }]}>
-                    <Ionicons name={sm.icon as any} size={10} color={sm.color} />
-                    <Text style={[c.badgeTxt, { color: sm.color }]}>{sm.label}</Text>
+                  <View style={c.statusColumn}>
+                    <View style={[c.badge, { backgroundColor: sm.bg }]}>
+                      <Ionicons name={sm.icon as any} size={10} color={sm.color} />
+                      <Text style={[c.badgeTxt, { color: sm.color }]}>{sm.label}</Text>
+                    </View>
+                    <DeliveryBadge status={r?.deliveryStatus} />
                   </View>
                 ) : (
                   <TouchableOpacity onPress={() => { setSelPump(p.id); setTab('submit'); }}
@@ -1074,6 +1100,7 @@ export default function ShiftReportScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={[c.inputLabel, { color: colors.textMuted }]}>Closing Meter (L) *</Text>
                         <TextInput
+                          testID="shift-closing-meter"
                           style={[c.textInput, { backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border, color: colors.text }]}
                           placeholder="Enter reading" placeholderTextColor={colors.textSubtle}
                           keyboardType="decimal-pad" value={closeMeter} onChangeText={setCloseMeter}
@@ -1107,6 +1134,7 @@ export default function ShiftReportScreen() {
                         <View style={[c.payInputWrap, { backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border }]}>
                           <Ionicons name={f.icon as any} size={15} color={f.color} />
                           <TextInput
+                            testID={`shift-payment-${f.label.split(' ')[0].toLowerCase()}`}
                             style={[c.payInput, { color: colors.text }]}
                             placeholder="0.00" placeholderTextColor={colors.textSubtle}
                             keyboardType="decimal-pad" value={f.val} onChangeText={f.set}
@@ -1148,6 +1176,7 @@ export default function ShiftReportScreen() {
                   {/* Notes */}
                   <Text style={[c.inputLabel, { color: colors.textMuted }]}>Notes (optional)</Text>
                   <TextInput
+                    testID="shift-note"
                     style={[c.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
                     placeholder="Any remarks for your manager…" placeholderTextColor={colors.textSubtle}
                     multiline numberOfLines={3} value={noteAtt} onChangeText={setNoteAtt}
@@ -1442,7 +1471,7 @@ export default function ShiftReportScreen() {
                 <Text style={[c.modalTitle, { color: colors.text }]}>{viewing.pumpName}</Text>
                 <Text style={[c.cardSub, { color: colors.textMuted }]}>{viewing.product} · {fmtDate(viewing.date)}</Text>
               </View>
-              {((isAtt && viewing.submittedBy === userName &&
+              {viewing.deliveryStatus !== 'queued' && ((isAtt && viewing.submittedBy === userName &&
                 (viewing.status === 'pending_manager' || viewing.status === 'returned_attendant')) ||
                 ((isAdmin || isMd || isCeo) && viewing.status !== 'approved')) && !isEditing && !isCorrectingDate && (
                 <TouchableOpacity onPress={startEdit} style={{ marginRight: 10 }}>
@@ -1454,7 +1483,7 @@ export default function ShiftReportScreen() {
                   <Ionicons name="calendar-outline" size={22} color={roleColor} />
                 </TouchableOpacity>
               )}
-              {((isAtt && viewing.submittedBy === userName &&
+              {viewing.deliveryStatus !== 'queued' && ((isAtt && viewing.submittedBy === userName &&
                 (viewing.status === 'pending_manager' || viewing.status === 'returned_attendant')) ||
                 ((isAdmin || isMd) && viewing.status !== 'approved') ||
                 (isAdmin && viewing.status === 'approved')) && !isEditing && !isCorrectingDate && (
@@ -1472,7 +1501,18 @@ export default function ShiftReportScreen() {
               </TouchableOpacity>
             </View>
 
-            <StatusBadge status={viewing.status} />
+            <View style={c.deliveryRow}>
+              <StatusBadge status={viewing.status} />
+              <DeliveryBadge status={viewing.deliveryStatus} />
+            </View>
+            {viewing.deliveryStatus === 'queued' && (
+              <View style={[c.lockedNotice, { backgroundColor: '#FBEADD', borderColor: '#BA751744' }]}>
+                <Ionicons name="cloud-upload-outline" size={14} color="#8A3B0F" />
+                <Text style={{ flex: 1, fontSize: 12, color: '#8A3B0F' }}>
+                  Queued on this device. Petrotrack will retry after login, reconnect, or when the app returns to the foreground.
+                </Text>
+              </View>
+            )}
 
             {viewing.status === 'approved' && (
               <View style={[c.lockedNotice, { backgroundColor: '#EAF3DE', borderColor: '#27500A44' }]}>
@@ -1802,6 +1842,8 @@ const c = StyleSheet.create({
   cardMeta:      { fontSize: 12 },
   badge:         { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   badgeTxt:      { fontSize: 10, fontWeight: '700' },
+  statusColumn:  { alignItems: 'flex-end', gap: 4 },
+  deliveryRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
   modalOverlay:  { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalSheet:    { maxHeight: '94%', borderTopLeftRadius: 22, borderTopRightRadius: 22 },
   modalTitle:    { fontSize: 16, fontWeight: '800' },

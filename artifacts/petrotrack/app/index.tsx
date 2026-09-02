@@ -227,6 +227,7 @@ export default function LoginScreen() {
             <Ionicons name="person-outline" size={16} color={colors.textMuted} />
           </View>
           <TextInput
+            testID="login-username"
             style={[styles.input, { color: colors.text }]}
             placeholder="Enter your username"
             placeholderTextColor={colors.textSubtle}
@@ -246,6 +247,7 @@ export default function LoginScreen() {
             <Ionicons name="lock-closed-outline" size={16} color={colors.textMuted} />
           </View>
           <TextInput
+            testID="login-password"
             ref={pwRef}
             style={[styles.input, { color: colors.text }]}
             placeholder="Enter your password"
@@ -265,6 +267,7 @@ export default function LoginScreen() {
 
         {/* ── Sign-in button ── */}
         <TouchableOpacity
+          testID="login-submit"
           onPress={handleLogin}
           disabled={loading}
           activeOpacity={0.85}

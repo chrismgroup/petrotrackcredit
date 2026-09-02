@@ -1,0 +1,66 @@
+diff --git a/dist/index.js b/dist/index.js
+index e7245695b84bd490479ab4ad742d01da638c1d9f..38ae95a774c3178a54894be56bf607708ecc301b 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -25,7 +25,6 @@ exports.DailyMediaView = DailyMediaView_1.default;
+ var async_storage_1 = __importDefault(require("@react-native-async-storage/async-storage"));
+ var iOSCallObjectBundleCache_1 = __importDefault(require("./iOSCallObjectBundleCache"));
+ require("react-native-url-polyfill/auto"); // Applies global URL polyfill
+-var react_native_background_timer_1 = __importDefault(require("react-native-background-timer"));
+ var base_64_1 = require("base-64");
+ var react_native_1 = require("react-native");
+ // Preventing RN issue getrandomvalues not supported
+@@ -103,21 +102,10 @@ function setupGlobals() {
+         iOSCallObjectBundleCache_1.default.initialize(async_storage_1.default);
+         global.iOSCallObjectBundleCache = iOSCallObjectBundleCache_1.default;
+     }
+-    // Let timers run while Android app is in the background.
+-    // See https://github.com/jitsi/jitsi-meet/blob/caabdadf19ae5def3f8173acec6c49111f50a04e/react/features/mobile/polyfills/browser.js#L409,
+-    // where this technique was borrowed from.
+-    // For now we don't need this for iOS since we're recommending that apps use
+-    // the "voip" background mode capability, which keeps the app running normally
+-    // during a call.
+-    if (react_native_1.Platform.OS === 'android') {
+-        global.clearTimeout = react_native_background_timer_1.default.clearTimeout.bind(react_native_background_timer_1.default);
+-        global.clearInterval = react_native_background_timer_1.default.clearInterval.bind(react_native_background_timer_1.default);
+-        global.setInterval = react_native_background_timer_1.default.setInterval.bind(react_native_background_timer_1.default);
+-        global.setTimeout = function (fn, ms) {
+-            if (ms === void 0) { ms = 0; }
+-            return react_native_background_timer_1.default.setTimeout(fn, ms);
+-        };
+-    }
++    // Keep the platform's standard timer implementation. Android call
++    // continuity is provided by Daily's foreground service; iOS uses its
++    // configured VoIP background mode. Do not replace global timers with an
++    // unmaintained native timer implementation.
+     global.DailyNativeUtils = {
+         //With React Native new architecture the Native modules are lazily initialized
+         //As a result ...DailyNativeUtils won't work as expected because the actual properties aren't there yet.
+diff --git a/package.json b/package.json
+index c0baf1c7fbc298f04cfc841c9b5ad83b805d05a2..1ac1457231d6b5179afc047fe4ac88acb8d998f4 100644
+--- a/package.json
++++ b/package.json
+@@ -31,7 +31,6 @@
+   },
+   "dependencies": {
+     "@daily-co/daily-js": "^0.91.0",
+-    "@types/react-native-background-timer": "^2.0.0",
+     "base-64": "^1.0.0",
+     "react-native-url-polyfill": "^1.1.2"
+   },
+@@ -40,7 +39,6 @@
+     "@daily-co/react-native-webrtc": "^124.0.6-daily.1",
+     "@react-native-async-storage/async-storage": "^1.24.0 || ^2.0.0 || ^3.0.0",
+     "react-native": ">=0.68.0",
+-    "react-native-background-timer": "^2.4.1",
+     "react-native-get-random-values": "^1.11.0"
+   },
+   "devDependencies": {
+@@ -49,7 +47,6 @@
+     "@types/base-64": "^1.0.0",
+     "@types/react": "18.3.21",
+     "react-native": "0.76.9",
+-    "react-native-background-timer": "^2.4.1",
+     "typescript": "^5.8.3"
+   }
+ }

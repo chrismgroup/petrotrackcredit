@@ -12,6 +12,7 @@ function getBase(): string {
 const BASE = getBase();
 const TOKEN_KEY = 'pt_auth_token';
 
+export const SHIFT_REPORT_OUTBOX_STORAGE_KEY = 'pt_shift_report_outbox_v1';
 async function getToken(): Promise<string | null> {
   try {
     return await AsyncStorage.getItem(TOKEN_KEY);
@@ -151,8 +152,11 @@ export const stateApi = {
   getAll: () => get<Record<string, unknown>>('/state'),
   get: <T>(key: string) => get<T>(`/state/${key}`),
   put: (key: string, data: unknown) => put(`/state/${key}`, data),
-  submitPumpReport: <T>(report: T) =>
-    post<{ ok: boolean; report: T }>('/pump-reports', { report }),
+  submitPumpReport: <T>(report: T, idempotencyKey?: string) =>
+    post<{ ok: boolean; report: T }>('/pump-reports', {
+      report,
+      idempotencyKey: idempotencyKey ?? String((report as { id?: unknown })?.id ?? ''),
+    }),
   resetOperational: () => post<{ ok: boolean; seedMeters?: Record<string, number> }>('/state/reset-operational', {}),
   deleteApprovedPumpReport: (id: number) => post<{ ok: boolean }>(`/state/pump-reports/${id}/delete`, {}),
 };
@@ -420,3 +424,66 @@ export const storageApi = {
     }
   },
 };
+
+function withOutboxLock<T>(operation: () => Promise<T>): Promise<T> {
+  const next = outboxOperation.then(operation, operation);
+  outboxOperation = next.then(() => undefined, () => undefined);
+  return next;
+}
+
+export function enqueueShiftReportOutbox<T>(
+  item: ShiftReportOutboxItem<T>,
+): Promise<ShiftReportOutboxItem<T>[]> {
+  return withOutboxLock(async () => {
+    const current = await readShiftReportOutbox<T>();
+    const next = [
+      ...current.filter(existing => existing.idempotencyKey !== item.idempotencyKey),
+      item,
+    ];
+    await AsyncStorage.setItem(SHIFT_REPORT_OUTBOX_STORAGE_KEY, JSON.stringify(next));
+    return next;
+  });
+}
+
+export interface ShiftReportOutboxItem<T = unknown> {
+  idempotencyKey: string;
+  report: T;
+  queuedAt: string;
+}
+
+export function removeShiftReportOutbox(
+  idempotencyKey: string,
+): Promise<boolean> {
+  return withOutboxLock(async () => {
+    const current = await readShiftReportOutbox();
+    const next = current.filter(item => item.idempotencyKey !== idempotencyKey);
+    if (next.length === current.length) return false;
+    await AsyncStorage.setItem(SHIFT_REPORT_OUTBOX_STORAGE_KEY, JSON.stringify(next));
+    return true;
+  });
+}
+
+async function readShiftReportOutbox<T>(): Promise<ShiftReportOutboxItem<T>[]> {
+  const raw = await AsyncStorage.getItem(SHIFT_REPORT_OUTBOX_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is ShiftReportOutboxItem<T> => (
+      !!item &&
+      typeof item === 'object' &&
+      typeof (item as ShiftReportOutboxItem<T>).idempotencyKey === 'string' &&
+      (item as ShiftReportOutboxItem<T>).idempotencyKey.length > 0 &&
+      typeof (item as ShiftReportOutboxItem<T>).queuedAt === 'string' &&
+      'report' in item
+    ));
+  } catch {
+    return [];
+  }
+}
+
+export function loadShiftReportOutbox<T>(): Promise<ShiftReportOutboxItem<T>[]> {
+  return withOutboxLock(() => readShiftReportOutbox<T>());
+}
+
+let outboxOperation = Promise.resolve();

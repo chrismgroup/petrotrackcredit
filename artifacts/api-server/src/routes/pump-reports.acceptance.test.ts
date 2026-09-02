@@ -46,6 +46,8 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     admin: `${marker}-admin`,
   };
   const reportIds = [`${marker}-approved`, `${marker}-returned`];
+  const deletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
+  const cleanupReportIds = [...reportIds, deletedReportId];
   const server = app.listen(0);
   await once(server, "listening");
   const { port } = server.address() as AddressInfo;
@@ -253,12 +255,58 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     const staleApprovedWrite = await putReports(accountant.token, [approved]);
     assert.equal(staleApprovedWrite.status, 200);
     assert.equal(findReport(staleApprovedWrite.body.reports, approvedId).status, "pending_accountant");
+
+    const deletedApproved = report(deletedReportId, usernames.attendantA, {
+      status: "approved",
+      accAt: "2026-09-02T15:00:00.000Z",
+    });
+    const seedDeletedReport = await putReports(admin.token, [deletedApproved]);
+    assert.equal(seedDeletedReport.status, 200);
+    assert.equal(findReport(seedDeletedReport.body.reports, deletedReportId).status, "approved");
+
+    const deleteResponse = await request<{ ok: boolean }>(
+      `/state/pump-reports/${deletedReportId}/delete`,
+      { method: "POST", body: JSON.stringify({}) },
+      admin.token,
+    );
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(deleteResponse.body.ok, true);
+
+    // An Admin is allowed to write reports, so this proves the deletion
+    // tombstone—not only transition authorization—prevents resurrection.
+    const staleDeletedWrite = await putReports(admin.token, [deletedApproved]);
+    assert.equal(staleDeletedWrite.status, 200);
+    assert.equal(
+      staleDeletedWrite.body.reports.some(candidate => candidate.id === deletedReportId),
+      false,
+    );
+
+    const canonicalState = await request<Record<string, unknown>>("/state", {}, admin.token);
+    assert.equal(canonicalState.status, 200);
+    const canonicalReports = canonicalState.body.pumpDailyReports as PumpReport[];
+    assert.equal(canonicalReports.some(candidate => candidate.id === deletedReportId), false);
+
+    const [appStateReports, durableReport] = await Promise.all([
+      pool.query(
+        "SELECT data FROM app_state WHERE key = 'pumpDailyReports'",
+      ),
+      pool.query(
+        "SELECT id FROM pump_reports WHERE id = $1",
+        [deletedReportId],
+      ),
+    ]);
+    const persistedReports = appStateReports.rows[0]?.data as PumpReport[] | undefined;
+    assert.equal(
+      persistedReports?.some(candidate => candidate.id === deletedReportId),
+      false,
+    );
+    assert.equal(durableReport.rowCount, 0);
   } finally {
     await pool.query("BEGIN");
     try {
       await pool.query(
         "DELETE FROM pump_reports WHERE id = ANY($1::text[])",
-        [reportIds],
+        [cleanupReportIds],
       );
       await pool.query(`
         UPDATE app_state
@@ -268,7 +316,16 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
           WHERE NOT (item->>'id' = ANY($1::text[]))
         ), '[]'::jsonb)
         WHERE key = 'pumpDailyReports'
-      `, [reportIds]);
+      `, [cleanupReportIds]);
+      await pool.query(`
+        UPDATE app_state
+        SET data = COALESCE((
+          SELECT jsonb_agg(item)
+          FROM jsonb_array_elements(data) item
+          WHERE NOT (item->>'id' = ANY($1::text[]))
+        ), '[]'::jsonb)
+        WHERE key = 'pumpReportDeletionTombstones'
+      `, [cleanupReportIds]);
       await pool.query("DELETE FROM staff_users WHERE created_by = $1", [marker]);
       await pool.query("COMMIT");
     } catch (error) {

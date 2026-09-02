@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { isDeepStrictEqual } from "node:util";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db, appStateTable, pumpReportsTable, staffUsersTable } from "@workspace/db";
 import { broadcastRealtime } from "../lib/realtime";
 import { normalizeMaintenanceRecord } from "./maintenance-workflow-rules";
@@ -75,6 +75,7 @@ const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   pending_accountant: 4,
   approved: 5,
 };
+const PUMP_REPORT_DELETIONS_KEY = "pumpReportDeletionTombstones";
 
 const DIP_STATUS_RANK: Record<string, number> = {
   pending: 1,
@@ -87,6 +88,18 @@ function pumpReportActivityMs(report: JsonRecord): number {
     .map(key => Date.parse(String(report[key] ?? "")))
     .filter(value => Number.isFinite(value));
   return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+}
+
+function pumpReportDeletionIds(data: unknown): Set<string> {
+  if (!Array.isArray(data)) return new Set();
+  return new Set(data.flatMap(value => {
+    if (typeof value === "string" && value) return [value];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const id = String((value as JsonRecord).id ?? "");
+      return id ? [id] : [];
+    }
+    return [];
+  }));
 }
 
 /**
@@ -541,8 +554,12 @@ router.get("/state", async (req, res): Promise<void> => {
     db.select().from(pumpReportsTable),
   ]);
   const result: Record<string, unknown> = {};
+  const deletedPumpReportIds = pumpReportDeletionIds(
+    rows.find(row => row.key === PUMP_REPORT_DELETIONS_KEY)?.data,
+  );
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
   for (const row of rows) {
+    if (row.key === PUMP_REPORT_DELETIONS_KEY) continue;
     result[row.key] = row.key === "maintenance" && Array.isArray(row.data)
       ? row.data.map(value => (
           value && typeof value === "object" && !Array.isArray(value)
@@ -553,12 +570,14 @@ router.get("/state", async (req, res): Promise<void> => {
       ? messagesForIdentity(row.data, chatIdentity)
       : visibleMyFolderState(row.key, row.data, req.auth?.role);
   }
-  if (durableReports.length > 0) {
+  if (durableReports.length > 0 || Array.isArray(result.pumpDailyReports)) {
     result.pumpDailyReports = mergePumpDailyReports(
       result.pumpDailyReports,
-      durableReports.map(row => row.data),
+      durableReports
+        .filter(row => !deletedPumpReportIds.has(row.id))
+        .map(row => row.data),
       req.auth?.role,
-    );
+    ).filter(report => !deletedPumpReportIds.has(String(report.id ?? "")));
   }
   res.json(result);
 });
@@ -566,6 +585,7 @@ router.get("/state", async (req, res): Promise<void> => {
 router.post("/pump-reports", async (req, res): Promise<void> => {
   const report = req.body?.report as JsonRecord | undefined;
   const id = String(report?.id ?? "");
+  const idempotencyKey = String(req.body?.idempotencyKey ?? report?.id ?? "").trim();
   const numericFields = [
     "openingMeter", "closingMeter", "liters", "unitPrice", "grossAmount",
     "posAmount", "cashAmount", "transferAmount", "creditAmount", "totalCollected", "variance",
@@ -573,6 +593,8 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
   if (
     !report ||
     !id ||
+    !idempotencyKey ||
+    idempotencyKey !== id ||
     report.status !== "pending_manager" ||
     typeof report.date !== "string" ||
     !/^\d{4}-\d{2}-\d{2}$/.test(report.date) ||
@@ -594,12 +616,14 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     res.status(403).json({ error: "This account cannot submit that report" });
     return;
   }
+  const reportForPersistence = { ...report };
+  delete reportForPersistence.deliveryStatus;
   const saved = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
     const [existingRow] = await tx.select().from(appStateTable)
       .where(eq(appStateTable.key, "pumpDailyReports"));
-    const merged = mergePumpDailyReports(existingRow?.data, [report], req.auth?.role);
-    const canonical = merged.find(candidate => String(candidate.id) === id) ?? report;
+    const merged = mergePumpDailyReports(existingRow?.data, [reportForPersistence], req.auth?.role);
+    const canonical = merged.find(candidate => String(candidate.id) === id) ?? reportForPersistence;
     await tx.insert(pumpReportsTable).values({
       id,
       status: String(canonical.status ?? "pending_manager"),
@@ -622,7 +646,7 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     return canonical;
   });
   broadcastRealtime({ type: "pump-report.changed", reportId: id, branchId: saved.branchId ?? null });
-  res.status(201).json({ ok: true, report: saved });
+  res.status(201).json({ ok: true, idempotencyKey, report: saved });
 });
 
 /**
@@ -766,7 +790,7 @@ router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> =>
     "pumpDailyReports", "sales", "tanks", "lpgTanks", "pumps",
     "pumpInitialMeters", "pumpLockedMeters", "audit",
   ];
-  const rows = await db.select().from(appStateTable).where(sql`${appStateTable.key} IN (${keys})`);
+  const rows = await db.select().from(appStateTable).where(inArray(appStateTable.key, keys));
   const state = Object.fromEntries(rows.map(row => [row.key, row.data]));
   const reports = Array.isArray(state.pumpDailyReports) ? state.pumpDailyReports as JsonRecord[] : [];
   const report = reports.find(candidate => Number(candidate.id) === reportId);
@@ -826,7 +850,14 @@ router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> =>
         set: { data, updatedAt: new Date() },
       });
     };
+    const [deletionsRow] = await tx.select().from(appStateTable)
+      .where(eq(appStateTable.key, PUMP_REPORT_DELETIONS_KEY));
+    const deletionTombstones = Array.isArray(deletionsRow?.data) ? deletionsRow.data : [];
     await writeState("pumpDailyReports", reports.filter(candidate => Number(candidate.id) !== reportId));
+    await writeState(PUMP_REPORT_DELETIONS_KEY, [
+      ...deletionTombstones,
+      { id: String(reportId), deletedAt: new Date().toISOString() },
+    ]);
     await writeState("sales", sales.filter(entry => Number(entry.shiftReportId) !== reportId));
     await writeState("tanks", nextTanks);
     await writeState("lpgTanks", nextLpgTanks);
@@ -1040,6 +1071,9 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
       const [existingRow] = await tx.select().from(appStateTable)
         .where(eq(appStateTable.key, "pumpDailyReports"));
+      const [deletionsRow] = await tx.select().from(appStateTable)
+        .where(eq(appStateTable.key, PUMP_REPORT_DELETIONS_KEY));
+      const deletedPumpReportIds = pumpReportDeletionIds(deletionsRow?.data);
       const existingReports = Array.isArray(existingRow?.data)
         ? existingRow.data as JsonRecord[]
         : [];
@@ -1050,7 +1084,8 @@ router.put("/state/:key", async (req, res): Promise<void> => {
         return !canMutatePumpReport(existingById.get(String(candidate.id ?? "")), candidate, req.auth);
       });
       if (unauthorized) return { error: "Forbidden" as const };
-      const next = mergePumpDailyReports(existingRow?.data, data, req.auth?.role);
+      const next = mergePumpDailyReports(existingRow?.data, data, req.auth?.role)
+        .filter(report => !deletedPumpReportIds.has(String(report.id ?? "")));
       for (const report of next) {
         const id = String(report.id ?? "");
         if (!id) continue;
