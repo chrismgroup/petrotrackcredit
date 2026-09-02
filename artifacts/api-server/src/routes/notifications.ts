@@ -3,7 +3,7 @@ import { Router, type IRouter } from "express";
 import { db, appStateTable, notificationsTable, notificationTokensTable, staffUsersTable } from "@workspace/db";
 
 const router: IRouter = Router();
-const NOTIFICATION_TYPES = ["report_attention", "report_update", "document_expiry"] as const;
+const NOTIFICATION_TYPES = ["report_attention", "report_update", "document_expiry", "operational"] as const;
 const FOLDER_NOTIFICATION_ROLES = ["admin", "acc", "mktg", "csm", "md", "ceo"] as const;
 
 async function resolveRecipients(target: string, branchId?: string | null): Promise<string[]> {

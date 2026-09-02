@@ -4,7 +4,7 @@ import type { ReactTestRenderer } from 'react-test-renderer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearToken, notificationsApi, stateApi } from '@/lib/api';
-import { AppProvider, messageActivityMs, useApp } from './AppContext';
+import { AppProvider, chatKey, messageActivityMs, useApp } from './AppContext';
 
 type AppState = ReturnType<typeof useApp>;
 
@@ -32,8 +32,8 @@ const accounts = [
   },
 ];
 
-async function bootAsAdmin() {
-  jest.mocked(stateApi.getAll).mockResolvedValue({ userAccounts: accounts });
+async function bootAsAdmin(state: Record<string, unknown> = {}) {
+  jest.mocked(stateApi.getAll).mockResolvedValue({ userAccounts: accounts, ...state });
   await act(async () => {
     renderer = create(
       <AppProvider>
@@ -77,41 +77,51 @@ describe('persistent chats stay separate from reports notifications', () => {
     expect(notificationsApi.send).not.toHaveBeenCalled();
   });
 
-  it('keeps role-based chat alerts in the matching staff conversation and supports read/archive state', async () => {
+  it('routes a workflow alert to the notification inbox instead of Chats', async () => {
+    await AsyncStorage.removeItem('messages');
     await bootAsAdmin();
 
     await act(async () => {
-      app().addSystemNotification('mgr', {
-        from: 'mgr',
-        to: 'admin',
-        type: 'alert',
-        body: 'A manager alert',
-        alrt: { title: 'Operational alert', pri: 'normal', detail: 'Review required.' },
+      app().addBudget({
+        month: 9,
+        year: 2026,
+        label: 'September operations',
+        by: 'admin',
+        byName: 'Operations Admin',
+        items: [{ cat: 'Fuel', amt: 100000 }],
+        total: 100000,
+        status: 'submitted',
       });
     });
 
-    expect(app().getConversation('Station Manager')).toEqual([
-      expect.objectContaining({ body: 'A manager alert', read: false }),
-    ]);
+    expect(notificationsApi.send).toHaveBeenCalledWith(expect.objectContaining({
+      target: 'acc',
+      type: 'operational',
+      title: 'Budget Awaiting Accountant Review',
+      data: expect.objectContaining({
+        route: '/(app)/budget',
+        budgetId: expect.any(Number),
+      }),
+    }));
+    expect(app().getConversation('Station Manager')).toEqual([]);
+  });
 
-    await act(async () => {
-      app().markRead('Station Manager');
-      app().archiveConversation('Station Manager');
-    });
+  it('keeps legacy role-based alerts out of Chats and unread message counts', async () => {
+    await AsyncStorage.removeItem('messages');
+    const legacyAlert = {
+      id: 901,
+      from: 'mgr',
+      to: 'admin',
+      type: 'alert' as const,
+      body: 'A manager alert',
+      alrt: { title: 'Operational alert', pri: 'normal', detail: 'Review required.' },
+      ts: '12:00',
+      read: false,
+    };
+    await bootAsAdmin({ messages: { [chatKey('admin', 'mgr')]: [legacyAlert] } });
 
-    const [message] = app().getConversation('Station Manager');
-    expect(message.read).toBe(true);
-    expect(message.archivedBy).toContain('Operations Admin');
-    expect(message.archiveState?.['Operations Admin']?.archived).toBe(true);
-
-    await act(async () => {
-      app().unarchiveConversation('Station Manager');
-    });
-
-    expect(app().getConversation('Station Manager')[0].archiveState?.['Operations Admin']).toMatchObject({
-      archived: false,
-      updatedAt: expect.any(String),
-    });
+    expect(app().getConversation('Station Manager')).toEqual([]);
+    expect(app().unreadCount()).toBe(0);
   });
 
   it('orders messages by their full activity timestamp, falling back to the message ID for legacy records', () => {

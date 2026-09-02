@@ -235,7 +235,7 @@ export interface AppNotification {
   createdAt: string;
 }
 
-export type NotificationType = 'report_attention' | 'report_update' | 'document_expiry';
+export type NotificationType = 'report_attention' | 'report_update' | 'document_expiry' | 'operational';
 
 export const notificationsApi = {
   list: () => get<AppNotification[]>('/notifications'),
@@ -254,6 +254,26 @@ export const notificationsApi = {
   markRead: (id: number) => patchR<{ ok: boolean }>(`/notifications/${id}/read`, {}),
   markAllRead: () => post<{ ok: boolean }>('/notifications/read-all', {}),
 };
+
+export interface OperationalNotificationInput {
+  target: string;
+  branchId?: string;
+  title: string;
+  body: string;
+  route: string;
+  data?: Record<string, unknown>;
+}
+
+export function sendOperationalNotification(input: OperationalNotificationInput) {
+  return notificationsApi.send({
+    target: input.target,
+    ...(input.branchId ? { branchId: input.branchId } : {}),
+    type: 'operational',
+    title: input.title,
+    body: input.body,
+    data: { route: input.route, ...(input.data ?? {}) },
+  });
+}
 
 export type DailyCallKind = 'audio' | 'video';
 export interface DailyCallSession {
