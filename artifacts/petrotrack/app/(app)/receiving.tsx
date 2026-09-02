@@ -201,7 +201,7 @@ export default function ReceivingScreen() {
   const [mdSellingPrice, setMdSellingPrice] = useState('');
 
   /* ── branch + role scoping ─────────────────────────────────────────────
-     - admin / ceo / md / mktg / acc / csm : see all deliveries and branch inventory
+     - admin / ceo / md / mktg / acc / csm : see all delivery records
      - mgr                      : only their own submissions, branch-scoped
   ── */
   const isGlobalViewer = role === 'admin' || role === 'ceo' || role === 'md' || role === 'mktg' || role === 'acc' || role === 'csm';
@@ -475,7 +475,7 @@ export default function ReceivingScreen() {
   const approvedGroups = [...approvedByBranch.entries()].map(([key, group]) => ({
     key: `approved-${key}`,
     title: `Approved · ${group.name}`,
-    subtitle: `${group.items.length} locked delivery record${group.items.length === 1 ? '' : 's'} counted in this branch inventory`,
+    subtitle: `${group.items.length} locked delivery record${group.items.length === 1 ? '' : 's'} recorded for this branch`,
     items: group.items,
   }));
   const deliveryGroups = [...submittedGroups, ...approvedGroups];
@@ -688,7 +688,7 @@ export default function ReceivingScreen() {
                   <Text style={[styles.trailText, { color: '#27500A' }]}>
                     {'MD Approved by '}{d.approvedBy}
                     {d.approvedAt ? ' · ' + fmtDateTime(d.approvedAt) : ''}
-                    {' · Counts toward inventory'}
+                    {' · Included in stock records'}
                   </Text>
                 </View>
               ) : null}
@@ -833,7 +833,7 @@ export default function ReceivingScreen() {
               {locked ? (
                 <View style={[styles.lockRow, { borderColor: '#27500A' }]}>
                   <Ionicons name="lock-closed" size={12} color="#27500A" />
-                  <Text style={[styles.lockText, { color: '#27500A' }]}>Permanently locked — counts toward inventory</Text>
+                  <Text style={[styles.lockText, { color: '#27500A' }]}>Permanently locked — included in stock records</Text>
                 </View>
               ) : null}
             </View>
