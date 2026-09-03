@@ -326,6 +326,35 @@ export type TaskPriority = 'High' | 'Medium' | 'Low';
 export type TaskCadence = 'daily' | 'weekly' | 'monthly' | 'quarterly';
 export interface Task { id: number; title: string; desc: string; assignedBy: Role; assignedByName: string; assignedTo: Role; assignedToName: string; status: TaskStatus; priority: TaskPriority; cadence: TaskCadence; target?: string; targetUnit?: string; dueDate: string; createdAt: string; }
 export interface KPI { id: number; title: string; target: string; unit: string; period: string; assignedTo: Role; assignedToName: string; createdAt: string; }
+export type ActionItemStatus = 'open' | 'on-going' | 'closed';
+export type ActionItemUrgency = 'overdue' | 'due-soon' | 'on-track';
+export interface ActionItem {
+  id: number;
+  title: string;
+  desc: string;
+  actionPartyId?: number;
+  actionPartyRole: Role;
+  actionPartyName: string;
+  status: ActionItemStatus;
+  targetDate: string;
+  branchId: string;
+  branchName: string;
+  createdBy: string;
+  createdByRole: Role;
+  createdAt: string;
+  closedBy?: string;
+  closedAt?: string;
+  archivedAt?: string;
+}
+export function getActionItemUrgency(targetDate: string, now = new Date()): ActionItemUrgency {
+  const target = new Date(`${targetDate}T00:00:00`);
+  if (!Number.isFinite(target.getTime())) return 'overdue';
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const daysUntilTarget = Math.ceil((target.getTime() - today) / 86_400_000);
+  if (daysUntilTarget < 0) return 'overdue';
+  if (daysUntilTarget <= 14) return 'due-soon';
+  return 'on-track';
+}
 export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video' | 'document'; name: string; dt: string; by: string; uri?: string; mimeType?: string; size?: number; }
 export type PumpReportStatus = 'pending_manager' | 'pending_accountant' | 'returned' | 'returned_attendant' | 'approved';
 export interface PumpDailyReport {
@@ -1212,6 +1241,7 @@ const INIT_EXPENSES: Expense[] = [];
 const INIT_BUDGETS: Budget[] = [];
 const INIT_TASKS: Task[] = [];
 const INIT_KPIS: KPI[] = [];
+const INIT_ACTION_ITEMS: ActionItem[] = [];
 const INIT_AUDIT: AuditEntry[] = [];
 const INIT_INVENTORY_LOG: InventoryLogEntry[] = [];
 const INIT_STARTUP_STOCK: StartupStock[] = [];
@@ -1414,6 +1444,18 @@ interface AppContextType {
   deleteTask: (id: number) => void;
   addKpi: (k: Omit<KPI, 'id' | 'createdAt'>) => void;
   deleteKpi: (id: number) => void;
+  actionItems: ActionItem[];
+  addActionItem: (item: {
+    title: string;
+    desc: string;
+    actionPartyId?: number;
+    actionPartyRole: Role;
+    actionPartyName: string;
+    targetDate: string;
+    branchId: string;
+    branchName: string;
+  }) => ActionItem | null;
+  updateActionItemStatus: (id: number, status: ActionItemStatus) => boolean;
   hrEmployees: HREmployee[];
   hrRecommendations: HRRecommendation[];
   hrHandbooks: HREmployeeDoc[];
@@ -1499,6 +1541,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [deliveryEvidences, setDeliveryEvidences] = useState<DeliveryEvidence[]>(INIT_DELIVERY_EVIDENCE);
   const [tasks, setTasks] = useState<Task[]>(INIT_TASKS);
   const [kpis, setKpis] = useState<KPI[]>(INIT_KPIS);
+  const [actionItems, setActionItems] = useState<ActionItem[]>(INIT_ACTION_ITEMS);
   const [hrEmployees, setHrEmployees] = useState<HREmployee[]>(INIT_HR_EMPLOYEES);
   const [hrRecommendations, setHrRecommendations] = useState<HRRecommendation[]>(INIT_HR_RECOMMENDATIONS);
   const [hrHandbooks, setHrHandbooks] = useState<HREmployeeDoc[]>(INIT_HR_HANDBOOKS);
@@ -1558,7 +1601,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'auth', 'companyInfo', 'tanks', 'lpgTanks', 'pumps', 'staff', 'branches',
       'departments', 'userAccounts', 'prices', 'priceHistory', 'mgrPerms',
       'roleAccess', 'userAccess', 'reportAccessPolicyVersion', 'expenses', 'budgets', 'sales', 'dips',
-      'deliveries', 'maintenance', 'audit', 'handoverNotes', 'messages', 'tasks', 'kpis',
+      'deliveries', 'maintenance', 'audit', 'handoverNotes', 'messages', 'tasks', 'kpis', 'actionItems',
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
@@ -1617,6 +1660,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.messages)          setMessages(s.messages);
       if (s.tasks)             setTasks(s.tasks);
       if (s.kpis)              setKpis(s.kpis);
+       if (s.actionItems)       setActionItems(s.actionItems);
       if (s.companyFiles)      setCompanyFiles(s.companyFiles);
       if (s.myFolders)         setMyFolders(s.myFolders);
       if (s.myFolderFiles)     setMyFolderFiles(s.myFolderFiles);
@@ -1800,8 +1844,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
            stateApi.put('inventoryLog', []).finally(() => pendingWritesRef.current.delete('inventoryLog'));
          }
        }
-      if (!p.has('tasks'))             setTasks(safeArray<Task>(s.tasks));
-      if (!p.has('kpis'))              setKpis(safeArray<KPI>(s.kpis));
+       if (!p.has('tasks'))             setTasks(safeArray<Task>(s.tasks));
+       if (!p.has('kpis'))              setKpis(safeArray<KPI>(s.kpis));
+       if (!p.has('actionItems'))       setActionItems(safeArray<ActionItem>(s.actionItems));
       if (!p.has('companyFiles'))      setCompanyFiles(safeArray<CompanyFile>(s.companyFiles));
       if (!p.has('myFolders'))         setMyFolders(safeArray<MyFolder>(s.myFolders));
       if (!p.has('myFolderFiles'))     setMyFolderFiles(safeArray<MyFolderFile>(s.myFolderFiles));
@@ -2237,6 +2282,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('marketCompetitors', marketCompetitors); }, [marketCompetitors, loaded]);
   useEffect(() => { if (loaded) syncSlice('tasks',             tasks); },             [tasks, loaded]);
   useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
+  useEffect(() => { if (loaded) syncSlice('actionItems',       actionItems); },       [actionItems, loaded]);
   useEffect(() => { if (loaded) syncSlice('inventoryLog',     inventoryLog); },    [inventoryLog, loaded]);
    useEffect(() => { if (loaded) syncSlice('stockLogs',         stockLogs); },        [stockLogs, loaded]);
   useEffect(() => { if (loaded) syncSlice('companyFiles',      companyFiles); },      [companyFiles, loaded]);
@@ -3423,6 +3469,63 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Task deleted', user: userName, detail: `Task #${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const addActionItem = useCallback((item: {
+    title: string;
+    desc: string;
+    actionPartyId?: number;
+    actionPartyRole: Role;
+    actionPartyName: string;
+    targetDate: string;
+    branchId: string;
+    branchName: string;
+  }): ActionItem | null => {
+    if (!role || !userName || !item.title.trim() || !item.targetDate || !item.branchId) return null;
+    const actionItem: ActionItem = {
+      ...item,
+      title: item.title.trim(),
+      desc: item.desc.trim(),
+      id: genId(),
+      status: 'open',
+      createdBy: userName,
+      createdByRole: role,
+      createdAt: nowTs(),
+    };
+    setActionItems(items => [...items, actionItem]);
+    setAudit(a => [{
+      id: genId(),
+      action: 'Action item added',
+      user: userName,
+      detail: `"${actionItem.title}" → ${actionItem.actionPartyName} · ${actionItem.branchName}`,
+      ts: nowTs(),
+    }, ...a]);
+    return actionItem;
+  }, [role, userName]);
+
+  const updateActionItemStatus = useCallback((id: number, status: ActionItemStatus): boolean => {
+    const item = actionItems.find(candidate => candidate.id === id);
+    if (!item || item.status === 'closed' || !role) return false;
+    const isAssignedParty = item.actionPartyId !== undefined
+      ? item.actionPartyId === staffId
+      : item.actionPartyRole === role;
+    if (role !== 'ceo' && !isAssignedParty) return false;
+    const closed = status === 'closed';
+    setActionItems(items => items.map(candidate => candidate.id === id
+      ? {
+          ...candidate,
+          status,
+          ...(closed ? { closedBy: userName, closedAt: nowTs(), archivedAt: nowTs() } : {}),
+        }
+      : candidate));
+    setAudit(a => [{
+      id: genId(),
+      action: closed ? 'Action item closed' : 'Action item status updated',
+      user: userName,
+      detail: `"${item.title}" → ${status}`,
+      ts: nowTs(),
+    }, ...a]);
+    return true;
+  }, [actionItems, role, staffId, userName]);
+
   const addKpi = useCallback((k: Omit<KPI, 'id' | 'createdAt'>) => {
     setKpis(ks => [...ks, { ...k, id: genId(), createdAt: nowTs() }]);
     setAudit(a => [{ id: genId(), action: 'KPI set', user: userName, detail: `"${k.title}" → ${k.assignedToName}`, ts: nowTs() }, ...a]);
@@ -4349,7 +4452,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deleteTank, deleteLpgTank, deletePump,
        addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
       userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, updateEnrollmentData, changeOwnPassword, enrollStaff, mdApproveEnrollment, mdRejectEnrollment, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, rejectEnrollmentWithReason, resubmitEnrollment, deleteUserAccount, validateCredentials,
-      tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
+       tasks, kpis, addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
+       actionItems, addActionItem, updateActionItemStatus,
       hrEmployees, hrRecommendations, hrHandbooks,
       addHREmployee, updateHRDocStatus, removeHREmployee,
       uploadHRDocFile, addHRUpload, approveHRUpload,
