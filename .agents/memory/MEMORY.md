@@ -35,3 +35,4 @@
 - [Durable report delivery](durable-report-delivery.md) — database acknowledgements are authoritative; sockets only invalidate caches and must retain polling catch-up
 - [JSONB state comparisons](jsonb-state-comparisons.md) — compare synced records structurally because PostgreSQL JSONB can reorder object keys
 - [Daily timer compatibility](daily-timer-compatibility.md) — Daily RN 0.86 still imports the legacy timer; a reproducible patch keeps standard timers and native call services
+- [Action Items workflow](action-items.md) — separate Tasks collection with person assignment, terminal close/lock, urgency colors, and branch archives

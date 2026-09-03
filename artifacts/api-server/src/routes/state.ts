@@ -17,6 +17,7 @@ const ALLOWED_KEYS = new Set([
   "departments", "userAccounts", "prices", "priceHistory", "mgrPerms",
   "roleAccess", "userAccess", "expenses", "budgets", "sales", "dips",
   "deliveries", "maintenance", "audit", "messages", "tasks", "kpis",
+  "actionItems",
   "companyFiles", "deliveryEvidences", "shiftReports", "hrEmployees",
   "hrHandbooks", "hrRecommendations", "complianceDocs", "priceProposals",
   "legalMatters", "corpProjects", "meetingMinutes",
@@ -60,11 +61,32 @@ const OPERATIONAL_KEYS = [
   "inventoryLog", "pumpDailyReports", "financialEntry", "messages",
   "stockLogs",
   "tasks", "kpis", "companyFiles", "deliveryEvidences", "hrEmployees",
+  "actionItems",
   "hrHandbooks", "hrRecommendations", "priceProposals", "legalMatters",
   "corpProjects", "meetingMinutes", "broadcasts", "callLog", "priceHistory",
 ];
 
 type JsonRecord = Record<string, unknown>;
+
+function mergeActionItems(existing: unknown, incoming: unknown): JsonRecord[] {
+  const current = Array.isArray(existing) ? existing.filter(value =>
+    value && typeof value === "object" && !Array.isArray(value),
+  ) as JsonRecord[] : [];
+  const next = Array.isArray(incoming) ? incoming.filter(value =>
+    value && typeof value === "object" && !Array.isArray(value),
+  ) as JsonRecord[] : [];
+  const merged = new Map(current.map(item => [String(item.id ?? ""), item]));
+  for (const candidate of next) {
+    const id = String(candidate.id ?? "");
+    if (!id) continue;
+    const previous = merged.get(id);
+    // A closed item is an immutable archive record. Stale clients may send
+    // their older open copy, but it must never reopen the archived item.
+    if (previous?.status === "closed") continue;
+    merged.set(id, candidate);
+  }
+  return Array.from(merged.values());
+}
 
 export { validatePriceHistoryPayload, validatePriceProposalsPayload } from "./price-state-validation";
 
@@ -1127,6 +1149,27 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       .from(appStateTable)
       .where(eq(appStateTable.key, "dips"));
     data = mergeDips(existingRow?.data, data);
+  }
+
+  // Action items are shared workflow records. Merge by stable ID so a stale
+  // client cannot erase another user's item, and keep closed archive records
+  // immutable across later full-blob synchronisations.
+  if (key === "actionItems" && Array.isArray(data)) {
+    await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:action-items'))`);
+      const [existingRow] = await tx
+        .select()
+        .from(appStateTable)
+        .where(eq(appStateTable.key, "actionItems"));
+      const merged = mergeActionItems(existingRow?.data, data);
+      await tx.insert(appStateTable).values({ key, data: merged }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: merged, updatedAt: new Date() },
+      });
+      data = merged;
+    });
+    res.json({ ok: true });
+    return;
   }
 
   if (key === "messages") {
