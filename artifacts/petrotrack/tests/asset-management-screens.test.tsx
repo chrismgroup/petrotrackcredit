@@ -8,6 +8,15 @@ import { useApp } from '@/context/AppContext';
 import AssetManagementScreen from '../app/(app)/asset-management';
 import { FinancialStatusCard } from '@/components/FinancialStatusCard';
 import ReportsScreen from '../app/(app)/reports';
+import ReportViewScreen from '../app/(app)/reports/view';
+import { Header } from '@/components/Header';
+
+const mockPush = jest.fn();
+const mockBack = jest.fn();
+const mockReplace = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
+let mockRouteParams: Record<string, string> = { type: 'pnl' };
+let mockPathname = '/reports';
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -41,13 +50,31 @@ jest.mock('expo-file-system/legacy', () => ({}));
 jest.mock('expo-print', () => ({}));
 jest.mock('expo-sharing', () => ({}));
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: jest.fn(() => ({ type: 'pnl' })),
-  useRouter: jest.fn(() => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn(() => true) })),
+  useLocalSearchParams: jest.fn(() => mockRouteParams),
+  usePathname: jest.fn(() => mockPathname),
+  useRouter: jest.fn(() => ({
+    push: mockPush,
+    back: mockBack,
+    replace: mockReplace,
+    canGoBack: mockCanGoBack,
+  })),
 }));
 
-jest.mock('@/components/AppliedDateField', () => ({
-  AppliedDateField: () => null,
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
+
+jest.mock('@/components/AppliedDateField', () => {
+  const React = require('react');
+  return {
+    AppliedDateField: ({ value, onChange }: any) =>
+      React.createElement(
+        'TouchableOpacity',
+        { testID: 'report-business-date', onPress: () => onChange('2026-09-15') },
+        React.createElement('Text', null, value || 'Select the date this record applies to'),
+      ),
+  };
+});
 
 jest.mock('@/components/KeyboardAwareScrollViewCompat', () => {
   const React = require('react');
@@ -56,6 +83,10 @@ jest.mock('@/components/KeyboardAwareScrollViewCompat', () => {
       React.createElement('KeyboardAwareScrollViewCompat', props, children),
   };
 });
+
+jest.mock('@/components/FormSheet', () => ({
+  ModalSheet: () => null,
+}));
 
 jest.mock('@/components/ScreenLayout', () => {
   const React = require('react');
@@ -93,6 +124,24 @@ jest.mock('@/context/AppContext', () => ({
     csm: '#7b3fa8',
     mgr: '#1a6e3c',
     md: '#4527a0',
+  },
+  ROLE_LABELS: {
+    admin: 'Admin',
+    acc: 'Accountant',
+    md: 'Managing Director',
+  },
+  UINFO: {
+    admin: { initials: 'AD', name: 'Admin' },
+    acc: { initials: 'AC', name: 'Accountant' },
+    md: { initials: 'MD', name: 'Managing Director' },
+  },
+  SCREEN_ROUTES: {
+    home: '/(app)/home',
+    jobs: '/(app)/jobs',
+    messages: '/(app)/messages',
+    corp: '/(app)/corporate',
+    profile: '/(app)/profile',
+    notifications: '/(app)/notifications',
   },
   businessDateKey: (value?: string) => String(value ?? '').slice(0, 10),
   calculateAccountsReceivable: () => 0,
@@ -148,6 +197,9 @@ function baseAppState(overrides: Record<string, unknown> = {}) {
     role: 'acc',
     userName: 'Test Accountant',
     branchId: null,
+    notifications: [],
+    logout: jest.fn(),
+    changeOwnPassword: jest.fn(),
     branches: [branchA, branchB],
     companyAssets: [asset()],
     addCompanyAsset: jest.fn(() => true),
@@ -223,6 +275,8 @@ function mount(element: React.ReactElement): ReactTestRenderer {
 
 afterEach(() => {
   jest.clearAllMocks();
+  mockRouteParams = { type: 'pnl' };
+  mockPathname = '/reports';
 });
 
 describe('asset register screen', () => {
@@ -446,5 +500,101 @@ describe('asset depreciation financial screens', () => {
     expect(text).toContain('CITA (30%) ₦291,000');
     expect(text).toContain('Profit & Loss ₦679,000');
     act(() => renderer.unmount());
+  });
+
+  it('keeps the report launcher compact and sends the selected report context to the viewer', () => {
+    mockRouteParams = {};
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      branches: [branchA, branchB],
+    }) as any);
+
+    const renderer = mount(<ReportsScreen />);
+    const reportButtons = renderer.root.findAll(
+      node =>
+        String(node.type) === 'TouchableOpacity' &&
+        typeof node.props.accessibilityLabel === 'string' &&
+        node.props.accessibilityLabel.endsWith(' report'),
+    );
+
+    expect(reportButtons).toHaveLength(10);
+    expect(reportButtons.every(button => button.props.style?.[0]?.width === '100%')).toBe(true);
+
+    const weekly = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Weekly',
+    );
+    act(() => weekly.props.onPress());
+
+    const wuseBranch = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node) === branchB.name,
+    );
+    act(() => wuseBranch.props.onPress());
+
+    const dateField = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'report-business-date',
+    );
+    act(() => dateField.props.onPress());
+
+    const pnl = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && node.props.accessibilityLabel === 'P&L report',
+    );
+    act(() => pnl.props.onPress());
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/(app)/reports/view',
+      params: {
+        type: 'pnl',
+        period: 'Weekly',
+        date: '2026-09-15',
+        branch: branchB.id,
+      },
+    });
+    act(() => renderer.unmount());
+  });
+
+  it('renders the dedicated viewer from route context and returns through back navigation without changing records', () => {
+    const state = baseAppState({
+      role: 'md',
+      branches: [branchA, branchB],
+      sales: [{
+        id: 1,
+        pump: 'PMS',
+        L: 1_000,
+        price: 1_000,
+        dt: '2026-09-15',
+        branchId: branchB.id,
+      }],
+    });
+    const originalSales = state.sales;
+    mockRouteParams = {
+      type: 'pnl',
+      period: 'Weekly',
+      date: '2026-09-15',
+      branch: branchB.id,
+    };
+    mockPathname = '/reports/view';
+    mockedUseApp.mockReturnValue(state as any);
+
+    const viewer = mount(<ReportViewScreen />);
+    const viewerText = renderedText(viewer);
+    expect(viewerText).toContain('P&L');
+    expect(viewerText).toContain('Weekly report');
+    expect(viewerText).toContain(branchB.name);
+    expect(viewerText).not.toContain('Choose a report');
+    act(() => viewer.unmount());
+
+    const header = mount(<Header title="Report viewer" />);
+    const back = header.root.find(
+      node =>
+        String(node.type) === 'TouchableOpacity' &&
+        node.props.accessibilityLabel === 'Go back to previous page',
+    );
+    act(() => back.props.onPress());
+
+    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(state.sales).toBe(originalSales);
+    expect(state.sales).toEqual([expect.objectContaining({ id: 1, branchId: branchB.id })]);
+    act(() => header.unmount());
   });
 });
