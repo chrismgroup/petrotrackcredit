@@ -1,6 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text,
+  TextInput, TouchableOpacity, View,
+} from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
 import { ActionItemsTable } from '@/components/ActionItemsTable';
@@ -224,9 +227,42 @@ export default function ActionItemsScreen() {
       </ScrollView>
 
       <ModalSheet visible={showForm} onClose={() => setShowForm(false)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-          <Text style={[styles.sheetTitle, { color: colors.text }]}>Add Action Item</Text>
-          <Text style={[styles.sheetIntro, { color: colors.textMuted }]}>Assign a clear follow-up to a person. Closing locks it in the branch archive.</Text>
+        <KeyboardAvoidingView
+          style={[styles.sheetContainer, { backgroundColor: colors.background }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+        >
+          <View style={[styles.sheetHeader, { borderBottomColor: colors.border }]}>
+            <View style={styles.flex}>
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>Add Action Item</Text>
+              <Text style={[styles.sheetIntro, { color: colors.textMuted }]}>
+                Assign a clear follow-up to a person. Closing locks it in the branch archive.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => Keyboard.dismiss()}
+              style={[styles.keyboardButton, { backgroundColor: colors.surface }]}
+              accessibilityRole="button"
+              accessibilityLabel="Hide keyboard"
+            >
+              <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowForm(false)}
+              style={[styles.closeButton, { backgroundColor: colors.surface }]}
+              accessibilityRole="button"
+              accessibilityLabel="Close action item form"
+            >
+              <Ionicons name="close" size={18} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            style={styles.sheet}
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            automaticallyAdjustKeyboardInsets
+          >
           <TextInput style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} placeholder="Action item title *" placeholderTextColor={colors.textSubtle} value={form.title} onChangeText={title => setForm(current => ({ ...current, title }))} />
           <TextInput style={[styles.input, styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} placeholder="Description or expected outcome (optional)" placeholderTextColor={colors.textSubtle} multiline value={form.desc} onChangeText={desc => setForm(current => ({ ...current, desc }))} />
 
@@ -263,7 +299,8 @@ export default function ActionItemsScreen() {
             <TouchableOpacity style={[styles.submitButton, { backgroundColor: roleColor }]} onPress={addItem}><Text style={styles.submitText}>Add Action Item</Text></TouchableOpacity>
             <TouchableOpacity style={styles.cancelButton} onPress={() => setShowForm(false)}><Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel</Text></TouchableOpacity>
           </View>
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </ModalSheet>
     </ScreenLayout>
   );
@@ -295,7 +332,12 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13, textAlign: 'center' },
   emptyAction: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
   emptyActionText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  sheet: { padding: 16 },
+  sheetContainer: { height: '82%', width: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 15, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  keyboardButton: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  closeButton: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  sheet: { flex: 1 },
+  sheetContent: { padding: 16, paddingBottom: 36 },
   sheetTitle: { fontSize: 20, fontWeight: '800', marginBottom: 7 },
   sheetIntro: { fontSize: 11, lineHeight: 16, marginBottom: 12 },
   input: { minHeight: 46, borderRadius: 11, borderWidth: 1, paddingHorizontal: 12, fontSize: 14, marginBottom: 9 },
