@@ -71,6 +71,14 @@ Configure these repository secrets for the job:
 | `PETROTRACK_TEST_BRANCH_ID`                               | Dedicated branch containing the test pump and its opening meter |
 | `PETROTRACK_TEST_PUMP`                                    | Pump label shown in the shift-report flow                       |
 
+Before installing or building the preview APK, the workflow authenticates
+with the admin fixture account and performs a read-only preflight against
+`PETROTRACK_TEST_API_URL`. It verifies that the configured branch exists, the
+named pump is assigned to that branch and active, the pump has a product, and
+the pump has a non-negative opening meter in `pumpInitialMeters`. A missing or
+invalid item stops the job with a setup error before EAS is invoked. The same
+check is repeated immediately before the disposable account is created.
+
 Each run builds a fresh EAS preview APK, creates a unique active attendant
 account on the isolated test deployment, clears the device's app data, and
 passes the generated credentials and unique note to the existing runner. The
