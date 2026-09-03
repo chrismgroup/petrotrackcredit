@@ -12,6 +12,7 @@
 - [App Store build numbers](app-store-build-numbers.md) — iOS uploads must use a build number higher than the latest App Store Connect upload
 - [Replit Launch versioning](replit-launch-versioning.md) — Launch may use managed build state separate from app.json; trust the submitted build number in Launch logs
 - [My Folder shared storage](my-folder-storage.md) — shared documents use protected storage, role-filtered metadata, horizontal folders, and server-scheduled expiry reminders
+- [My Folder navigation](my-folder-navigation.md) — document areas and file previews are dedicated routes; preserve section/file deep-link context
 - [Rejected enrollment persistence](rejected-enrollment-persistence.md) — rejected status, reviewer, timestamp, and reason are authoritative in the staff-user record
 - [Price permissions](price-permissions.md) — direct selling-price changes are allowed for admin, CEO, MD, and station managers
 - [Push notifications](push-notifications.md) — durable inbox covers report workflows and document expiry; native background delivery requires an EAS device build
