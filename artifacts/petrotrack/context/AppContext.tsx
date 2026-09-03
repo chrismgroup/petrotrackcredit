@@ -127,7 +127,12 @@ export interface PriceProposal {
 }
 export interface Expense { id: number; dt: string; submittedAt?: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId?: string; }
 export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
-export interface Budget { id: number; month: number; year: number; appliesOn?: string; submittedAt?: string; label: string; by: string; byName: string; items: { cat: string; amt: number }[]; total: number; status: string; workflow: BudgetWorkflowStep[]; }
+export interface Budget {
+  id: number; month: number; year: number; appliesOn?: string; submittedAt?: string;
+  label: string; by: string; byName: string; items: { cat: string; amt: number }[];
+  total: number; status: string; workflow: BudgetWorkflowStep[];
+  archivedAt?: string; archivedBy?: string;
+}
 export interface BankLoan { bank: string; amount: number; }
 export interface FinancialEntry {
   cashInBank: number; posValue: number; goodsOnTransit: number;
@@ -1349,6 +1354,7 @@ interface AppContextType {
   addBudget: (b: Omit<Budget, 'id' | 'workflow'>) => void;
   updateBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string; appliesOn?: string }) => void;
   deleteBudget: (id: number) => void;
+  archiveBudgets: (ids: number[]) => void;
   submitBudgetToAcc: (id: number) => void;
   forwardBudget: (id: number, note: string) => void;
   approveBudget: (id: number, note: string) => void;
@@ -3124,6 +3130,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Budget deleted', user: userName, detail: `Budget #${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
 
+  const archiveBudgets = useCallback((ids: number[]) => {
+    if (role !== 'acc' && role !== 'admin') return;
+    const idSet = new Set(ids);
+    if (idSet.size === 0) return;
+    const archivedAt = nowTs();
+    setBudgets(prev => prev.map(b => (
+      idSet.has(b.id)
+      && !b.archivedAt
+      && (b.status === 'draft' || b.status === 'fully_approved' || b.status === 'rejected')
+        ? { ...b, archivedAt, archivedBy: userName }
+        : b
+    )));
+    setAudit(a => [{
+      id: genId(),
+      action: 'Budgets archived',
+      user: userName,
+      detail: `${ids.length} historical budget${ids.length === 1 ? '' : 's'} archived`,
+      ts: archivedAt,
+    }, ...a]);
+  }, [role, userName]);
+
   const submitBudgetToAcc = useCallback((id: number) => {
     const b = budgets.find(b => b.id === id);
     if (!b) return;
@@ -4601,7 +4628,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
-      addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
+       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, archiveBudgets, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
        addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,

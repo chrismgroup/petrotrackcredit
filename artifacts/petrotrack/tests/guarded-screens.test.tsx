@@ -1,4 +1,5 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import type { ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 
@@ -129,6 +130,7 @@ import PricesScreen from '../app/(app)/prices';
 import SalesScreen from '../app/(app)/sales';
 import MaintenanceScreen from '../app/(app)/maintenance';
 import CorporateScreen from '../app/(app)/corporate';
+import BudgetScreen from '../app/(app)/budget';
 import { useApp } from '@/context/AppContext';
 
 const mockedUseApp = jest.mocked(useApp);
@@ -287,6 +289,94 @@ function baseAppState() {
 
 afterEach(() => {
   jest.clearAllMocks();
+});
+
+describe('budget ordering and accountant archives', () => {
+  const budget = (id: number, month: number, year: number, status = 'fully_approved') => ({
+    id,
+    month,
+    year,
+    appliesOn: `${year}-${String(month).padStart(2, '0')}-01`,
+    submittedAt: `${year}-${String(month).padStart(2, '0')}-01T08:00:00.000Z`,
+    label: `${['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month]} ${year}`,
+    by: 'mgr',
+    byName: 'Station Manager',
+    items: [{ cat: 'Operations', amt: 100000 }],
+    total: 100000,
+    status,
+    workflow: [],
+  });
+
+  function budgetState(overrides: Record<string, unknown> = {}) {
+    return {
+      ...baseAppState(),
+      role: 'acc',
+      budgets: [],
+      expenses: [],
+      branches: [],
+      addBudget: jest.fn(),
+      updateBudget: jest.fn(),
+      deleteBudget: jest.fn(),
+      archiveBudgets: jest.fn(),
+      submitBudgetToAcc: jest.fn(),
+      forwardBudget: jest.fn(),
+      approveBudget: jest.fn(),
+      rejectBudget: jest.fn(),
+      ...overrides,
+    };
+  }
+
+  function touchable(renderer: ReactTestRenderer, label: string): ReactTestInstance {
+    return renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity'
+        && (node.props.accessibilityLabel === label || nodeText(node).includes(label)),
+    );
+  }
+
+  it('shows the newest active budget first and exposes every requested archive age', () => {
+    mockedUseApp.mockReturnValue(budgetState({
+      budgets: [
+        budget(1, 1, 2026),
+        budget(2, 9, 2026),
+        budget(3, 5, 2026),
+      ],
+    }) as any);
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BudgetScreen />); });
+    act(() => { touchable(renderer, 'All Budgets').props.onPress(); });
+
+    const text = renderedText(renderer);
+    expect(text.indexOf('September 2026 Budget')).toBeLessThan(text.indexOf('May 2026 Budget'));
+    expect(text.indexOf('May 2026 Budget')).toBeLessThan(text.indexOf('January 2026 Budget'));
+    for (const months of [1, 3, 6, 9, 12]) {
+      expect(touchable(renderer, `Archive budgets older than ${months} month${months === 1 ? '' : 's'}`)).toBeTruthy();
+    }
+    act(() => renderer.unmount());
+  });
+
+  it('archives only old non-pending budgets and moves them to Archived', () => {
+    const archiveBudgets = jest.fn();
+    mockedUseApp.mockReturnValue(budgetState({
+      budgets: [
+        budget(1, 1, 2026),
+        budget(2, 8, 2026),
+        budget(3, 1, 2026, 'submitted'),
+      ],
+      archiveBudgets,
+    }) as any);
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BudgetScreen />); });
+
+    act(() => {
+      touchable(renderer, 'Archive eligible budgets older than 3 months').props.onPress();
+    });
+    const alertCall = jest.mocked(Alert.alert).mock.calls.at(-1);
+    expect(alertCall?.[0]).toBe('Archive 1 budget?');
+    const buttons = alertCall?.[2] as { text: string; onPress?: () => void }[];
+    act(() => buttons.find(button => button.text === 'Archive budgets')?.onPress?.());
+    expect(archiveBudgets).toHaveBeenCalledWith([1]);
+    act(() => renderer.unmount());
+  });
 });
 
 describe('maintenance handoff controls follow the signed-in staff role', () => {
