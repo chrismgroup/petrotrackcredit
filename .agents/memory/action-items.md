@@ -9,11 +9,11 @@ Action Items are a separate shared collection and dedicated My Jobs page rather 
 
 **How to apply:** Keep task assignment and KPI management on Tasks & KPIs. Treat the assigned action party or CEO as the only users allowed to change an open Action Item. Closing is terminal: record the closer and timestamp, mark the item archived, and preserve it in the branch archive. Urgency is overdue/red for past dates, yellow for dates within 14 days, and green beyond 14 days.
 
-Action Items are presented as a horizontally scrollable table with ID, created date, description, action party, target close-out date, status, and optional branch columns. Home surfaces outstanding items to CEO, MD, Accountant, CSM/HR, and station managers; global roles see all branches while station managers remain branch-scoped.
+Action Items are presented as responsive summary cards showing description, action party, close-out date, status, and optional branch context. Selecting a card opens the full record and workflow history; IDs and creation dates belong in that detail view rather than the summary. Home surfaces outstanding items to CEO, MD, Accountant, CSM/HR, and station managers; global roles see all branches while station managers remain branch-scoped.
 
 **Why:** These roles need a fast operational glance without opening Tasks, while branch scoping must remain consistent with the rest of the operational dashboard.
 
-**How to apply:** Keep the table compact and urgency-sorted on Home, and reuse the same table presentation on the dedicated Action Items page so the fields and status meaning stay consistent.
+**How to apply:** Keep summaries compact and urgency-sorted on Home, reuse the responsive card presentation on the dedicated page, and append a durable history entry for creation and every status transition. Legacy records may reconstruct their creation entry. Put status controls in the detail view and show them only to the assigned action party or CEO; closed records remain viewable but locked.
 
 Action Item Home visibility uses the existing admin-managed per-user access override map with a dedicated dashboard permission key. Default visibility remains for CEO, MD, Accountant, CSM/HR, station managers, and admin; admins can override access for any active non-admin account from System Settings > Access > By User.
 

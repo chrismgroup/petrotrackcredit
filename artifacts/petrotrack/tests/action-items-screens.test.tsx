@@ -330,7 +330,7 @@ afterEach(() => {
 });
 
 describe('Action Items table and dedicated view', () => {
-  it('keeps the requested columns and readable urgency/status states', () => {
+  it('shows responsive action summaries without IDs or created dates', () => {
     const renderer = render(
       <ActionItemsTable
         items={[
@@ -355,16 +355,14 @@ describe('Action Items table and dedicated view', () => {
     );
     const text = renderedText(renderer);
 
-    expect(text).toContain('ID');
-    expect(text).toContain('Date');
-    expect(text).toContain('Description');
     expect(text).toContain('Action party');
-    expect(text).toContain('Target close out');
+    expect(text).toContain('Close-out date');
     expect(text).toContain('Status');
     expect(text).toContain('Branch');
-    expect(text).toContain('#123456');
-    expect(text).toContain('2026-09-01');
+    expect(text).not.toContain('#123456');
+    expect(text).not.toContain('2026-09-01');
     expect(text).toContain('Reconcile pump readings');
+    expect(text).toContain('Confirm the variance with the station team.');
     expect(text).toContain('Station Manager');
     expect(text).toContain('2026-09-02');
     expect(text).toContain('Overdue');
@@ -372,6 +370,52 @@ describe('Action Items table and dedicated view', () => {
     expect(text).toContain('Archive the signed handover');
     expect(text).toContain('Closed');
     expect(text).toContain('Locked');
+
+    act(() => renderer.unmount());
+  });
+
+  it('opens a selected item with full details, workflow history, and action-party status controls', () => {
+    const updateActionItemStatus = jest.fn(() => true);
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'mgr',
+      staffId: 42,
+      actionItems: [item({
+        actionPartyId: 42,
+        history: [{
+          action: 'Action item created',
+          actor: 'CEO',
+          actorRole: 'ceo',
+          at: '2026-09-01T08:00:00.000Z',
+          detail: 'Assigned to Station Manager.',
+        }],
+      })],
+      updateActionItemStatus,
+    }) as any);
+
+    const renderer = render(<ActionItemsScreen />);
+    const row = renderer.root.find(
+      node =>
+        String(node.type) === 'TouchableOpacity' &&
+        node.props.accessibilityLabel === 'Open action item Reconcile pump readings',
+    );
+    act(() => row.props.onPress());
+
+    const text = renderedText(renderer);
+    expect(text).toContain('Full workflow');
+    expect(text).toContain('Confirm the variance with the station team.');
+    expect(text).toContain('Action party');
+    expect(text).toContain('Close-out date');
+    expect(text).toContain('Workflow history');
+    expect(text).toContain('Action item created');
+    expect(text).toContain('Update status');
+    expect(text).toContain('#1001');
+    expect(text).toContain('2026-09-01');
+
+    const ongoing = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'action-status-on-going',
+    );
+    act(() => ongoing.props.onPress());
+    expect(updateActionItemStatus).toHaveBeenCalledWith(1001, 'on-going');
 
     act(() => renderer.unmount());
   });

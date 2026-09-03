@@ -13,6 +13,7 @@ import {
   ActionItemStatus,
   ROLE_COLORS,
   ROLE_LABELS,
+  getActionItemUrgency,
   resolveUserInfo,
   useApp,
 } from '@/context/AppContext';
@@ -26,6 +27,14 @@ const ACTION_STATUS_META: Record<ActionItemStatus, { label: string; color: strin
   'on-going': { label: 'On-going', color: '#BA7517', icon: 'time-outline' },
   closed: { label: 'Closed', color: '#27500A', icon: 'checkmark-circle' },
 };
+const ACTION_URGENCY_LABELS = {
+  overdue: 'Overdue',
+  'due-soon': 'Due within 2 weeks',
+  'on-track': 'More than 2 weeks',
+} as const;
+function getActionItemUrgencyLabel(targetDate: string) {
+  return ACTION_URGENCY_LABELS[getActionItemUrgency(targetDate)];
+}
 
 export default function ActionItemsScreen() {
   const {
@@ -53,6 +62,7 @@ export default function ActionItemsScreen() {
   const [actionView, setActionView] = useState<ActionView>('active');
   const [actionBranchFilter, setActionBranchFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
+  const [selectedActionItemId, setSelectedActionItemId] = useState<number | null>(null);
   const [form, setForm] = useState({
     title: '',
     desc: '',
@@ -69,6 +79,9 @@ export default function ActionItemsScreen() {
     const archived = item.status === 'closed' || !!item.archivedAt;
     return userBranchMatches && selectedBranchMatches && (actionView === 'archived' ? archived : !archived);
   });
+  const selectedActionItem = selectedActionItemId === null
+    ? null
+    : actionItems.find(item => item.id === selectedActionItemId) ?? null;
 
   function openForm() {
     setForm(current => ({
@@ -122,6 +135,145 @@ export default function ActionItemsScreen() {
     updateActionItemStatus(item.id, status);
   }
 
+  function openDetails(item: ActionItem) {
+    setSelectedActionItemId(item.id);
+  }
+
+  function renderDetails() {
+    if (!selectedActionItem) return null;
+    const status = ACTION_STATUS_META[selectedActionItem.status];
+    const history = selectedActionItem.history?.length
+      ? selectedActionItem.history
+      : [{
+          action: 'Action item created',
+          actor: selectedActionItem.createdBy,
+          actorRole: selectedActionItem.createdByRole,
+          at: selectedActionItem.createdAt,
+          detail: `Assigned to ${selectedActionItem.actionPartyName}.`,
+        }];
+    const editable = canUpdate(selectedActionItem);
+
+    return (
+      <ModalSheet visible={!!selectedActionItem} onClose={() => setSelectedActionItemId(null)}>
+        <View style={[styles.detailContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.sheetHeader, { borderBottomColor: colors.border }]}>
+            <View style={styles.flex}>
+              <Text style={[styles.detailEyebrow, { color: colors.primary }]}>ACTION ITEM DETAILS</Text>
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>Full workflow</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setSelectedActionItemId(null)}
+              style={[styles.closeButton, { backgroundColor: colors.surface }]}
+              accessibilityRole="button"
+              accessibilityLabel="Close action item details"
+            >
+              <Ionicons name="close" size={18} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            style={styles.sheet}
+            contentContainerStyle={styles.detailContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[styles.detailHero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.detailTitleRow}>
+                <Text style={[styles.detailTitle, { color: colors.text }]}>{selectedActionItem.title}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: status.color + '18' }]}>
+                  <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+                </View>
+              </View>
+              <Text style={[styles.detailDescription, { color: colors.textMuted }]}>
+                {selectedActionItem.desc || 'No description or expected outcome was provided.'}
+              </Text>
+            </View>
+
+            <View style={styles.infoGrid}>
+              <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Action party</Text>
+                <Text style={[styles.infoValue, { color: colors.text }]}>{selectedActionItem.actionPartyName}</Text>
+                <Text style={[styles.infoHint, { color: colors.textMuted }]}>{ROLE_LABELS[selectedActionItem.actionPartyRole]}</Text>
+              </View>
+              <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Close-out date</Text>
+                <Text style={[styles.infoValue, { color: status.color }]}>{selectedActionItem.targetDate}</Text>
+                <Text style={[styles.infoHint, { color: status.color }]}>{getActionItemUrgencyLabel(selectedActionItem.targetDate)}</Text>
+              </View>
+              <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Branch</Text>
+                <Text style={[styles.infoValue, { color: colors.text }]}>{selectedActionItem.branchName}</Text>
+              </View>
+              <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Created</Text>
+                <Text style={[styles.infoValue, { color: colors.text }]}>#{String(selectedActionItem.id).slice(-6)}</Text>
+                <Text style={[styles.infoHint, { color: colors.textMuted }]}>{selectedActionItem.createdAt}</Text>
+              </View>
+            </View>
+
+            {editable ? (
+              <View style={[styles.statusEditor, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Update status</Text>
+                <Text style={[styles.sectionHint, { color: colors.textMuted }]}>
+                  Only the assigned action party or CEO can update this item.
+                </Text>
+                <View style={styles.statusOptions}>
+                  {(['open', 'on-going', 'closed'] as ActionItemStatus[]).map(nextStatus => {
+                    const nextMeta = ACTION_STATUS_META[nextStatus];
+                    const active = selectedActionItem.status === nextStatus;
+                    return (
+                      <TouchableOpacity
+                        key={nextStatus}
+                        testID={`action-status-${nextStatus}`}
+                        onPress={() => changeStatus(selectedActionItem, nextStatus)}
+                        style={[styles.statusOption, {
+                          backgroundColor: active ? nextMeta.color : colors.background,
+                          borderColor: active ? nextMeta.color : colors.border,
+                        }]}
+                      >
+                        <Ionicons name={nextMeta.icon as any} size={15} color={active ? '#fff' : nextMeta.color} />
+                        <Text style={[styles.statusOptionText, { color: active ? '#fff' : colors.textMuted }]}>{nextMeta.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : (
+              <View style={[styles.readOnlyNotice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name={selectedActionItem.status === 'closed' ? 'lock-closed-outline' : 'eye-outline'} size={16} color={colors.textMuted} />
+                <Text style={[styles.sectionHint, { color: colors.textMuted }]}>
+                  {selectedActionItem.status === 'closed'
+                    ? 'This action item is closed and locked in the branch archive.'
+                    : 'You can view this action item, but only the action party or CEO can update its status.'}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.historySection}>
+              <View style={styles.historyHeading}>
+                <View style={styles.flex}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Workflow history</Text>
+                  <Text style={[styles.sectionHint, { color: colors.textMuted }]}>Every recorded change to this action item.</Text>
+                </View>
+                <Text style={[styles.historyCount, { color: colors.primary }]}>{history.length}</Text>
+              </View>
+              {history.map((entry, index) => (
+                <View key={`${entry.at}-${index}`} style={styles.historyRow}>
+                  <View style={[styles.historyDot, { backgroundColor: index === history.length - 1 ? colors.primary : colors.border }]} />
+                  <View style={styles.flex}>
+                    <Text style={[styles.historyAction, { color: colors.text }]}>{entry.action}</Text>
+                    <Text style={[styles.historyMeta, { color: colors.textMuted }]}>
+                      {entry.actor}{entry.actorRole ? ` · ${ROLE_LABELS[entry.actorRole] ?? entry.actorRole}` : ''} · {entry.at}
+                    </Text>
+                    {!!entry.detail && <Text style={[styles.historyDetail, { color: colors.textMuted }]}>{entry.detail}</Text>}
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      </ModalSheet>
+    );
+  }
+
   function renderItems() {
     if (!visibleItems.length) {
       return (
@@ -151,7 +303,7 @@ export default function ActionItemsScreen() {
                 {group[0]?.branchName ?? groupBranchId} · {group.length}
               </Text>
             </View>
-            <ActionItemsTable items={group} colors={colors} emptyText="No closed action items in this branch archive" />
+           <ActionItemsTable items={group} colors={colors} emptyText="No closed action items in this branch archive" onRowPress={openDetails} />
           </View>
         );
       });
@@ -167,7 +319,7 @@ export default function ActionItemsScreen() {
             <View style={[styles.groupDot, { backgroundColor: meta.color }]} />
             <Text style={[styles.groupLabel, { color: meta.color }]}>{meta.label} · {group.length}</Text>
           </View>
-          <ActionItemsTable items={group} colors={colors} canUpdate={canUpdate} onStatusChange={changeStatus} />
+           <ActionItemsTable items={group} colors={colors} onRowPress={openDetails} />
         </View>
       );
     });
@@ -225,6 +377,8 @@ export default function ActionItemsScreen() {
         {renderItems()}
         <View style={{ height: 22 }} />
       </ScrollView>
+
+      {renderDetails()}
 
       <ModalSheet visible={showForm} onClose={() => setShowForm(false)}>
         <KeyboardAvoidingView
@@ -333,11 +487,40 @@ const styles = StyleSheet.create({
   emptyAction: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
   emptyActionText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   sheetContainer: { height: '82%', width: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
+  detailContainer: { height: '92%', width: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 15, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   keyboardButton: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   closeButton: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   sheet: { flex: 1 },
   sheetContent: { padding: 16, paddingBottom: 36 },
+  detailContent: { padding: 16, paddingBottom: 42, gap: 14 },
+  detailEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 1.3, marginBottom: 3 },
+  detailHero: { borderWidth: 1, borderRadius: 18, padding: 15, gap: 10 },
+  detailTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  detailTitle: { flex: 1, fontSize: 20, lineHeight: 25, fontWeight: '800' },
+  detailDescription: { fontSize: 13, lineHeight: 20 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8 },
+  statusText: { fontSize: 10, fontWeight: '800' },
+  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  infoCard: { flexGrow: 1, flexBasis: '44%', minWidth: 140, borderWidth: 1, borderRadius: 14, padding: 12, gap: 3 },
+  infoLabel: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  infoValue: { fontSize: 13, lineHeight: 18, fontWeight: '800' },
+  infoHint: { fontSize: 10, lineHeight: 15 },
+  statusEditor: { borderWidth: 1, borderRadius: 16, padding: 14, gap: 6 },
+  sectionTitle: { fontSize: 15, fontWeight: '800' },
+  sectionHint: { fontSize: 11, lineHeight: 16 },
+  statusOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
+  statusOption: { minHeight: 40, flexGrow: 1, flexBasis: '29%', borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  statusOptionText: { fontSize: 11, fontWeight: '800' },
+  readOnlyNotice: { borderWidth: 1, borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  historySection: { gap: 10 },
+  historyHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  historyCount: { minWidth: 28, textAlign: 'center', fontSize: 12, fontWeight: '800', borderRadius: 99 },
+  historyRow: { flexDirection: 'row', gap: 10, paddingLeft: 4 },
+  historyDot: { width: 9, height: 9, borderRadius: 5, marginTop: 4 },
+  historyAction: { fontSize: 12, lineHeight: 17, fontWeight: '800' },
+  historyMeta: { fontSize: 10, lineHeight: 15, marginTop: 2 },
+  historyDetail: { fontSize: 11, lineHeight: 16, marginTop: 3 },
   sheetTitle: { fontSize: 20, fontWeight: '800', marginBottom: 7 },
   sheetIntro: { fontSize: 11, lineHeight: 16, marginBottom: 12 },
   input: { minHeight: 46, borderRadius: 11, borderWidth: 1, paddingHorizontal: 12, fontSize: 14, marginBottom: 9 },
