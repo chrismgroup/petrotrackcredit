@@ -11,6 +11,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ActionItemsTable } from '@/components/ActionItemsTable';
+import { ModalSheet } from '@/components/FormSheet';
 import {
   fmt,
   GLOBAL_OVERVIEW_ROLES,
@@ -283,6 +284,83 @@ function ApprovalRow({ icon, accent, title, meta, count, onPress, colors }: Appr
   );
 }
 
+interface ApprovalDetailRecord {
+  id: string;
+  title: string;
+  meta: string;
+  status: string;
+  statusColor: string;
+  facts: string[];
+}
+
+function ApprovalDetailsSheet({
+  title,
+  description,
+  records,
+  colors,
+  onClose,
+}: {
+  title: string;
+  description: string;
+  records: ApprovalDetailRecord[];
+  colors: ReturnType<typeof useColors>;
+  onClose: () => void;
+}) {
+  return (
+    <ModalSheet visible onClose={onClose}>
+      <View style={[s.approvalSheet, { backgroundColor: colors.background }]}>
+        <View style={[s.approvalSheetHeader, { borderBottomColor: colors.border }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.approvalSheetEyebrow, { color: colors.primary }]}>APPROVALS & ACTIONS</Text>
+            <Text style={[s.approvalSheetTitle, { color: colors.text }]}>{title}</Text>
+            <Text style={[s.approvalSheetIntro, { color: colors.textMuted }]}>{description}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={onClose}
+            style={[s.approvalCloseButton, { backgroundColor: colors.surface }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Close ${title}`}
+          >
+            <Ionicons name="close" size={18} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={s.approvalSheetContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {records.length === 0 ? (
+            <View style={s.emptyState}>
+              <Ionicons name="checkmark-circle-outline" size={32} color={colors.success} />
+              <Text style={[s.emptyText, { color: colors.textMuted }]}>No records are available.</Text>
+            </View>
+          ) : records.map(record => (
+            <View key={record.id} style={[s.approvalDetailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={s.approvalDetailTop}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.approvalDetailTitle, { color: colors.text }]}>{record.title}</Text>
+                  <Text style={[s.approvalDetailMeta, { color: colors.textMuted }]}>{record.meta}</Text>
+                </View>
+                <View style={[s.approvalDetailStatus, { backgroundColor: record.statusColor + '18' }]}>
+                  <View style={[s.approvalDetailDot, { backgroundColor: record.statusColor }]} />
+                  <Text style={[s.approvalDetailStatusText, { color: record.statusColor }]}>{record.status}</Text>
+                </View>
+              </View>
+              <View style={[s.approvalFacts, { borderTopColor: colors.border }]}>
+                {record.facts.map((fact, index) => (
+                  <Text key={`${record.id}-fact-${index}`} style={[s.approvalFact, { color: colors.textMuted }]}>
+                    {fact}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    </ModalSheet>
+  );
+}
+
 interface MsgRowProps {
   msg: Message;
   from: string;
@@ -386,6 +464,7 @@ export default function HomeScreen() {
 
   const [noteModal, setNoteModal] = useState(false);
   const [noteText, setNoteText] = useState('');
+  const [approvalDetail, setApprovalDetail] = useState<'dips' | 'deliveries' | 'expenses' | 'prices' | 'pumpReports' | 'budgets' | 'accounts' | null>(null);
 
   if (!role) return null;
 
@@ -511,7 +590,9 @@ export default function HomeScreen() {
   }, [branches, dips, deliveries, isGlobalOverview, lpgTanks, pumps, pumpDailyReports, scopedBranchId, startupStocks, stockSnapshotConfig, tanks, todayKey]);
 
   // ── Approval items ────────────────────────────────────────────────────
-  const pendingDips = dips.filter(d => d.status === 'pending');
+  const inApprovalScope = (item: { branchId?: string }) =>
+    isGlobalOverview || !scopedBranchId || !item.branchId || item.branchId === scopedBranchId;
+  const pendingDips = dips.filter(d => d.status === 'pending' && inApprovalScope(d));
   const pendingDeliveries = deliveries.filter(d =>
     d.approvalStatus === 'pending' || d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending_md',
   );
@@ -552,6 +633,96 @@ export default function HomeScreen() {
     pendingDips.length + pendingDeliveries.length + pendingExpenses.length +
     pendingPriceProps.length + pendingPumpReports.length + pendingBudgets.length +
     pendingAccounts.length;
+
+  const approvalDetailRecords: Record<Exclude<typeof approvalDetail, null>, ApprovalDetailRecord[]> = {
+    dips: pendingDips.map(dip => {
+      const branchName = branches.find(branch => branch.id === dip.branchId)?.name ?? dip.branchId ?? 'Branch not recorded';
+      const readings = [
+        ...Object.entries(dip.rd ?? {}).map(([tankId, value]) => `${tanks.find(tank => tank.id === tankId)?.name ?? tankId}: ${value.toLocaleString()} L`),
+        ...Object.entries(dip.lpg ?? {}).map(([tankId, value]) => `${lpgTanks.find(tank => tank.id === tankId)?.name ?? tankId}: ${value.toLocaleString()} kg`),
+      ];
+      return {
+        id: `dip-${dip.id}`,
+        title: `Tank dip report #${dip.id}`,
+        meta: `${dip.dt} · ${dip.by} · ${branchName}`,
+        status: 'With MD for approval',
+        statusColor: colors.amber,
+        facts: [
+          `Submitted by: ${dip.by}`,
+          readings.length > 0 ? `Readings: ${readings.join(' · ')}` : 'Readings: No tank quantities recorded',
+          dip.obs ? `Observation: ${dip.obs}` : 'Observation: None provided',
+        ],
+      };
+    }),
+    deliveries: pendingDeliveries.map(delivery => ({
+      id: `delivery-${delivery.id}`,
+      title: `${delivery.prod} delivery #${delivery.id}`,
+      meta: `${delivery.dt} · ${delivery.sup} · ${branches.find(branch => branch.id === delivery.branchId)?.name ?? delivery.branchId ?? 'Branch not recorded'}`,
+      status: delivery.approvalStatus === 'pending_md' ? 'With MD for approval' : 'With Accountant for review',
+      statusColor: delivery.approvalStatus === 'pending_md' ? colors.amber : colors.blue,
+      facts: [
+        `Received: ${delivery.rec.toLocaleString()} · Ordered: ${delivery.ord.toLocaleString()}`,
+        `Receipt condition: ${delivery.st}`,
+        delivery.notes ? `Notes: ${delivery.notes}` : 'Notes: None provided',
+      ],
+    })),
+    expenses: pendingExpenses.map(expense => ({
+      id: `expense-${expense.id}`,
+      title: expense.cat,
+      meta: `${expense.dt} · ${expense.byName}`,
+      status: expense.status === 'acc_forwarded' ? 'With MD for approval' : 'With Accountant for review',
+      statusColor: expense.status === 'acc_forwarded' ? colors.amber : colors.blue,
+      facts: [`Amount: ${fmt(expense.amt)}`, expense.desc || 'No description provided', expense.ref ? `Reference: ${expense.ref}` : 'Reference: None'],
+    })),
+    prices: pendingPriceProps.map(proposal => ({
+      id: `price-${proposal.id}`,
+      title: `${proposal.prod} price proposal`,
+      meta: `${proposal.proposedAt} · ${proposal.proposedBy}`,
+      status: 'With MD for approval',
+      statusColor: colors.amber,
+      facts: [`Current price: ${fmt(proposal.currentPrice)}`, `Proposed price: ${fmt(proposal.proposedPrice)}`, proposal.note ? `Note: ${proposal.note}` : 'Note: None provided'],
+    })),
+    pumpReports: pendingPumpReports.map(report => ({
+      id: `pump-report-${report.id}`,
+      title: `${report.pumpName} · ${report.product}`,
+      meta: `${report.date} · ${report.submittedByName} · ${branches.find(branch => branch.id === report.branchId)?.name ?? report.branchId}`,
+      status: report.status === 'pending_manager' ? 'With Manager for approval'
+        : report.status === 'pending_accountant' ? 'With Accountant for approval'
+          : 'Returned to Attendant',
+      statusColor: report.status === 'pending_manager' ? colors.amber : report.status === 'pending_accountant' ? colors.blue : colors.error,
+      facts: [
+        `Meter: ${report.openingMeter.toLocaleString()} → ${report.closingMeter.toLocaleString()}`,
+        `Volume: ${report.liters.toLocaleString()} · Gross: ${fmt(report.grossAmount)}`,
+        report.note ? `Note: ${report.note}` : 'Note: None provided',
+      ],
+    })),
+    budgets: pendingBudgets.map(budget => ({
+      id: `budget-${budget.id}`,
+      title: budget.label,
+      meta: `${budget.appliesOn ?? `${budget.month}/${budget.year}`} · ${budget.byName}`,
+      status: budget.status === 'forwarded' ? 'With MD for approval' : 'With MD for review',
+      statusColor: colors.amber,
+      facts: [`Total: ${fmt(budget.total)}`, `Line items: ${budget.items.length}`, budget.workflow?.length ? `Last workflow step: ${budget.workflow[budget.workflow.length - 1].action}` : 'No workflow step recorded'],
+    })),
+    accounts: pendingAccounts.map(account => ({
+      id: `account-${account.id}`,
+      title: account.empName,
+      meta: `${account.jobTitle ?? ROLE_LABELS[account.role ?? 'att'] ?? 'Staff'} · ${account.branchId ?? 'No branch'}`,
+      status: account.status === 'pending_admin' ? 'With Admin for activation' : 'With MD for approval',
+      statusColor: account.status === 'pending_admin' ? colors.brown : colors.amber,
+      facts: [`Username: ${account.username}`, account.dept ? `Department: ${account.dept}` : 'Department: Not provided', `Submitted: ${account.createdAt}`],
+    })),
+  };
+
+  const approvalDetailConfig = approvalDetail ? {
+    dips: { title: 'Tank Dip Readings', description: 'Review the submitted readings and see who currently owns the approval.', records: approvalDetailRecords.dips },
+    deliveries: { title: 'Product Deliveries', description: 'Review receipt details and the current approval owner.', records: approvalDetailRecords.deliveries },
+    expenses: { title: 'Expense Claims', description: 'Review each claim and see whether it is with the accountant or MD.', records: approvalDetailRecords.expenses },
+    prices: { title: 'Price Proposals', description: 'Review proposed fuel price changes and their approval owner.', records: approvalDetailRecords.prices },
+    pumpReports: { title: 'Pump Daily Reports', description: 'Review report readings and see whether the report is with the manager or accountant.', records: approvalDetailRecords.pumpReports },
+    budgets: { title: 'Budget Submissions', description: 'Review budget totals and their current sign-off owner.', records: approvalDetailRecords.budgets },
+    accounts: { title: 'Staff Enrolments', description: 'Review new staff details and their activation owner.', records: approvalDetailRecords.accounts },
+  }[approvalDetail] : null;
 
   // ── Notification badge ────────────────────────────────────────────────
   const unread = notifications.filter(item => !item.read).length;
@@ -812,7 +983,7 @@ export default function HomeScreen() {
                 title="Tank Dip Readings"
                 meta={`${pendingDips.length} reading${pendingDips.length > 1 ? 's' : ''} awaiting approval`}
                 count={pendingDips.length}
-                onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=dip-approvals` as never)}
+                onPress={() => setApprovalDetail('dips')}
                 colors={colors}
               />
             ) : null}
@@ -824,7 +995,7 @@ export default function HomeScreen() {
                 title="Product Deliveries"
                 meta={`${pendingDeliveries.length} delivery receipt${pendingDeliveries.length > 1 ? 's' : ''} pending review`}
                 count={pendingDeliveries.length}
-                onPress={() => router.push(SCREEN_ROUTES.recv as never)}
+                onPress={() => setApprovalDetail('deliveries')}
                 colors={colors}
               />
             ) : null}
@@ -836,7 +1007,7 @@ export default function HomeScreen() {
                 title="Expense Claims"
                 meta={`${pendingExpenses.length} claim${pendingExpenses.length > 1 ? 's' : ''} waiting for decision`}
                 count={pendingExpenses.length}
-                onPress={() => router.push(SCREEN_ROUTES.exp as never)}
+                onPress={() => setApprovalDetail('expenses')}
                 colors={colors}
               />
             ) : null}
@@ -848,7 +1019,7 @@ export default function HomeScreen() {
                 title="Price Proposals"
                 meta={`${pendingPriceProps.length} fuel price change${pendingPriceProps.length > 1 ? 's' : ''} to review`}
                 count={pendingPriceProps.length}
-                onPress={() => router.push(SCREEN_ROUTES.prices as never)}
+                onPress={() => setApprovalDetail('prices')}
                 colors={colors}
               />
             ) : null}
@@ -860,7 +1031,7 @@ export default function HomeScreen() {
                 title="Pump Daily Reports"
                 meta={`${pendingPumpReports.length} shift report${pendingPumpReports.length > 1 ? 's' : ''} needing action`}
                 count={pendingPumpReports.length}
-                onPress={() => router.push(SCREEN_ROUTES.shift as never)}
+                onPress={() => setApprovalDetail('pumpReports')}
                 colors={colors}
               />
             ) : null}
@@ -872,7 +1043,7 @@ export default function HomeScreen() {
                 title="Budget Submissions"
                 meta={`${pendingBudgets.length} budget${pendingBudgets.length > 1 ? 's' : ''} awaiting sign-off`}
                 count={pendingBudgets.length}
-                onPress={() => router.push(SCREEN_ROUTES.budget as never)}
+                onPress={() => setApprovalDetail('budgets')}
                 colors={colors}
               />
             ) : null}
@@ -884,7 +1055,7 @@ export default function HomeScreen() {
                 title="Staff Enrolments"
                 meta={`${pendingAccounts.length} new account${pendingAccounts.length > 1 ? 's' : ''} awaiting activation`}
                 count={pendingAccounts.length}
-                onPress={() => router.push(SCREEN_ROUTES.hr as never)}
+                onPress={() => setApprovalDetail('accounts')}
                 colors={colors}
               />
             ) : null}
@@ -1145,6 +1316,15 @@ export default function HomeScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+      {approvalDetailConfig ? (
+        <ApprovalDetailsSheet
+          title={approvalDetailConfig.title}
+          description={approvalDetailConfig.description}
+          records={approvalDetailConfig.records}
+          colors={colors}
+          onClose={() => setApprovalDetail(null)}
+        />
+      ) : null}
     </ScreenLayout>
   );
 }
@@ -1283,6 +1463,32 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5,
   },
   countBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  approvalSheet: { flex: 1, minHeight: 420, maxHeight: 720 },
+  approvalSheetHeader: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    paddingHorizontal: 18, paddingTop: 18, paddingBottom: 15,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  approvalSheetEyebrow: { fontSize: 9, fontWeight: '800', letterSpacing: 1.2, marginBottom: 4 },
+  approvalSheetTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.35 },
+  approvalSheetIntro: { fontSize: 12, lineHeight: 17, marginTop: 5 },
+  approvalCloseButton: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  approvalSheetContent: { padding: 16, paddingBottom: 28, gap: 12 },
+  approvalDetailCard: { borderWidth: 1, borderRadius: 14, padding: 14 },
+  approvalDetailTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  approvalDetailTitle: { fontSize: 14, fontWeight: '800' },
+  approvalDetailMeta: { fontSize: 10, lineHeight: 15, marginTop: 3 },
+  approvalDetailStatus: {
+    maxWidth: 150, flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderRadius: 99, paddingHorizontal: 9, paddingVertical: 6,
+  },
+  approvalDetailDot: { width: 6, height: 6, borderRadius: 3 },
+  approvalDetailStatusText: { flexShrink: 1, fontSize: 10, fontWeight: '800' },
+  approvalFacts: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 12, paddingTop: 10, gap: 6 },
+  approvalFact: { fontSize: 11, lineHeight: 16 },
 
   // messages
   msgRow: {
