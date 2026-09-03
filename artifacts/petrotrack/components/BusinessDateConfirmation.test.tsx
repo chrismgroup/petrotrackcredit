@@ -9,6 +9,14 @@ jest.mock('react-native', () => ({
   TouchableOpacity: 'TouchableOpacity',
   View: 'View',
   AppState: { addEventListener: jest.fn(() => ({ remove: jest.fn() })) },
+  Platform: {
+    OS: 'web',
+    select: (options: Record<string, unknown>) => options.web ?? options.default ?? options.native,
+  },
+  TurboModuleRegistry: {
+    get: jest.fn(() => null),
+    getEnforcing: jest.fn(() => null),
+  },
 }));
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));

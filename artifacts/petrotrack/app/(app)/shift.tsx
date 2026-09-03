@@ -1844,7 +1844,7 @@ const c = StyleSheet.create({
   badgeTxt:      { fontSize: 10, fontWeight: '700' },
   statusColumn:  { alignItems: 'flex-end', gap: 4 },
   deliveryRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  modalOverlay:  { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalOverlay:  { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalSheet:    { maxHeight: '94%', borderTopLeftRadius: 22, borderTopRightRadius: 22 },
   modalTitle:    { fontSize: 16, fontWeight: '800' },
   field:         { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },

@@ -17,7 +17,8 @@ jest.mock('react-native', () => {
     Alert: { alert: jest.fn() },
     Image: primitive('Image'),
     Modal: primitive('Modal'),
-    Platform: { OS: 'web' },
+    Platform: { OS: 'web', select: (options: Record<string, unknown>) => options.web ?? options.default ?? options.native },
+    TurboModuleRegistry: { get: jest.fn(() => null), getEnforcing: jest.fn(() => null) },
     ScrollView: primitive('ScrollView'),
     StyleSheet: {
       create: (styles: unknown) => styles,
