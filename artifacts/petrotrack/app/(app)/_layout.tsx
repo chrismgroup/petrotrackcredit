@@ -27,6 +27,7 @@ const ROUTE_ACCESS: Record<string, string> = {
   '/tasks': 'tasks',
   '/action-items': 'actionItems',
   '/branches': 'branches',
+  '/call': 'comms',
   '/comms': 'comms',
 };
 const ADMIN_ONLY_ROUTES = ['/departments', '/audit', '/system-settings'];

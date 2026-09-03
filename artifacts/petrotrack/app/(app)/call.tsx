@@ -149,7 +149,20 @@ export default function CallScreen() {
 
   if (Platform.OS === 'web') {
     return (
-      <ScreenLayout title="Call">
+      <ScreenLayout
+        title="Call"
+        rightAction={(
+          <TouchableOpacity
+            style={styles.webLeaveButton}
+            onPress={() => router.canGoBack() ? router.back() : router.replace('/(app)/messages' as never)}
+            accessibilityRole="button"
+            accessibilityLabel="Leave call and return to messages"
+          >
+            <Ionicons name="close" size={18} color="#fff" />
+            <Text style={styles.webLeaveButtonText}>Leave</Text>
+          </TouchableOpacity>
+        )}
+      >
         <View style={[styles.webCall, { backgroundColor: colors.background }]}>
           {React.createElement('iframe', {
             title: `${params.kind === 'video' ? 'Video' : 'Audio'} call`,
@@ -272,4 +285,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 10, maxWidth: 320 },
   leaveButton: { marginTop: 22, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
   leaveButtonText: { color: '#fff', fontWeight: '700' },
+  webLeaveButton: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#C53D3D', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 },
+  webLeaveButtonText: { color: '#fff', fontSize: 12, fontWeight: '800' },
 });

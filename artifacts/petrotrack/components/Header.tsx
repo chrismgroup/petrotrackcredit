@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert, Modal, Platform, StyleSheet, Text, TextInput,
@@ -8,7 +8,7 @@ import {
 import { ModalSheet } from '@/components/FormSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ROLE_COLORS, ROLE_LABELS, UINFO, useApp } from '@/context/AppContext';
+import { ROLE_COLORS, ROLE_LABELS, SCREEN_ROUTES, UINFO, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 interface Props {
@@ -20,6 +20,7 @@ export function Header({ title, rightAction }: Props) {
   const { role, userName, logout, notifications, changeOwnPassword } = useApp();
   const colors = useColors();
   const router = useRouter();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
 
   const [showMenu, setShowMenu] = useState(false);
@@ -40,6 +41,22 @@ export function Header({ title, rightAction }: Props) {
     : (info?.initials || 'U');
   const unread = notifications.filter(item => !item.read).length;
   const isAdmin = role === 'admin';
+  const primaryPaths = [
+    SCREEN_ROUTES.home,
+    SCREEN_ROUTES.jobs,
+    SCREEN_ROUTES.messages,
+    SCREEN_ROUTES.corp,
+    SCREEN_ROUTES.profile,
+  ];
+  const showBack = !primaryPaths.some(path => pathname.endsWith(path.replace('/(app)', '')));
+
+  function goBack() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace(SCREEN_ROUTES.jobs as never);
+  }
 
   async function handleLogout() {
     setShowMenu(false);
@@ -79,6 +96,16 @@ export function Header({ title, rightAction }: Props) {
         <View style={[styles.decCircle2, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
 
         <View style={styles.row}>
+          {showBack ? (
+            <TouchableOpacity
+              style={[styles.backBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
+              onPress={goBack}
+              accessibilityRole="button"
+              accessibilityLabel="Go back to previous page"
+            >
+              <Ionicons name="arrow-back" size={21} color="#fff" />
+            </TouchableOpacity>
+          ) : null}
           <View style={styles.titleSection}>
             <View style={styles.roleChip}>
               <Text style={styles.roleBadge}>{ROLE_LABELS[role]}</Text>
@@ -89,14 +116,15 @@ export function Header({ title, rightAction }: Props) {
             {rightAction}
             <TouchableOpacity
               style={[styles.homeBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
-              onPress={() => router.replace('/(app)/home' as never)}
+              onPress={() => router.push(SCREEN_ROUTES.home as never)}
               accessibilityLabel="Go to Overview"
             >
               <Ionicons name="home-outline" size={20} color="#fff" />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.notifBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
-              onPress={() => router.replace('/(app)/notifications' as never)}
+              onPress={() => router.push(SCREEN_ROUTES.notifications as never)}
+              accessibilityLabel="Open notifications"
             >
               <Ionicons name={unread > 0 ? 'notifications' : 'notifications-outline'} size={20} color="#fff" />
               {unread > 0 && (
@@ -107,8 +135,8 @@ export function Header({ title, rightAction }: Props) {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.avatar, { backgroundColor: 'rgba(255,255,255,0.20)' }]}
-              onPress={() => router.replace('/(app)/profile' as never)}
-              accessibilityLabel="Open My Profile"
+              onPress={() => setShowMenu(true)}
+              accessibilityLabel="Open profile menu"
             >
               <Text style={styles.avatarText}>{userInitials}</Text>
             </TouchableOpacity>
@@ -126,6 +154,19 @@ export function Header({ title, rightAction }: Props) {
             <Text style={[styles.menuName, { color: colors.text }]}>{userName || info?.name}</Text>
             <Text style={[styles.menuRole, { color: colors.textMuted }]}>{ROLE_LABELS[role]}</Text>
             <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+            <TouchableOpacity
+              style={[styles.menuItem, { backgroundColor: colors.surface }]}
+              onPress={() => {
+                setShowMenu(false);
+                setTimeout(() => router.push(SCREEN_ROUTES.profile as never), 0);
+              }}
+            >
+              <View style={[styles.menuItemIcon, { backgroundColor: colors.border }]}>
+                <Ionicons name="person-outline" size={16} color={colors.text} />
+              </View>
+              <Text style={[styles.menuItemText, { color: colors.text }]}>View My Profile</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
+            </TouchableOpacity>
             {!isAdmin && (
               <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.surface }]} onPress={openChangePw}>
                 <View style={[styles.menuItemIcon, { backgroundColor: colors.border }]}>
@@ -238,6 +279,7 @@ const styles = StyleSheet.create({
     top: 20, right: 90,
   },
   row:          { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  backBtn:      { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   titleSection: { flex: 1 },
   roleChip:     { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   roleBadge:    { color: 'rgba(255,255,255,0.65)', fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600' },

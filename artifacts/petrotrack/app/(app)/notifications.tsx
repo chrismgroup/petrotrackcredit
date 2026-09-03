@@ -35,8 +35,11 @@ export default function NotificationsScreen() {
 
   async function openNotification(id: number, data: Record<string, unknown> | null) {
     await markNotificationRead(id);
-    const route = typeof data?.route === 'string' ? data.route : SCREEN_ROUTES.home;
-    router.push(route as never);
+    const requestedRoute = typeof data?.route === 'string' ? data.route : '';
+    const isKnownRoute = Object.values(SCREEN_ROUTES).some(route =>
+      requestedRoute === route || requestedRoute.startsWith(`${route}?`),
+    );
+    router.push((isKnownRoute ? requestedRoute : SCREEN_ROUTES.home) as never);
   }
 
   return (
