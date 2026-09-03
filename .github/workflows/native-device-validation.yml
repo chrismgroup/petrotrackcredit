@@ -1,0 +1,133 @@
+name: Native Android device validation
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-android-device
+  cancel-in-progress: false
+
+jobs:
+  queued-report:
+    name: Queued report survives force-close
+    # This runner is a disposable Android test device with adb and Maestro
+    # installed. Do not run this job on a general-purpose hosted runner.
+    runs-on: [self-hosted, linux, android-device]
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_DOMAIN: ${{ secrets.PETROTRACK_BUILD_DOMAIN }}
+      PETROTRACK_TEST_API_URL: ${{ secrets.PETROTRACK_TEST_API_URL }}
+      PETROTRACK_ADMIN_USERNAME: ${{ secrets.PETROTRACK_ADMIN_USERNAME }}
+      PETROTRACK_ADMIN_PASSWORD: ${{ secrets.PETROTRACK_ADMIN_PASSWORD }}
+      PETROTRACK_TEST_BRANCH_ID: ${{ secrets.PETROTRACK_TEST_BRANCH_ID }}
+      PETROTRACK_TEST_PUMP: ${{ secrets.PETROTRACK_TEST_PUMP }}
+      PETROTRACK_ANDROID_APP_ID: petrotrack.replit.app
+      PETROTRACK_NATIVE_ARTIFACT_DIR: ${{ runner.temp }}/native-outbox-artifacts
+      PETROTRACK_FIXTURE_FILE: ${{ runner.temp }}/native-outbox-fixture.env
+      EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Verify scheduled device tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          command -v adb
+          command -v maestro
+          adb wait-for-device
+          test "$(adb get-state)" = device
+          adb shell pm path "$PETROTRACK_ANDROID_APP_ID" >/dev/null 2>&1 || true
+
+      - name: Install EAS CLI
+        run: npm install --global eas-cli
+
+      - name: Build EAS preview APK
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$EXPO_PUBLIC_DOMAIN"
+          test "$EXPO_PUBLIC_DOMAIN" != "petrotrack.replit.app"
+          mkdir -p "$RUNNER_TEMP/eas"
+          eas build \
+            --platform android \
+            --profile preview \
+            --non-interactive \
+            --wait \
+            --json >"$RUNNER_TEMP/eas/build.json"
+          node - "$RUNNER_TEMP/eas/build.json" >"$RUNNER_TEMP/eas/apk-url" <<'NODE'
+          const fs = require("fs");
+          const value = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const build = Array.isArray(value) ? value[0] : value;
+          const url = build?.artifacts?.buildUrl ?? build?.artifacts?.applicationArchiveUrl;
+          if (!url) throw new Error("EAS did not return an Android application URL");
+          process.stdout.write(url);
+          NODE
+          curl --fail --location --silent --show-error \
+            "$(cat "$RUNNER_TEMP/eas/apk-url")" \
+            --output "$RUNNER_TEMP/eas/petrotrack-preview.apk"
+
+      - name: Provision disposable account
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash artifacts/petrotrack/scripts/provision-native-outbox-fixture.sh
+          source "$PETROTRACK_FIXTURE_FILE"
+          printf '::add-mask::%s\n' "$PETROTRACK_TEST_PASSWORD"
+          {
+            printf 'PETROTRACK_TEST_USERNAME=%s\n' "$PETROTRACK_TEST_USERNAME"
+            printf 'PETROTRACK_TEST_PASSWORD=%s\n' "$PETROTRACK_TEST_PASSWORD"
+            printf 'PETROTRACK_TEST_DATE=%s\n' "$PETROTRACK_TEST_DATE"
+            printf 'PETROTRACK_TEST_CLOSING_METER=%s\n' "$PETROTRACK_TEST_CLOSING_METER"
+            printf 'PETROTRACK_TEST_PUMP=%s\n' "$PETROTRACK_TEST_PUMP"
+            printf 'PETROTRACK_TEST_NOTE=%s\n' "$PETROTRACK_TEST_NOTE"
+            printf 'PETROTRACK_FIXTURE_USER_ID=%s\n' "$PETROTRACK_FIXTURE_USER_ID"
+            printf 'PETROTRACK_FIXTURE_USERNAME=%s\n' "$PETROTRACK_FIXTURE_USERNAME"
+          } >>"$GITHUB_ENV"
+
+      - name: Install preview APK and clear device data
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          adb install -r "$RUNNER_TEMP/eas/petrotrack-preview.apk"
+          adb shell pm clear "$PETROTRACK_ANDROID_APP_ID"
+
+      - name: Run queued-report force-close flow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd artifacts/petrotrack
+          bash scripts/run-native-outbox-test.sh
+
+      - name: Delete disposable account
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f "$PETROTRACK_FIXTURE_FILE" ]]; then
+            # Cleanup must not hide the original queued/confirmed assertion.
+            # The isolated test API retains no shared production state.
+            set +e
+            source <(grep -E '^PETROTRACK_FIXTURE_(USER_ID|USERNAME)=' "$PETROTRACK_FIXTURE_FILE")
+            bash artifacts/petrotrack/scripts/cleanup-native-outbox-fixture.sh
+            cleanup_status=$?
+            set -e
+            if (( cleanup_status != 0 )); then
+              echo "Warning: disposable account cleanup failed." >&2
+            fi
+          fi
+
+      - name: Upload native device artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-outbox-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/native-outbox-artifacts
+            ${{ runner.temp }}/eas/build.json
+          if-no-files-found: warn

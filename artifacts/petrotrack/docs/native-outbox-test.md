@@ -45,6 +45,39 @@ creating a second record.
 The runner restores the device's previous airplane-mode setting in an exit
 trap. If the device is unavailable, the command exits before changing device
 state. Do not use a personal account or a production report for this check.
+Every Maestro flow and the device logcat are written to
+`PETROTRACK_NATIVE_ARTIFACT_DIR` (default: `native-outbox-artifacts`) so a
+failed queued or confirmed assertion has diagnostics attached to the job.
+
+## Scheduled Android device validation
+
+The repository includes
+`.github/workflows/native-device-validation.yml`. It runs daily and can also
+be started with **Run workflow**. The job must be assigned to a disposable
+self-hosted runner labelled `android-device` with:
+
+- Android SDK platform tools and one online Android device;
+- Maestro installed and available as `maestro`;
+- Node/npm, curl, and the EAS CLI install prerequisites.
+
+Configure these repository secrets for the job:
+
+| Secret                                                    | Purpose                                                         |
+| --------------------------------------------------------- | --------------------------------------------------------------- |
+| `EAS_TOKEN`                                               | Permission for the preview build                                |
+| `PETROTRACK_BUILD_DOMAIN`                                 | Domain embedded into the preview build                          |
+| `PETROTRACK_TEST_API_URL`                                 | Isolated test deployment URL, not production                    |
+| `PETROTRACK_ADMIN_USERNAME` / `PETROTRACK_ADMIN_PASSWORD` | Admin used only to create/delete the fixture                    |
+| `PETROTRACK_TEST_BRANCH_ID`                               | Dedicated branch containing the test pump and its opening meter |
+| `PETROTRACK_TEST_PUMP`                                    | Pump label shown in the shift-report flow                       |
+
+Each run builds a fresh EAS preview APK, creates a unique active attendant
+account on the isolated test deployment, clears the device's app data, and
+passes the generated credentials and unique note to the existing runner. The
+account is deleted in an `always()` cleanup step. The flow itself remains
+responsible for the exit status: a missing `Queued` or `Confirmed` assertion
+fails the job, while `adb` and Maestro logs are uploaded even when it fails.
+The dedicated branch and pump are never changed by fixture provisioning.
 
 ## iOS
 
@@ -53,4 +86,5 @@ or preview build. Use Xcode or the device's Control Center to disable and
 restore connectivity around the force-close boundary, then run the
 `after-restart` and `after-reconnect` flows with the same Maestro environment
 variables. The Android shell runner is intentionally not used for iOS because
-`adb` cannot control an iOS device's network or process lifecycle.
+`adb` cannot control an iOS device's network or process lifecycle. The scheduled
+lane is Android-only.
