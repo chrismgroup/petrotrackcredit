@@ -1,0 +1,526 @@
+import React from 'react';
+import { act, create } from 'react-test-renderer';
+import type { ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+
+jest.mock('react-native', () => {
+  const React = require('react');
+  const primitive = (name: string) => ({ children, ...props }: any) =>
+    React.createElement(name, props, children);
+
+  return {
+    Alert: { alert: jest.fn() },
+    Platform: { OS: 'web' },
+    ScrollView: primitive('ScrollView'),
+    StyleSheet: {
+      create: (styles: unknown) => styles,
+      hairlineWidth: 1,
+    },
+    Text: primitive('Text'),
+    TextInput: primitive('TextInput'),
+    TouchableOpacity: primitive('TouchableOpacity'),
+    View: primitive('View'),
+    useColorScheme: jest.fn(() => 'light'),
+  };
+});
+
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: () => null,
+}));
+
+jest.mock('react-native-svg', () => {
+  const React = require('react');
+  const primitive = (name: string) => ({ children, ...props }: any) =>
+    React.createElement(name, props, children);
+  return {
+    G: primitive('G'),
+    Rect: primitive('Rect'),
+    Svg: primitive('Svg'),
+    Text: primitive('SvgText'),
+  };
+});
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
+jest.mock('@/components/FormSheet', () => ({
+  ModalSheet: ({ visible, children }: any) => (visible ? children : null),
+}));
+
+jest.mock('@/components/ScreenLayout', () => {
+  const React = require('react');
+  return {
+    ScreenLayout: ({ children, rightAction }: any) =>
+      React.createElement('ScreenLayout', null, rightAction, children),
+  };
+});
+
+jest.mock('@/hooks/useColors', () => ({
+  useColors: () => ({
+    primary: '#0D5C2E',
+    primaryDark: '#0A4824',
+    primaryForeground: '#fff',
+    purple: '#4C1D95',
+    blue: '#1D4ED8',
+    amber: '#D97706',
+    coral: '#DC4E22',
+    red: '#B91C1C',
+    teal: '#0D6E56',
+    brown: '#7C3F0E',
+    background: '#EFF4F1',
+    surface: '#fff',
+    card: '#fff',
+    text: '#0F172A',
+    textMuted: '#64748B',
+    textSubtle: '#94A3B8',
+    border: '#DDE5E0',
+    inputBorder: '#C8D5CD',
+    tint: '#0D5C2E',
+    tabIconDefault: '#94A3B8',
+    tabIconSelected: '#0D5C2E',
+    success: '#166534',
+    successBg: '#DCFCE7',
+    successBorder: '#86EFAC',
+    warning: '#92400E',
+    warningBg: '#FEF3C7',
+    warningBorder: '#FCD34D',
+    error: '#991B1B',
+    errorBg: '#FEE2E2',
+    errorBorder: '#FCA5A5',
+    info: '#1D4ED8',
+    infoBg: '#EFF6FF',
+    messageMine: '#0D5C2E',
+    messageOther: '#EFF4F1',
+    radius: 14,
+  }),
+}));
+
+jest.mock('@/context/AppContext', () => {
+  const roleLabels: Record<string, string> = {
+    admin: 'Admin',
+    ceo: 'Chief Executive Officer',
+    md: 'Managing Director',
+    acc: 'Accountant',
+    csm: 'Corporate Services Manager / HR',
+    mktg: 'Marketing Manager',
+    mgr: 'Station Manager',
+    att: 'Attendant',
+  };
+  const roleColors: Record<string, string> = {
+    admin: '#633806',
+    ceo: '#7B2CBF',
+    md: '#4527A0',
+    acc: '#185FA5',
+    csm: '#7B3FA8',
+    mktg: '#B45309',
+    mgr: '#1A6E3C',
+    att: '#64748B',
+  };
+  const urgency = (targetDate: string) => {
+    const target = new Date(`${targetDate}T00:00:00`).getTime();
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const days = Math.ceil((target - startOfToday) / 86400000);
+    if (days < 0) return 'overdue';
+    if (days <= 14) return 'due-soon';
+    return 'on-track';
+  };
+  const defaultActionRoles = new Set(['ceo', 'md', 'acc', 'csm', 'mgr']);
+
+  return {
+    ACTION_ITEMS_DASHBOARD_ACCESS_ID: 'actionItemsDashboard',
+    GLOBAL_OVERVIEW_ROLES: new Set(['ceo', 'md', 'acc', 'csm']),
+    ROLE_COLORS: roleColors,
+    ROLE_LABELS: roleLabels,
+    SCREEN_ROUTES: {
+      acct: '/(app)/accounts',
+      actionItems: '/(app)/action-items',
+      branches: '/(app)/branches',
+      corp: '/(app)/corporate',
+      exprpt: '/(app)/reports',
+      exp: '/(app)/expenses',
+      hr: '/(app)/hr',
+      maint: '/(app)/maintenance',
+      messages: '/(app)/messages',
+      notifications: '/(app)/notifications',
+      ops: '/(app)/operations',
+      prices: '/(app)/prices',
+      recv: '/(app)/receiving',
+      sales: '/(app)/sales',
+      shift: '/(app)/shift',
+      tasks: '/(app)/tasks',
+      budget: '/(app)/budget',
+    },
+    canViewActionItemsDashboard: (
+      targetRole: string | null,
+      targetStaffId: number | null,
+      access: Record<number, Record<string, boolean>>,
+    ) => {
+      if (!targetRole) return false;
+      if (targetRole === 'admin') return true;
+      const override = targetStaffId !== null
+        ? access[targetStaffId]?.actionItemsDashboard
+        : undefined;
+      return override !== undefined ? override : defaultActionRoles.has(targetRole);
+    },
+    businessDateKey: (value: string) => value,
+    calculateAccountsReceivable: () => 0,
+    calculateBusinessMonthRevenue: () => 0,
+    calculateDailyOperationalStock: () => ({
+      startupStock: null,
+      delivered: 0,
+      sold: 0,
+      bookStock: null,
+    }),
+    calculateDailyStockLogBalance: () => ({ variance: null }),
+    calendarMonthBusinessDateRange: () => ({
+      from: '2026-09-01',
+      to: '2026-09-30',
+    }),
+    dipReadingToLiters: (value: number) => value,
+    fmt: (value: number) => `₦${value.toLocaleString()}`,
+    fmtDate: (value: string) => value || '—',
+    getActionItemUrgency: urgency,
+    isRevenueReportStatus: () => false,
+    resolveUserInfo: (role: string) => ({
+      name: roleLabels[role] ?? role,
+      initials: (roleLabels[role] ?? role).slice(0, 2).toUpperCase(),
+    }),
+    salesRevenueByBranch: () => ({ byBranch: {} }),
+    unitForProd: () => 'L',
+    useApp: jest.fn(),
+    useBusinessDateKey: () => '2026-09-03',
+  };
+});
+
+import HomeScreen from '../app/(app)/home';
+import ActionItemsScreen from '../app/(app)/action-items';
+import { useApp } from '@/context/AppContext';
+import { ActionItemsTable } from '@/components/ActionItemsTable';
+import type { ActionItem as AppActionItem } from '@/context/AppContext';
+
+const mockedUseApp = jest.mocked(useApp);
+
+const colors = {
+  primary: '#0D5C2E',
+  surface: '#fff',
+  background: '#EFF4F1',
+  border: '#DDE5E0',
+  text: '#0F172A',
+  textMuted: '#64748B',
+  textSubtle: '#94A3B8',
+};
+
+function item(overrides: Partial<AppActionItem> = {}): AppActionItem {
+  return {
+    id: 1001,
+    title: 'Reconcile pump readings',
+    desc: 'Confirm the variance with the station team.',
+    actionPartyName: 'Station Manager',
+    actionPartyRole: 'mgr',
+    status: 'open',
+    targetDate: '2026-09-20',
+    branchId: 'B1',
+    branchName: 'Maitama Branch',
+    createdBy: 'CEO',
+    createdByRole: 'ceo',
+    createdAt: '2026-09-01',
+    ...overrides,
+  };
+}
+
+function baseAppState(overrides: Record<string, unknown> = {}) {
+  return {
+    role: 'md',
+    userName: 'Test User',
+    staffId: 42,
+    branchId: 'B1',
+    userAccess: {},
+    branches: [
+      { id: 'B1', name: 'Maitama Branch', st: 'Active' },
+      { id: 'B2', name: 'Wuse Branch', st: 'Active' },
+    ],
+    navItems: [],
+    tanks: [],
+    lpgTanks: [],
+    pumps: [],
+    dips: [],
+    deliveries: [],
+    maintenance: [],
+    expenses: [],
+    budgets: [],
+    financialEntry: {
+      cashInHand: 0,
+      posValue: 0,
+      liabilities: 0,
+      goodsOnTransit: 0,
+    },
+    priceProposals: [],
+    pumpDailyReports: [],
+    userAccounts: [],
+    messages: {},
+    notifications: [],
+    sales: [],
+    startupStocks: [],
+    stockSnapshotConfig: {
+      productsByBranch: {},
+      metrics: {
+        variance: true,
+        startupStock: true,
+        deliveries: true,
+        submittedTankDip: true,
+      },
+    },
+    myFolderFiles: [],
+    actionItems: [],
+    approveDip: jest.fn(),
+    approveExpense: jest.fn(),
+    approveDelivery: jest.fn(),
+    approvePriceProposal: jest.fn(),
+    addActionItem: jest.fn(),
+    updateActionItemStatus: jest.fn(),
+    ...overrides,
+  };
+}
+
+function nodeText(node: ReactTestInstance): string {
+  return node.children
+    .map(child =>
+      typeof child === 'string' || typeof child === 'number'
+        ? String(child)
+        : nodeText(child as ReactTestInstance),
+    )
+    .join('');
+}
+
+function renderedText(renderer: ReactTestRenderer): string {
+  return renderer.root
+    .findAll(node => String(node.type) === 'Text')
+    .map(nodeText)
+    .join(' ');
+}
+
+function touchableWithText(renderer: ReactTestRenderer, text: string): ReactTestInstance {
+  const matches = renderer.root.findAll(
+    node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes(text),
+  );
+  expect(matches).toHaveLength(1);
+  return matches[0];
+}
+
+function render(element: React.ReactElement): ReactTestRenderer {
+  let renderer: ReactTestRenderer | null = null;
+  act(() => {
+    renderer = create(element);
+  });
+  return renderer as unknown as ReactTestRenderer;
+}
+
+beforeAll(() => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-03T12:00:00.000Z'));
+});
+
+afterAll(() => {
+  jest.useRealTimers();
+});
+
+afterEach(() => {
+  jest.clearAllMocks();
+});
+
+describe('Action Items table and dedicated view', () => {
+  it('keeps the requested columns and readable urgency/status states', () => {
+    const renderer = render(
+      <ActionItemsTable
+        items={[
+          item({
+            id: 123456,
+            targetDate: '2026-09-02',
+            status: 'open',
+          }),
+          item({
+            id: 123457,
+            title: 'Archive the signed handover',
+            desc: '',
+            actionPartyName: 'Managing Director',
+            actionPartyRole: 'md',
+            targetDate: '2026-09-20',
+            status: 'closed',
+          }),
+        ]}
+        colors={colors}
+        showBranch
+      />,
+    );
+    const text = renderedText(renderer);
+
+    expect(text).toContain('ID');
+    expect(text).toContain('Date');
+    expect(text).toContain('Description');
+    expect(text).toContain('Action party');
+    expect(text).toContain('Target close out');
+    expect(text).toContain('Status');
+    expect(text).toContain('Branch');
+    expect(text).toContain('#123456');
+    expect(text).toContain('2026-09-01');
+    expect(text).toContain('Reconcile pump readings');
+    expect(text).toContain('Station Manager');
+    expect(text).toContain('2026-09-02');
+    expect(text).toContain('Overdue');
+    expect(text).toContain('Open');
+    expect(text).toContain('Archive the signed handover');
+    expect(text).toContain('Closed');
+    expect(text).toContain('Locked');
+
+    act(() => renderer.unmount());
+  });
+
+  it('scopes active items by branch and keeps closed items in the archive', () => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'mgr',
+      actionItems: [
+        item({ id: 1, title: 'Maitama open item', targetDate: '2026-09-20', branchId: 'B1' }),
+        item({ id: 2, title: 'Wuse item must stay hidden', targetDate: '2026-09-20', branchId: 'B2', branchName: 'Wuse Branch' }),
+        item({ id: 3, title: 'Maitama archived item', status: 'closed', targetDate: '2026-09-02', branchId: 'B1' }),
+      ],
+    }) as any);
+
+    const renderer = render(<ActionItemsScreen />);
+    let text = renderedText(renderer);
+    expect(text).toContain('Maitama open item');
+    expect(text).not.toContain('Wuse item must stay hidden');
+    expect(text).not.toContain('Maitama archived item');
+
+    act(() => touchableWithText(renderer, 'Branch archive').props.onPress());
+    text = renderedText(renderer);
+    expect(text).toContain('Maitama archived item');
+    expect(text).toContain('Closed');
+    expect(text).toContain('Locked');
+    expect(text).not.toContain('Maitama open item');
+    expect(text).not.toContain('Wuse item must stay hidden');
+
+    act(() => renderer.unmount());
+  });
+
+  it('renders safe empty messages for open items and the branch archive', () => {
+    mockedUseApp.mockReturnValue(baseAppState({ role: 'mgr' }) as any);
+
+    const renderer = render(<ActionItemsScreen />);
+    expect(renderedText(renderer)).toContain('No open action items yet');
+
+    act(() => touchableWithText(renderer, 'Branch archive').props.onPress());
+    expect(renderedText(renderer)).toContain('No closed action items in this branch archive');
+
+    act(() => renderer.unmount());
+  });
+});
+
+describe('Home outstanding Action Items visibility, scope, and urgency', () => {
+  const homeItems = [
+    item({
+      id: 1,
+      title: 'Overdue Maitama item',
+      targetDate: '2026-09-02',
+      branchId: 'B1',
+      branchName: 'Maitama Branch',
+    }),
+    item({
+      id: 2,
+      title: 'Due-soon Wuse item',
+      targetDate: '2026-09-08',
+      branchId: 'B2',
+      branchName: 'Wuse Branch',
+    }),
+    item({
+      id: 3,
+      title: 'On-track Maitama item',
+      targetDate: '2026-09-20',
+      branchId: 'B1',
+      branchName: 'Maitama Branch',
+      status: 'on-going',
+    }),
+    item({
+      id: 4,
+      title: 'Closed item stays archived',
+      targetDate: '2026-09-02',
+      branchId: 'B1',
+      status: 'closed',
+    }),
+  ];
+
+  it.each(['ceo', 'md', 'acc', 'csm', 'mgr'] as const)(
+    'shows outstanding items to the requested %s role',
+    role => {
+      mockedUseApp.mockReturnValue(baseAppState({
+        role,
+        actionItems: [homeItems[0]],
+      }) as any);
+
+      const renderer = render(<HomeScreen />);
+      const text = renderedText(renderer);
+      expect(text).toContain('OUTSTANDING ACTION ITEMS');
+      expect(text).toContain('Overdue Maitama item');
+      expect(text).toContain('Overdue');
+      expect(text).toContain('Open');
+      act(() => renderer.unmount());
+    },
+  );
+
+  it.each(['att', 'mktg'] as const)(
+    'hides outstanding items from roles without dashboard access (%s)',
+    role => {
+      mockedUseApp.mockReturnValue(baseAppState({
+        role,
+        actionItems: [homeItems[0]],
+      }) as any);
+
+      const renderer = render(<HomeScreen />);
+      const text = renderedText(renderer);
+      expect(text).not.toContain('OUTSTANDING ACTION ITEMS');
+      expect(text).not.toContain('Overdue Maitama item');
+      act(() => renderer.unmount());
+    },
+  );
+
+  it('shows all branches to global roles but only the assigned branch to station managers', () => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      actionItems: homeItems,
+    }) as any);
+    const globalRenderer = render(<HomeScreen />);
+    const globalText = renderedText(globalRenderer);
+    expect(globalText).toContain('Overdue Maitama item');
+    expect(globalText).toContain('Due-soon Wuse item');
+    expect(globalText).toContain('On-track Maitama item');
+    expect(globalText).not.toContain('Closed item stays archived');
+    expect(globalText.indexOf('Overdue Maitama item')).toBeLessThan(globalText.indexOf('Due-soon Wuse item'));
+    expect(globalText.indexOf('Due-soon Wuse item')).toBeLessThan(globalText.indexOf('On-track Maitama item'));
+    act(() => globalRenderer.unmount());
+
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'mgr',
+      actionItems: homeItems,
+    }) as any);
+    const managerRenderer = render(<HomeScreen />);
+    const managerText = renderedText(managerRenderer);
+    expect(managerText).toContain('Overdue Maitama item');
+    expect(managerText).toContain('On-track Maitama item');
+    expect(managerText).not.toContain('Due-soon Wuse item');
+    expect(managerText).not.toContain('Closed item stays archived');
+    act(() => managerRenderer.unmount());
+  });
+
+  it('shows a readable empty state when an allowed role has no outstanding items', () => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'acc',
+      actionItems: [],
+    }) as any);
+
+    const renderer = render(<HomeScreen />);
+    const text = renderedText(renderer);
+    expect(text).toContain('OUTSTANDING ACTION ITEMS');
+    expect(text).toContain('No outstanding action items');
+    act(() => renderer.unmount());
+  });
+});
