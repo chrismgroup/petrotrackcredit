@@ -171,7 +171,7 @@ export default function JobsScreen() {
   }
 
   function openReport(type: ReportType) {
-    router.push(`${SCREEN_ROUTES.exprpt}?type=${type}` as never);
+    router.push(`${SCREEN_ROUTES.exprpt}/view?type=${type}` as never);
   }
 
   return (
