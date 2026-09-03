@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, STOCK_SNAPSHOT_METRICS, StockProduct, Tank, useApp } from '@/context/AppContext';
+import { ACTION_ITEMS_DASHBOARD_ACCESS_ID, ACTION_ITEMS_DASHBOARD_DEFAULT_ROLES, BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, STOCK_SNAPSHOT_METRICS, StockProduct, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 type Tab = 'company' | 'tanks' | 'startup' | 'pumps' | 'staff' | 'access' | 'snapshot' | 'system';
@@ -1482,6 +1482,32 @@ export default function SystemSettingsScreen() {
                             </View>
                           );
                         })}
+                        {(() => {
+                          const actionItemsEnabled = overrides[ACTION_ITEMS_DASHBOARD_ACCESS_ID] !== undefined
+                            ? overrides[ACTION_ITEMS_DASHBOARD_ACCESS_ID]
+                            : ACTION_ITEMS_DASHBOARD_DEFAULT_ROLES.has(memberRole);
+                          const actionItemsOverridden = overrides[ACTION_ITEMS_DASHBOARD_ACCESS_ID] !== undefined;
+                          return (
+                            <View style={[styles.permRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                              <View style={[styles.permIcon, { backgroundColor: actionItemsEnabled ? rc + '22' : colors.border + '55' }]}>
+                                <Ionicons name="flash-outline" size={16} color={actionItemsEnabled ? rc : colors.textMuted} />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.permLabel, { color: actionItemsEnabled ? colors.text : colors.textMuted }]}>Action Items dashboard</Text>
+                                <Text style={[styles.subLabel, { color: colors.textMuted, fontSize: 10, marginTop: 1 }]}>
+                                  Outstanding items on Home{actionItemsOverridden ? ' · User override' : ''}
+                                </Text>
+                              </View>
+                              <Switch
+                                value={actionItemsEnabled}
+                                onValueChange={v => { if (isAdmin) updateUserAccess(member.id, ACTION_ITEMS_DASHBOARD_ACCESS_ID, v); }}
+                                thumbColor={actionItemsEnabled ? rc : '#aaa'}
+                                trackColor={{ false: colors.border, true: rc + '55' }}
+                                disabled={!isAdmin}
+                              />
+                            </View>
+                          );
+                        })()}
                         {isAdmin && hasOverrides && (
                           <TouchableOpacity
                             onPress={() => Alert.alert('Reset Access', `Reset "${member.empName}" to role defaults?`, [

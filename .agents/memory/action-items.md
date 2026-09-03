@@ -14,3 +14,9 @@ Action Items are presented as a horizontally scrollable table with ID, created d
 **Why:** These roles need a fast operational glance without opening Tasks, while branch scoping must remain consistent with the rest of the operational dashboard.
 
 **How to apply:** Keep the table compact and urgency-sorted on Home, and reuse the same table presentation in Tasks so the fields and status meaning stay consistent.
+
+Action Item Home visibility uses the existing admin-managed per-user access override map with a dedicated dashboard permission key. Default visibility remains for CEO, MD, Accountant, CSM/HR, station managers, and admin; admins can override access for any active non-admin account from System Settings > Access > By User.
+
+**Why:** Reusing the existing Access Control persistence keeps grants synchronized across devices and avoids a second permission model.
+
+**How to apply:** A per-user override takes precedence over the role default. The grant controls the Home dashboard panel; preserve existing branch scoping for station managers.

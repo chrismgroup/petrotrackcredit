@@ -1108,6 +1108,22 @@ export const ROLE_FULL_NAV: Record<string, NavItem[]> = {
 // These roles receive the complete operational overview. This intentionally
 // excludes admin-only system management panels (users, settings, audit).
 export const GLOBAL_OVERVIEW_ROLES = new Set(['ceo', 'md', 'acc', 'csm']);
+export const ACTION_ITEMS_DASHBOARD_ACCESS_ID = 'actionItemsDashboard';
+export const ACTION_ITEMS_DASHBOARD_DEFAULT_ROLES = new Set(['ceo', 'md', 'acc', 'csm', 'mgr']);
+
+export function canViewActionItemsDashboard(
+  targetRole: Role | null,
+  targetStaffId: number | null,
+  access: Record<number, Record<string, boolean>>,
+): boolean {
+  if (!targetRole) return false;
+  if (targetRole === 'admin') return true;
+  const override = targetStaffId !== null
+    ? access[targetStaffId]?.[ACTION_ITEMS_DASHBOARD_ACCESS_ID]
+    : undefined;
+  if (override !== undefined) return override;
+  return ACTION_ITEMS_DASHBOARD_DEFAULT_ROLES.has(targetRole);
+}
 
 // Reports are opt-in for non-admin users. Admin grants the module by role or
 // by individual user through System Settings > Access Control.
