@@ -44,6 +44,12 @@ jobs:
           test "$(adb get-state)" = device
           adb shell pm path "$PETROTRACK_ANDROID_APP_ID" >/dev/null 2>&1 || true
 
+      - name: Preflight isolated native fixture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash artifacts/petrotrack/scripts/provision-native-outbox-fixture.sh --preflight
+
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
