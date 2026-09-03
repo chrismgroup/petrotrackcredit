@@ -263,32 +263,83 @@ it('refreshes the canonical server asset after a revision conflict', async () =>
   expect(app().companyAssetSaveError?.message).toContain('server version');
 });
 
-it('rejects company asset mutations from branch managers and attendants', async () => {
-  for (const role of ['mgr', 'att'] as const) {
-    jest.mocked(stateApi.get).mockResolvedValue(null);
-    jest.mocked(stateApi.getAll).mockResolvedValue({
-      userAccounts: [],
-      branches: [{ id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 }],
-      companyAssets: [],
-    });
+it('allows branch managers to mutate only assets in their assigned branch', async () => {
+  const foreignAsset = {
+    ...assetInput,
+    id: 'asset-foreign',
+    branchId: 'B2',
+    createdBy: 'Test Accountant',
+    createdAt: '2026-09-01T09:00:00.000Z',
+    updatedBy: 'Test Accountant',
+    updatedAt: '2026-09-01T09:00:00.000Z',
+    revision: 1,
+  };
+  jest.mocked(stateApi.getAll).mockResolvedValue({
+    userAccounts: [],
+    branches: [
+      { id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 },
+      { id: 'B2', name: 'Wuse Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 },
+    ],
+    companyAssets: [foreignAsset],
+  });
+  jest.mocked(stateApi.deleteCompanyAsset).mockResolvedValue({
+    ok: true,
+    assets: [foreignAsset],
+  });
 
-    await act(async () => {
-      renderer = create(
-        <AppProvider>
-          <ContextCapture />
-        </AppProvider>,
-      );
-    });
-    await act(async () => {
-      expect(await app().login(role, `Test ${role}`, 7, 'B1')).toBe(true);
-    });
+  await act(async () => {
+    renderer = create(
+      <AppProvider>
+        <ContextCapture />
+      </AppProvider>,
+    );
+  });
+  await act(async () => {
+    expect(await app().login('mgr', 'Test Manager', 7, 'B1')).toBe(true);
+  });
 
-    expect(app().addCompanyAsset(assetInput)).toBe(false);
-    expect(app().updateCompanyAsset('missing', assetInput)).toBe(false);
-    expect(app().deleteCompanyAsset('missing')).toBe(false);
-    expect(app().companyAssets).toEqual([]);
-    act(() => renderer?.unmount());
-    renderer = null;
-    capturedApp = null;
-  }
+  expect(app().addCompanyAsset({ ...assetInput, branchId: 'B2' })).toBe(false);
+  expect(app().updateCompanyAsset(foreignAsset.id, { ...assetInput, branchId: 'B2' })).toBe(false);
+  expect(app().deleteCompanyAsset(foreignAsset.id)).toBe(false);
+
+  await act(async () => {
+    expect(app().addCompanyAsset(assetInput)).toBe(true);
+  });
+  const created = app().companyAssets.find(value => value.branchId === 'B1');
+  expect(created).toBeDefined();
+  await act(async () => {
+    expect(app().updateCompanyAsset(created!.id, {
+      ...assetInput,
+      name: 'Manager Edited Generator',
+    })).toBe(true);
+  });
+  expect(app().updateCompanyAsset(created!.id, { ...assetInput, branchId: 'B2' })).toBe(false);
+  await act(async () => {
+    expect(app().deleteCompanyAsset(created!.id)).toBe(true);
+  });
+  expect(app().companyAssets).toEqual([foreignAsset]);
+});
+
+it('rejects company asset mutations from attendants', async () => {
+  jest.mocked(stateApi.getAll).mockResolvedValue({
+    userAccounts: [],
+    branches: [{ id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 }],
+    companyAssets: [],
+  });
+
+  await act(async () => {
+    renderer = create(
+      <AppProvider>
+        <ContextCapture />
+      </AppProvider>,
+    );
+  });
+  await act(async () => {
+    expect(await app().login('att', 'Test Attendant', 7, 'B1')).toBe(true);
+  });
+
+  expect(app().addCompanyAsset(assetInput)).toBe(false);
+  expect(app().updateCompanyAsset('missing', assetInput)).toBe(false);
+  expect(app().deleteCompanyAsset('missing')).toBe(false);
+  expect(app().companyAssets).toEqual([]);
 });

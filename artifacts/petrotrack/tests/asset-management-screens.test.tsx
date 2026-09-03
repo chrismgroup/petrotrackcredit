@@ -389,16 +389,33 @@ describe('asset register screen', () => {
     act(() => renderer.unmount());
   });
 
-  it.each(['mgr', 'att'] as const)('does not expose register mutations to unauthorized %s users', role => {
+  it('exposes register mutations to a manager for the assigned branch', () => {
     const addCompanyAsset = jest.fn(() => true);
     const updateCompanyAsset = jest.fn(() => true);
     const deleteCompanyAsset = jest.fn(() => true);
     mockedUseApp.mockReturnValue(baseAppState({
-      role,
+      role: 'mgr',
       branchId: branchA.id,
       addCompanyAsset,
       updateCompanyAsset,
       deleteCompanyAsset,
+    }) as any);
+
+    const renderer = mount(<AssetManagementScreen />);
+    expect(renderedText(renderer)).toContain('Branch Generator');
+    expect(renderer.root.findAll(
+      node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'asset-form-toggle',
+    )).toHaveLength(1);
+    expect(renderer.root.findAll(
+      node => String(node.type) === 'TouchableOpacity' && node.props.accessibilityLabel === 'Edit Branch Generator',
+    )).toHaveLength(1);
+    act(() => renderer.unmount());
+  });
+
+  it('does not expose register mutations to attendants', () => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'att',
+      branchId: branchA.id,
     }) as any);
 
     const renderer = mount(<AssetManagementScreen />);
