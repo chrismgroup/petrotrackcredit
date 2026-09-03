@@ -705,7 +705,19 @@ export default function ReportsScreen() {
           </View>
         </View>
 
-        {/* ── Report header strip (with inline export) ── */}
+        {/* ── On-screen report preview ── */}
+        <View style={s.previewHeading}>
+          <View style={s.previewEyebrow}>
+            <Ionicons name="eye-outline" size={14} color={rc} />
+            <Text style={[s.previewEyebrowText, { color: rc }]}>LIVE PREVIEW</Text>
+          </View>
+          <Text style={[s.previewTitle, { color: colors.text }]}>Read {meta.label} on screen</Text>
+          <Text style={[s.previewSub, { color: colors.textMuted }]}>
+            This preview uses the selected {period.toLowerCase()} period and {branchName.toLowerCase()} scope. Export is optional.
+          </Text>
+        </View>
+
+        {/* ── Report preview header (with optional export) ── */}
         <View style={[s.reportStrip, { backgroundColor: meta.color }]}>
           <View style={[s.stripIcon, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
             <Ionicons name={meta.icon as any} size={18} color="#fff" />
@@ -1244,6 +1256,11 @@ const s = StyleSheet.create({
   reportTileTitle:{ fontSize: 14, fontWeight: '800', lineHeight: 18 },
   reportTileDesc: { fontSize: 11, lineHeight: 15, marginTop: 3 },
   reportTileDept:  { fontSize: 9, fontWeight: '800', letterSpacing: 0.9, textTransform: 'uppercase' },
+  previewHeading:  { marginBottom: 12, paddingHorizontal: 2 },
+  previewEyebrow:  { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  previewEyebrowText: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
+  previewTitle:   { fontSize: 18, fontWeight: '800' },
+  previewSub:     { fontSize: 12, lineHeight: 17, marginTop: 3 },
   reportStrip:    { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderRadius: 18, marginBottom: 16 },
   stripIcon:      { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   stripTitle:     { color: '#fff', fontSize: 15, fontWeight: '800' },
