@@ -53,13 +53,8 @@ export default function ActionItemsScreen() {
     account.status === 'active' && account.role && account.role !== 'admin'
       && ACTION_PARTY_ROLES.includes(account.role as any),
   );
-  const actionPartyOptions = actionPartyAccounts.length > 0
-    ? actionPartyAccounts
-    : ACTION_PARTY_ROLES.map(partyRole => ({
-        id: 0,
-        empName: resolveUserInfo(partyRole, userAccounts).name,
-        role: partyRole,
-      }));
+  const actionPartyOptions = actionPartyAccounts;
+  const branchNameById = new Map(branches.map(branch => [branch.id, branch.name]));
 
   const [actionView, setActionView] = useState<ActionView>('active');
   const [actionBranchFilter, setActionBranchFilter] = useState('all');
@@ -89,7 +84,10 @@ export default function ActionItemsScreen() {
   const searchedActionPartyOptions = actionPartyOptions.filter(option => {
     const query = partyQuery.trim().toLowerCase();
     if (!query) return true;
-    return `${option.empName} ${ROLE_LABELS[option.role as keyof typeof ROLE_LABELS] ?? option.role}`
+    const branchSearchText = option.branchId
+      ? `${option.branchId} ${branchNameById.get(option.branchId) ?? ''}`
+      : '';
+    return `${option.empName} ${ROLE_LABELS[option.role as keyof typeof ROLE_LABELS] ?? option.role} ${branchSearchText}`
       .toLowerCase()
       .includes(query);
   });
@@ -455,7 +453,12 @@ export default function ActionItemsScreen() {
                 <Text style={[styles.assigneeName, { color: colors.text }]} numberOfLines={1}>{form.actionPartyName}</Text>
                 <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>{ROLE_LABELS[form.actionPartyRole as keyof typeof ROLE_LABELS] ?? form.actionPartyRole}</Text>
               </View>
-              <TouchableOpacity onPress={() => setShowPartySearch(true)} style={[styles.changePartyButton, { borderColor: roleColor }]}>
+              <TouchableOpacity
+                onPress={() => setShowPartySearch(current => !current)}
+                style={[styles.changePartyButton, { borderColor: roleColor }]}
+                accessibilityRole="button"
+                accessibilityLabel="Change action party"
+              >
                 <Text style={[styles.changePartyText, { color: roleColor }]}>Change</Text>
               </TouchableOpacity>
             </View>
@@ -464,15 +467,97 @@ export default function ActionItemsScreen() {
               testID="open-action-party-search"
               onPress={() => setShowPartySearch(true)}
               style={[styles.searchPartyButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              accessibilityRole="button"
+              accessibilityLabel="Choose action party"
             >
               <Ionicons name="search-outline" size={18} color={roleColor} />
               <View style={styles.flex}>
-                <Text style={[styles.searchPartyTitle, { color: colors.text }]}>Search for an action party</Text>
-                <Text style={[styles.searchPartyHint, { color: colors.textMuted }]}>Find an active user by name or role</Text>
+                <Text style={[styles.searchPartyTitle, { color: colors.text }]}>Choose action party</Text>
+                <Text style={[styles.searchPartyHint, { color: colors.textMuted }]}>Search active users by name, branch, or role</Text>
               </View>
-              <Ionicons name="chevron-forward" size={17} color={colors.textSubtle} />
+              <Ionicons name={showPartySearch ? 'chevron-up' : 'chevron-down'} size={17} color={colors.textSubtle} />
             </TouchableOpacity>
           )}
+
+          {showPartySearch ? (
+            <View style={[styles.inlinePartyPicker, { backgroundColor: colors.surface, borderColor: roleColor + '66' }]}>
+              <View style={styles.partyPickerHeader}>
+                <View style={styles.flex}>
+                  <Text style={[styles.partyPickerTitle, { color: colors.text }]}>Choose action party</Text>
+                  <Text style={[styles.partyPickerHint, { color: colors.textMuted }]}>
+                    {actionPartyOptions.length
+                      ? `${actionPartyOptions.length} active user${actionPartyOptions.length === 1 ? '' : 's'}`
+                      : 'No active users available'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => { setShowPartySearch(false); setPartyQuery(''); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close action party picker"
+                  style={styles.pickerCloseButton}
+                >
+                  <Ionicons name="close" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.searchInputWrap, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+                <TextInput
+                  testID="action-party-search-input"
+                  autoFocus
+                  value={partyQuery}
+                  onChangeText={setPartyQuery}
+                  placeholder="Search by name, branch, or role"
+                  placeholderTextColor={colors.textSubtle}
+                  style={[styles.searchInput, { color: colors.text }]}
+                  returnKeyType="search"
+                  accessibilityLabel="Search action parties"
+                />
+                {!!partyQuery && (
+                  <TouchableOpacity onPress={() => setPartyQuery('')} accessibilityLabel="Clear action party search">
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.partyResults}>
+                {searchedActionPartyOptions.length ? searchedActionPartyOptions.map(option => {
+                  const optionRole = option.role as any;
+                  const optionColor = ROLE_COLORS[optionRole] || colors.primary;
+                  const optionBranch = option.branchId
+                    ? branchNameById.get(option.branchId) ?? option.branchId
+                    : 'Network-wide';
+                  const selected = form.actionPartyId === option.id;
+                  return (
+                    <TouchableOpacity
+                      key={`${optionRole}-${option.id}`}
+                      testID={`action-party-option-${option.id}`}
+                      onPress={() => selectActionParty(option)}
+                      style={[styles.assigneeRow, { backgroundColor: selected ? optionColor + '10' : colors.background, borderColor: selected ? optionColor : colors.border }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Select ${option.empName}, ${optionBranch}, ${ROLE_LABELS[optionRole] ?? optionRole}`}
+                    >
+                      <View style={[styles.avatar, { backgroundColor: selected ? optionColor : colors.textSubtle }]}>
+                        <Text style={styles.avatarText}>{resolveUserInfo(optionRole, userAccounts).initials}</Text>
+                      </View>
+                      <View style={styles.flex}>
+                        <Text style={[styles.assigneeName, { color: selected ? optionColor : colors.text }]}>{option.empName}</Text>
+                        <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>
+                          {ROLE_LABELS[optionRole] ?? optionRole} · {optionBranch}
+                        </Text>
+                      </View>
+                      {selected && <Ionicons name="checkmark-circle" size={18} color={optionColor} />}
+                    </TouchableOpacity>
+                  );
+                }) : (
+                  <View style={styles.noResults}>
+                    <Ionicons name="person-outline" size={26} color={colors.textSubtle} />
+                    <Text style={[styles.noResultsText, { color: colors.textMuted }]}>
+                      {actionPartyOptions.length ? `No active users match “${partyQuery}”.` : 'Create an active user account before assigning an action item.'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ) : null}
 
           <AppliedDateField
             label="Target close date *"
@@ -499,79 +584,6 @@ export default function ActionItemsScreen() {
         </KeyboardAvoidingView>
       </ModalSheet>
 
-      <ModalSheet visible={showPartySearch} onClose={() => { setShowPartySearch(false); setPartyQuery(''); }}>
-        <KeyboardAvoidingView
-          style={[styles.partySearchContainer, { backgroundColor: colors.background }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={[styles.sheetHeader, { borderBottomColor: colors.border }]}>
-            <View style={styles.flex}>
-              <Text style={[styles.sheetTitle, { color: colors.text }]}>Choose action party</Text>
-              <Text style={[styles.sheetIntro, { color: colors.textMuted }]}>Search active users by name or role.</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => { setShowPartySearch(false); setPartyQuery(''); }}
-              style={[styles.closeButton, { backgroundColor: colors.surface }]}
-              accessibilityLabel="Close action party search"
-            >
-              <Ionicons name="close" size={18} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.searchInputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="search-outline" size={18} color={colors.textMuted} />
-            <TextInput
-              testID="action-party-search-input"
-              autoFocus
-              value={partyQuery}
-              onChangeText={setPartyQuery}
-              placeholder="Search by name or role"
-              placeholderTextColor={colors.textSubtle}
-              style={[styles.searchInput, { color: colors.text }]}
-              returnKeyType="search"
-            />
-            {!!partyQuery && (
-              <TouchableOpacity onPress={() => setPartyQuery('')} accessibilityLabel="Clear action party search">
-                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-          <ScrollView
-            style={styles.sheet}
-            contentContainerStyle={styles.partyResults}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {searchedActionPartyOptions.length ? searchedActionPartyOptions.map(option => {
-              const optionRole = option.role as any;
-              const optionColor = ROLE_COLORS[optionRole] || colors.primary;
-              const selected = form.actionPartyRole === optionRole
-                && (form.actionPartyId === (option.id || null) || !option.id);
-              return (
-                <TouchableOpacity
-                  key={`${optionRole}-${option.id || 'role'}`}
-                  testID={`action-party-option-${option.id || optionRole}`}
-                  onPress={() => selectActionParty(option)}
-                  style={[styles.assigneeRow, { backgroundColor: selected ? optionColor + '10' : colors.surface, borderColor: selected ? optionColor : colors.border }]}
-                >
-                  <View style={[styles.avatar, { backgroundColor: selected ? optionColor : colors.textSubtle }]}>
-                    <Text style={styles.avatarText}>{resolveUserInfo(optionRole, userAccounts).initials}</Text>
-                  </View>
-                  <View style={styles.flex}>
-                    <Text style={[styles.assigneeName, { color: selected ? optionColor : colors.text }]}>{option.empName}</Text>
-                    <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>{ROLE_LABELS[optionRole] ?? optionRole}</Text>
-                  </View>
-                  {selected && <Ionicons name="checkmark-circle" size={18} color={optionColor} />}
-                </TouchableOpacity>
-              );
-            }) : (
-              <View style={styles.noResults}>
-                <Ionicons name="person-outline" size={26} color={colors.textSubtle} />
-                <Text style={[styles.noResultsText, { color: colors.textMuted }]}>No active users match “{partyQuery}”.</Text>
-              </View>
-            )}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </ModalSheet>
     </ScreenLayout>
   );
 }
