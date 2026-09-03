@@ -42,16 +42,19 @@
       ],
       "expo-font",
       "expo-web-browser",
-      "expo-document-picker"
-      ,"expo-notifications"
-      ,[
+      "expo-document-picker",
+      "expo-notifications",
+      [
         "@daily-co/config-plugin-rn-daily-js",
         {
           "enableCamera": true,
           "enableMicrophone": true,
           "enableScreenShare": false
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-audio",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
