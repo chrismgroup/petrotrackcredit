@@ -4,11 +4,12 @@ import { Redirect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput,
+  Alert, Image, Platform, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { type LoginError, apiLogin } from '@/lib/api';
@@ -178,10 +179,12 @@ export default function LoginScreen() {
       </View>
 
       {/* ── Login card ── */}
-      <ScrollView
+      <KeyboardAwareScrollViewCompat
         style={[styles.card, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingBottom: botPad + 28 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: botPad + 28 }}
+        bottomOffset={24}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.cardHandle} />
@@ -289,7 +292,7 @@ export default function LoginScreen() {
             Sign in once with your password to enable {Platform.OS === 'ios' ? 'Face ID / Touch ID' : 'fingerprint'} for future logins.
           </Text>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
     </View>
   );
 }
