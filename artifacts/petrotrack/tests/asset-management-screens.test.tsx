@@ -153,6 +153,8 @@ function baseAppState(overrides: Record<string, unknown> = {}) {
     addCompanyAsset: jest.fn(() => true),
     updateCompanyAsset: jest.fn(() => true),
     deleteCompanyAsset: jest.fn(() => true),
+    companyAssetSaveError: null,
+    clearCompanyAssetSaveError: jest.fn(),
     tanks: [],
     lpgTanks: [],
     dips: [],
@@ -224,6 +226,26 @@ afterEach(() => {
 });
 
 describe('asset register screen', () => {
+  it('shows a clear save failure and clears the one-shot error notice', () => {
+    const clearCompanyAssetSaveError = jest.fn();
+    mockedUseApp.mockReturnValue(baseAppState({
+      companyAssetSaveError: {
+        id: 1,
+        message: 'Changes to "Branch Generator" were not saved. The last confirmed version was restored.',
+      },
+      clearCompanyAssetSaveError,
+    }) as any);
+
+    const renderer = mount(<AssetManagementScreen />);
+
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Asset save failed',
+      'Changes to "Branch Generator" were not saved. The last confirmed version was restored.',
+    );
+    expect(clearCompanyAssetSaveError).toHaveBeenCalledTimes(1);
+    act(() => renderer.unmount());
+  });
+
   it('exercises authorized add, edit, and delete flows without losing branch/category labels', () => {
     const addCompanyAsset = jest.fn(() => true);
     const updateCompanyAsset = jest.fn(() => true);

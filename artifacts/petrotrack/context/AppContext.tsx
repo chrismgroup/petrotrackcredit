@@ -1350,6 +1350,8 @@ interface AppContextType {
   financialEntry: FinancialEntry;
   updateFinancialEntry: (updates: Partial<Omit<FinancialEntry, 'updatedBy' | 'updatedAt'>>) => void;
   companyAssets: CompanyAsset[];
+  companyAssetSaveError: CompanyAssetSaveError | null;
+  clearCompanyAssetSaveError: () => void;
   addCompanyAsset: (asset: AssetInput) => boolean;
   updateCompanyAsset: (id: string, updates: AssetInput) => boolean;
   deleteCompanyAsset: (id: string) => boolean;
@@ -1547,6 +1549,11 @@ interface AppContextType {
   clearUserAccess: (staffId: number) => void;
 }
 
+export interface CompanyAssetSaveError {
+  id: number;
+  message: string;
+}
+
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1612,6 +1619,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [stockSnapshotConfig, setStockSnapshotConfig] = useState<StockSnapshotConfig>(DEFAULT_STOCK_SNAPSHOT_CONFIG);
   const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
   const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>([]);
+  const [companyAssetSaveError, setCompanyAssetSaveError] = useState<CompanyAssetSaveError | null>(null);
+  const companyAssetSaveErrorIdRef = useRef(0);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const refreshNotifications = useCallback(async () => {
@@ -4524,8 +4533,77 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const canManageCompanyAssetBranch = useCallback((assetBranchId: string) =>
     role !== 'mgr' || (!!branchId && assetBranchId === branchId),
   [role, branchId]);
+  const reportCompanyAssetSaveFailure = useCallback((
+    operation: 'add' | 'edit',
+    assetName: string,
+    recovery: 'removed' | 'restored' | 'refreshed',
+  ) => {
+    const action = operation === 'add'
+      ? `"${assetName}" was not added`
+      : `Changes to "${assetName}" were not saved`;
+    const recoveryMessage = recovery === 'removed'
+      ? 'The unsaved entry was removed.'
+      : recovery === 'restored'
+        ? 'The last confirmed version was restored.'
+        : 'The register was refreshed with the server version.';
+    companyAssetSaveErrorIdRef.current += 1;
+    setCompanyAssetSaveError({
+      id: companyAssetSaveErrorIdRef.current,
+      message: `${action}. ${recoveryMessage} Check your connection and try again.`,
+    });
+  }, []);
+  const reconcileFailedCompanyAssetSave = useCallback(async ({
+    id,
+    optimisticUpdatedAt,
+    previous,
+    operation,
+    assetName,
+  }: {
+    id: string;
+    optimisticUpdatedAt: string;
+    previous?: CompanyAsset;
+    operation: 'add' | 'edit';
+    assetName: string;
+  }) => {
+    let canonical: CompanyAsset[] | null = null;
+    try {
+      canonical = await stateApi.get<CompanyAsset[]>('companyAssets');
+    } catch {
+      // Treat a failed recovery request like a failed save.
+    }
+    if (canonical) {
+      // A newer local mutation may have happened while the request was in
+      // flight. Never overwrite that newer value with an older snapshot.
+      setCompanyAssets(current => current.some(item =>
+        item.id === id && item.updatedAt === optimisticUpdatedAt,
+      ) ? canonical! : current);
+      reportCompanyAssetSaveFailure(operation, assetName, 'refreshed');
+      return;
+    }
+
+    if (operation === 'add') {
+      setCompanyAssets(current => current.filter(item =>
+        !(item.id === id && item.updatedAt === optimisticUpdatedAt),
+      ));
+      reportCompanyAssetSaveFailure(operation, assetName, 'removed');
+      return;
+    }
+
+    setCompanyAssets(current => current.map(item =>
+      item.id === id && item.updatedAt === optimisticUpdatedAt && previous
+        ? previous
+        : item,
+    ));
+    reportCompanyAssetSaveFailure(operation, assetName, 'restored');
+  }, [reportCompanyAssetSaveFailure]);
+
+  const clearCompanyAssetSaveError = useCallback(() => {
+    setCompanyAssetSaveError(null);
+  }, []);
+
   const addCompanyAsset = useCallback((asset: AssetInput) => {
     if (!canManageCompanyAssets || !canManageCompanyAssetBranch(asset.branchId)) return false;
+    clearCompanyAssetSaveError();
     const timestamp = nowTs();
     const created: CompanyAsset = {
       ...asset,
@@ -4536,22 +4614,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatedAt: timestamp,
     };
     setCompanyAssets(prev => [...prev, created]);
-    void stateApi.upsertCompanyAsset(created, null).then(async result => {
-      if (result?.asset) {
-        setCompanyAssets(prev => prev.map(item =>
-          item.id === created.id && item.updatedAt === created.updatedAt ? result.asset : item,
-        ));
-      } else {
-        const canonical = await stateApi.get<CompanyAsset[]>('companyAssets');
-        if (canonical) {
-          setCompanyAssets(prev => prev.some(item =>
-            item.id === created.id && item.updatedAt !== created.updatedAt,
-          ) ? prev : canonical);
+    void (async () => {
+      try {
+        const result = await stateApi.upsertCompanyAsset(created, null);
+        if (result?.asset) {
+          setCompanyAssets(prev => prev.map(item =>
+            item.id === created.id && item.updatedAt === created.updatedAt ? result.asset : item,
+          ));
+          return;
         }
+      } catch {
+        // The recovery path below restores the last confirmed state.
       }
-    });
+      await reconcileFailedCompanyAssetSave({
+        id: created.id,
+        optimisticUpdatedAt: created.updatedAt,
+        operation: 'add',
+        assetName: created.name,
+      });
+    })();
     return true;
-  }, [canManageCompanyAssets, canManageCompanyAssetBranch, userName]);
+  }, [
+    canManageCompanyAssets,
+    canManageCompanyAssetBranch,
+    clearCompanyAssetSaveError,
+    reconcileFailedCompanyAssetSave,
+    userName,
+  ]);
 
   const updateCompanyAsset = useCallback((id: string, updates: AssetInput) => {
     if (!canManageCompanyAssets) return false;
@@ -4561,24 +4650,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updates.branchId !== previous.branchId ||
       !canManageCompanyAssetBranch(previous.branchId)
     ) return false;
+    clearCompanyAssetSaveError();
     const updated = { ...previous, ...updates, updatedBy: userName, updatedAt: nowTs() };
     setCompanyAssets(prev => prev.map(asset => asset.id === id ? updated : asset));
-    void stateApi.upsertCompanyAsset(updated, previous.revision ?? 0).then(async result => {
-      if (result?.asset) {
-        setCompanyAssets(prev => prev.map(item =>
-          item.id === id && item.updatedAt === updated.updatedAt ? result.asset : item,
-        ));
-      } else {
-        const canonical = await stateApi.get<CompanyAsset[]>('companyAssets');
-        if (canonical) {
-          setCompanyAssets(prev => prev.some(item =>
-            item.id === id && item.updatedAt !== updated.updatedAt,
-          ) ? prev : canonical);
+    void (async () => {
+      try {
+        const result = await stateApi.upsertCompanyAsset(updated, previous.revision ?? 0);
+        if (result?.asset) {
+          setCompanyAssets(prev => prev.map(item =>
+            item.id === id && item.updatedAt === updated.updatedAt ? result.asset : item,
+          ));
+          return;
         }
+      } catch {
+        // The recovery path below restores the last confirmed state.
       }
-    });
+      await reconcileFailedCompanyAssetSave({
+        id,
+        optimisticUpdatedAt: updated.updatedAt,
+        previous,
+        operation: 'edit',
+        assetName: updated.name,
+      });
+    })();
     return true;
-  }, [canManageCompanyAssets, canManageCompanyAssetBranch, companyAssets, userName]);
+  }, [
+    canManageCompanyAssets,
+    canManageCompanyAssetBranch,
+    clearCompanyAssetSaveError,
+    companyAssets,
+    reconcileFailedCompanyAssetSave,
+    userName,
+  ]);
 
   const deleteCompanyAsset = useCallback((id: string) => {
     if (!canManageCompanyAssets) return false;
@@ -4622,7 +4725,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
        maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts, callLog,
-       companyAssets, addCompanyAsset, updateCompanyAsset, deleteCompanyAsset,
+       companyAssets, companyAssetSaveError, clearCompanyAssetSaveError,
+       addCompanyAsset, updateCompanyAsset, deleteCompanyAsset,
        handoverNotes, addShiftHandoverNote,
        marketCompetitors, addMarketCompetitor, updateMarketCompetitor, deleteMarketCompetitor,
        addBroadcast, addCallRecord,
