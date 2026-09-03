@@ -35,7 +35,7 @@ const ALLOWED_KEYS = new Set([
   "companyAssets",
 ]);
 const MY_FOLDER_WRITE_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
-const COMPANY_ASSET_WRITE_ROLES = new Set(["admin", "acc", "md", "ceo", "csm", "mktg"]);
+const COMPANY_ASSET_WRITE_ROLES = new Set(["admin", "acc", "md", "ceo", "csm", "mktg", "mgr"]);
 
 function visibleMyFolderState(key: string, data: unknown, role?: string): unknown {
   if ((key !== "myFolders" && key !== "myFolderFiles") || MY_FOLDER_WRITE_ROLES.has(role ?? "")) {
@@ -1148,6 +1148,14 @@ router.post("/state/company-assets/upsert", async (req, res): Promise<void> => {
   }
   const assetInput = candidate as JsonRecord;
   const id = String(assetInput.id).trim();
+  const managerBranchId = req.auth?.role === "mgr" ? String(req.auth.branchId ?? "").trim() : "";
+  if (
+    req.auth?.role === "mgr"
+    && (!managerBranchId || String(assetInput.branchId ?? "").trim() !== managerBranchId)
+  ) {
+    res.status(403).json({ error: "A branch manager can only manage assets in the assigned branch" });
+    return;
+  }
   const result = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:company-assets'))`);
     const [existingRow, deletionsRow] = await Promise.all([
@@ -1212,6 +1220,12 @@ router.post("/state/company-assets/:id/delete", async (req, res): Promise<void> 
     const existingAsset = Array.isArray(existingRow?.data)
       ? (existingRow.data as JsonRecord[]).find(asset => String(asset.id ?? "").trim() === id.trim())
       : undefined;
+    if (
+      req.auth?.role === "mgr"
+      && (!existingAsset || String(existingAsset.branchId ?? "").trim() !== String(req.auth.branchId ?? "").trim())
+    ) {
+      return { forbidden: true as const, assets: removeCompanyAsset(existingRow?.data, id.trim()) };
+    }
     const next = removeCompanyAsset(existingRow?.data, id.trim());
     const tombstones = {
       ...(deletionsRow?.data && typeof deletionsRow.data === "object" && !Array.isArray(deletionsRow.data)
@@ -1231,6 +1245,10 @@ router.post("/state/company-assets/:id/delete", async (req, res): Promise<void> 
     ]);
     return { forbidden: false as const, assets: next };
   });
+  if (result.forbidden) {
+    res.status(403).json({ error: "A branch manager can only manage assets in the assigned branch" });
+    return;
+  }
   res.json({ ok: true, assets: result.assets });
 });
 
@@ -1503,6 +1521,35 @@ router.put("/state/:key", async (req, res): Promise<void> => {
         tx.select().from(appStateTable).where(eq(appStateTable.key, "companyAssets")).then(rows => rows[0]),
         tx.select().from(appStateTable).where(eq(appStateTable.key, COMPANY_ASSET_DELETIONS_KEY)).then(rows => rows[0]),
       ]);
+      if (req.auth?.role === "mgr") {
+        const managerBranchId = String(req.auth.branchId ?? "").trim();
+        if (!managerBranchId) {
+          return { error: "A branch assignment is required to update company assets" as const };
+        }
+        const existingAssets = Array.isArray(existingRow?.data)
+          ? existingRow.data as JsonRecord[]
+          : [];
+        const existingById = new Map(existingAssets.map(asset => [String(asset.id ?? "").trim(), asset]));
+        const unauthorized = (data as unknown[]).some(value => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return true;
+          const candidate = value as JsonRecord;
+          const id = String(candidate.id ?? "").trim();
+          const previous = existingById.get(id);
+          const candidateBranchId = String(candidate.branchId ?? "").trim();
+          // Managers receive a network snapshot, so unchanged records owned by
+          // another branch are expected. Any foreign create or changed foreign
+          // record must still be rejected.
+          return previous
+            ? (
+                String(previous.branchId ?? "").trim() !== managerBranchId
+                && !isDeepStrictEqual(previous, candidate)
+              )
+            : candidateBranchId !== managerBranchId;
+        });
+        if (unauthorized) {
+          return { error: "A branch manager can only manage assets in the assigned branch" as const };
+        }
+      }
       const merged = mergeCompanyAssets(
         existingRow?.data,
         data,
@@ -1514,6 +1561,10 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       });
       return merged;
     });
+    if ("error" in assets) {
+      res.status(403).json({ error: assets.error });
+      return;
+    }
     res.json({ ok: true, assets });
     return;
   }

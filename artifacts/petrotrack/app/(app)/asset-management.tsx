@@ -52,7 +52,7 @@ export default function AssetManagementScreen() {
     role === 'admin' || role === 'ceo' || role === 'md' ||
     role === 'acc' || role === 'csm' || role === 'mktg';
   const isBranchManager = role === 'mgr';
-  const canManage = canManageAllBranches;
+  const canManage = canManageAllBranches || (isBranchManager && !!branchId);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const activeBranches = useMemo(() => branches.filter(branch => branch.st === 'Active'), [branches]);
   const effectiveBranchId = isBranchManager ? branchId ?? '' : selectedBranchId;
@@ -140,7 +140,7 @@ export default function AssetManagementScreen() {
     };
     const saved = editingId ? updateCompanyAsset(editingId, payload) : addCompanyAsset(payload);
     if (!saved) {
-      Alert.alert('Not permitted', 'Only Admin, CEO, Managing Director and Accountant can change the asset register.');
+      Alert.alert('Not permitted', 'This account can only change assets in its assigned branch.');
       return;
     }
     setShowForm(false);

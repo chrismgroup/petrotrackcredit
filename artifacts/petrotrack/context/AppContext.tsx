@@ -4529,7 +4529,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const canManageCompanyAssets =
     role === 'admin' || role === 'ceo' || role === 'md' ||
-    role === 'acc' || role === 'csm' || role === 'mktg';
+    role === 'acc' || role === 'csm' || role === 'mktg' || role === 'mgr';
   const canManageCompanyAssetBranch = useCallback((assetBranchId: string) =>
     role !== 'mgr' || (!!branchId && assetBranchId === branchId),
   [role, branchId]);
