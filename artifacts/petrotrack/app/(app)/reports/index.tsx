@@ -618,66 +618,69 @@ export default function ReportsScreen() {
   return (
     <ScreenLayout title="Reports">
 
-      {/* ── Report controls ── */}
-      <View style={[s.topBar, { borderBottomColor: colors.border }]}>
-        <View style={[s.controlsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={s.controlsHeading}>
-            <View style={[s.controlsIcon, { backgroundColor: `${rc}18` }]}>
-              <Ionicons name="options-outline" size={20} color={rc} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.controlsTitle, { color: colors.text }]}>Report controls</Text>
-              <Text style={[s.controlsSub, { color: colors.textMuted }]}>Set the date, period, and branch scope.</Text>
-            </View>
-          </View>
-          <AppliedDateField
-            value={anchorDate}
-            onChange={setAnchorDate}
-            label="View reports as at a date"
-            accent={rc}
-            helper={anchorDate ? 'The selected date anchors the chosen reporting period.' : 'Defaults to the current date until you select another business date.'}
-          />
-          <View style={s.controlsLabelRow}>
-            <Text style={[s.controlsLabel, { color: colors.text }]}>Reporting period</Text>
-            <Text style={[s.controlsHint, { color: colors.textMuted }]}>{periodStr}</Text>
-          </View>
-          <View style={s.chipWrap}>
-            {PERIODS.map(p => {
-              const active = period === p;
-              return (
-                <TouchableOpacity key={p} onPress={() => setPeriod(p)}
-                  style={[s.periodChip, { backgroundColor: active ? rc : colors.background, borderColor: active ? rc : colors.border }]}>
-                  <Text style={[s.periodChipTxt, { color: active ? '#fff' : colors.textMuted }]}>{p}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {/* Branch chips — hidden for att and mgr (locked to their branch) */}
-          {!isBranchLocked && safeBranches.length > 0 && (
-            <>
-              <View style={[s.controlsLabelRow, { marginTop: 4 }]}>
-                <Text style={[s.controlsLabel, { color: colors.text }]}>Branch scope</Text>
-                <Text style={[s.controlsHint, { color: colors.textMuted }]}>{branchName}</Text>
+      <ScrollView
+        style={s.scrollView}
+        contentContainerStyle={s.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Report controls ── */}
+        <View style={s.topBar}>
+          <View style={[s.controlsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={s.controlsHeading}>
+              <View style={[s.controlsIcon, { backgroundColor: `${rc}18` }]}>
+                <Ionicons name="options-outline" size={20} color={rc} />
               </View>
-              <View style={s.chipWrap}>
-                {([{ id: null, name: 'All' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
-                  const active = selBranch === b.id;
-                  return (
-                    <TouchableOpacity key={String(b.id)} onPress={() => setSelBranch(b.id)}
-                      style={[s.branchChip, { backgroundColor: active ? `${rc}18` : colors.background, borderColor: active ? rc : colors.border }]}>
-                      {active && <Ionicons name="business" size={13} color={rc} />}
-                      <Text style={[s.branchChipTxt, { color: active ? rc : colors.textMuted }]}>{b.name}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+              <View style={{ flex: 1 }}>
+                <Text style={[s.controlsTitle, { color: colors.text }]}>Report controls</Text>
+                <Text style={[s.controlsSub, { color: colors.textMuted }]}>Set the date, period, and branch scope.</Text>
               </View>
-            </>
-          )}
+            </View>
+            <AppliedDateField
+              value={anchorDate}
+              onChange={setAnchorDate}
+              label="View reports as at a date"
+              accent={rc}
+              helper={anchorDate ? 'The selected date anchors the chosen reporting period.' : 'Defaults to the current date until you select another business date.'}
+            />
+            <View style={s.controlsLabelRow}>
+              <Text style={[s.controlsLabel, { color: colors.text }]}>Reporting period</Text>
+              <Text style={[s.controlsHint, { color: colors.textMuted }]}>{periodStr}</Text>
+            </View>
+            <View style={s.chipWrap}>
+              {PERIODS.map(p => {
+                const active = period === p;
+                return (
+                  <TouchableOpacity key={p} onPress={() => setPeriod(p)}
+                    style={[s.periodChip, { backgroundColor: active ? rc : colors.background, borderColor: active ? rc : colors.border }]}>
+                    <Text style={[s.periodChipTxt, { color: active ? '#fff' : colors.textMuted }]}>{p}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {/* Branch chips — hidden for att and mgr (locked to their branch) */}
+            {!isBranchLocked && safeBranches.length > 0 && (
+              <>
+                <View style={[s.controlsLabelRow, { marginTop: 4 }]}>
+                  <Text style={[s.controlsLabel, { color: colors.text }]}>Branch scope</Text>
+                  <Text style={[s.controlsHint, { color: colors.textMuted }]}>{branchName}</Text>
+                </View>
+                <View style={s.chipWrap}>
+                  {([{ id: null, name: 'All' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
+                    const active = selBranch === b.id;
+                    return (
+                      <TouchableOpacity key={String(b.id)} onPress={() => setSelBranch(b.id)}
+                        style={[s.branchChip, { backgroundColor: active ? `${rc}18` : colors.background, borderColor: active ? rc : colors.border }]}>
+                        {active && <Ionicons name="business" size={13} color={rc} />}
+                        <Text style={[s.branchChipTxt, { color: active ? rc : colors.textMuted }]}>{b.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+          </View>
         </View>
-      </View>
 
-      {/* ── Data ── */}
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         {/* ── Report type selector ── */}
         <View style={s.typeSection}>
           <View style={s.typeSectionHeader}>
@@ -1209,7 +1212,8 @@ function ProdSaleRow({ p, colors }: { p: any; colors: any }) {
 /* ─── Styles ─────────────────────────────────────────────── */
 const s = StyleSheet.create({
   /* ── Top bar ── */
-  topBar:          { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  scrollView:      { flex: 1 },
+  topBar:          { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 },
   controlsCard:    { borderRadius: 20, borderWidth: 1, padding: 16, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 12, elevation: 2 },
   controlsHeading: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 },
   controlsIcon:    { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
