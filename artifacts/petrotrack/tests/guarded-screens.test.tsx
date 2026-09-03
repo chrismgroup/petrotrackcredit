@@ -1,9 +1,12 @@
 import React from 'react';
 import { Alert } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { act, create } from 'react-test-renderer';
 import type { ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 
 import { safeNum, safeStr } from '@/lib/report-helpers';
+
+const mockRouterPush = jest.fn();
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -38,6 +41,12 @@ jest.mock('expo-print', () => ({}));
 jest.mock('expo-sharing', () => ({}));
 jest.mock('expo-router', () => ({
   useLocalSearchParams: jest.fn(() => ({})),
+  useRouter: jest.fn(() => ({
+    push: mockRouterPush,
+    back: jest.fn(),
+    canGoBack: jest.fn(() => true),
+    replace: jest.fn(),
+  })),
 }));
 
 jest.mock('@/components/AppliedDateField', () => ({
@@ -130,10 +139,13 @@ import PricesScreen from '../app/(app)/prices';
 import SalesScreen from '../app/(app)/sales';
 import MaintenanceScreen from '../app/(app)/maintenance';
 import CorporateScreen from '../app/(app)/corporate';
+import CorporateWorkspaceScreen from '../app/(app)/corporate-workspace';
+import DocumentPreviewScreen from '../app/(app)/document-preview';
 import BudgetScreen from '../app/(app)/budget';
 import { useApp } from '@/context/AppContext';
 
 const mockedUseApp = jest.mocked(useApp);
+const mockedUseLocalSearchParams = jest.mocked(useLocalSearchParams);
 
 function renderedText(renderer: ReactTestRenderer): string {
   const textContent = (node: ReactTestInstance): string =>
@@ -698,6 +710,93 @@ describe('My Documents area navigation', () => {
       expect.stringContaining('General'),
     ]));
 
+    act(() => mounted.unmount());
+  });
+
+  it('opens each document area in its dedicated workspace route', () => {
+    mockedUseApp.mockReturnValue(corporateAppState({ role: 'acc' }) as any);
+    mockRouterPush.mockClear();
+
+    let renderer: ReactTestRenderer | null = null;
+    act(() => {
+      renderer = create(<CorporateScreen />);
+    });
+    const mounted = renderer as unknown as ReactTestRenderer;
+
+    act(() => {
+      documentAreaTile(mounted, 'Legal Documents').props.onPress();
+    });
+
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/(app)/corporate-workspace',
+      params: { section: 'legal' },
+    });
+    act(() => mounted.unmount());
+  });
+
+  it('renders the selected workspace as a full page with file management actions', () => {
+    mockedUseLocalSearchParams.mockReturnValue({ section: 'general' } as any);
+    mockedUseApp.mockReturnValue(corporateAppState({
+      role: 'acc',
+      myFolders: [{ id: 10, section: 'general', name: 'Handbooks', createdBy: 'CSM', createdAt: '2026-09-01' }],
+      myFolderFiles: [{
+        id: 21,
+        section: 'general',
+        folderId: null,
+        name: 'Safety Manual.pdf',
+        objectPath: '/objects/safety-manual',
+        mimeType: 'application/pdf',
+        size: 1024,
+        uploadedBy: 'CSM',
+        uploadedAt: '2026-09-01',
+      }],
+    }) as any);
+
+    let renderer: ReactTestRenderer | null = null;
+    act(() => {
+      renderer = create(<CorporateWorkspaceScreen />);
+    });
+    const mounted = renderer as unknown as ReactTestRenderer;
+    const text = renderedText(mounted);
+
+    expect(text).toContain('General Library');
+    expect(text).toContain('Safety Manual.pdf');
+    expect(text).toContain('Preview');
+    expect(text).toContain('Download');
+    expect(text).toContain('Print');
+    act(() => mounted.unmount());
+  });
+
+  it('opens a selected file on its own preview page', () => {
+    mockedUseLocalSearchParams.mockReturnValue({ fileId: '21', section: 'general' } as any);
+    mockedUseApp.mockReturnValue(corporateAppState({
+      role: 'acc',
+      myFolderFiles: [{
+        id: 21,
+        section: 'general',
+        folderId: null,
+        name: 'Safety Manual.pdf',
+        objectPath: '/objects/safety-manual',
+        mimeType: 'application/pdf',
+        size: 1024,
+        uploadedBy: 'CSM',
+        uploadedAt: '2026-09-01',
+      }],
+    }) as any);
+
+    let renderer: ReactTestRenderer | null = null;
+    act(() => {
+      renderer = create(<DocumentPreviewScreen />);
+    });
+    const mounted = renderer as unknown as ReactTestRenderer;
+    const text = renderedText(mounted);
+
+    expect(text).toContain('Selected file');
+    expect(text).toContain('Safety Manual.pdf');
+    expect(text).toContain('Load preview');
+    expect(text).toContain('Download');
+    expect(text).toContain('Print');
+    expect(text).toContain('File details');
     act(() => mounted.unmount());
   });
 

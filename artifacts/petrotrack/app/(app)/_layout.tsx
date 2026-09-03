@@ -24,6 +24,8 @@ const ROUTE_ACCESS: Record<string, string> = {
   '/prices': 'prices',
   '/hr': 'hr',
   '/corporate': 'corp',
+  '/corporate-workspace': 'corp',
+  '/document-preview': 'corp',
   '/tasks': 'tasks',
   '/action-items': 'actionItems',
   '/branches': 'branches',

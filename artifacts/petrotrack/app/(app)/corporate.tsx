@@ -3,10 +3,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text,
+  Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text,
   TextInput, TouchableOpacity, View,
 } from 'react-native';
 
@@ -83,7 +83,7 @@ function expiryLabel(expiresAt?: string): string | null {
 
 type Colors = ReturnType<typeof useColors>;
 
-function FolderWorkspacePanel({
+export function FolderWorkspacePanel({
   section, folders, files, roleColor, colors, userName, addFolder, addFile,
   removeFile, replaceFile, canManage,
 }: {
@@ -99,11 +99,11 @@ function FolderWorkspacePanel({
   replaceFile: (id: number, file: Omit<MyFolderFile, 'id' | 'uploadedAt'>) => void;
   canManage: boolean;
 }) {
+  const router = useRouter();
   const [folderName, setFolderName] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [busyFileId, setBusyFileId] = useState<number | null>(null);
-  const [previewFile, setPreviewFile] = useState<{ file: MyFolderFile; uri: string } | null>(null);
   const [showUploadDetails, setShowUploadDetails] = useState(false);
   const [documentKind, setDocumentKind] = useState<'certificate' | 'document'>('document');
   const [expiryDate, setExpiryDate] = useState('');
@@ -119,12 +119,6 @@ function FolderWorkspacePanel({
     const days = expiryDays(file.expiresAt);
     return !file.deletedAt && file.section === section && days !== null && days <= 90;
   });
-
-  useEffect(() => {
-    return () => {
-      if (previewFile?.uri.startsWith('blob:')) URL.revokeObjectURL(previewFile.uri);
-    };
-  }, [previewFile]);
 
   useEffect(() => {
     if (focusedFileId === null || routeSection !== section) return;
@@ -155,24 +149,10 @@ function FolderWorkspacePanel({
   }
 
   async function previewDocument(file: MyFolderFile) {
-    setBusyFileId(file.id);
-    try {
-      const uri = await getLocalFile(file);
-      if (file.mimeType.startsWith('image/')) {
-        setPreviewFile({ file, uri });
-        return;
-      }
-      const openUri = Platform.OS === 'android' ? await FileSystem.getContentUriAsync(uri) : uri;
-      try {
-        await Linking.openURL(openUri);
-      } catch {
-        await Sharing.shareAsync(uri, { dialogTitle: `Open ${file.name}` });
-      }
-    } catch {
-      Alert.alert('Preview unavailable', 'This document could not be opened on the device.');
-    } finally {
-      setBusyFileId(null);
-    }
+    router.push({
+      pathname: '/(app)/document-preview',
+      params: { fileId: String(file.id), section },
+    } as never);
   }
 
   async function downloadDocument(file: MyFolderFile) {
@@ -641,32 +621,6 @@ function FolderWorkspacePanel({
           </View>
         </View>
       </Modal>
-      <Modal
-        visible={!!previewFile}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreviewFile(null)}
-      >
-        <View style={sty.previewBackdrop}>
-          <View style={[sty.previewCard, { backgroundColor: colors.surface }]}>
-            <View style={sty.previewHeader}>
-              <Text style={[sty.previewTitle, { color: colors.text }]} numberOfLines={1}>
-                {previewFile?.file.name}
-              </Text>
-              <TouchableOpacity onPress={() => setPreviewFile(null)} accessibilityLabel="Close preview">
-                <Ionicons name="close-circle" size={26} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            {previewFile && (
-              <Image
-                source={{ uri: previewFile.uri }}
-                style={sty.previewImage}
-                resizeMode="contain"
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -732,6 +686,7 @@ export default function CorporateScreen() {
   } = useApp();
 
   const colors    = useColors();
+  const router    = useRouter();
   const roleColor = ROLE_COLORS[role || 'csm'] || colors.primary;
   const hasFolderAccess = !!role;
   const hasRestrictedFolderAccess = !!role && MY_FOLDER_ALLOWED_ROLES.includes(role as Role);
@@ -1107,7 +1062,18 @@ export default function CorporateScreen() {
               key={t.key}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
-              onPress={() => { setActiveTab(t.key); setExpandedId(null); setEditId(null); setShowLegalForm(false); setShowProjForm(false); setShowMinForm(false); }}
+              onPress={() => {
+                setActiveTab(t.key);
+                setExpandedId(null);
+                setEditId(null);
+                setShowLegalForm(false);
+                setShowProjForm(false);
+                setShowMinForm(false);
+                router.push({
+                  pathname: '/(app)/corporate-workspace',
+                  params: { section: t.key },
+                } as never);
+              }}
               style={[
                 sty.folderNavTile,
                 visibleTabs.length === 1 && sty.folderNavTileSolo,

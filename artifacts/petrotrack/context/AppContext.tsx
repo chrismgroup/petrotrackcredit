@@ -1189,6 +1189,8 @@ export const SCREEN_ROUTES: Record<string, string> = {
   messages: '/(app)/messages',
   notifications: '/(app)/notifications',
   profile: '/(app)/profile',
+  corporateWorkspace: '/(app)/corporate-workspace',
+  documentPreview: '/(app)/document-preview',
 };
 
 export function chatKey(a: string, b: string) { return [a, b].sort().join('-'); }
