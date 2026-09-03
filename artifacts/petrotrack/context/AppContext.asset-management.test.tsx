@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { stateApi } from '@/lib/api';
 import { AppProvider, useApp } from './AppContext';
@@ -35,6 +36,10 @@ afterEach(() => {
   renderer = null;
   capturedApp = null;
   jest.clearAllMocks();
+});
+
+beforeEach(async () => {
+  await AsyncStorage.clear();
 });
 
 it('allows an authorized accountant to add, edit, and delete a company asset', async () => {
@@ -132,8 +137,135 @@ it.each(['csm', 'mktg'] as const)('allows %s to mutate company assets', async ro
   expect(app().companyAssets).toEqual([]);
 });
 
+it('removes an optimistically added asset when the save and recovery both fail', async () => {
+  jest.mocked(stateApi.getAll).mockResolvedValue({
+    userAccounts: [],
+    branches: [
+      { id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 },
+    ],
+    companyAssets: [],
+  });
+  jest.mocked(stateApi.upsertCompanyAsset).mockResolvedValue(null);
+  jest.mocked(stateApi.get).mockResolvedValue(null);
+
+  await act(async () => {
+    renderer = create(
+      <AppProvider>
+        <ContextCapture />
+      </AppProvider>,
+    );
+  });
+  await act(async () => {
+    expect(await app().login('acc', 'Test Accountant', 7, 'B1')).toBe(true);
+  });
+
+  await act(async () => {
+    expect(app().addCompanyAsset(assetInput)).toBe(true);
+  });
+
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(app().companyAssets).toEqual([]);
+  expect(app().companyAssetSaveError?.message).toContain('was not added');
+  expect(app().companyAssetSaveError?.message).toContain('unsaved entry was removed');
+});
+
+it('restores the confirmed asset after an edit cannot be saved or recovered', async () => {
+  const confirmed = {
+    ...assetInput,
+    id: 'asset-confirmed',
+    createdBy: 'Test Accountant',
+    createdAt: '2026-09-01T09:00:00.000Z',
+    updatedBy: 'Test Accountant',
+    updatedAt: '2026-09-01T09:00:00.000Z',
+    revision: 4,
+  };
+  jest.mocked(stateApi.getAll).mockResolvedValue({
+    userAccounts: [],
+    branches: [
+      { id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 },
+    ],
+    companyAssets: [confirmed],
+  });
+  jest.mocked(stateApi.upsertCompanyAsset).mockResolvedValue(null);
+  jest.mocked(stateApi.get).mockResolvedValue(null);
+
+  await act(async () => {
+    renderer = create(
+      <AppProvider>
+        <ContextCapture />
+      </AppProvider>,
+    );
+  });
+  await act(async () => {
+    expect(await app().login('acc', 'Test Accountant', 7, 'B1')).toBe(true);
+  });
+
+  await act(async () => {
+    expect(app().updateCompanyAsset(confirmed.id, {
+      ...confirmed,
+      name: 'Unsaved Generator Edit',
+    })).toBe(true);
+  });
+
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(app().companyAssets).toEqual([confirmed]);
+  expect(app().companyAssetSaveError?.message).toContain('were not saved');
+  expect(app().companyAssetSaveError?.message).toContain('last confirmed version was restored');
+});
+
+it('refreshes the canonical server asset after a revision conflict', async () => {
+  const confirmed = {
+    ...assetInput,
+    id: 'asset-conflict',
+    createdBy: 'Test Accountant',
+    createdAt: '2026-09-01T09:00:00.000Z',
+    updatedBy: 'Test Accountant',
+    updatedAt: '2026-09-01T09:00:00.000Z',
+    revision: 2,
+  };
+  const serverVersion = { ...confirmed, name: 'Edited On Another Device', revision: 3 };
+  jest.mocked(stateApi.getAll).mockResolvedValue({
+    userAccounts: [],
+    branches: [
+      { id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 },
+    ],
+    companyAssets: [confirmed],
+  });
+  jest.mocked(stateApi.upsertCompanyAsset).mockResolvedValue(null);
+  jest.mocked(stateApi.get).mockResolvedValue([serverVersion]);
+
+  await act(async () => {
+    renderer = create(
+      <AppProvider>
+        <ContextCapture />
+      </AppProvider>,
+    );
+  });
+  await act(async () => {
+    expect(await app().login('acc', 'Test Accountant', 7, 'B1')).toBe(true);
+  });
+
+  await act(async () => {
+    expect(app().updateCompanyAsset(confirmed.id, {
+      ...confirmed,
+      name: 'Stale Device Edit',
+    })).toBe(true);
+  });
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+
+  expect(app().companyAssets).toEqual([serverVersion]);
+  expect(app().companyAssetSaveError?.message).toContain('server version');
+});
+
 it('rejects company asset mutations from branch managers and attendants', async () => {
   for (const role of ['mgr', 'att'] as const) {
+    jest.mocked(stateApi.get).mockResolvedValue(null);
     jest.mocked(stateApi.getAll).mockResolvedValue({
       userAccounts: [],
       branches: [{ id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 }],

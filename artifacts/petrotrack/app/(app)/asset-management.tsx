@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
@@ -40,6 +40,7 @@ function numeric(value: string) {
 export default function AssetManagementScreen() {
   const {
     role, branchId, branches, companyAssets, addCompanyAsset, updateCompanyAsset, deleteCompanyAsset,
+    companyAssetSaveError, clearCompanyAssetSaveError,
   } = useApp();
   const colors = useColors();
   const [showForm, setShowForm] = useState(false);
@@ -59,6 +60,12 @@ export default function AssetManagementScreen() {
   const visibleAssets = isBranchManager
     ? companyAssets.filter(asset => asset.branchId === branchId)
     : companyAssets;
+
+  useEffect(() => {
+    if (!companyAssetSaveError) return;
+    Alert.alert('Asset save failed', companyAssetSaveError.message);
+    clearCompanyAssetSaveError();
+  }, [clearCompanyAssetSaveError, companyAssetSaveError]);
 
   const branchGroups = useMemo(() => branches
     .filter(branch => !isBranchManager || branch.id === branchId)
