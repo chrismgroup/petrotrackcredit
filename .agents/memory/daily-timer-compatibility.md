@@ -19,6 +19,19 @@ AppState events to revalidate after suspension. Keep the patch registered in
 the workspace and re-check the patched Daily bundle on every dependency
 upgrade.
 
+Published Daily releases must be checked from the npm tarball's bundled
+`dist/index.js`, not only from a GitHub branch or source snapshot. The
+available 0.87.1 package still imports and declares the legacy timer, so it
+does not qualify for patch removal.
+
+**Why:** A source snapshot can differ from the published bundle; removing the
+patch based on the former caused both iOS and Android Metro exports to fail
+when the published runtime still required the missing module.
+
+**How to apply:** Before removing the patch, inspect the exact published
+version's runtime bundle and run both platform exports with the unpatched
+package.
+
 The Daily Expo plugin also needs an explicit iOS `voip` background mode in the
 app config; its Android side generates the ongoing meeting foreground service
 and microphone/camera service permissions.

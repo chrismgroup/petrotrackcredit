@@ -63,12 +63,50 @@ function KpiCards({ items, colors }: { items: Array<{ label: string; value: stri
     <View style={s.kpiRow}>
       {items.map(k => (
         <View key={k.label} style={[s.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Ionicons name={k.icon as any} size={13} color={k.color} />
+          <View style={[s.kpiIcon, { backgroundColor: `${k.color}18` }]}>
+            <Ionicons name={k.icon as any} size={18} color={k.color} />
+          </View>
           <Text style={[s.kpiLabel, { color: colors.textMuted }]}>{k.label}</Text>
           <Text style={[s.kpiValue, { color: k.color }]}>{k.value}</Text>
         </View>
       ))}
     </View>
+  );
+}
+function ReportTypeTile({
+  reportType, active, onPress, colors,
+}: {
+  reportType: ReportType;
+  active: boolean;
+  onPress: () => void;
+  colors: any;
+}) {
+  const meta = REPORT_META[reportType];
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.82}
+      accessibilityRole="button"
+      accessibilityLabel={`${meta.label} report`}
+      style={[s.reportTile, {
+        backgroundColor: active ? meta.color : colors.surface,
+        borderColor: active ? meta.color : colors.border,
+      }]}
+    >
+      <View style={s.reportTileTop}>
+        <View style={[s.reportTileIcon, { backgroundColor: active ? 'rgba(255,255,255,0.2)' : `${meta.color}18` }]}>
+          <Ionicons name={meta.icon as any} size={20} color={active ? '#fff' : meta.color} />
+        </View>
+        <Ionicons name={active ? 'checkmark-circle' : 'chevron-forward'} size={18} color={active ? 'rgba(255,255,255,0.85)' : colors.textSubtle} />
+      </View>
+      <View style={s.reportTileCopy}>
+        <Text style={[s.reportTileTitle, { color: active ? '#fff' : colors.text }]}>{meta.label}</Text>
+        <Text style={[s.reportTileDesc, { color: active ? 'rgba(255,255,255,0.78)' : colors.textMuted }]} numberOfLines={2}>
+          {meta.desc}
+        </Text>
+      </View>
+      <Text style={[s.reportTileDept, { color: active ? 'rgba(255,255,255,0.62)' : meta.color }]}>{meta.dept}</Text>
+    </TouchableOpacity>
   );
 }
 function ProgressRow({ label, pct, colors }: { label: string; pct: number; colors: any }) {
@@ -564,65 +602,89 @@ export default function ReportsScreen() {
   return (
     <ScreenLayout title="Reports">
 
-      {/* ── Compact top bar: Period + Branch ── */}
+      {/* ── Report controls ── */}
       <View style={[s.topBar, { borderBottomColor: colors.border }]}>
-        <AppliedDateField
-          value={anchorDate}
-          onChange={setAnchorDate}
-          label="View reports as at a date"
-          accent={rc}
-          helper={anchorDate ? 'The selected date anchors the chosen reporting period.' : 'Defaults to the current date until you select another business date.'}
-        />
-        {/* Period chips — wrap so all stay visible */}
-        <View style={s.chipWrap}>
-          {PERIODS.map(p => {
-            const active = period === p;
-            return (
-              <TouchableOpacity key={p} onPress={() => setPeriod(p)}
-                style={[s.periodChip, { backgroundColor: active ? rc : colors.surface, borderColor: active ? rc : colors.border }]}>
-                <Text style={[s.periodChipTxt, { color: active ? '#fff' : colors.textMuted }]}>{p}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        {/* Branch chips — hidden for att and mgr (locked to their branch) */}
-        {!isBranchLocked && safeBranches.length > 0 && (
+        <View style={[s.controlsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={s.controlsHeading}>
+            <View style={[s.controlsIcon, { backgroundColor: `${rc}18` }]}>
+              <Ionicons name="options-outline" size={20} color={rc} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.controlsTitle, { color: colors.text }]}>Report controls</Text>
+              <Text style={[s.controlsSub, { color: colors.textMuted }]}>Set the date, period, and branch scope.</Text>
+            </View>
+          </View>
+          <AppliedDateField
+            value={anchorDate}
+            onChange={setAnchorDate}
+            label="View reports as at a date"
+            accent={rc}
+            helper={anchorDate ? 'The selected date anchors the chosen reporting period.' : 'Defaults to the current date until you select another business date.'}
+          />
+          <View style={s.controlsLabelRow}>
+            <Text style={[s.controlsLabel, { color: colors.text }]}>Reporting period</Text>
+            <Text style={[s.controlsHint, { color: colors.textMuted }]}>{periodStr}</Text>
+          </View>
           <View style={s.chipWrap}>
-            {([{ id: null, name: 'All' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
-              const active = selBranch === b.id;
+            {PERIODS.map(p => {
+              const active = period === p;
               return (
-                <TouchableOpacity key={String(b.id)} onPress={() => setSelBranch(b.id)}
-                  style={[s.branchChip, { backgroundColor: active ? rc + '18' : 'transparent', borderColor: active ? rc : colors.border }]}>
-                  {active && <Ionicons name="business" size={10} color={rc} />}
-                  <Text style={[s.branchChipTxt, { color: active ? rc : colors.textMuted }]}>{b.name}</Text>
+                <TouchableOpacity key={p} onPress={() => setPeriod(p)}
+                  style={[s.periodChip, { backgroundColor: active ? rc : colors.background, borderColor: active ? rc : colors.border }]}>
+                  <Text style={[s.periodChipTxt, { color: active ? '#fff' : colors.textMuted }]}>{p}</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
-        )}
-      </View>
-
-      {/* ── Report type selector (horizontal chip strip) ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        style={[s.typeScroll, { borderBottomColor: colors.border }]}
-        contentContainerStyle={s.typeScrollContent}>
-        {perms.visible.map(rt => {
-          const m = REPORT_META[rt];
-          const active = reportType === rt;
-          return (
-            <TouchableOpacity key={rt} onPress={() => setReportType(rt)} activeOpacity={0.75}
-              style={[s.typeChip, { backgroundColor: active ? m.color : colors.surface, borderColor: active ? m.color : colors.border }]}>
-              <View style={[s.typeChipIcon, { backgroundColor: active ? 'rgba(255,255,255,0.22)' : m.color + '1A' }]}>
-                <Ionicons name={m.icon as any} size={14} color={active ? '#fff' : m.color} />
+          {/* Branch chips — hidden for att and mgr (locked to their branch) */}
+          {!isBranchLocked && safeBranches.length > 0 && (
+            <>
+              <View style={[s.controlsLabelRow, { marginTop: 4 }]}>
+                <Text style={[s.controlsLabel, { color: colors.text }]}>Branch scope</Text>
+                <Text style={[s.controlsHint, { color: colors.textMuted }]}>{branchName}</Text>
               </View>
-              <Text style={[s.typeChipLabel, { color: active ? '#fff' : colors.text }]}>{m.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+              <View style={s.chipWrap}>
+                {([{ id: null, name: 'All' }, ...safeBranches.map(b => ({ id: b.id, name: b.name }))] as Array<{ id: string | null; name: string }>).map(b => {
+                  const active = selBranch === b.id;
+                  return (
+                    <TouchableOpacity key={String(b.id)} onPress={() => setSelBranch(b.id)}
+                      style={[s.branchChip, { backgroundColor: active ? `${rc}18` : colors.background, borderColor: active ? rc : colors.border }]}>
+                      {active && <Ionicons name="business" size={13} color={rc} />}
+                      <Text style={[s.branchChipTxt, { color: active ? rc : colors.textMuted }]}>{b.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+      </View>
 
       {/* ── Data ── */}
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+        {/* ── Report type selector ── */}
+        <View style={s.typeSection}>
+          <View style={s.typeSectionHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.typeSectionTitle, { color: colors.text }]}>Choose a report</Text>
+              <Text style={[s.typeSectionSub, { color: colors.textMuted }]}>Open a view to explore the selected period.</Text>
+            </View>
+            <View style={[s.typeCount, { backgroundColor: `${rc}18` }]}>
+              <Text style={[s.typeCountText, { color: rc }]}>{perms.visible.length}</Text>
+            </View>
+          </View>
+          <View style={s.reportTileGrid}>
+            {perms.visible.map(rt => (
+              <ReportTypeTile
+                key={rt}
+                reportType={rt}
+                active={reportType === rt}
+                onPress={() => setReportType(rt)}
+                colors={colors}
+              />
+            ))}
+          </View>
+        </View>
 
         {/* ── Report header strip (with inline export) ── */}
         <View style={[s.reportStrip, { backgroundColor: meta.color }]}>
@@ -1119,23 +1181,38 @@ function ProdSaleRow({ p, colors }: { p: any; colors: any }) {
 /* ─── Styles ─────────────────────────────────────────────── */
 const s = StyleSheet.create({
   /* ── Top bar ── */
-  topBar:         { paddingHorizontal: 14, paddingVertical: 8, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth },
-  chipWrap:       { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
-  periodChip:     { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 16, borderWidth: 1 },
-  periodChipTxt:  { fontSize: 11, fontWeight: '600' },
-  branchChip:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1 },
-  branchChipTxt:  { fontSize: 11, fontWeight: '500' },
-
-  /* ── Type chip strip ── */
-  typeScroll:       { borderBottomWidth: StyleSheet.hairlineWidth },
-  typeScrollContent:{ flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 10 },
-  typeChip:         { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5 },
-  typeChipIcon:     { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  typeChipLabel:    { fontSize: 12, fontWeight: '700' },
+  topBar:          { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  controlsCard:    { borderRadius: 20, borderWidth: 1, padding: 16, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 12, elevation: 2 },
+  controlsHeading: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 },
+  controlsIcon:    { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  controlsTitle:   { fontSize: 17, fontWeight: '800' },
+  controlsSub:     { fontSize: 12, marginTop: 2 },
+  controlsLabelRow:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 7, gap: 8 },
+  controlsLabel:   { fontSize: 12, fontWeight: '800' },
+  controlsHint:    { flex: 1, fontSize: 11, textAlign: 'right' },
+  chipWrap:        { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  periodChip:      { paddingHorizontal: 13, paddingVertical: 8, borderRadius: 17, borderWidth: 1 },
+  periodChipTxt:   { fontSize: 12, fontWeight: '700' },
+  branchChip:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, borderWidth: 1 },
+  branchChipTxt:   { fontSize: 12, fontWeight: '600' },
 
   /* ── Report header strip ── */
-  scroll:         { padding: 14 },
-  reportStrip:    { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, marginBottom: 14 },
+  scroll:         { padding: 14, paddingTop: 8, paddingBottom: 34 },
+  typeSection:    { marginBottom: 16 },
+  typeSectionHeader:{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  typeSectionTitle:{ fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  typeSectionSub: { fontSize: 12, marginTop: 3 },
+  typeCount:      { minWidth: 34, height: 34, paddingHorizontal: 8, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  typeCountText:  { fontSize: 14, fontWeight: '800' },
+  reportTileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  reportTile:     { width: '48.5%', minHeight: 126, borderRadius: 18, borderWidth: 1, padding: 14, justifyContent: 'space-between' },
+  reportTileTop:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  reportTileIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  reportTileCopy: { flex: 1, marginTop: 12, marginBottom: 10 },
+  reportTileTitle:{ fontSize: 14, fontWeight: '800', lineHeight: 18 },
+  reportTileDesc: { fontSize: 11, lineHeight: 15, marginTop: 3 },
+  reportTileDept:  { fontSize: 9, fontWeight: '800', letterSpacing: 0.9, textTransform: 'uppercase' },
+  reportStrip:    { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderRadius: 18, marginBottom: 16 },
   stripIcon:      { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   stripTitle:     { color: '#fff', fontSize: 15, fontWeight: '800' },
   stripSub:       { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 2 },
@@ -1145,10 +1222,11 @@ const s = StyleSheet.create({
   viewOnlyBadge:  { color: 'rgba(255,255,255,0.8)', fontSize: 10, fontStyle: 'italic' },
 
   /* ── KPI cards ── */
-  kpiRow:         { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  kpiCard:        { flex: 1, borderRadius: 12, borderWidth: 1, padding: 11, alignItems: 'center', gap: 4 },
-  kpiLabel:       { fontSize: 9, fontWeight: '600', textTransform: 'uppercase', textAlign: 'center' },
-  kpiValue:       { fontSize: 13, fontWeight: '800' },
+  kpiRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  kpiCard:        { width: '48.5%', minHeight: 106, borderRadius: 16, borderWidth: 1, padding: 14, alignItems: 'flex-start', justifyContent: 'space-between' },
+  kpiIcon:        { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  kpiLabel:       { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  kpiValue:       { fontSize: 17, fontWeight: '800' },
 
   /* ── Sections ── */
   secTitle:       { fontSize: 14, fontWeight: '700', marginBottom: 10, marginTop: 4 },
