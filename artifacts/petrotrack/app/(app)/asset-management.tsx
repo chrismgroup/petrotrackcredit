@@ -47,9 +47,11 @@ export default function AssetManagementScreen() {
   const [form, setForm] = useState<AssetInput>(EMPTY_FORM);
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
-  const canManageAllBranches = role === 'admin' || role === 'ceo' || role === 'md' || role === 'acc';
-  const isBranchManager = role === 'mgr' && !!branchId;
-  const canManage = canManageAllBranches || isBranchManager;
+  const canManageAllBranches =
+    role === 'admin' || role === 'ceo' || role === 'md' ||
+    role === 'acc' || role === 'csm' || role === 'mktg';
+  const isBranchManager = role === 'mgr';
+  const canManage = canManageAllBranches;
   const currentMonth = new Date().toISOString().slice(0, 7);
   const activeBranches = useMemo(() => branches.filter(branch => branch.st === 'Active'), [branches]);
   const effectiveBranchId = isBranchManager ? branchId ?? '' : selectedBranchId;

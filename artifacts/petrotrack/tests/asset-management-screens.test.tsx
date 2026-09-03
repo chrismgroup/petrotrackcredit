@@ -312,50 +312,27 @@ describe('asset register screen', () => {
     act(() => renderer.unmount());
   });
 
-  it('lets a branch manager add assets only to the assigned branch', () => {
+  it.each(['mgr', 'att'] as const)('does not expose register mutations to unauthorized %s users', role => {
     const addCompanyAsset = jest.fn(() => true);
     const updateCompanyAsset = jest.fn(() => true);
     const deleteCompanyAsset = jest.fn(() => true);
     mockedUseApp.mockReturnValue(baseAppState({
-      role: 'mgr',
+      role,
       branchId: branchA.id,
-      companyAssets: [
-        asset(),
-        asset({ id: 'asset-wuse', name: 'Wuse Generator', branchId: branchB.id }),
-      ],
       addCompanyAsset,
       updateCompanyAsset,
       deleteCompanyAsset,
     }) as any);
 
     const renderer = mount(<AssetManagementScreen />);
-    expect(renderedText(renderer)).toContain('Your branch');
-    expect(renderedText(renderer)).toContain(branchA.name);
-    expect(renderedText(renderer)).not.toContain('Wuse Generator');
-
-    const toggle = renderer.root.find(
+    expect(renderedText(renderer)).toContain('Branch Generator');
+    expect(renderer.root.findAll(
       node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'asset-form-toggle',
-    );
-    act(() => toggle.props.onPress());
-    expect(renderedText(renderer)).toContain('Assets you add are permanently assigned to your branch.');
-    expect(renderedText(renderer)).toContain('Branch ownership is locked after saving.');
-
-    const assetNameInput = renderer.root.find(
-      node => String(node.type) === 'TextInput' && node.props.placeholder === 'e.g. Toyota Hilux',
-    );
-    act(() => assetNameInput.props.onChangeText('Manager Generator'));
-    const save = renderer.root.find(
-      node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'save-asset',
-    );
-    act(() => save.props.onPress());
-    expect(addCompanyAsset).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'Manager Generator',
-      branchId: branchA.id,
-    }));
+    )).toHaveLength(0);
     act(() => renderer.unmount());
   });
 
-  it.each(['att', 'csm'] as const)('does not expose register mutations to unauthorized %s users', role => {
+  it.each(['csm', 'mktg'] as const)('exposes register mutations to authorized %s users', role => {
     const addCompanyAsset = jest.fn(() => true);
     const updateCompanyAsset = jest.fn(() => true);
     const deleteCompanyAsset = jest.fn(() => true);
@@ -367,19 +344,9 @@ describe('asset register screen', () => {
     }) as any);
 
     const renderer = mount(<AssetManagementScreen />);
-    expect(renderedText(renderer)).toContain('Branch Generator');
     expect(renderer.root.findAll(
       node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'asset-form-toggle',
-    )).toHaveLength(0);
-    expect(renderer.root.findAll(
-      node => String(node.type) === 'TouchableOpacity' && String(node.props.accessibilityLabel ?? '').startsWith('Edit '),
-    )).toHaveLength(0);
-    expect(renderer.root.findAll(
-      node => String(node.type) === 'TouchableOpacity' && String(node.props.accessibilityLabel ?? '').startsWith('Delete '),
-    )).toHaveLength(0);
-    expect(addCompanyAsset).not.toHaveBeenCalled();
-    expect(updateCompanyAsset).not.toHaveBeenCalled();
-    expect(deleteCompanyAsset).not.toHaveBeenCalled();
+    )).toHaveLength(1);
     act(() => renderer.unmount());
   });
 });

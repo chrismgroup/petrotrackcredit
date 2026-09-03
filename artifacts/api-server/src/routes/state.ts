@@ -35,7 +35,7 @@ const ALLOWED_KEYS = new Set([
   "companyAssets",
 ]);
 const MY_FOLDER_WRITE_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
-const COMPANY_ASSET_WRITE_ROLES = new Set(["admin", "acc", "md", "ceo", "mgr"]);
+const COMPANY_ASSET_WRITE_ROLES = new Set(["admin", "acc", "md", "ceo", "csm", "mktg"]);
 
 function visibleMyFolderState(key: string, data: unknown, role?: string): unknown {
   if ((key !== "myFolders" && key !== "myFolderFiles") || MY_FOLDER_WRITE_ROLES.has(role ?? "")) {
@@ -1065,7 +1065,7 @@ router.post("/state/restore", async (req, res): Promise<void> => {
 
 router.post("/state/company-assets/upsert", async (req, res): Promise<void> => {
   if (!COMPANY_ASSET_WRITE_ROLES.has(req.auth?.role ?? "")) {
-    res.status(403).json({ error: "Only approved finance leaders may manage company assets" });
+    res.status(403).json({ error: "This role is not authorized to manage company assets" });
     return;
   }
   const body = req.body && typeof req.body === "object" && !Array.isArray(req.body)
@@ -1088,16 +1088,6 @@ router.post("/state/company-assets/upsert", async (req, res): Promise<void> => {
   }
   const assetInput = candidate as JsonRecord;
   const id = String(assetInput.id).trim();
-  const managerBranchId = req.auth?.role === "mgr"
-    ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
-    : undefined;
-  if (
-    req.auth?.role === "mgr" &&
-    (!managerBranchId || String(assetInput.branchId ?? "") !== managerBranchId)
-  ) {
-    res.status(403).json({ error: "Branch managers may manage assets only for their assigned branch" });
-    return;
-  }
   const result = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:company-assets'))`);
     const [existingRow, deletionsRow] = await Promise.all([
@@ -1110,10 +1100,7 @@ router.post("/state/company-assets/upsert", async (req, res): Promise<void> => {
       : undefined;
     if (
       previous &&
-      (
-        String(previous.branchId ?? "") !== String(assetInput.branchId ?? "") ||
-        (req.auth?.role === "mgr" && String(previous.branchId ?? "") !== managerBranchId)
-      )
+      String(previous.branchId ?? "") !== String(assetInput.branchId ?? "")
     ) {
       return { forbidden: true as const };
     }
@@ -1156,13 +1143,6 @@ router.post("/state/company-assets/:id/delete", async (req, res): Promise<void> 
     res.status(400).json({ error: "Asset ID required" });
     return;
   }
-  const managerBranchId = req.auth?.role === "mgr"
-    ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
-    : undefined;
-  if (req.auth?.role === "mgr" && !managerBranchId) {
-    res.status(403).json({ error: "A branch assignment is required to delete branch assets" });
-    return;
-  }
   const result = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:company-assets'))`);
     const [existingRow, deletionsRow] = await Promise.all([
@@ -1172,13 +1152,6 @@ router.post("/state/company-assets/:id/delete", async (req, res): Promise<void> 
     const existingAsset = Array.isArray(existingRow?.data)
       ? (existingRow.data as JsonRecord[]).find(asset => String(asset.id ?? "").trim() === id.trim())
       : undefined;
-    if (
-      req.auth?.role === "mgr" &&
-      existingAsset &&
-      String(existingAsset.branchId ?? "") !== managerBranchId
-    ) {
-      return { forbidden: true as const, assets: Array.isArray(existingRow?.data) ? existingRow.data : [] };
-    }
     const next = removeCompanyAsset(existingRow?.data, id.trim());
     const tombstones = {
       ...(deletionsRow?.data && typeof deletionsRow.data === "object" && !Array.isArray(deletionsRow.data)
@@ -1198,10 +1171,6 @@ router.post("/state/company-assets/:id/delete", async (req, res): Promise<void> 
     ]);
     return { forbidden: false as const, assets: next };
   });
-  if (result.forbidden) {
-    res.status(403).json({ error: "Branch managers may delete assets only from their assigned branch" });
-    return;
-  }
   res.json({ ok: true, assets: result.assets });
 });
 
@@ -1430,13 +1399,6 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   // every registered ID unless an authorized user uses the explicit delete
   // endpoint, and ignore older copies of records updated by another device.
   if (key === "companyAssets") {
-    const managerBranchId = req.auth?.role === "mgr"
-      ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
-      : undefined;
-    if (req.auth?.role === "mgr" && !managerBranchId) {
-      res.status(403).json({ error: "A branch assignment is required to manage company assets" });
-      return;
-    }
     const assets = await db.transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:company-assets'))`);
       const [existingRow, deletionsRow] = await Promise.all([
@@ -1445,14 +1407,7 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       ]);
       const merged = mergeCompanyAssets(
         existingRow?.data,
-        req.auth?.role === "mgr" && Array.isArray(data)
-          ? data.filter(candidate =>
-              candidate &&
-              typeof candidate === "object" &&
-              !Array.isArray(candidate) &&
-              String((candidate as JsonRecord).branchId ?? "") === managerBranchId,
-            )
-          : data,
+        data,
         deletedCompanyAssetIds(deletionsRow?.data),
       );
       await tx.insert(appStateTable).values({ key, data: merged }).onConflictDoUpdate({

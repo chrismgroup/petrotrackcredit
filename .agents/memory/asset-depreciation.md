@@ -15,8 +15,8 @@ Company asset snapshots are recovery-only: they may contribute a previously unse
 
 **How to apply:** Preserve user-entered fields exactly, use server revisions for edit conflicts rather than device clocks, and keep deletion markers available during hydration so stale local caches cannot display or re-upload deleted records.
 
-Asset registration is branch-first. Global asset managers choose an active branch before opening the form; a branch manager with Asset Management access is locked to their assigned branch. Once an asset has a non-empty branch owner, edits cannot move it to another branch.
+Asset registration is branch-first. Accountant, MD, CEO, CSM/HR, and Marketing Manager roles can choose an active branch before opening the form. Branch managers are view-only when the admin grants Asset Management access. Once an asset has a non-empty branch owner, edits cannot move it to another branch.
 
-**Why:** Branch teams need to register their own assets without gaining control over another branch, and later app/snapshot updates must not silently reassign persisted records.
+**Why:** Asset ownership and write authority belong to the designated corporate roles; branch teams need visibility without gaining control over another branch, and later app/snapshot updates must not silently reassign persisted records.
 
-**How to apply:** Enforce branch scope in the UI, client context, and API. To move an assigned asset, use the explicit delete action and register a new record for the destination branch.
+**How to apply:** Enforce the manager list in the UI, client context, and API. Use the existing admin-controlled module access to grant branch managers read visibility. To move an assigned asset, use the explicit delete action and register a new record for the destination branch.
