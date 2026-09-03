@@ -20,6 +20,7 @@
 - [Native module preview isolation](native-module-preview.md) — load native-only SDKs behind a runtime platform guard so Expo web previews do not initialize them
 - [Start-up stock baselines](startup-stock-baselines.md) — admin-set product baselines stay locked to non-admins and prefer branch-specific values for scoped views
 - [Expo build port isolation](expo-build-port-conflict.md) — static builds use one isolated Metro port while previews remain on managed ports
+- [Expo pnpm release bundling](expo-pnpm-release-bundling.md) — SDK 57 native bundles need explicit React Native CLI and Babel preset resolution in isolated pnpm workspaces
 - [Expo Go 57 validation](expo-go-validation.md) — device acceptance confirmed: sign-in rendered and main navigation worked
 - [Report export web print](report-export-web-print.md) — use printAsync on web; printToFileAsync has no browser file URI
 - [Report read and export permissions](report-read-export-permissions.md) — Admin grants report visibility; permitted users can read all types, while export remains role-specific
