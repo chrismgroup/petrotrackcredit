@@ -25,6 +25,7 @@ const ALLOWED_KEYS = new Set([
   "pumpLockedMeters", "inventoryLog", "financialEntry", "marketCompetitors",
   "myFolders", "myFolderFiles", "startupStocks", "stockSnapshotConfig",
   "stockLogs", "reportAccessPolicyVersion",
+  "companyAssets",
 ]);
 const MY_FOLDER_WRITE_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
 
@@ -49,7 +50,7 @@ const ADMIN_WRITE_KEYS = new Set([
   "hrEmployees", "hrHandbooks", "hrRecommendations",
   "companyFiles", "legalMatters", "meetingMinutes", "corpProjects",
   "companyInfo", "departments", "branches", "startupStocks", "stockSnapshotConfig",
-  "reportAccessPolicyVersion",
+  "reportAccessPolicyVersion", "companyAssets",
 ]);
 
 // Selling prices are operational. Managers may update only their own branch

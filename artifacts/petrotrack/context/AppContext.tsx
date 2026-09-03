@@ -18,6 +18,7 @@ import {
   validatePriceProposal,
   type PriceValidationResult,
 } from '@/lib/report-helpers';
+import type { AssetInput, CompanyAsset } from '@/lib/asset-depreciation';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
@@ -1077,6 +1078,7 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'tasks',    icon: 'checkmark-circle', label: 'Tasks'      },
   { id: 'hr',       icon: 'people-circle',    label: 'HR'         },
   { id: 'acct',     icon: 'calculator',       label: 'Accounts'   },
+  { id: 'assets',   icon: 'cube',             label: 'Asset Management' },
   { id: 'mktg',     icon: 'megaphone',        label: 'Marketing'  },
   { id: 'prices',   icon: 'pricetag',         label: 'Prices'     },
   { id: 'branches', icon: 'business',         label: 'Branches'   },
@@ -1151,6 +1153,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   home: '/(app)/home', users: '/(app)/users', depts: '/(app)/departments',
   audit: '/(app)/audit', settings: '/(app)/system-settings', ops: '/(app)/operations',
   tanks: '/(app)/tanks', acct: '/(app)/accounts', corp: '/(app)/corporate',
+  assets: '/(app)/asset-management',
   branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
   budget: '/(app)/budget', exp: '/(app)/expenses',
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
@@ -1321,6 +1324,10 @@ interface AppContextType {
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
   financialEntry: FinancialEntry;
   updateFinancialEntry: (updates: Partial<Omit<FinancialEntry, 'updatedBy' | 'updatedAt'>>) => void;
+  companyAssets: CompanyAsset[];
+  addCompanyAsset: (asset: AssetInput) => boolean;
+  updateCompanyAsset: (id: string, updates: AssetInput) => boolean;
+  deleteCompanyAsset: (id: string) => boolean;
   addBudget: (b: Omit<Budget, 'id' | 'workflow'>) => void;
   updateBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string; appliesOn?: string }) => void;
   deleteBudget: (id: number) => void;
@@ -1578,6 +1585,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [startupStocks, setStartupStocks] = useState<StartupStock[]>(INIT_STARTUP_STOCK);
   const [stockSnapshotConfig, setStockSnapshotConfig] = useState<StockSnapshotConfig>(DEFAULT_STOCK_SNAPSHOT_CONFIG);
   const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
+  const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const refreshNotifications = useCallback(async () => {
@@ -1621,7 +1629,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
-      'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks', 'stockSnapshotConfig', 'stockLogs',
+      'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks', 'stockSnapshotConfig', 'stockLogs', 'companyAssets',
        SHIFT_REPORT_OUTBOX_STORAGE_KEY,
     ] as const;
     const markLoaded = () => {
@@ -1705,6 +1713,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.callLog)           setCallLog(s.callLog);
       if (s.marketCompetitors) setMarketCompetitors(s.marketCompetitors);
        if (s.financialEntry)    setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
+       if (Array.isArray(s.companyAssets)) setCompanyAssets(s.companyAssets as CompanyAsset[]);
         if (Array.isArray(s[SHIFT_REPORT_OUTBOX_STORAGE_KEY])) {
           shiftReportOutboxRef.current = s[SHIFT_REPORT_OUTBOX_STORAGE_KEY] as ShiftReportOutboxItem<PumpDailyReport>[];
           const restoredQueuedReports = shiftReportOutboxRef.current.map(item => ({
@@ -1904,6 +1913,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
       if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
+      if (!p.has('companyAssets')) setCompanyAssets(safeArray<CompanyAsset>(s.companyAssets));
        if (!p.has('startupStocks'))       setStartupStocks(safeArray<StartupStock>(s.startupStocks));
        if (!p.has('stockLogs'))           setStockLogs(safeArray<StockLogEntry>(s.stockLogs));
       // Lift the startup write-gate ONLY on success: server state is now applied, safe to accept user writes.
@@ -2320,6 +2330,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
+  useEffect(() => { if (loaded) syncSlice('companyAssets',     companyAssets); },     [companyAssets, loaded]);
   useEffect(() => { if (loaded) syncSlice('startupStocks',    startupStocks); },      [startupStocks, loaded]);
   useEffect(() => { if (loaded) syncSlice('stockSnapshotConfig', stockSnapshotConfig); }, [stockSnapshotConfig, loaded]);
    // This effect is declared after every ordinary slice effect so a server
@@ -4424,6 +4435,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setFinancialEntry(prev => ({ ...prev, ...updates, updatedBy: userName, updatedAt: nowTs() }));
   }, [userName]);
 
+  const canManageCompanyAssets = role === 'admin' || role === 'ceo' || role === 'md' || role === 'acc';
+  const addCompanyAsset = useCallback((asset: AssetInput) => {
+    if (!canManageCompanyAssets) return false;
+    const timestamp = nowTs();
+    setCompanyAssets(prev => [...prev, {
+      ...asset,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      createdBy: userName,
+      createdAt: timestamp,
+      updatedBy: userName,
+      updatedAt: timestamp,
+    }]);
+    return true;
+  }, [canManageCompanyAssets, userName]);
+
+  const updateCompanyAsset = useCallback((id: string, updates: AssetInput) => {
+    if (!canManageCompanyAssets) return false;
+    setCompanyAssets(prev => prev.map(asset => asset.id === id
+      ? { ...asset, ...updates, updatedBy: userName, updatedAt: nowTs() }
+      : asset));
+    return true;
+  }, [canManageCompanyAssets, userName]);
+
+  const deleteCompanyAsset = useCallback((id: string) => {
+    if (!canManageCompanyAssets) return false;
+    setCompanyAssets(prev => prev.filter(asset => asset.id !== id));
+    return true;
+  }, [canManageCompanyAssets]);
+
   // General Library is available to every signed-in user; sensitive sections
   // are gated within the My Folder dashboard itself.
   const folderVisible = !!role;
@@ -4448,6 +4488,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
        maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts, callLog,
+       companyAssets, addCompanyAsset, updateCompanyAsset, deleteCompanyAsset,
        handoverNotes, addShiftHandoverNote,
        marketCompetitors, addMarketCompetitor, updateMarketCompetitor, deleteMarketCompetitor,
        addBroadcast, addCallRecord,

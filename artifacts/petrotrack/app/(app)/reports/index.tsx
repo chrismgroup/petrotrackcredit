@@ -17,6 +17,7 @@ import {
   localDateKey, priBg, priColor, stColor, safeNum, safeStr, isMissingNum,
 } from '@/lib/report-helpers';
 import { useLocalSearchParams } from 'expo-router';
+import { depreciationTotalForDateRange } from '@/lib/asset-depreciation';
 
 /* ═══════════════════════════════════════════════════════════
    EXPORT — iOS-native share sheet (no print dialog)
@@ -151,7 +152,7 @@ export default function ReportsScreen() {
   const {
     role, userName, branchId,
     expenses, sales, branches, deliveries, prices, priceHistory, priceProposals,
-    maintenance, dips, staff, hrEmployees, pumpDailyReports, companyInfo,
+    maintenance, dips, staff, hrEmployees, pumpDailyReports, companyInfo, companyAssets,
   } = useApp();
   const colors = useColors();
   const rc = ROLE_COLORS[role || 'acc'] || colors.primary;
@@ -367,8 +368,10 @@ export default function ReportsScreen() {
   const gmPct   = totSR > 0 ? Math.round((totGP / totSR) * 100) : 0;
   const citaRate = parseFloat(safeCompanyInfo.citaRate || '30') / 100;
   const operatingProfit = totGP - scaledExp;
-  const citaProvision = operatingProfit > 0 ? Math.round(operatingProfit * citaRate) : 0;
-  const netPnl  = operatingProfit - citaProvision;
+  const depreciation = depreciationTotalForDateRange(companyAssets, fromStr, toStr, selBranch);
+  const profitBeforeTax = operatingProfit - depreciation;
+  const citaProvision = profitBeforeTax > 0 ? Math.round(profitBeforeTax * citaRate) : 0;
+  const netPnl  = profitBeforeTax - citaProvision;
   const nmPct   = totSR > 0 ? Math.round((netPnl / totSR) * 100) : 0;
 
   const catTotals: Record<string, number> = {};
@@ -447,6 +450,7 @@ export default function ReportsScreen() {
           { label: 'Gross Profit',        value: nfmt(totGP)    },
           { label: 'Gross Margin',        value: `${gmPct}%`    },
           { label: 'Operating Expenses',  value: nfmt(scaledExp)},
+          { label: 'Asset Depreciation',  value: nfmt(depreciation)},
           { label: 'Net Profit/(Loss)',   value: nfmt(netPnl)   },
           { label: 'Net Margin',          value: `${nmPct}%`    },
         ]}],
@@ -753,7 +757,7 @@ export default function ReportsScreen() {
             {reportType === 'full' ? (
               <>
                 <SecTitle label="Profit & Loss" colors={colors} />
-                <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} citaRate={citaRate} citaProvision={citaProvision} catScaled={catScaled} colors={colors} rc={rc} />
+                <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} depreciation={depreciation} citaRate={citaRate} citaProvision={citaProvision} catScaled={catScaled} colors={colors} rc={rc} />
                 <SecTitle label="Sales by Product" colors={colors} />
                 {prodSales.length === 0 ? <EmptyState icon="bar-chart-outline" label="No sales data" colors={colors} /> : null}
                 {prodSales.map(p => <ProdSaleRow key={p.prod} p={p} colors={colors} />)}
@@ -764,7 +768,7 @@ export default function ReportsScreen() {
 
         {/* ── P&L ── */}
         {reportType === 'pnl' ? (
-          <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} citaRate={citaRate} citaProvision={citaProvision} catScaled={catScaled} colors={colors} rc={rc} />
+          <PnlBlock pnlByProd={pnlByProd} netPnl={netPnl} nmPct={nmPct} totSR={totSR} totCOGS={totCOGS} totGP={totGP} gmPct={gmPct} scaledExp={scaledExp} depreciation={depreciation} citaRate={citaRate} citaProvision={citaProvision} catScaled={catScaled} colors={colors} rc={rc} />
         ) : null}
 
         {/* ── EXPENSES ── */}
@@ -1067,7 +1071,7 @@ export default function ReportsScreen() {
 }
 
 /* ─── P&L block ─────────────────────────────────────────── */
-function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scaledExp, citaRate, citaProvision, catScaled, colors, rc }: any) {
+function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scaledExp, depreciation, citaRate, citaProvision, catScaled, colors, rc }: any) {
   return (
     <>
       <View style={[s.plHeader, { backgroundColor: netPnl >= 0 ? '#0a2318' : '#791F1F' }]}>
@@ -1148,6 +1152,10 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
           <Text style={{ fontSize: 14, fontWeight: '800', color: '#791F1F' }}>{fmt(scaledExp)}</Text>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Asset Depreciation</Text>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: '#791F1F' }}>{fmt(depreciation)}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>CITA ({(citaRate * 100).toFixed(0)}%)</Text>
           <Text style={{ fontSize: 14, fontWeight: '800', color: '#BA7517' }}>{fmt(citaProvision)}</Text>
         </View>
@@ -1155,7 +1163,7 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
       <View style={[s.plFinal, { backgroundColor: netPnl >= 0 ? '#EAF3DE' : '#FCEBEB', borderColor: netPnl >= 0 ? '#27500A33' : '#791F1F33' }]}>
         <View>
           <Text style={{ fontSize: 14, fontWeight: '700', color: netPnl >= 0 ? '#27500A' : '#791F1F' }}>{netPnl >= 0 ? 'Net Profit' : 'Net Loss'}</Text>
-          <Text style={{ fontSize: 10, marginTop: 3, color: netPnl >= 0 ? '#3a6e1c' : '#aa2222' }}>Gross Profit − Operating Expenses − CITA</Text>
+          <Text style={{ fontSize: 10, marginTop: 3, color: netPnl >= 0 ? '#3a6e1c' : '#aa2222' }}>Gross Profit − Operating Expenses − Depreciation − CITA</Text>
         </View>
         <Text style={{ fontSize: 22, fontWeight: '900', marginLeft: 'auto', color: netPnl >= 0 ? '#27500A' : '#791F1F' }}>{fmt(netPnl)}</Text>
       </View>
