@@ -128,7 +128,7 @@ export interface BankLoan { bank: string; amount: number; }
 export interface FinancialEntry {
   cashInBank: number; posValue: number; goodsOnTransit: number;
   cashInHand: number; debtsFromCustomers: number; capitalInjection: number;
-  bankLoans: BankLoan[]; liabilities: number;
+  bankLoans: BankLoan[]; bankCharges: number; loanInterest: number; liabilities: number;
   startupCapital: number;
   startupCapitalMonth: string;
   startupCapitalSource: 'admin' | 'rollover';
@@ -1289,7 +1289,7 @@ const INIT_CORP_PROJECTS: CorpProject[] = [];
 const INIT_MEETING_MINUTES: MeetingMinutes[] = [];
 const INIT_FINANCIAL_ENTRY: FinancialEntry = {
   cashInBank: 0, posValue: 0, goodsOnTransit: 0, cashInHand: 0,
-  debtsFromCustomers: 0, capitalInjection: 0, bankLoans: [], liabilities: 0,
+  debtsFromCustomers: 0, capitalInjection: 0, bankLoans: [], bankCharges: 0, loanInterest: 0, liabilities: 0,
   startupCapital: 0, startupCapitalMonth: '', startupCapitalSource: 'rollover',
   closingOperatingCapital: 0,
   updatedBy: '', updatedAt: '',
@@ -1303,6 +1303,8 @@ function normaliseFinancialEntry(value: unknown): FinancialEntry {
     ...INIT_FINANCIAL_ENTRY,
     ...incoming,
     bankLoans: Array.isArray(incoming.bankLoans) ? incoming.bankLoans : [],
+    bankCharges: typeof incoming.bankCharges === 'number' && Number.isFinite(incoming.bankCharges) ? Math.max(0, incoming.bankCharges) : 0,
+    loanInterest: typeof incoming.loanInterest === 'number' && Number.isFinite(incoming.loanInterest) ? Math.max(0, incoming.loanInterest) : 0,
     startupCapital: typeof incoming.startupCapital === 'number' ? incoming.startupCapital : 0,
     startupCapitalMonth: typeof incoming.startupCapitalMonth === 'string' ? incoming.startupCapitalMonth : '',
     startupCapitalSource: incoming.startupCapitalSource === 'admin' ? 'admin' : 'rollover',
