@@ -13,7 +13,7 @@ Action Items are presented as responsive summary cards showing description, acti
 
 **Why:** These roles need a fast operational glance without opening Tasks, while branch scoping must remain consistent with the rest of the operational dashboard.
 
-**How to apply:** Keep summaries compact and urgency-sorted on Home, reuse the responsive card presentation on the dedicated page, and append a durable history entry for creation and every status transition. Legacy records may reconstruct their creation entry. Put status controls in the detail view and show them only to the assigned action party or CEO; closed records remain viewable but locked.
+**How to apply:** Keep summaries compact and urgency-sorted on Home, reuse the responsive card presentation on the dedicated page, and append a durable history entry for creation and every status transition. Legacy records may reconstruct their creation entry. Put status controls in the detail view and show them only to the assigned action party or CEO; closed records remain viewable but locked. In the add form, choose the action party through a searchable active-user picker rather than an inline account list, and select close-out dates through the shared calendar field with a readable long-date display.
 
 Action Item Home visibility uses the existing admin-managed per-user access override map with a dedicated dashboard permission key. Default visibility remains for CEO, MD, Accountant, CSM/HR, station managers, and admin; admins can override access for any active non-admin account from System Settings > Access > By User.
 
