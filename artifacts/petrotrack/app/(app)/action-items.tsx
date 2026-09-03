@@ -472,8 +472,8 @@ export default function ActionItemsScreen() {
             >
               <Ionicons name="search-outline" size={18} color={roleColor} />
               <View style={styles.flex}>
-                <Text style={[styles.searchPartyTitle, { color: colors.text }]}>Choose action party</Text>
-                <Text style={[styles.searchPartyHint, { color: colors.textMuted }]}>Search active users by name, branch, or role</Text>
+                <Text style={[styles.searchPartyTitle, { color: colors.text }]}>Search for an action party</Text>
+                <Text style={[styles.searchPartyHint, { color: colors.textMuted }]}>Choose an active user by name, branch, or role</Text>
               </View>
               <Ionicons name={showPartySearch ? 'chevron-up' : 'chevron-down'} size={17} color={colors.textSubtle} />
             </TouchableOpacity>
@@ -659,6 +659,11 @@ const styles = StyleSheet.create({
   searchPartyButton: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, paddingHorizontal: 13, marginBottom: 4 },
   searchPartyTitle: { fontSize: 13, fontWeight: '800' },
   searchPartyHint: { fontSize: 10, marginTop: 3 },
+  inlinePartyPicker: { borderWidth: 1, borderRadius: 14, padding: 11, marginTop: 4, marginBottom: 6 },
+  partyPickerHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 7 },
+  partyPickerTitle: { fontSize: 13, fontWeight: '800' },
+  partyPickerHint: { fontSize: 10, marginTop: 2 },
+  pickerCloseButton: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(127,127,127,0.10)' },
   changePartyButton: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 7 },
   changePartyText: { fontSize: 10, fontWeight: '800' },
   avatar: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
@@ -672,7 +677,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 11, fontWeight: '700' },
   formActions: { flexDirection: 'row', gap: 8, marginTop: 18, marginBottom: 30 },
   partySearchContainer: { height: '74%', width: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
-  partyResults: { padding: 16, paddingBottom: 36 },
+  partyResults: { paddingTop: 2, paddingBottom: 2 },
   searchInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 48, borderWidth: 1, borderRadius: 11, margin: 16, marginBottom: 4, paddingHorizontal: 12 },
   searchInput: { flex: 1, minHeight: 46, fontSize: 14 },
   noResults: { alignItems: 'center', justifyContent: 'center', gap: 8, padding: 28 },

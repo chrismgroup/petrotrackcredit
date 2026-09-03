@@ -450,8 +450,8 @@ describe('Action Items table and dedicated view', () => {
     mockedUseApp.mockReturnValue(baseAppState({
       role: 'md',
       userAccounts: [
-        { id: 77, empName: 'Amina Yusuf', role: 'acc', status: 'active' },
-        { id: 78, empName: 'Bello Musa', role: 'mgr', status: 'active' },
+        { id: 77, empName: 'Amina Yusuf', role: 'acc', status: 'active', branchId: 'B2' },
+        { id: 78, empName: 'Bello Musa', role: 'mgr', status: 'active', branchId: 'B1' },
       ],
       addActionItem,
     }) as any);
@@ -476,9 +476,13 @@ describe('Action Items table and dedicated view', () => {
     const searchInput = renderer.root.find(
       node => String(node.type) === 'TextInput' && node.props.testID === 'action-party-search-input',
     );
-    act(() => searchInput.props.onChangeText('Amina'));
+    act(() => searchInput.props.onChangeText('Wuse'));
     expect(renderedText(renderer)).toContain('Amina Yusuf');
     expect(renderedText(renderer)).not.toContain('Bello Musa');
+    act(() => searchInput.props.onChangeText('Accountant'));
+    expect(renderedText(renderer)).toContain('Amina Yusuf');
+    expect(renderedText(renderer)).not.toContain('Bello Musa');
+    act(() => searchInput.props.onChangeText('Amina'));
 
     const result = renderer.root.find(
       node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'action-party-option-77',
