@@ -904,10 +904,10 @@ export default function HomeScreen() {
               colors={colors}
               showBranch={isGlobalOverview}
               emptyText="No outstanding action items"
-              onRowPress={() => router.push(SCREEN_ROUTES.tasks as never)}
+              onRowPress={() => router.push(SCREEN_ROUTES.actionItems as never)}
             />
             {outstandingActionItems.length > 8 ? (
-              <TouchableOpacity onPress={() => router.push(SCREEN_ROUTES.tasks as never)} style={[s.actionItemsSeeAll, { borderColor: colors.border }]} activeOpacity={0.78}>
+              <TouchableOpacity onPress={() => router.push(SCREEN_ROUTES.actionItems as never)} style={[s.actionItemsSeeAll, { borderColor: colors.border }]} activeOpacity={0.78}>
                 <Text style={[s.actionItemsSeeAllText, { color: colors.primary }]}>
                   View all {outstandingActionItems.length} outstanding items
                 </Text>

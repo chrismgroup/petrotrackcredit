@@ -37,3 +37,4 @@
 - [Daily timer compatibility](daily-timer-compatibility.md) — Daily RN 0.86 still imports the legacy timer; a reproducible patch keeps standard timers and native call services
 - [Action Items workflow](action-items.md) — separate Tasks collection with person assignment, terminal close/lock, urgency colors, and branch archives
 - [Asset depreciation](asset-depreciation.md) — straight-line monthly depreciation is branch-scoped and deducted before CITA when calculating monthly net profit
+- [Expo screen test harness](expo-screen-test-harness.md) — lightweight RN mocks need native-module coverage; query host nodes to avoid wrapper duplicates

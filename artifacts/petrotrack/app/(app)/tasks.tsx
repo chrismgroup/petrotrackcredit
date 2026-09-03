@@ -4,13 +4,11 @@ import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ActionItemsTable } from '@/components/ActionItemsTable';
-import { ActionItem, ActionItemStatus, KPI, ROLE_COLORS, ROLE_LABELS, TASK_CAN_ASSIGN, Task, TaskCadence, TaskPriority, TaskStatus, UINFO, resolveUserInfo, fmtDate, useApp } from '@/context/AppContext';
+import { KPI, ROLE_COLORS, ROLE_LABELS, TASK_CAN_ASSIGN, Task, TaskCadence, TaskPriority, TaskStatus, UINFO, resolveUserInfo, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type TabId = 'mine' | 'assigned' | 'action-items' | 'kpis';
+type TabId = 'mine' | 'assigned' | 'kpis';
 type CadenceFilter = 'all' | TaskCadence;
-type ActionView = 'active' | 'archived';
 
 const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string; icon: string }> = {
   commenced:   { label: 'Commenced',   color: '#185FA5', bg: '#E6F1FB', icon: 'play-circle'      },
@@ -41,16 +39,10 @@ const CADENCE_FILTERS: { id: CadenceFilter; label: string }[] = [
 
 const KPI_PERIODS = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Annual', 'Per request'];
 
-const ACTION_PARTY_ROLES: Exclude<keyof typeof ROLE_LABELS, 'admin'>[] = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'];
-const ACTION_STATUS_META: Record<ActionItemStatus, { label: string; color: string; bg: string; icon: string }> = {
-  open: { label: 'Open', color: '#185FA5', bg: '#E6F1FB', icon: 'ellipse-outline' },
-  'on-going': { label: 'On-going', color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline' },
-  closed: { label: 'Closed', color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle' },
-};
 export default function TasksScreen() {
   const {
-    role, userName, staffId, branchId, branches, userAccounts, tasks, kpis, actionItems,
-    addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi, addActionItem, updateActionItemStatus,
+    role, userName, branchId, userAccounts, tasks, kpis,
+    addTask, updateTaskStatus, deleteTask, addKpi, deleteKpi,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'md'] || colors.primary;
@@ -58,11 +50,8 @@ export default function TasksScreen() {
 
   const [tab, setTab] = useState<TabId>('mine');
   const [cadenceFilter, setCadenceFilter] = useState<CadenceFilter>('all');
-  const [actionView, setActionView] = useState<ActionView>('active');
-  const [actionBranchFilter, setActionBranchFilter] = useState<string>('all');
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showKpiForm, setShowKpiForm] = useState(false);
-  const [showActionForm, setShowActionForm] = useState(false);
 
   const [taskForm, setTaskForm] = useState({
     title: '', desc: '', assignedTo: '' as string,
@@ -74,29 +63,8 @@ export default function TasksScreen() {
     title: '', target: '', unit: '', period: 'Monthly',
     assignedTo: '' as string, assignedToName: '',
   });
-  const [actionForm, setActionForm] = useState({
-    title: '', desc: '', actionPartyId: null as number | null,
-    actionPartyRole: '' as string, actionPartyName: '',
-    targetDate: '', branchId: branchId ?? '',
-  });
-
   const assignableRoles: string[] = role ? TASK_CAN_ASSIGN[role] ?? [] : [];
   const canAssign = assignableRoles.length > 0;
-  const isCorporateAdmin = role === 'admin' || role === 'ceo';
-  const availableBranches = branches.filter(branch => branch.st === 'Active' && (isCorporateAdmin || !branchId || branch.id === branchId));
-  const actionPartyAccounts = userAccounts.filter(account =>
-    account.status === 'active' && account.role && account.role !== 'admin'
-      && ACTION_PARTY_ROLES.includes(account.role as any),
-  );
-  const actionPartyOptions = actionPartyAccounts.length > 0
-    ? actionPartyAccounts
-    : ACTION_PARTY_ROLES.map(partyRole => ({ id: 0, empName: resolveUserInfo(partyRole, userAccounts).name, role: partyRole }));
-  const visibleActionItems = actionItems.filter(item => {
-    const userBranchMatches = isCorporateAdmin || !branchId || item.branchId === branchId;
-    const branchMatches = actionBranchFilter === 'all' || item.branchId === actionBranchFilter;
-    const isArchived = item.status === 'closed' || !!item.archivedAt;
-    return userBranchMatches && branchMatches && (actionView === 'archived' ? isArchived : !isArchived);
-  });
 
   const myTasksAll    = tasks.filter(t => t.assignedTo === role);
   const assignedByAll = tasks.filter(t => t.assignedBy === role);
@@ -106,17 +74,11 @@ export default function TasksScreen() {
   const tabs: { id: TabId; label: string }[] = [
     { id: 'mine',     label: `My Tasks (${myTasksAll.length})` },
     { id: 'assigned', label: `Assigned (${assignedByAll.length})` },
-    { id: 'action-items', label: `Action Items (${actionItems.filter(item => item.status !== 'closed').length})` },
     ...(isCeo ? [{ id: 'kpis' as TabId, label: `KPIs (${kpis.length})` }] : []),
   ];
 
   function openTaskForm() { setShowTaskForm(true); }
   function openKpiForm()  { setShowKpiForm(true); }
-  function openActionForm() {
-    setActionForm(form => ({ ...form, branchId: branchId ?? availableBranches[0]?.id ?? '' }));
-    setShowActionForm(true);
-  }
-
   function handleAssignTask() {
     if (!role || !taskForm.title || !taskForm.assignedTo) {
       Alert.alert('Required', 'Title and assignee are required.'); return;
@@ -150,44 +112,6 @@ export default function TasksScreen() {
     setShowKpiForm(false);
   }
 
-  function handleAddActionItem() {
-    if (!role || !actionForm.title.trim() || !actionForm.actionPartyRole || !actionForm.targetDate || !actionForm.branchId) {
-      Alert.alert('Required', 'Title, action party, target close date, and branch are required.');
-      return;
-    }
-    const selectedBranch = branches.find(branch => branch.id === actionForm.branchId);
-    const created = addActionItem({
-      title: actionForm.title,
-      desc: actionForm.desc,
-      actionPartyId: actionForm.actionPartyId || undefined,
-      actionPartyRole: actionForm.actionPartyRole as any,
-      actionPartyName: actionForm.actionPartyName,
-      targetDate: actionForm.targetDate,
-      branchId: actionForm.branchId,
-      branchName: selectedBranch?.name ?? actionForm.branchId,
-    });
-    if (!created) {
-      Alert.alert('Unable to add action item', 'Please sign in again and try once more.');
-      return;
-    }
-    setActionForm({
-      title: '', desc: '', actionPartyId: null, actionPartyRole: '',
-      actionPartyName: '', targetDate: '', branchId: branchId ?? availableBranches[0]?.id ?? '',
-    });
-    setShowActionForm(false);
-  }
-
-  function handleActionStatus(item: ActionItem, status: ActionItemStatus) {
-    if (status === 'closed') {
-      Alert.alert('Close action item?', `"${item.title}" will be locked and moved to the ${item.branchName} archive.`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Close and archive', onPress: () => updateActionItemStatus(item.id, status) },
-      ]);
-      return;
-    }
-    updateActionItemStatus(item.id, status);
-  }
-
   function handleNextStatus(task: Task) {
     const order: TaskStatus[] = ['commenced', 'progressing', 'completed'];
     const idx = order.indexOf(task.status);
@@ -212,12 +136,6 @@ export default function TasksScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => deleteKpi(kpi.id) },
     ]);
-  }
-
-  function canUpdateActionItem(item: ActionItem) {
-    if (!role || item.status === 'closed') return false;
-    return role === 'ceo'
-      || (item.actionPartyId !== undefined ? item.actionPartyId === staffId : item.actionPartyRole === role);
   }
 
   function renderTaskCard(task: Task, isAssignedToMe: boolean) {
@@ -317,73 +235,6 @@ export default function TasksScreen() {
           </TouchableOpacity>
         )}
       </View>
-    );
-  }
-
-  function renderActionItems() {
-    const activeItems = visibleActionItems.filter(item => item.status !== 'closed');
-    if (!visibleActionItems.length) {
-      return (
-        <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Ionicons name={actionView === 'archived' ? 'archive-outline' : 'flash-outline'} size={36} color={colors.textSubtle} />
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-            {actionView === 'archived' ? 'No closed action items in this branch archive' : 'No open action items yet'}
-          </Text>
-          {actionView === 'active' && (
-            <TouchableOpacity onPress={openActionForm} style={[styles.emptyAction, { backgroundColor: roleColor }]}>
-              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Add Action Item</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      );
-    }
-
-    if (actionView === 'archived') {
-      const groups = Array.from(new Set(visibleActionItems.map(item => item.branchId)));
-      return (
-        <>
-          {groups.map(groupBranchId => {
-            const group = visibleActionItems.filter(item => item.branchId === groupBranchId);
-            return (
-              <View key={groupBranchId} style={{ marginBottom: 4 }}>
-                <View style={styles.groupHeader}>
-                  <Ionicons name="archive-outline" size={13} color={colors.textMuted} />
-                  <Text style={[styles.groupLabel, { color: colors.textMuted }]}>{group[0]?.branchName ?? groupBranchId} · {group.length}</Text>
-                </View>
-                <ActionItemsTable
-                  items={group}
-                  colors={colors}
-                  emptyText="No closed action items in this branch archive"
-                />
-              </View>
-            );
-          })}
-        </>
-      );
-    }
-
-    return (
-      <>
-        {(['open', 'on-going'] as ActionItemStatus[]).map(statusValue => {
-          const group = activeItems.filter(item => item.status === statusValue);
-          if (!group.length) return null;
-          const meta = ACTION_STATUS_META[statusValue];
-          return (
-            <View key={statusValue} style={{ marginBottom: 4 }}>
-              <View style={styles.groupHeader}>
-                <View style={[styles.groupDot, { backgroundColor: meta.color }]} />
-                <Text style={[styles.groupLabel, { color: meta.color }]}>{meta.label} · {group.length}</Text>
-              </View>
-              <ActionItemsTable
-                items={group}
-                colors={colors}
-                canUpdate={canUpdateActionItem}
-                onStatusChange={handleActionStatus}
-              />
-            </View>
-          );
-        })}
-      </>
     );
   }
 
@@ -495,13 +346,13 @@ export default function TasksScreen() {
     );
   }
 
-  const showAddBtn = tab === 'kpis' ? isCeo : tab === 'action-items' ? !!role : canAssign;
+  const showAddBtn = tab === 'kpis' ? isCeo : canAssign;
 
   return (
     <ScreenLayout
       title="Tasks & KPIs"
       rightAction={showAddBtn ? (
-        <TouchableOpacity onPress={tab === 'kpis' ? openKpiForm : tab === 'action-items' ? openActionForm : openTaskForm} style={styles.headerBtn}>
+        <TouchableOpacity onPress={tab === 'kpis' ? openKpiForm : openTaskForm} style={styles.headerBtn}>
           <Ionicons name="add" size={20} color="#fff" />
         </TouchableOpacity>
       ) : undefined}
@@ -522,53 +373,11 @@ export default function TasksScreen() {
       </View>
 
       {/* Cadence filter (tasks tabs only) */}
-      {tab !== 'kpis' && tab !== 'action-items' && renderCadenceFilter()}
-      {tab === 'action-items' && (
-        <View style={styles.actionToolbar}>
-          <View style={styles.actionViewRow}>
-            {(['active', 'archived'] as ActionView[]).map(view => (
-              <TouchableOpacity
-                key={view}
-                onPress={() => setActionView(view)}
-                style={[styles.filterPill, {
-                  backgroundColor: actionView === view ? roleColor : colors.surface,
-                  borderColor: actionView === view ? roleColor : colors.border,
-                }]}
-              >
-                <Ionicons name={view === 'active' ? 'flash-outline' : 'archive-outline'} size={12} color={actionView === view ? '#fff' : colors.textMuted} />
-                <Text style={[styles.filterPillText, { color: actionView === view ? '#fff' : colors.textMuted }]}>
-                  {view === 'active' ? 'Open items' : 'Branch archive'}
-                </Text>
-                <Text style={[styles.filterCount, { color: actionView === view ? 'rgba(255,255,255,0.8)' : colors.textSubtle }]}>
-                  {actionItems.filter(item => view === 'archived' ? item.status === 'closed' : item.status !== 'closed').length}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.branchFilterRow}>
-            <TouchableOpacity
-              onPress={() => setActionBranchFilter('all')}
-              style={[styles.branchPill, { backgroundColor: actionBranchFilter === 'all' ? roleColor + '15' : colors.surface, borderColor: actionBranchFilter === 'all' ? roleColor : colors.border }]}
-            >
-              <Text style={[styles.branchPillText, { color: actionBranchFilter === 'all' ? roleColor : colors.textMuted }]}>All branches</Text>
-            </TouchableOpacity>
-            {availableBranches.map(branch => (
-              <TouchableOpacity
-                key={branch.id}
-                onPress={() => setActionBranchFilter(branch.id)}
-                style={[styles.branchPill, { backgroundColor: actionBranchFilter === branch.id ? roleColor + '15' : colors.surface, borderColor: actionBranchFilter === branch.id ? roleColor : colors.border }]}
-              >
-                <Text style={[styles.branchPillText, { color: actionBranchFilter === branch.id ? roleColor : colors.textMuted }]} numberOfLines={1}>{branch.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
+      {tab !== 'kpis' && renderCadenceFilter()}
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {tab === 'mine'     && renderGrouped(myTasks, true)}
         {tab === 'assigned' && renderGrouped(assignedBy, false)}
-        {tab === 'action-items' && renderActionItems()}
         {tab === 'kpis' && (
           <>
             {/* Role summary chips */}
@@ -712,98 +521,6 @@ export default function TasksScreen() {
           </ScrollView>
       </ModalSheet>
 
-      {/* ── Add Action Item Modal ── */}
-      <ModalSheet visible={showActionForm} onClose={() => setShowActionForm(false)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-          <Text style={[styles.sheetTitle, { color: colors.text }]}>Add Action Item</Text>
-          <Text style={[styles.sheetIntro, { color: colors.textMuted }]}>
-            Assign a clear follow-up to a person. The assigned action party or CEO can update it; closing locks it in the branch archive.
-          </Text>
-
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-            placeholder="Action item title *" placeholderTextColor={colors.textSubtle}
-            value={actionForm.title} onChangeText={value => setActionForm(form => ({ ...form, title: value }))}
-          />
-          <TextInput
-            style={[styles.input, styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-            placeholder="Description or expected outcome (optional)" placeholderTextColor={colors.textSubtle}
-            multiline numberOfLines={3} value={actionForm.desc}
-            onChangeText={value => setActionForm(form => ({ ...form, desc: value }))}
-          />
-
-          <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Action party *</Text>
-          {actionPartyOptions.map(option => {
-            const optionRole = option.role as any;
-            const optionName = option.empName;
-            const optionId = option.id || undefined;
-            const optionColor = ROLE_COLORS[optionRole] || colors.primary;
-            const active = actionForm.actionPartyId === optionId
-              && actionForm.actionPartyRole === optionRole;
-            const fallbackActive = !optionId && !actionForm.actionPartyId && actionForm.actionPartyRole === optionRole;
-            return (
-              <TouchableOpacity
-                key={`${optionRole}-${optionId ?? 'role'}`}
-                onPress={() => setActionForm(form => ({
-                  ...form,
-                  actionPartyId: optionId ?? null,
-                  actionPartyRole: optionRole,
-                  actionPartyName: optionName,
-                }))}
-                style={[styles.assigneeRow, { backgroundColor: (active || fallbackActive) ? optionColor + '10' : colors.surface, borderColor: (active || fallbackActive) ? optionColor : colors.border }]}
-              >
-                <View style={[styles.assigneeAvatar, { backgroundColor: (active || fallbackActive) ? optionColor : colors.textSubtle }]}>
-                  <Text style={styles.assigneeAvatarText}>{resolveUserInfo(optionRole, userAccounts).initials}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.assigneeName, { color: (active || fallbackActive) ? optionColor : colors.text }]}>{optionName}</Text>
-                  <Text style={[styles.assigneeRole, { color: colors.textMuted }]}>{ROLE_LABELS[optionRole] ?? optionRole}</Text>
-                </View>
-                {(active || fallbackActive) && <Ionicons name="checkmark-circle" size={18} color={optionColor} />}
-              </TouchableOpacity>
-            );
-          })}
-
-          <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Target close date *</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-            placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSubtle}
-            value={actionForm.targetDate} onChangeText={value => setActionForm(form => ({ ...form, targetDate: value }))}
-          />
-          <Text style={[styles.fieldHint, { color: colors.textSubtle }]}>Past dates show red · within 14 days shows yellow · later dates show green.</Text>
-
-          <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Branch archive *</Text>
-          {availableBranches.length === 0 ? (
-            <Text style={[styles.fieldHint, { color: colors.error }]}>No active branch is available for this account.</Text>
-          ) : (
-            <View style={styles.chipRow}>
-              {availableBranches.map(branch => {
-                const active = actionForm.branchId === branch.id;
-                return (
-                  <TouchableOpacity
-                    key={branch.id}
-                    onPress={() => setActionForm(form => ({ ...form, branchId: branch.id }))}
-                    style={[styles.chip, { backgroundColor: active ? roleColor + '18' : colors.surface, borderColor: active ? roleColor : colors.border }]}
-                  >
-                    <Ionicons name="business-outline" size={13} color={active ? roleColor : colors.textMuted} />
-                    <Text style={[styles.chipText, { color: active ? roleColor : colors.textMuted }]}>{branch.name}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 32 }}>
-            <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAddActionItem}>
-              <Text style={styles.submitBtnText}>Add Action Item</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowActionForm(false)}>
-              <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </ModalSheet>
-
       {/* ── Add KPI Modal (CEO only) ── */}
       <ModalSheet visible={showKpiForm} onClose={() => setShowKpiForm(false)}>
           <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
@@ -882,7 +599,6 @@ const styles = StyleSheet.create({
   filterPillText: { fontSize: 12, fontWeight: '600' },
   filterCount: { fontSize: 11, fontWeight: '700' },
   actionToolbar: { paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e5e5e3' },
-  actionViewRow: { paddingHorizontal: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 7 },
   branchFilterRow: { paddingHorizontal: 14, gap: 6 },
   branchPill: { maxWidth: 180, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 18, borderWidth: 1 },
   branchPillText: { fontSize: 11, fontWeight: '600' },
