@@ -34,8 +34,13 @@ const ADMIN_ONLY_ROUTES = ['/departments', '/audit', '/system-settings'];
 const STAFF_ACCOUNT_ROLES = new Set(['admin', 'csm', 'md']);
 
 export default function AppLayout() {
-  const { role, isServerAuthenticated, navItems } = useApp();
+  const { role, isServerAuthenticated, isHydrated, navItems } = useApp();
   const pathname = usePathname();
+
+  // On a browser/native reload, wait for AsyncStorage and the saved auth token
+  // before deciding that a deep link is unauthenticated. Redirecting earlier
+  // destroys the requested route and sends a valid session back to Home.
+  if (!isHydrated) return null;
 
   if (!role || !isServerAuthenticated) {
     return <Redirect href="/" />;

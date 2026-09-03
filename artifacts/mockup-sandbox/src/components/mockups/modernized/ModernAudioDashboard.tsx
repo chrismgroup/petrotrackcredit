@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
   Search,
   Bell,
@@ -30,7 +31,35 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 
-const SidebarItem = ({ icon: Icon, label, active = false, badge = null }) => (
+type SidebarItemProps = {
+  icon: LucideIcon;
+  label: string;
+  active?: boolean;
+  badge?: string | null;
+};
+
+type ActionCardProps = {
+  icon: LucideIcon;
+  label: string;
+  colorClass: string;
+  bgColorClass: string;
+};
+
+type VoiceListItemProps = {
+  avatar: string;
+  name: string;
+  traits: string;
+  description: string;
+};
+
+type ToolCardProps = {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  colorClass: string;
+};
+
+const SidebarItem = ({ icon: Icon, label, active = false, badge = null }: SidebarItemProps) => (
   <button
     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
       active
@@ -48,7 +77,7 @@ const SidebarItem = ({ icon: Icon, label, active = false, badge = null }) => (
   </button>
 );
 
-const ActionCard = ({ icon: Icon, label, colorClass, bgColorClass }) => (
+const ActionCard = ({ icon: Icon, label, colorClass, bgColorClass }: ActionCardProps) => (
   <button className="flex flex-col items-center gap-4 p-6 rounded-2xl bg-white border border-zinc-100 shadow-sm hover:shadow-md hover:border-zinc-200 transition-all group">
     <div
       className={`w-12 h-12 rounded-xl flex items-center justify-center ${bgColorClass} transition-transform group-hover:scale-110`}
@@ -59,7 +88,7 @@ const ActionCard = ({ icon: Icon, label, colorClass, bgColorClass }) => (
   </button>
 );
 
-const VoiceListItem = ({ avatar, name, traits, description }) => (
+const VoiceListItem = ({ avatar, name, traits, description }: VoiceListItemProps) => (
   <div className="flex items-start gap-4 p-3 rounded-xl hover:bg-zinc-50 transition-colors group cursor-pointer border border-transparent hover:border-zinc-100">
     <div
       className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium shrink-0 shadow-inner`}
@@ -81,7 +110,7 @@ const VoiceListItem = ({ avatar, name, traits, description }) => (
   </div>
 );
 
-const ToolCard = ({ icon: Icon, title, description, colorClass }) => (
+const ToolCard = ({ icon: Icon, title, description, colorClass }: ToolCardProps) => (
   <button className="flex items-start gap-4 p-5 rounded-2xl bg-white border border-zinc-100 shadow-sm hover:shadow-md hover:border-zinc-200 transition-all text-left group w-full">
     <div className={`p-3 rounded-xl bg-zinc-50 ${colorClass}`}>
       <Icon className="w-6 h-6" />

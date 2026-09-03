@@ -2,6 +2,7 @@ import {
   annualAssetDepreciation,
   depreciationTotalForDateRange,
   isAssetDepreciatingInMonth,
+  mergeCompanyAssetSnapshots,
   monthlyAssetDepreciation,
   monthlyDepreciationTotal,
   type CompanyAsset,
@@ -43,5 +44,20 @@ describe('asset depreciation', () => {
 
   it('adds one depreciation charge for each month in a report range', () => {
     expect(depreciationTotalForDateRange([asset], '2026-01-01', '2026-03-31')).toBe(60_000);
+  });
+
+  it('keeps server records exact while retaining locally registered new IDs during an update', () => {
+    const serverAsset = { ...asset, name: 'Server-authoritative name', notes: 'Keep exact formatting.' };
+    const staleLocalCopy = { ...asset, name: 'Stale local name' };
+    const locallyRegistered = { ...asset, id: 'asset-offline', name: 'Offline registration' };
+
+    expect(mergeCompanyAssetSnapshots(
+      [serverAsset],
+      [staleLocalCopy, locallyRegistered],
+    )).toEqual([serverAsset, locallyRegistered]);
+  });
+
+  it('drops locally cached assets that another device explicitly deleted', () => {
+    expect(mergeCompanyAssetSnapshots([], [asset], ['asset-1'])).toEqual([]);
   });
 });

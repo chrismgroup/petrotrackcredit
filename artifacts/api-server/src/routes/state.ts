@@ -9,6 +9,13 @@ import {
   validatePriceHistoryPayload,
   validatePriceProposalsPayload,
 } from "./price-state-validation";
+import {
+  deletedCompanyAssetIds,
+  mergeCompanyAssets,
+  removeCompanyAsset,
+  upsertCompanyAsset,
+  validateCompanyAssetsPayload,
+} from "./company-assets-state";
 
 const router: IRouter = Router();
 
@@ -28,6 +35,7 @@ const ALLOWED_KEYS = new Set([
   "companyAssets",
 ]);
 const MY_FOLDER_WRITE_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
+const COMPANY_ASSET_WRITE_ROLES = new Set(["admin", "acc", "md", "ceo"]);
 
 function visibleMyFolderState(key: string, data: unknown, role?: string): unknown {
   if ((key !== "myFolders" && key !== "myFolderFiles") || MY_FOLDER_WRITE_ROLES.has(role ?? "")) {
@@ -50,7 +58,7 @@ const ADMIN_WRITE_KEYS = new Set([
   "hrEmployees", "hrHandbooks", "hrRecommendations",
   "companyFiles", "legalMatters", "meetingMinutes", "corpProjects",
   "companyInfo", "departments", "branches", "startupStocks", "stockSnapshotConfig",
-  "reportAccessPolicyVersion", "companyAssets",
+  "reportAccessPolicyVersion",
 ]);
 
 // Selling prices are operational. Managers may update only their own branch
@@ -99,6 +107,7 @@ const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   approved: 5,
 };
 const PUMP_REPORT_DELETIONS_KEY = "pumpReportDeletionTombstones";
+const COMPANY_ASSET_DELETIONS_KEY = "companyAssetDeletionTombstones";
 
 const DIP_STATUS_RANK: Record<string, number> = {
   pending: 1,
@@ -582,7 +591,7 @@ router.get("/state", async (req, res): Promise<void> => {
   );
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
   for (const row of rows) {
-    if (row.key === PUMP_REPORT_DELETIONS_KEY) continue;
+    if (row.key === PUMP_REPORT_DELETIONS_KEY || row.key === COMPANY_ASSET_DELETIONS_KEY) continue;
     result[row.key] = row.key === "maintenance" && Array.isArray(row.data)
       ? row.data.map(value => (
           value && typeof value === "object" && !Array.isArray(value)
@@ -593,6 +602,9 @@ router.get("/state", async (req, res): Promise<void> => {
       ? messagesForIdentity(row.data, chatIdentity)
       : visibleMyFolderState(row.key, row.data, req.auth?.role);
   }
+  result.companyAssetDeletedIds = Array.from(deletedCompanyAssetIds(
+    rows.find(row => row.key === COMPANY_ASSET_DELETIONS_KEY)?.data,
+  ));
   if (durableReports.length > 0 || Array.isArray(result.pumpDailyReports)) {
     result.pumpDailyReports = mergePumpDailyReports(
       result.pumpDailyReports,
@@ -1051,6 +1063,101 @@ router.post("/state/restore", async (req, res): Promise<void> => {
 
 /* ── Generic per-key state routes (must come AFTER the specific /state/* routes) ── */
 
+router.post("/state/company-assets/upsert", async (req, res): Promise<void> => {
+  if (!COMPANY_ASSET_WRITE_ROLES.has(req.auth?.role ?? "")) {
+    res.status(403).json({ error: "Only approved finance leaders may manage company assets" });
+    return;
+  }
+  const body = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+    ? req.body as JsonRecord
+    : {};
+  const candidate = body.asset;
+  const baseRevision = body.baseRevision === null
+    ? null
+    : Number.isInteger(body.baseRevision) && Number(body.baseRevision) >= 0
+      ? Number(body.baseRevision)
+      : Number.NaN;
+  const error = validateCompanyAssetsPayload([candidate]);
+  if (error) {
+    res.status(400).json({ error });
+    return;
+  }
+  if (!Number.isFinite(baseRevision) && baseRevision !== null) {
+    res.status(400).json({ error: "baseRevision must be a non-negative integer or null" });
+    return;
+  }
+  const assetInput = candidate as JsonRecord;
+  const id = String(assetInput.id).trim();
+  const result = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:company-assets'))`);
+    const [existingRow, deletionsRow] = await Promise.all([
+      tx.select().from(appStateTable).where(eq(appStateTable.key, "companyAssets")).then(rows => rows[0]),
+      tx.select().from(appStateTable).where(eq(appStateTable.key, COMPANY_ASSET_DELETIONS_KEY)).then(rows => rows[0]),
+    ]);
+    if (deletedCompanyAssetIds(deletionsRow?.data).has(id)) return null;
+    const next = upsertCompanyAsset(
+      existingRow?.data,
+      assetInput,
+      new Date().toISOString(),
+      req.auth!.username,
+      baseRevision,
+    );
+    if (next.conflict) return next;
+    await tx.insert(appStateTable).values({ key: "companyAssets", data: next.assets }).onConflictDoUpdate({
+      target: appStateTable.key,
+      set: { data: next.assets, updatedAt: new Date() },
+    });
+    return next;
+  });
+  if (!result) {
+    res.status(409).json({ error: "Deleted asset IDs cannot be reused" });
+    return;
+  }
+  if (result.conflict) {
+    res.status(409).json({ error: "Asset changed on another device", assets: result.assets });
+    return;
+  }
+  res.json({ ok: true, ...result });
+});
+
+router.post("/state/company-assets/:id/delete", async (req, res): Promise<void> => {
+  if (!COMPANY_ASSET_WRITE_ROLES.has(req.auth?.role ?? "")) {
+    res.status(403).json({ error: "Only approved finance leaders may delete company assets" });
+    return;
+  }
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  if (!id?.trim()) {
+    res.status(400).json({ error: "Asset ID required" });
+    return;
+  }
+  const assets = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:company-assets'))`);
+    const [existingRow, deletionsRow] = await Promise.all([
+      tx.select().from(appStateTable).where(eq(appStateTable.key, "companyAssets")).then(rows => rows[0]),
+      tx.select().from(appStateTable).where(eq(appStateTable.key, COMPANY_ASSET_DELETIONS_KEY)).then(rows => rows[0]),
+    ]);
+    const next = removeCompanyAsset(existingRow?.data, id.trim());
+    const tombstones = {
+      ...(deletionsRow?.data && typeof deletionsRow.data === "object" && !Array.isArray(deletionsRow.data)
+        ? deletionsRow.data as JsonRecord
+        : {}),
+      [id.trim()]: new Date().toISOString(),
+    };
+    await Promise.all([
+      tx.insert(appStateTable).values({ key: "companyAssets", data: next }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: next, updatedAt: new Date() },
+      }),
+      tx.insert(appStateTable).values({ key: COMPANY_ASSET_DELETIONS_KEY, data: tombstones }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: tombstones, updatedAt: new Date() },
+      }),
+    ]);
+    return next;
+  });
+  res.json({ ok: true, assets });
+});
+
 router.get("/state/:key", async (req, res): Promise<void> => {
   const key = Array.isArray(req.params.key) ? req.params.key[0] : req.params.key;
   if (!ALLOWED_KEYS.has(key)) {
@@ -1077,6 +1184,10 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   }
 
   // Sensitive keys require admin role
+  if (key === "companyAssets" && !COMPANY_ASSET_WRITE_ROLES.has(req.auth?.role ?? "")) {
+    res.status(403).json({ error: "Only approved finance leaders may manage company assets" });
+    return;
+  }
   if (ADMIN_WRITE_KEYS.has(key) && req.auth?.role !== "admin") {
     res.status(403).json({ error: "Forbidden" });
     return;
@@ -1112,6 +1223,13 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       : validatePriceProposalsPayload(data);
     if (priceError) {
       res.status(400).json({ error: priceError });
+      return;
+    }
+  }
+  if (key === "companyAssets") {
+    const assetError = validateCompanyAssetsPayload(data);
+    if (assetError) {
+      res.status(400).json({ error: assetError });
       return;
     }
   }
@@ -1258,6 +1376,31 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       data = merged;
     });
     res.json({ ok: true });
+    return;
+  }
+
+  // Asset snapshots come from multiple app versions and devices. Preserve
+  // every registered ID unless an authorized user uses the explicit delete
+  // endpoint, and ignore older copies of records updated by another device.
+  if (key === "companyAssets") {
+    const assets = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:company-assets'))`);
+      const [existingRow, deletionsRow] = await Promise.all([
+        tx.select().from(appStateTable).where(eq(appStateTable.key, "companyAssets")).then(rows => rows[0]),
+        tx.select().from(appStateTable).where(eq(appStateTable.key, COMPANY_ASSET_DELETIONS_KEY)).then(rows => rows[0]),
+      ]);
+      const merged = mergeCompanyAssets(
+        existingRow?.data,
+        data,
+        deletedCompanyAssetIds(deletionsRow?.data),
+      );
+      await tx.insert(appStateTable).values({ key, data: merged }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: merged, updatedAt: new Date() },
+      });
+      return merged;
+    });
+    res.json({ ok: true, assets });
     return;
   }
 
