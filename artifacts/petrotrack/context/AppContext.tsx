@@ -1160,6 +1160,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
   tasks: '/(app)/tasks',
   actionItems: '/(app)/action-items',
+  dailyRevenueLog: '/(app)/daily-revenue-log',
   recv: '/(app)/receiving',
   stockSnapshot: '/(app)/stock-snapshot',
   inventory: '/(app)/inventory',

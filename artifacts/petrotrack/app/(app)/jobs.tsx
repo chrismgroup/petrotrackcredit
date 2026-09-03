@@ -35,6 +35,7 @@ const sales: JobItem[] = [
 
 const finance: JobItem[] = [
   { id: 'financial-status', label: 'Financial status', description: 'View cash, assets and business position', icon: 'pie-chart-outline', route: SCREEN_ROUTES.acct, accent: '#0D5C2E' },
+  { id: 'daily-revenue-log', label: 'Daily Business-Date Revenue Log', description: 'Review revenue grouped by the business date of each shift report', icon: 'calendar-outline', route: SCREEN_ROUTES.dailyRevenueLog, accent: '#1D4ED8' },
   { id: 'assets', label: 'Asset Management', description: 'Track company assets and monthly depreciation by branch', icon: 'cube-outline', route: SCREEN_ROUTES.assets, accent: '#185FA5' },
   { id: 'expenses', label: 'Expenses', description: 'Submit, review and approve expenses', icon: 'receipt-outline', route: SCREEN_ROUTES.exp, accent: '#B91C1C' },
   { id: 'budgets', label: 'Budgets', description: 'Plan spend and monitor budget performance', icon: 'calculator-outline', route: SCREEN_ROUTES.budget, accent: '#92400E' },
@@ -110,6 +111,7 @@ export default function JobsScreen() {
     if (item.id === 'stock-snapshot') return allowed.has('recv');
     if (item.id === 'dips') return (role === 'md' || role === 'admin') && (allowed.has('ops') || allowed.has('tanks'));
     if (item.id === 'financial-status') return allowed.has('acct') || allowed.has('home');
+    if (item.id === 'daily-revenue-log') return allowed.has('acct');
     if (item.id === 'assets') return role === 'admin' || allowed.has('assets');
     if (item.id === 'people') return allowed.has('hr') || allowed.has('users');
     return Object.values(SCREEN_ROUTES).includes(item.route) && (

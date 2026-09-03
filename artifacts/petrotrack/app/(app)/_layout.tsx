@@ -14,6 +14,7 @@ const ROUTE_ACCESS: Record<string, string> = {
   '/shift': 'shift',
   '/pump-report': 'shift',
   '/accounts': 'acct',
+  '/daily-revenue-log': 'acct',
   '/asset-management': 'assets',
   '/expenses': 'exp',
   '/budget': 'budget',
