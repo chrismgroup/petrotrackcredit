@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 
 import { useApp } from '@/context/AppContext';
 import { notificationsApi } from '@/lib/api';
+import { safeNotificationRoute } from '@/lib/navigation-routing';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -65,7 +66,7 @@ export function usePushNotifications() {
     });
     const response = Notifications.addNotificationResponseReceivedListener(response => {
       const route = response.notification.request.content.data?.route;
-      if (typeof route === 'string') router.push(route as never);
+      router.push(safeNotificationRoute(route) as never);
       void refreshNotifications();
     });
 

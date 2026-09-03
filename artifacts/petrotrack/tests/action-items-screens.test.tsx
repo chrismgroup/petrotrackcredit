@@ -18,6 +18,7 @@ jest.mock('react-native', () => {
     Text: primitive('Text'),
     TextInput: primitive('TextInput'),
     TouchableOpacity: primitive('TouchableOpacity'),
+    KeyboardAvoidingView: primitive('KeyboardAvoidingView'),
     View: primitive('View'),
     useColorScheme: jest.fn(() => 'light'),
   };
@@ -46,6 +47,30 @@ jest.mock('expo-router', () => ({
 jest.mock('@/components/FormSheet', () => ({
   ModalSheet: ({ visible, children }: any) => (visible ? children : null),
 }));
+
+jest.mock('@/components/AppliedDateField', () => {
+  const React = require('react');
+  return {
+    AppliedDateField: ({ value, onChange }: any) => {
+      const [open, setOpen] = React.useState(false);
+      return React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(
+          'TouchableOpacity',
+          { testID: 'report-business-date', onPress: () => setOpen(true) },
+          React.createElement('Text', null, value ? 'September 15, 2026' : 'Select the date this record applies to'),
+        ),
+        open && React.createElement('Text', null, 'Select applies-on date'),
+        open && React.createElement(
+          'TouchableOpacity',
+          { testID: 'report-business-date-day-15', onPress: () => { onChange('2026-09-15'); setOpen(false); } },
+          React.createElement('Text', null, 'September 15, 2026'),
+        ),
+      );
+    },
+  };
+});
 
 jest.mock('@/components/ScreenLayout', () => {
   const React = require('react');
@@ -416,6 +441,64 @@ describe('Action Items table and dedicated view', () => {
     );
     act(() => ongoing.props.onPress());
     expect(updateActionItemStatus).toHaveBeenCalledWith(1001, 'on-going');
+
+    act(() => renderer.unmount());
+  });
+
+  it('keeps the add form compact and selects an action party through search', () => {
+    const addActionItem = jest.fn();
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      userAccounts: [
+        { id: 77, empName: 'Amina Yusuf', role: 'acc', status: 'active' },
+        { id: 78, empName: 'Bello Musa', role: 'mgr', status: 'active' },
+      ],
+      addActionItem,
+    }) as any);
+
+    const renderer = render(<ActionItemsScreen />);
+    const addButton = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && node.props.accessibilityLabel === 'Add action item',
+    );
+    act(() => addButton.props.onPress());
+
+    let text = renderedText(renderer);
+    expect(text).toContain('Search for an action party');
+    expect(text).not.toContain('Amina Yusuf');
+    expect(text).not.toContain('Bello Musa');
+
+    const searchButton = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'open-action-party-search',
+    );
+    act(() => searchButton.props.onPress());
+    expect(renderedText(renderer)).toContain('Choose action party');
+
+    const searchInput = renderer.root.find(
+      node => String(node.type) === 'TextInput' && node.props.testID === 'action-party-search-input',
+    );
+    act(() => searchInput.props.onChangeText('Amina'));
+    expect(renderedText(renderer)).toContain('Amina Yusuf');
+    expect(renderedText(renderer)).not.toContain('Bello Musa');
+
+    const result = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'action-party-option-77',
+    );
+    act(() => result.props.onPress());
+    expect(renderedText(renderer)).toContain('Amina Yusuf');
+    expect(renderedText(renderer)).not.toContain('Choose action party');
+
+    const dateField = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'report-business-date',
+    );
+    act(() => dateField.props.onPress());
+    expect(renderedText(renderer)).toContain('Select applies-on date');
+
+    const day = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && node.props.testID === 'report-business-date-day-15',
+    );
+    act(() => day.props.onPress());
+    text = renderedText(renderer);
+    expect(text).toContain('September 15, 2026');
 
     act(() => renderer.unmount());
   });

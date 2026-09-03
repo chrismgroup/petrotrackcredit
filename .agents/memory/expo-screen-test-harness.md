@@ -7,4 +7,6 @@ Expo screen tests that use lightweight React Native mocks must also mock every n
 
 **Why:** Importing an unmocked Expo native module can fail before any test runs, and querying both wrapper layers makes a single rendered control look like two controls.
 
-**How to apply:** When adding an Expo screen to the guarded test suite, mirror its native module imports with inert mocks and filter interaction queries by the mocked host component type when necessary.
+Jest hoists mock factories, so factories that render test primitives should obtain React with `require('react')` inside the factory instead of closing over the file-level React import.
+
+**How to apply:** When adding an Expo screen to the guarded test suite, mirror its native module imports and every rendered React Native primitive with inert mocks, require React inside hoisted factories, and filter interaction queries by the mocked host component type when necessary.
