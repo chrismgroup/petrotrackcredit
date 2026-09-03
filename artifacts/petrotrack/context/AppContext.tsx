@@ -1153,7 +1153,7 @@ function defaultRoleAccess(): Record<string, Record<string, boolean>> {
 export const SCREEN_ROUTES: Record<string, string> = {
   home: '/(app)/home', users: '/(app)/users', depts: '/(app)/departments',
   audit: '/(app)/audit', settings: '/(app)/system-settings', ops: '/(app)/operations',
-  tanks: '/(app)/tanks', acct: '/(app)/accounts', corp: '/(app)/corporate',
+  tanks: '/(app)/tanks', acct: '/(app)/accounts', revenue: '/(app)/accounts', corp: '/(app)/corporate',
   assets: '/(app)/asset-management',
   branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
   budget: '/(app)/budget', exp: '/(app)/expenses',

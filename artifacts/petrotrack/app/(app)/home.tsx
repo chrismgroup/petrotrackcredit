@@ -669,10 +669,16 @@ export default function HomeScreen() {
               </TouchableOpacity>
             ) : null}
             {totalApprovals > 0 ? (
-              <View style={[s.heroPill, { backgroundColor: colors.amber + '28', borderColor: colors.amber + '55' }]}>
+              <TouchableOpacity
+                onPress={() => router.push(pendingReviewRoute as never)}
+                style={[s.heroPill, { backgroundColor: colors.amber + '28', borderColor: colors.amber + '55' }]}
+                activeOpacity={0.78}
+                accessibilityRole="button"
+                accessibilityLabel={`${totalApprovals} items awaiting approval`}
+              >
                 <View style={[s.heroPillDot, { backgroundColor: colors.amber }]} />
                 <Text style={[s.heroPillText, { color: '#FFE5A0' }]}>{totalApprovals} awaiting approval</Text>
-              </View>
+              </TouchableOpacity>
             ) : (
               <View style={[s.heroPill, { backgroundColor: colors.success + '22', borderColor: colors.success + '44' }]}>
                 <View style={[s.heroPillDot, { backgroundColor: '#6EE89B' }]} />
@@ -699,8 +705,14 @@ export default function HomeScreen() {
         <DocumentExpiryCard files={myFolderFiles} colors={colors} onOpen={openFolderFile} />
 
         {/* ── Daily stock snapshot ───────────────────────────────────── */}
-        <Section label="STOCK SNAPSHOT" colors={colors}>
-            <View style={[s.snapshotCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Section label="STOCK SNAPSHOT" route={SCREEN_ROUTES.stockSnapshot} colors={colors}>
+            <TouchableOpacity
+              style={[s.snapshotCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => router.push(SCREEN_ROUTES.stockSnapshot as never)}
+              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityLabel="Open stock snapshot"
+            >
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                     <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
@@ -780,7 +792,7 @@ export default function HomeScreen() {
                   })}
                 </View>
               ))}
-            </View>
+            </TouchableOpacity>
         </Section>
 
         {/* ── Approvals Inbox ─────────────────────────────────────── */}
@@ -800,7 +812,7 @@ export default function HomeScreen() {
                 title="Tank Dip Readings"
                 meta={`${pendingDips.length} reading${pendingDips.length > 1 ? 's' : ''} awaiting approval`}
                 count={pendingDips.length}
-                onPress={() => router.push(SCREEN_ROUTES.ops as never)}
+                onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=dip-approvals` as never)}
                 colors={colors}
               />
             ) : null}
@@ -966,7 +978,13 @@ export default function HomeScreen() {
 
         {/* ── Budget Status ────────────────────────────────────────── */}
         <Section label="BUDGET STATUS" route={SCREEN_ROUTES.budget} colors={colors}>
-          <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <TouchableOpacity
+            style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => router.push(SCREEN_ROUTES.budget as never)}
+            activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel="Open budget status"
+          >
             {currentBudget ? (
               <>
                 <View style={s.budgetHead}>
@@ -1018,7 +1036,7 @@ export default function HomeScreen() {
                 <Text style={[s.emptyText, { color: colors.textMuted }]}>No budget for this period</Text>
               </View>
             )}
-          </View>
+          </TouchableOpacity>
         </Section>
 
         {/* ── Branch Performance ───────────────────────────────────── */}

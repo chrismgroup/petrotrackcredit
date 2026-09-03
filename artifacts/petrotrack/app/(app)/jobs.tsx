@@ -109,15 +109,16 @@ export default function JobsScreen() {
 
   const allowed = new Set(navItems.map(item => item.id));
   const canSee = (item: JobItem) => {
+    if (role === 'admin') return true;
     if (item.id === 'stock-snapshot') return allowed.has('recv');
-    if (item.id === 'dips') return (role === 'md' || role === 'admin') && (allowed.has('ops') || allowed.has('tanks'));
-    if (item.id === 'financial-status') return allowed.has('acct') || allowed.has('home');
+    if (item.id === 'dips') return role === 'md' && (allowed.has('ops') || allowed.has('tanks'));
+    if (item.id === 'financial-status') return allowed.has('acct');
     if (item.id === 'daily-revenue-log') return allowed.has('acct');
     if (item.id === 'branch-revenue-log') return allowed.has('acct');
-    if (item.id === 'assets') return role === 'admin' || allowed.has('assets');
+    if (item.id === 'assets') return allowed.has('assets');
     if (item.id === 'people') return allowed.has('hr') || allowed.has('users');
     return Object.values(SCREEN_ROUTES).includes(item.route) && (
-      item.id === 'maint' ? allowed.has('maint') || allowed.has('ops') :
+      item.id === 'maint' ? allowed.has('maint') :
       item.id === 'receiving' ? allowed.has('recv') :
       item.id === 'inventory' ? allowed.has('recv') :
       item.id === 'budgets' ? allowed.has('budget') :
@@ -130,25 +131,31 @@ export default function JobsScreen() {
   const visibleOperations = operations.filter(canSee);
   const visibleSales = sales.filter(canSee);
   const visibleFinance = finance.filter(canSee);
-  const visibleSupport = supportItems.filter(item => allowed.has(
+  const visibleSupport = supportItems.filter(item => role === 'admin' || allowed.has(
     item.id === 'people' ? 'hr' : item.id === 'marketing' ? 'mktg' : item.id === 'settings' ? 'settings' : item.id,
-  ) || role === 'admin' || ['ceo', 'md', 'acc', 'csm'].includes(role));
+  ));
   const visibleReportTypes = getPerms(role).visible;
   const pending = dips.filter(d => d.status === 'pending').length;
   const openMaintenance = maintenance.filter(item => item.st === 'Open').length;
   const pendingDeliveries = deliveries.filter(item => item.approvalStatus === 'pending' || item.approvalStatus === 'pending_acc' || item.approvalStatus === 'pending_md').length;
   const pendingExpenses = expenses.filter(item => item.status === 'pending' || item.status === 'acc_forwarded').length;
   const taskCount = tasks.filter(item => item.assignedTo === role && item.status !== 'completed').length;
+  const canReviewDips = (role === 'md' || role === 'admin') && (allowed.has('ops') || allowed.has('tanks'));
+  const canOpenMaintenance = role === 'admin' || allowed.has('maint');
+  const canOpenReceiving = role === 'admin' || allowed.has('recv');
+  const canOpenExpenses = role === 'admin' || allowed.has('exp');
+  const canOpenTasks = role === 'admin' || allowed.has('tasks');
+  const reviewCount = (canReviewDips ? pending : 0) + (canOpenMaintenance ? openMaintenance : 0);
 
   function openNeedsReview() {
     // Tank dip approvals and maintenance both contribute to this summary.
     // Open the most directly actionable queue first; if there are no pending
     // dips, take the user straight to the maintenance action list.
-    if (pending > 0) {
-      router.push(`${SCREEN_ROUTES.ops}?tab=dip` as never);
+    if (canReviewDips && pending > 0) {
+      router.push(`${SCREEN_ROUTES.ops}?tab=dip-approvals` as never);
       return;
     }
-    router.push(SCREEN_ROUTES.maint as never);
+    if (canOpenMaintenance) router.push(SCREEN_ROUTES.maint as never);
   }
 
   function openJob(item: JobItem) {
@@ -176,46 +183,54 @@ export default function JobsScreen() {
           <Text style={styles.heroTitle}>Everything that needs your attention.</Text>
           <Text style={styles.heroSubtitle}>Your operational work is organized by department, with each action one tap away.</Text>
           <View style={styles.snapshotRow}>
-            <TouchableOpacity
-              style={styles.snapshotMetric}
-              onPress={openNeedsReview}
-              activeOpacity={0.72}
-              accessibilityRole="button"
-              accessibilityLabel={`${openMaintenance + pending} items need review`}
-            >
-              <Text style={styles.snapshotNumber}>{openMaintenance + pending}</Text>
-              <Text style={styles.snapshotLabel}>Needs review</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.snapshotMetric}
-              onPress={() => router.push(SCREEN_ROUTES.recv as never)}
-              activeOpacity={0.72}
-              accessibilityRole="button"
-              accessibilityLabel={`${pendingDeliveries} deliveries pending review`}
-            >
-              <Text style={styles.snapshotNumber}>{pendingDeliveries}</Text>
-              <Text style={styles.snapshotLabel}>Deliveries</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.snapshotMetric}
-              onPress={() => router.push(SCREEN_ROUTES.exp as never)}
-              activeOpacity={0.72}
-              accessibilityRole="button"
-              accessibilityLabel={`${pendingExpenses} finance items pending review`}
-            >
-              <Text style={styles.snapshotNumber}>{pendingExpenses}</Text>
-              <Text style={styles.snapshotLabel}>Finance queue</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.snapshotMetric}
-              onPress={() => router.push(SCREEN_ROUTES.tasks as never)}
-              activeOpacity={0.72}
-              accessibilityRole="button"
-              accessibilityLabel={`${taskCount} open tasks assigned to you`}
-            >
-              <Text style={styles.snapshotNumber}>{taskCount}</Text>
-              <Text style={styles.snapshotLabel}>Open tasks</Text>
-            </TouchableOpacity>
+            {(canReviewDips || canOpenMaintenance) ? (
+              <TouchableOpacity
+                style={styles.snapshotMetric}
+                onPress={openNeedsReview}
+                activeOpacity={0.72}
+                accessibilityRole="button"
+                accessibilityLabel={`${reviewCount} items need review`}
+              >
+                <Text style={styles.snapshotNumber}>{reviewCount}</Text>
+                <Text style={styles.snapshotLabel}>Needs review</Text>
+              </TouchableOpacity>
+            ) : null}
+            {canOpenReceiving ? (
+              <TouchableOpacity
+                style={styles.snapshotMetric}
+                onPress={() => router.push(SCREEN_ROUTES.recv as never)}
+                activeOpacity={0.72}
+                accessibilityRole="button"
+                accessibilityLabel={`${pendingDeliveries} deliveries pending review`}
+              >
+                <Text style={styles.snapshotNumber}>{pendingDeliveries}</Text>
+                <Text style={styles.snapshotLabel}>Deliveries</Text>
+              </TouchableOpacity>
+            ) : null}
+            {canOpenExpenses ? (
+              <TouchableOpacity
+                style={styles.snapshotMetric}
+                onPress={() => router.push(SCREEN_ROUTES.exp as never)}
+                activeOpacity={0.72}
+                accessibilityRole="button"
+                accessibilityLabel={`${pendingExpenses} finance items pending review`}
+              >
+                <Text style={styles.snapshotNumber}>{pendingExpenses}</Text>
+                <Text style={styles.snapshotLabel}>Finance queue</Text>
+              </TouchableOpacity>
+            ) : null}
+            {canOpenTasks ? (
+              <TouchableOpacity
+                style={styles.snapshotMetric}
+                onPress={() => router.push(SCREEN_ROUTES.tasks as never)}
+                activeOpacity={0.72}
+                accessibilityRole="button"
+                accessibilityLabel={`${taskCount} open tasks assigned to you`}
+              >
+                <Text style={styles.snapshotNumber}>{taskCount}</Text>
+                <Text style={styles.snapshotLabel}>Open tasks</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 

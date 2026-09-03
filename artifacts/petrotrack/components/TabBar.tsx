@@ -17,7 +17,8 @@ const PRIMARY_TABS = [
 
 const JOB_PATHS = [
   'jobs', 'operations', 'maintenance', 'tanks', 'receiving', 'inventory', 'sales', 'shift',
-  'accounts', 'expenses', 'budget', 'reports', 'pump-report', 'tasks', 'users',
+  'accounts', 'asset-management', 'daily-revenue-log', 'branch-revenue-log',
+  'stock-snapshot', 'expenses', 'budget', 'reports', 'pump-report', 'tasks', 'action-items', 'users',
   'departments', 'branches', 'marketing', 'prices', 'audit',
   'system-settings', 'hr',
 ];
