@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "crypto";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 
 import { db, staffUsersTable } from "@workspace/db";
@@ -90,6 +90,40 @@ router.post("/users", async (req, res): Promise<void> => {
       throw err;
     }
   }
+});
+
+// DELETE /users/native-fixtures/:runId — remove an interrupted native fixture
+// (admin only). The account must match every provisioning marker so a
+// similarly named real staff account can never be selected for recovery.
+router.delete("/users/native-fixtures/:runId", async (req, res): Promise<void> => {
+  if (req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const runId = req.params.runId;
+  if (!/^[A-Za-z0-9-]{1,40}$/.test(runId)) {
+    res.status(400).json({ error: "Invalid native fixture run id" });
+    return;
+  }
+
+  const branchId = typeof req.query.branchId === "string" ? req.query.branchId.trim() : "";
+  const expectedUsername = `native-outbox-${runId}`;
+  const expectedEmpName = `Native Outbox ${runId}`;
+  const conditions = [
+    eq(staffUsersTable.username, expectedUsername),
+    eq(staffUsersTable.empName, expectedEmpName),
+    eq(staffUsersTable.role, "att"),
+    eq(staffUsersTable.createdBy, req.auth.username),
+    ...(branchId ? [eq(staffUsersTable.branchId, branchId)] : []),
+  ];
+
+  const deleted = await db
+    .delete(staffUsersTable)
+    .where(and(...conditions))
+    .returning({ id: staffUsersTable.id });
+
+  res.json({ ok: true, deleted: deleted.length });
 });
 
 // PUT /users/:id — full update (admin; HR may correct rejected enrollments)

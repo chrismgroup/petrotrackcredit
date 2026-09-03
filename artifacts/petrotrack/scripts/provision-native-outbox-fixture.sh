@@ -151,6 +151,13 @@ if [[ "${test_note}" != *"${fixture_report_marker}"* ]]; then
   test_note="${test_note} [${fixture_report_marker}]"
 fi
 
+mkdir -p "$(dirname "${FIXTURE_FILE}")"
+umask 077
+# Persist the recovery key before account creation. If the process stops after
+# the API commits the user but before full metadata is ready, cleanup can still
+# identify the exact native fixture account.
+printf 'PETROTRACK_FIXTURE_RUN_ID=%q\n' "${SAFE_RUN_ID}" >"${FIXTURE_FILE}"
+
 create_payload="$(
   PETROTRACK_TEST_EMP_NAME="Native Outbox ${SAFE_RUN_ID}" \
   PETROTRACK_TEST_USERNAME_VALUE="${test_username}" \
@@ -173,9 +180,10 @@ user_response="$(
 )"
 user_id="$(printf '%s' "${user_response}" | json_field id)"
 
-mkdir -p "$(dirname "${FIXTURE_FILE}")"
-umask 077
+metadata_tmp="${FIXTURE_FILE}.tmp.$$"
+trap 'rm -f "${metadata_tmp:-}"' EXIT
 {
+  printf 'PETROTRACK_FIXTURE_RUN_ID=%q\n' "${SAFE_RUN_ID}"
   printf 'PETROTRACK_TEST_USERNAME=%q\n' "${test_username}"
   printf 'PETROTRACK_TEST_PASSWORD=%q\n' "${test_password}"
   printf 'PETROTRACK_TEST_DATE=%q\n' "${test_date}"
@@ -185,7 +193,8 @@ umask 077
   printf 'PETROTRACK_FIXTURE_USER_ID=%q\n' "${user_id}"
   printf 'PETROTRACK_FIXTURE_USERNAME=%q\n' "${test_username}"
   printf 'PETROTRACK_FIXTURE_REPORT_MARKER=%q\n' "${test_note}"
-} >"${FIXTURE_FILE}"
+} >"${metadata_tmp}"
+mv "${metadata_tmp}" "${FIXTURE_FILE}"
 
 echo "Created disposable native outbox account for run ${SAFE_RUN_ID}."
 echo "Fixture environment written to ${FIXTURE_FILE}."
