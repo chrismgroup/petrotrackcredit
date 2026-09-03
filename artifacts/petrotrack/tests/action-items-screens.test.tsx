@@ -503,6 +503,31 @@ describe('Action Items table and dedicated view', () => {
     act(() => renderer.unmount());
   });
 
+  it('lets global roles choose any active branch, not only head office', () => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      branchId: 'HQ',
+      branches: [
+        { id: 'HQ', name: 'Head Office', st: 'Active' },
+        { id: 'B1', name: 'Maitama Branch', st: 'Active' },
+        { id: 'B2', name: 'Wuse Branch', st: 'Suspended' },
+      ],
+    }) as any);
+
+    const renderer = render(<ActionItemsScreen />);
+    const addButton = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity'
+        && node.props.accessibilityLabel === 'Add action item',
+    );
+    act(() => addButton.props.onPress());
+
+    const text = renderedText(renderer);
+    expect(text).toContain('Head Office');
+    expect(text).toContain('Maitama Branch');
+    expect(text).not.toContain('Wuse Branch');
+    act(() => renderer.unmount());
+  });
+
   it('scopes active items by branch and keeps closed items in the archive', () => {
     mockedUseApp.mockReturnValue(baseAppState({
       role: 'mgr',
