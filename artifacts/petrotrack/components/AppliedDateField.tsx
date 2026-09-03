@@ -167,10 +167,10 @@ export function AppliedDateField({
 }
 
 const styles = StyleSheet.create({
-  label: { fontSize: 12, fontWeight: '700', marginTop: 12, marginBottom: 6 },
-  field: { minHeight: 46, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  value: { flex: 1, fontSize: 13 },
-  helper: { fontSize: 10, marginTop: 4, lineHeight: 14 },
+  label: { fontSize: 13, fontWeight: '800', marginTop: 14, marginBottom: 7 },
+  field: { minHeight: 54, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  value: { flex: 1, fontSize: 14, lineHeight: 20 },
+  helper: { fontSize: 11, marginTop: 5, lineHeight: 16 },
   backdrop: { flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: 20 },
   dialog: { borderWidth: 1, borderRadius: 16, padding: 16, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 12, elevation: 8 },
   dialogHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
