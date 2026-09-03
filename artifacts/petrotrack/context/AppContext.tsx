@@ -333,6 +333,13 @@ export interface Task { id: number; title: string; desc: string; assignedBy: Rol
 export interface KPI { id: number; title: string; target: string; unit: string; period: string; assignedTo: Role; assignedToName: string; createdAt: string; }
 export type ActionItemStatus = 'open' | 'on-going' | 'closed';
 export type ActionItemUrgency = 'overdue' | 'due-soon' | 'on-track';
+export interface ActionItemHistoryEntry {
+  action: string;
+  actor: string;
+  actorRole?: Role;
+  at: string;
+  detail?: string;
+}
 export interface ActionItem {
   id: number;
   title: string;
@@ -347,6 +354,7 @@ export interface ActionItem {
   createdBy: string;
   createdByRole: Role;
   createdAt: string;
+  history?: ActionItemHistoryEntry[];
   closedBy?: string;
   closedAt?: string;
   archivedAt?: string;
@@ -3539,6 +3547,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       createdBy: userName,
       createdByRole: role,
       createdAt: nowTs(),
+      history: [{
+        action: 'Action item created',
+        actor: userName,
+        actorRole: role,
+        at: nowTs(),
+        detail: `Assigned to ${item.actionPartyName} for ${item.branchName}.`,
+      }],
     };
     setActionItems(items => [...items, actionItem]);
     setAudit(a => [{
@@ -3559,11 +3574,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       : item.actionPartyRole === role;
     if (role !== 'ceo' && !isAssignedParty) return false;
     const closed = status === 'closed';
+    const changedAt = nowTs();
     setActionItems(items => items.map(candidate => candidate.id === id
       ? {
           ...candidate,
           status,
-          ...(closed ? { closedBy: userName, closedAt: nowTs(), archivedAt: nowTs() } : {}),
+          history: [
+            ...(candidate.history ?? [{
+              action: 'Action item created',
+              actor: candidate.createdBy,
+              actorRole: candidate.createdByRole,
+              at: candidate.createdAt,
+            }]),
+            {
+              action: closed ? 'Action item closed' : 'Action item status updated',
+              actor: userName,
+              actorRole: role,
+              at: changedAt,
+              detail: `Status changed from ${candidate.status} to ${status}.`,
+            },
+          ],
+          ...(closed ? { closedBy: userName, closedAt: changedAt, archivedAt: changedAt } : {}),
         }
       : candidate));
     setAudit(a => [{
