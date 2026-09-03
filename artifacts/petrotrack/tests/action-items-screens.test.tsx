@@ -650,4 +650,74 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     expect(text).toContain('No outstanding action items');
     act(() => renderer.unmount());
   });
+
+  it('opens tank dip details on Home and shows the current approval owner', () => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'acc',
+      tanks: [{ id: 'T1', name: 'PMS Tank 1', prod: 'PMS', cap: 20000, dip: 0, op: 0, rv: 0, sl: 0, branchId: 'B1' }],
+      dips: [{
+        id: 701,
+        dt: '2026-09-03',
+        by: 'Maitama Manager',
+        rd: { T1: 12500 },
+        lpg: {},
+        obs: 'Morning physical reading',
+        status: 'pending',
+        branchId: 'B1',
+      }],
+    }) as any);
+
+    const renderer = render(<HomeScreen />);
+    act(() => touchableWithText(renderer, 'Tank Dip Readings').props.onPress());
+
+    const text = renderedText(renderer);
+    expect(text).toContain('Tank dip report #701');
+    expect(text).toContain('With MD for approval');
+    expect(text).toContain('PMS Tank 1: 12,500 L');
+    expect(text).toContain('Morning physical reading');
+    act(() => renderer.unmount());
+  });
+
+  it.each([
+    ['pending_manager', 'With Manager for approval'],
+    ['pending_accountant', 'With Accountant for approval'],
+  ])('shows who owns a %s pump report', (status, ownerLabel) => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      pumpDailyReports: [{
+        id: 801,
+        date: '2026-09-03',
+        pumpId: 'P1',
+        pumpName: 'Pump 1',
+        product: 'PMS',
+        branchId: 'B1',
+        openingMeter: 1000,
+        closingMeter: 1150,
+        liters: 150,
+        unitPrice: 700,
+        grossAmount: 105000,
+        posAmount: 50000,
+        cashAmount: 55000,
+        transferAmount: 0,
+        creditAmount: 0,
+        totalCollected: 105000,
+        variance: 0,
+        note: 'Balanced shift',
+        submittedBy: 'att-1',
+        submittedByName: 'Pump Attendant',
+        submittedAt: '2026-09-03T08:00:00.000Z',
+        status,
+      }],
+    }) as any);
+
+    const renderer = render(<HomeScreen />);
+    act(() => touchableWithText(renderer, 'Pump Daily Reports').props.onPress());
+
+    const text = renderedText(renderer);
+    expect(text).toContain('Pump 1 · PMS');
+    expect(text).toContain(ownerLabel);
+    expect(text).toContain('Meter: 1,000 → 1,150');
+    expect(text).toContain('Gross: ₦105,000');
+    act(() => renderer.unmount());
+  });
 });
