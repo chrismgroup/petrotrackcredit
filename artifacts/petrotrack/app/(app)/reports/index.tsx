@@ -16,7 +16,7 @@ import {
   buildPdf, getLastKnownCostPrice, getPerms, matchesProd, nfmt, periodRange,
   localDateKey, priBg, priColor, stColor, safeNum, safeStr, isMissingNum,
 } from '@/lib/report-helpers';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { depreciationTotalForDateRange } from '@/lib/asset-depreciation';
 import { calculateNetProfit } from '@/lib/net-profit';
 
@@ -95,11 +95,8 @@ function ReportTypeTile({
         borderColor: active ? meta.color : colors.border,
       }]}
     >
-      <View style={s.reportTileTop}>
-        <View style={[s.reportTileIcon, { backgroundColor: active ? 'rgba(255,255,255,0.2)' : `${meta.color}18` }]}>
-          <Ionicons name={meta.icon as any} size={20} color={active ? '#fff' : meta.color} />
-        </View>
-        <Ionicons name={active ? 'checkmark-circle' : 'chevron-forward'} size={18} color={active ? 'rgba(255,255,255,0.85)' : colors.textSubtle} />
+      <View style={[s.reportTileIcon, { backgroundColor: active ? 'rgba(255,255,255,0.2)' : `${meta.color}18` }]}>
+        <Ionicons name={meta.icon as any} size={19} color={active ? '#fff' : meta.color} />
       </View>
       <View style={s.reportTileCopy}>
         <Text style={[s.reportTileTitle, { color: active ? '#fff' : colors.text }]}>{meta.label}</Text>
@@ -107,7 +104,10 @@ function ReportTypeTile({
           {meta.desc}
         </Text>
       </View>
-      <Text style={[s.reportTileDept, { color: active ? 'rgba(255,255,255,0.62)' : meta.color }]}>{meta.dept}</Text>
+      <View style={s.reportTileEnd}>
+        <Text style={[s.reportTileDept, { color: active ? 'rgba(255,255,255,0.7)' : meta.color }]}>{meta.dept}</Text>
+        <Ionicons name={active ? 'checkmark-circle' : 'chevron-forward'} size={18} color={active ? 'rgba(255,255,255,0.88)' : colors.textSubtle} />
+      </View>
     </TouchableOpacity>
   );
 }
@@ -149,7 +149,7 @@ function IncompleteBadge() {
 /* ═══════════════════════════════════════════════════════════
    MAIN SCREEN
 ═══════════════════════════════════════════════════════════ */
-export default function ReportsScreen() {
+export default function ReportsScreen({ detail = false }: { detail?: boolean }) {
   const {
     role, userName, branchId,
     expenses, sales, branches, deliveries, prices, priceHistory, priceProposals,
@@ -157,6 +157,7 @@ export default function ReportsScreen() {
     financialEntry,
   } = useApp();
   const colors = useColors();
+  const router = useRouter();
   const rc = ROLE_COLORS[role || 'acc'] || colors.primary;
   const isAtt = role === 'att';
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
@@ -244,14 +245,17 @@ export default function ReportsScreen() {
   const safeStaff       = Array.isArray(staff) ? staff : [];
   const safeCompanyInfo = companyInfo && typeof companyInfo === 'object' ? companyInfo : ({} as any);
 
-  const params = useLocalSearchParams<{ type?: string }>();
+  const params = useLocalSearchParams<{ type?: string; period?: string; date?: string; branch?: string }>();
   const requestedType = params.type as ReportType | undefined;
   const defaultType: ReportType = requestedType && perms.visible.includes(requestedType) ? requestedType : (perms.visible[0] ?? 'summary');
+  const requestedPeriod = params.period as Period | undefined;
+  const defaultPeriod: Period = requestedPeriod && PERIODS.includes(requestedPeriod) ? requestedPeriod : 'Monthly';
+  const defaultBranch = params.branch && params.branch !== 'all' ? params.branch : null;
   // att and mgr are locked to their own branch; other roles can switch branches
-  const [selBranch,  setSelBranch]  = useState<string | null>(isBranchLocked ? (branchId ?? null) : null);
+  const [selBranch,  setSelBranch]  = useState<string | null>(isBranchLocked ? (branchId ?? null) : defaultBranch);
   const [reportType, setReportType] = useState<ReportType>(defaultType);
-  const [period,     setPeriod]     = useState<Period>('Monthly');
-  const [anchorDate, setAnchorDate] = useState('');
+  const [period,     setPeriod]     = useState<Period>(defaultPeriod);
+  const [anchorDate, setAnchorDate] = useState(params.date ?? '');
 
   const { from, to } = useMemo(() => {
     return periodRange(period, anchorDate || undefined);
@@ -616,7 +620,7 @@ export default function ReportsScreen() {
      RENDER
   ════════════════════════════════════════════════════════ */
   return (
-    <ScreenLayout title="Reports">
+    <ScreenLayout title={detail ? 'Report viewer' : 'Reports'}>
 
       <ScrollView
         style={s.scrollView}
@@ -624,7 +628,7 @@ export default function ReportsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ── Report controls ── */}
-        <View style={s.topBar}>
+        {!detail ? <View style={s.topBar}>
           <View style={[s.controlsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={s.controlsHeading}>
               <View style={[s.controlsIcon, { backgroundColor: `${rc}18` }]}>
@@ -679,10 +683,10 @@ export default function ReportsScreen() {
               </>
             )}
           </View>
-        </View>
+        </View> : null}
 
         {/* ── Report type selector ── */}
-        <View style={s.typeSection}>
+        {!detail ? <View style={s.typeSection}>
           <View style={s.typeSectionHeader}>
             <View style={{ flex: 1 }}>
               <Text style={[s.typeSectionTitle, { color: colors.text }]}>Choose a report</Text>
@@ -698,22 +702,31 @@ export default function ReportsScreen() {
                 key={rt}
                 reportType={rt}
                 active={reportType === rt}
-                onPress={() => setReportType(rt)}
+                onPress={() => router.push({
+                  pathname: '/(app)/reports/view',
+                  params: {
+                    type: rt,
+                    period,
+                    date: anchorDate,
+                    branch: selBranch ?? 'all',
+                  },
+                } as never)}
                 colors={colors}
               />
             ))}
           </View>
-        </View>
+        </View> : null}
 
+        {detail ? <>
         {/* ── On-screen report preview ── */}
         <View style={s.previewHeading}>
           <View style={s.previewEyebrow}>
             <Ionicons name="eye-outline" size={14} color={rc} />
             <Text style={[s.previewEyebrowText, { color: rc }]}>LIVE PREVIEW</Text>
           </View>
-          <Text style={[s.previewTitle, { color: colors.text }]}>Read {meta.label} on screen</Text>
+          <Text style={[s.previewTitle, { color: colors.text }]}>{meta.label}</Text>
           <Text style={[s.previewSub, { color: colors.textMuted }]}>
-            This preview uses the selected {period.toLowerCase()} period and {branchName.toLowerCase()} scope. Export is optional.
+            {period} report · {periodStr} · {branchName}. Read the report here or export a PDF when needed.
           </Text>
         </View>
 
@@ -1091,6 +1104,13 @@ export default function ReportsScreen() {
           </>
         ) : null}
 
+        </> : (
+          <View style={s.listHint}>
+            <Ionicons name="arrow-down-outline" size={15} color={rc} />
+            <Text style={[s.listHintText, { color: colors.textMuted }]}>Select a report to open its full view.</Text>
+          </View>
+        )}
+
         <View style={{ height: 32 }} />
       </ScrollView>
     </ScreenLayout>
@@ -1248,14 +1268,16 @@ const s = StyleSheet.create({
   typeSectionSub: { fontSize: 12, marginTop: 3 },
   typeCount:      { minWidth: 34, height: 34, paddingHorizontal: 8, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   typeCountText:  { fontSize: 14, fontWeight: '800' },
-  reportTileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  reportTile:     { width: '48.5%', minHeight: 126, borderRadius: 18, borderWidth: 1, padding: 14, justifyContent: 'space-between' },
-  reportTileTop:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  reportTileIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  reportTileCopy: { flex: 1, marginTop: 12, marginBottom: 10 },
+  reportTileGrid: { gap: 8 },
+  reportTile:     { width: '100%', minHeight: 78, borderRadius: 15, borderWidth: 1, padding: 11, flexDirection: 'row', alignItems: 'center' },
+  reportTileIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  reportTileCopy: { flex: 1, marginLeft: 11, marginRight: 8 },
   reportTileTitle:{ fontSize: 14, fontWeight: '800', lineHeight: 18 },
-  reportTileDesc: { fontSize: 11, lineHeight: 15, marginTop: 3 },
-  reportTileDept:  { fontSize: 9, fontWeight: '800', letterSpacing: 0.9, textTransform: 'uppercase' },
+  reportTileDesc: { fontSize: 11, lineHeight: 14, marginTop: 2 },
+  reportTileEnd:  { alignItems: 'flex-end', justifyContent: 'center', gap: 7, minWidth: 55 },
+  reportTileDept:  { fontSize: 8, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
+  listHint:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingTop: 2 },
+  listHintText:   { fontSize: 11 },
   previewHeading:  { marginBottom: 12, paddingHorizontal: 2 },
   previewEyebrow:  { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
   previewEyebrowText: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },

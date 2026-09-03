@@ -40,7 +40,8 @@ jest.mock('expo-file-system/legacy', () => ({}));
 jest.mock('expo-print', () => ({}));
 jest.mock('expo-sharing', () => ({}));
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: jest.fn(() => ({})),
+  useLocalSearchParams: jest.fn(() => ({ type: 'pnl' })),
+  useRouter: jest.fn(() => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn(() => true) })),
 }));
 
 jest.mock('@/components/AppliedDateField', () => ({
@@ -402,11 +403,7 @@ describe('asset depreciation financial screens', () => {
       companyAssets: [asset(), secondBranchAsset],
     }) as any);
 
-    const renderer = mount(<ReportsScreen />);
-    const pnlTile = renderer.root.find(
-      node => String(node.type) === 'TouchableOpacity' && node.props.accessibilityLabel === 'P&L report',
-    );
-    act(() => pnlTile.props.onPress());
+    const renderer = mount(<ReportsScreen detail />);
     const text = renderedText(renderer);
 
     expect(text).toContain('Profit & Loss');
