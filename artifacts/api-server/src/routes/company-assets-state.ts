@@ -78,9 +78,12 @@ export function upsertCompanyAsset(
   const previousRevision = Number.isInteger(previous?.revision) && Number(previous?.revision) >= 0
     ? Number(previous?.revision)
     : 0;
+  const previousBranchId = typeof previous?.branchId === "string" ? previous.branchId.trim() : "";
+  const candidateBranchId = typeof candidate.branchId === "string" ? candidate.branchId.trim() : "";
   if (
     (previous && baseRevision !== previousRevision) ||
-    (!previous && baseRevision !== null)
+    (!previous && baseRevision !== null) ||
+    (previousBranchId && candidateBranchId !== previousBranchId)
   ) {
     return { conflict: true, assets: current };
   }

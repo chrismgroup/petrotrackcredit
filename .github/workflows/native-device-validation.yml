@@ -26,6 +26,9 @@ jobs:
       PETROTRACK_ADMIN_PASSWORD: ${{ secrets.PETROTRACK_ADMIN_PASSWORD }}
       PETROTRACK_TEST_BRANCH_ID: ${{ secrets.PETROTRACK_TEST_BRANCH_ID }}
       PETROTRACK_TEST_PUMP: ${{ secrets.PETROTRACK_TEST_PUMP }}
+      # Keep the account marker deterministic across provisioning and the
+      # always-run cleanup step, even if provisioning never writes metadata.
+      PETROTRACK_TEST_RUN_ID: ${{ github.run_id }}
       PETROTRACK_ANDROID_APP_ID: petrotrack.replit.app
       PETROTRACK_NATIVE_ARTIFACT_DIR: ${{ runner.temp }}/native-outbox-artifacts
       PETROTRACK_FIXTURE_FILE: ${{ runner.temp }}/native-outbox-fixture.env
@@ -92,6 +95,7 @@ jobs:
             printf 'PETROTRACK_TEST_CLOSING_METER=%s\n' "$PETROTRACK_TEST_CLOSING_METER"
             printf 'PETROTRACK_TEST_PUMP=%s\n' "$PETROTRACK_TEST_PUMP"
             printf 'PETROTRACK_TEST_NOTE=%s\n' "$PETROTRACK_TEST_NOTE"
+            printf 'PETROTRACK_FIXTURE_RUN_ID=%s\n' "$PETROTRACK_FIXTURE_RUN_ID"
             printf 'PETROTRACK_FIXTURE_USER_ID=%s\n' "$PETROTRACK_FIXTURE_USER_ID"
             printf 'PETROTRACK_FIXTURE_USERNAME=%s\n' "$PETROTRACK_FIXTURE_USERNAME"
             printf 'PETROTRACK_FIXTURE_REPORT_MARKER=%s\n' "$PETROTRACK_FIXTURE_REPORT_MARKER"
@@ -116,17 +120,15 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          if [[ -f "$PETROTRACK_FIXTURE_FILE" ]]; then
-            # Cleanup must not hide the original queued/confirmed assertion.
-            # The isolated test API retains no shared production state.
-            set +e
-            source <(grep -E '^PETROTRACK_FIXTURE_(USER_ID|USERNAME|REPORT_MARKER)=' "$PETROTRACK_FIXTURE_FILE")
-            bash artifacts/petrotrack/scripts/cleanup-native-outbox-fixture.sh
-            cleanup_status=$?
-            set -e
-            if (( cleanup_status != 0 )); then
-              echo "Warning: disposable account cleanup failed." >&2
-            fi
+          # Cleanup must not hide the original queued/confirmed assertion.
+          # The cleanup script recovers an account when provisioning was
+          # interrupted before the fixture metadata file was written.
+          set +e
+          bash artifacts/petrotrack/scripts/cleanup-native-outbox-fixture.sh
+          cleanup_status=$?
+          set -e
+          if (( cleanup_status != 0 )); then
+            echo "::warning::Native fixture cleanup or recovery failed."
           fi
 
       - name: Upload native device artifacts

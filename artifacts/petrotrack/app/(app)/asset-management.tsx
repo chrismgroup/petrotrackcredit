@@ -39,33 +39,49 @@ function numeric(value: string) {
 
 export default function AssetManagementScreen() {
   const {
-    role, branches, companyAssets, addCompanyAsset, updateCompanyAsset, deleteCompanyAsset,
+    role, branchId, branches, companyAssets, addCompanyAsset, updateCompanyAsset, deleteCompanyAsset,
   } = useApp();
   const colors = useColors();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<AssetInput>(EMPTY_FORM);
+  const [selectedBranchId, setSelectedBranchId] = useState('');
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
-  const canManage = role === 'admin' || role === 'ceo' || role === 'md' || role === 'acc';
+  const canManageAllBranches = role === 'admin' || role === 'ceo' || role === 'md' || role === 'acc';
+  const isBranchManager = role === 'mgr' && !!branchId;
+  const canManage = canManageAllBranches || isBranchManager;
   const currentMonth = new Date().toISOString().slice(0, 7);
+  const activeBranches = useMemo(() => branches.filter(branch => branch.st === 'Active'), [branches]);
+  const effectiveBranchId = isBranchManager ? branchId ?? '' : selectedBranchId;
+  const selectedBranch = activeBranches.find(branch => branch.id === effectiveBranchId);
+  const visibleAssets = isBranchManager
+    ? companyAssets.filter(asset => asset.branchId === branchId)
+    : companyAssets;
 
   const branchGroups = useMemo(() => branches
+    .filter(branch => !isBranchManager || branch.id === branchId)
     .map(branch => ({
       branch,
       assets: companyAssets.filter(asset => asset.branchId === branch.id),
     }))
-    .filter(group => group.assets.length > 0 || group.branch.st === 'Active'), [branches, companyAssets]);
+    .filter(group => group.assets.length > 0 || group.branch.st === 'Active'), [branches, companyAssets, isBranchManager, branchId]);
 
-  const totalCost = companyAssets.reduce((sum, asset) => sum + (asset.initialCost * assetQuantity(asset)), 0);
-  const totalBookDepreciation = monthlyDepreciationTotal(companyAssets, currentMonth);
+  const totalCost = visibleAssets.reduce((sum, asset) => sum + (asset.initialCost * assetQuantity(asset)), 0);
+  const totalBookDepreciation = monthlyDepreciationTotal(visibleAssets, currentMonth);
 
   function openCreate() {
+    if (!effectiveBranchId || !selectedBranch) {
+      Alert.alert('Select a branch', 'Choose the branch that owns this asset before adding it.');
+      return;
+    }
     setEditingId(null);
-    setForm({ ...EMPTY_FORM, branchId: branches.find(branch => branch.st === 'Active')?.id ?? '' });
+    setForm({ ...EMPTY_FORM, branchId: effectiveBranchId });
     setShowForm(true);
   }
 
   function openEdit(asset: CompanyAsset) {
+    if (!canManageAllBranches && asset.branchId !== branchId) return;
+    if (canManageAllBranches) setSelectedBranchId(asset.branchId);
     setEditingId(asset.id);
     setForm({
       name: asset.name,
@@ -99,7 +115,20 @@ export default function AssetManagementScreen() {
       Alert.alert('Invalid asset number', 'Number of assets must be a whole number greater than zero.');
       return;
     }
-    const payload = { ...form, quantity, name: form.name.trim(), notes: form.notes?.trim() };
+    const savedBranchId = editingId
+      ? companyAssets.find(asset => asset.id === editingId)?.branchId
+      : effectiveBranchId;
+    if (!savedBranchId || (isBranchManager && savedBranchId !== branchId)) {
+      Alert.alert('Branch not permitted', 'This asset must be saved to your assigned branch.');
+      return;
+    }
+    const payload = {
+      ...form,
+      branchId: savedBranchId,
+      quantity,
+      name: form.name.trim(),
+      notes: form.notes?.trim(),
+    };
     const saved = editingId ? updateCompanyAsset(editingId, payload) : addCompanyAsset(payload);
     if (!saved) {
       Alert.alert('Not permitted', 'Only Admin, CEO, Managing Director and Accountant can change the asset register.');
@@ -110,6 +139,7 @@ export default function AssetManagementScreen() {
   }
 
   function remove(asset: CompanyAsset) {
+    if (!canManageAllBranches && asset.branchId !== branchId) return;
     Alert.alert('Delete asset?', `${asset.name} will be removed from the company asset register.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => deleteCompanyAsset(asset.id) },
@@ -126,7 +156,7 @@ export default function AssetManagementScreen() {
         <View style={[styles.hero, { backgroundColor: colors.primary }]}>
           <View>
             <Text style={styles.heroEyebrow}>COMPANY ASSET REGISTER</Text>
-            <Text style={styles.heroTitle}>{companyAssets.reduce((sum, asset) => sum + assetQuantity(asset), 0)} assets across {branchGroups.length} branches</Text>
+            <Text style={styles.heroTitle}>{visibleAssets.reduce((sum, asset) => sum + assetQuantity(asset), 0)} assets across {branchGroups.length} branches</Text>
           </View>
           <View style={styles.heroMetrics}>
             <View style={styles.heroMetric}>
@@ -154,14 +184,69 @@ export default function AssetManagementScreen() {
         </View>
 
         {canManage && (
-          <TouchableOpacity
-            style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-            onPress={showForm ? () => setShowForm(false) : openCreate}
-            testID="asset-form-toggle"
-          >
-            <Ionicons name={showForm ? 'close' : 'add'} size={20} color="#fff" />
-            <Text style={styles.primaryButtonText}>{showForm ? 'Cancel' : 'Add asset'}</Text>
-          </TouchableOpacity>
+          <View style={[styles.branchPickerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.branchPickerHeading}>
+              <View style={[styles.branchPickerIcon, { backgroundColor: colors.primary + '16' }]}>
+                <Ionicons name="business-outline" size={19} color={colors.primary} />
+              </View>
+              <View style={styles.flex}>
+                <Text style={[styles.branchPickerTitle, { color: colors.text }]}>
+                  {isBranchManager ? 'Your branch' : 'Select a branch'}
+                </Text>
+                <Text style={[styles.branchPickerText, { color: colors.textMuted }]}>
+                  {isBranchManager
+                    ? 'Assets you add are permanently assigned to your branch.'
+                    : 'Choose the owning branch before opening the asset form.'}
+                </Text>
+              </View>
+            </View>
+            {isBranchManager ? (
+              <View style={[styles.selectedBranchCard, { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]}>
+                <Ionicons name="location-outline" size={16} color={colors.primary} />
+                <Text style={[styles.selectedBranchText, { color: colors.primary }]}>
+                  {selectedBranch?.name ?? 'No assigned active branch'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.chips}>
+                {activeBranches.map(branch => (
+                  <TouchableOpacity
+                    key={branch.id}
+                    onPress={() => {
+                      setSelectedBranchId(branch.id);
+                      setExpandedBranches(prev => ({ ...prev, [branch.id]: true }));
+                    }}
+                    disabled={showForm}
+                    accessibilityLabel={`Select ${branch.name} for asset registration`}
+                    style={[styles.chip, {
+                      borderColor: selectedBranchId === branch.id ? colors.primary : colors.border,
+                      backgroundColor: selectedBranchId === branch.id ? colors.primary + '16' : colors.surface,
+                      opacity: showForm && selectedBranchId !== branch.id ? 0.55 : 1,
+                    }]}
+                  >
+                    <Text style={[styles.chipText, { color: selectedBranchId === branch.id ? colors.primary : colors.textMuted }]}>{branch.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            <TouchableOpacity
+              style={[styles.primaryButton, {
+                backgroundColor: colors.primary,
+                opacity: showForm || selectedBranch ? 1 : 0.45,
+              }]}
+              onPress={showForm ? () => {
+                setShowForm(false);
+                setEditingId(null);
+              } : openCreate}
+              disabled={!showForm && !selectedBranch}
+              testID="asset-form-toggle"
+            >
+              <Ionicons name={showForm ? 'close' : 'add'} size={20} color="#fff" />
+              <Text style={styles.primaryButtonText}>
+                {showForm ? 'Cancel' : selectedBranch ? `Add asset to ${selectedBranch.name}` : 'Select a branch first'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {showForm && (
@@ -179,13 +264,17 @@ export default function AssetManagementScreen() {
               ))}
             </View>
 
-            <Text style={[styles.label, { color: colors.textMuted }]}>Branch</Text>
-            <View style={styles.chips}>
-              {branches.filter(branch => branch.st === 'Active').map(branch => (
-                <TouchableOpacity key={branch.id} onPress={() => setForm(prev => ({ ...prev, branchId: branch.id }))} style={[styles.chip, { borderColor: form.branchId === branch.id ? colors.primary : colors.border, backgroundColor: form.branchId === branch.id ? colors.primary + '16' : colors.surface }]}>
-                  <Text style={[styles.chipText, { color: form.branchId === branch.id ? colors.primary : colors.textMuted }]}>{branch.name}</Text>
-                </TouchableOpacity>
-              ))}
+            <Text style={[styles.label, { color: colors.textMuted }]}>Owning branch</Text>
+            <View style={[styles.selectedBranchCard, { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]}>
+              <Ionicons name="lock-closed-outline" size={15} color={colors.primary} />
+              <View style={styles.flex}>
+                <Text style={[styles.selectedBranchText, { color: colors.primary }]}>
+                  {branches.find(branch => branch.id === form.branchId)?.name ?? 'Branch unavailable'}
+                </Text>
+                <Text style={[styles.branchLockText, { color: colors.textMuted }]}>
+                  Branch ownership is locked after saving. Delete and register again to move an asset.
+                </Text>
+              </View>
             </View>
 
             <View>
@@ -278,7 +367,7 @@ export default function AssetManagementScreen() {
                             <Text style={[styles.assetMeta, { color: colors.textMuted }]}>Per unit: {money(asset.initialCost)} · End value {money(asset.endOfLifeValue)} · {asset.usefulLifeYears} years</Text>
                             <Text style={[styles.assetDepreciation, { color: colors.primary }]}>{money(monthlyAssetDepreciation(asset) * assetQuantity(asset))}/month total · {money(annualAssetDepreciation(asset) * assetQuantity(asset))}/year total</Text>
                           </View>
-                          {canManage && (
+                          {(canManageAllBranches || (isBranchManager && asset.branchId === branchId)) && (
                             <View style={styles.actions}>
                               <TouchableOpacity onPress={() => openEdit(asset)} accessibilityLabel={`Edit ${asset.name}`}><Ionicons name="create-outline" size={19} color={colors.primary} /></TouchableOpacity>
                               <TouchableOpacity onPress={() => remove(asset)} accessibilityLabel={`Delete ${asset.name}`}><Ionicons name="trash-outline" size={19} color={colors.red} /></TouchableOpacity>
@@ -314,6 +403,14 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   primaryButton: { minHeight: 48, borderRadius: 14, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
   primaryButtonText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  branchPickerCard: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 12 },
+  branchPickerHeading: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  branchPickerIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  branchPickerTitle: { fontSize: 15, fontWeight: '800' },
+  branchPickerText: { fontSize: 11, lineHeight: 16, marginTop: 2 },
+  selectedBranchCard: { minHeight: 46, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  selectedBranchText: { fontSize: 13, fontWeight: '800' },
+  branchLockText: { fontSize: 10, lineHeight: 14, marginTop: 2 },
   formCard: { borderWidth: 1, borderRadius: 18, padding: 15, gap: 8 },
   formTitle: { fontSize: 17, fontWeight: '800', marginBottom: 4 },
   label: { fontSize: 11, fontWeight: '700', marginTop: 4 },
