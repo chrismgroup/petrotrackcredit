@@ -23,6 +23,7 @@ const ROUTE_ACCESS: Record<string, string> = {
   '/hr': 'hr',
   '/corporate': 'corp',
   '/tasks': 'tasks',
+  '/action-items': 'actionItems',
   '/branches': 'branches',
   '/comms': 'comms',
 };
