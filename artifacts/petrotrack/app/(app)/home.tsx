@@ -28,6 +28,8 @@ import {
   unitForProd,
   useBusinessDateKey,
   useApp,
+  ACTION_ITEMS_DASHBOARD_ACCESS_ID,
+  canViewActionItemsDashboard,
   type Budget,
   type Message,
   type MyFolderFile,
@@ -368,7 +370,7 @@ interface RevenueTrendChartProps {
 
 export default function HomeScreen() {
   const {
-    role, userName, branchId, branches, navItems,
+    role, userName, branchId, staffId, userAccess, branches, navItems,
     tanks, lpgTanks, pumps, dips,
     deliveries, maintenance, expenses, budgets,
     financialEntry, priceProposals,
@@ -530,7 +532,7 @@ export default function HomeScreen() {
     { shift: SCREEN_ROUTES.shift, receiving: SCREEN_ROUTES.recv, reports: SCREEN_ROUTES.exprpt },
   );
 
-  const canViewOutstandingActionItems = new Set(['ceo', 'md', 'acc', 'csm', 'mgr']).has(role);
+  const canViewOutstandingActionItems = canViewActionItemsDashboard(role, staffId, userAccess);
   const outstandingActionItems = useMemo(() => {
     if (!canViewOutstandingActionItems) return [] as ActionItem[];
     const urgencyOrder: Record<string, number> = { overdue: 0, 'due-soon': 1, 'on-track': 2 };
