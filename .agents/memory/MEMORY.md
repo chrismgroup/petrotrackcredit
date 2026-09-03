@@ -19,7 +19,7 @@
 - [Business-date auditing](business-date-auditing.md) — operational records use an explicit applies-on date separate from submission time and are filtered by that business date
 - [Native module preview isolation](native-module-preview.md) — load native-only SDKs behind a runtime platform guard so Expo web previews do not initialize them
 - [Start-up stock baselines](startup-stock-baselines.md) — admin-set product baselines stay locked to non-admins and prefer branch-specific values for scoped views
-- [Expo build port conflict](expo-build-port-conflict.md) — use the managed Expo workflow when the mockup sandbox already owns Metro's port
+- [Expo build port isolation](expo-build-port-conflict.md) — static builds use one isolated Metro port while previews remain on managed ports
 - [Report export web print](report-export-web-print.md) — use printAsync on web; printToFileAsync has no browser file URI
 - [Report read and export permissions](report-read-export-permissions.md) — Admin grants report visibility; permitted users can read all types, while export remains role-specific
 - [COGS delivery costs](cogs-delivery-costs.md) — approved delivery costs carry forward through the report end date instead of being limited to the sales window
