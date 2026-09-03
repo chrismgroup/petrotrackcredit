@@ -1161,6 +1161,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   tasks: '/(app)/tasks',
   actionItems: '/(app)/action-items',
   dailyRevenueLog: '/(app)/daily-revenue-log',
+  branchRevenueLog: '/(app)/branch-revenue-log',
   recv: '/(app)/receiving',
   stockSnapshot: '/(app)/stock-snapshot',
   inventory: '/(app)/inventory',
