@@ -1067,14 +1067,15 @@ export default function CorporateScreen() {
   }
 
   // ── Tab bar ─────────────────────────────────────────────────────────────
-  const TABS: { key: Tab; label: string; icon: string }[] = [
-    { key: 'compliance', label: 'Compliance Folder',       icon: 'shield-checkmark' },
-    { key: 'legal',      label: 'Legal Documents Folder',  icon: 'scale'            },
-    { key: 'projects',   label: 'Projects Folder',          icon: 'hammer'           },
-    { key: 'minutes',    label: 'Minutes of Meetings Folder', icon: 'reader'        },
-    { key: 'correspondences', label: 'Correspondences Folder', icon: 'mail'        },
-    { key: 'general',    label: 'General Library',           icon: 'library'        },
+  const TABS: { key: Tab; label: string; description: string; icon: string }[] = [
+    { key: 'compliance', label: 'Compliance',       description: 'Licences, certificates and renewals', icon: 'shield-checkmark' },
+    { key: 'legal',      label: 'Legal Documents',  description: 'Matters, agreements and records', icon: 'scale' },
+    { key: 'projects',   label: 'Projects',         description: 'Plans, briefs and delivery files', icon: 'hammer' },
+    { key: 'minutes',    label: 'Minutes of Meetings', description: 'Decisions, actions and follow-ups', icon: 'reader' },
+    { key: 'correspondences', label: 'Correspondences', description: 'Letters, emails and official replies', icon: 'mail' },
+    { key: 'general',    label: 'General',          description: 'Shared files for the wider team', icon: 'library' },
   ];
+  const visibleTabs = TABS.filter(t => t.key === 'general' || hasRestrictedFolderAccess);
 
   if (!hasFolderAccess) {
     return (
@@ -1093,18 +1094,38 @@ export default function CorporateScreen() {
   return (
     <ScreenLayout title="My Documents">
 
-      {/* ── Tab bar ── */}
-      <View style={[sty.tabBar, sty.tabBarContent, { borderBottomColor: colors.border }]}>
-        {TABS.filter(t => t.key === 'general' || hasRestrictedFolderAccess).map(t => {
+      {/* ── Document area navigator ── */}
+      <View style={[sty.folderNavWrap, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <Text style={[sty.folderNavEyebrow, { color: colors.textMuted }]}>My Documents</Text>
+        <Text style={[sty.folderNavTitle, { color: colors.text }]}>Choose a document area</Text>
+        <Text style={[sty.folderNavSub, { color: colors.textMuted }]}>Open a workspace to browse its shared folders and files.</Text>
+        <View style={sty.folderNavGrid}>
+        {visibleTabs.map(t => {
           const active = t.key === activeTab;
           return (
-            <TouchableOpacity key={t.key} onPress={() => { setActiveTab(t.key); setExpandedId(null); setEditId(null); setShowLegalForm(false); setShowProjForm(false); setShowMinForm(false); }}
-              style={[sty.tabBtn, { borderBottomColor: active ? roleColor : 'transparent' }]}>
-              <Ionicons name={t.icon as any} size={13} color={active ? roleColor : colors.textMuted} />
-              <Text style={[sty.tabLabel, { color: active ? roleColor : colors.textMuted, fontWeight: active ? '700' : '400' }]}>{t.label}</Text>
+            <TouchableOpacity
+              key={t.key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              onPress={() => { setActiveTab(t.key); setExpandedId(null); setEditId(null); setShowLegalForm(false); setShowProjForm(false); setShowMinForm(false); }}
+              style={[
+                sty.folderNavTile,
+                visibleTabs.length === 1 && sty.folderNavTileSolo,
+                { backgroundColor: active ? roleColor + '18' : colors.surface, borderColor: active ? roleColor : colors.border },
+              ]}
+            >
+              <View style={sty.folderNavTileTop}>
+                <View style={[sty.folderNavIcon, { backgroundColor: active ? roleColor : roleColor + '14' }]}>
+                  <Ionicons name={t.icon as any} size={19} color={active ? '#fff' : roleColor} />
+                </View>
+                <Ionicons name="arrow-forward-outline" size={17} color={active ? roleColor : colors.textSubtle} />
+              </View>
+              <Text style={[sty.folderNavTileLabel, { color: active ? roleColor : colors.text }]}>{t.label}</Text>
+              <Text style={[sty.folderNavTileDesc, { color: colors.textMuted }]}>{t.description}</Text>
             </TouchableOpacity>
           );
         })}
+        </View>
       </View>
 
           {/* ════════════════════════════════════════ COMPLIANCE FOLDER */}
@@ -1922,10 +1943,17 @@ const sty = StyleSheet.create({
   previewHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   previewTitle: { flex: 1, fontSize: 14, fontWeight: '800' },
   previewImage: { width: '100%', height: 500, borderRadius: 10, backgroundColor: '#101418' },
-  tabBar:        { borderBottomWidth: StyleSheet.hairlineWidth },
-  tabBarContent: { flexDirection: 'row', flexWrap: 'wrap' },
-  tabBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 2 },
-  tabLabel:      { fontSize: 12 },
+  folderNavWrap:       { borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 12 },
+  folderNavEyebrow:    { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+  folderNavTitle:      { fontSize: 18, fontWeight: '800', marginTop: 3 },
+  folderNavSub:        { fontSize: 11, lineHeight: 15, marginTop: 3, marginBottom: 12 },
+  folderNavGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  folderNavTile:       { width: '48%', minHeight: 112, borderWidth: 1, borderRadius: 14, padding: 11, justifyContent: 'space-between' },
+  folderNavTileSolo:   { width: '100%' },
+  folderNavTileTop:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  folderNavIcon:       { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  folderNavTileLabel:  { fontSize: 14, fontWeight: '800', lineHeight: 17, marginTop: 9 },
+  folderNavTileDesc:   { fontSize: 10, lineHeight: 14, marginTop: 3 },
 
   scroll:        { padding: 14 },
 
