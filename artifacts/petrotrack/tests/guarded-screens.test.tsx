@@ -12,6 +12,7 @@ jest.mock('react-native', () => {
   return {
     Alert: { alert: jest.fn() },
     Image: primitive('Image'),
+    Modal: primitive('Modal'),
     Platform: { OS: 'web' },
     ScrollView: primitive('ScrollView'),
     StyleSheet: {
@@ -32,6 +33,11 @@ jest.mock('@expo/vector-icons', () => ({
 jest.mock('expo-document-picker', () => ({}));
 jest.mock('expo-image-picker', () => ({}));
 jest.mock('expo-file-system/legacy', () => ({}));
+jest.mock('expo-print', () => ({}));
+jest.mock('expo-sharing', () => ({}));
+jest.mock('expo-router', () => ({
+  useLocalSearchParams: jest.fn(() => ({})),
+}));
 
 jest.mock('@/components/AppliedDateField', () => ({
   AppliedDateField: () => null,
@@ -98,6 +104,7 @@ jest.mock('@/context/AppContext', () => ({
     mgr: 'Manager',
     md: 'Managing Director',
   },
+  MY_FOLDER_ALLOWED_ROLES: ['admin', 'acc', 'mktg', 'csm', 'md', 'ceo'],
   calculateStockBook: () => ({
     startupStock: null,
     delivered: 0,
@@ -121,6 +128,7 @@ import HRScreen from '../app/(app)/hr';
 import PricesScreen from '../app/(app)/prices';
 import SalesScreen from '../app/(app)/sales';
 import MaintenanceScreen from '../app/(app)/maintenance';
+import CorporateScreen from '../app/(app)/corporate';
 import { useApp } from '@/context/AppContext';
 
 const mockedUseApp = jest.mocked(useApp);
@@ -139,6 +147,62 @@ function renderedText(renderer: ReactTestRenderer): string {
     .findAll(node => String(node.type) === 'Text')
     .map(textContent)
     .join(' ');
+}
+
+function nodeText(node: ReactTestInstance): string {
+  return node.children
+    .map(child =>
+      typeof child === 'string' || typeof child === 'number'
+        ? String(child)
+        : nodeText(child as ReactTestInstance),
+    )
+    .join('');
+}
+
+function documentAreaTiles(renderer: ReactTestRenderer): ReactTestInstance[] {
+  return renderer.root.findAll(
+    node => String(node.type) === 'TouchableOpacity' && node.props.accessibilityRole === 'tab',
+  );
+}
+
+function documentAreaTile(renderer: ReactTestRenderer, label: string): ReactTestInstance {
+  const matches = documentAreaTiles(renderer).filter(tile => nodeText(tile).includes(label));
+  expect(matches).toHaveLength(1);
+  return matches[0];
+}
+
+function corporateAppState(overrides: Record<string, unknown> = {}) {
+  return {
+    ...baseAppState(),
+    role: 'acc',
+    docs: [],
+    myFolders: [],
+    myFolderFiles: [],
+    legalMatters: [],
+    corpProjects: [],
+    meetingMinutes: [],
+    addMyFolder: jest.fn(),
+    addMyFolderFile: jest.fn(),
+    removeMyFolderFile: jest.fn(),
+    replaceMyFolderFile: jest.fn(),
+    addLegalMatter: jest.fn(),
+    updateLegalMatter: jest.fn(),
+    updateLegalStatus: jest.fn(),
+    deleteLegalMatter: jest.fn(),
+    addCorpProject: jest.fn(),
+    updateCorpProject: jest.fn(),
+    updateProjectProgress: jest.fn(),
+    deleteCorpProject: jest.fn(),
+    addMeetingMinutes: jest.fn(),
+    updateMeetingMinutes: jest.fn(),
+    deleteMeetingMinutes: jest.fn(),
+    addCorpAttachment: jest.fn(),
+    removeCorpAttachment: jest.fn(),
+    submitCorpItem: jest.fn(),
+    approveCorpItem: jest.fn(),
+    rejectCorpItem: jest.fn(),
+    ...overrides,
+  };
 }
 
 function expectScreenToRender(element: React.ReactElement, expectedText: string) {
@@ -476,5 +540,136 @@ describe('screens tolerate incomplete synced records', () => {
       <PricesScreen />,
       `₦${safeNum(undefined).toLocaleString()} → ₦${safeNum(undefined).toLocaleString()}`,
     );
+  });
+});
+
+describe('My Documents area navigation', () => {
+  it.each(['mgr', 'att'] as const)('shows only General to restricted %s users', role => {
+    mockedUseApp.mockReturnValue(corporateAppState({ role }) as any);
+
+    let renderer: ReactTestRenderer | null = null;
+    act(() => {
+      renderer = create(<CorporateScreen />);
+    });
+    const mounted = renderer as unknown as ReactTestRenderer;
+
+    expect(documentAreaTiles(mounted).map(node => nodeText(node))).toEqual([
+      expect.stringContaining('General'),
+    ]);
+    expect(documentAreaTiles(mounted).map(node => nodeText(node)).join(' ')).not.toContain('Compliance');
+    expect(documentAreaTiles(mounted).map(node => nodeText(node)).join(' ')).not.toContain('Legal Documents');
+    expect(documentAreaTiles(mounted).map(node => nodeText(node)).join(' ')).not.toContain('Projects');
+    expect(documentAreaTiles(mounted).map(node => nodeText(node)).join(' ')).not.toContain('Minutes of Meetings');
+    expect(documentAreaTiles(mounted).map(node => nodeText(node)).join(' ')).not.toContain('Correspondences');
+
+    act(() => mounted.unmount());
+  });
+
+  it.each(['admin', 'acc', 'mktg', 'csm', 'md', 'ceo'] as const)(
+    'shows all six document areas to authorized %s users',
+    role => {
+      mockedUseApp.mockReturnValue(corporateAppState({ role }) as any);
+
+      let renderer: ReactTestRenderer | null = null;
+      act(() => {
+        renderer = create(<CorporateScreen />);
+      });
+      const mounted = renderer as unknown as ReactTestRenderer;
+      const labels = documentAreaTiles(mounted).map(node => nodeText(node));
+
+      expect(labels).toHaveLength(6);
+      expect(labels.join(' ')).toEqual(expect.stringContaining('Compliance'));
+      expect(labels.join(' ')).toEqual(expect.stringContaining('Legal Documents'));
+      expect(labels.join(' ')).toEqual(expect.stringContaining('Projects'));
+      expect(labels.join(' ')).toEqual(expect.stringContaining('Minutes of Meetings'));
+      expect(labels.join(' ')).toEqual(expect.stringContaining('Correspondences'));
+      expect(labels.join(' ')).toEqual(expect.stringContaining('General'));
+
+      act(() => mounted.unmount());
+    },
+  );
+
+  it('keeps readable labels on every document area tile', () => {
+    mockedUseApp.mockReturnValue(corporateAppState({ role: 'acc' }) as any);
+
+    let renderer: ReactTestRenderer | null = null;
+    act(() => {
+      renderer = create(<CorporateScreen />);
+    });
+    const mounted = renderer as unknown as ReactTestRenderer;
+    const labels = documentAreaTiles(mounted).map(node => nodeText(node));
+
+    expect(labels).toEqual(expect.arrayContaining([
+      expect.stringContaining('Compliance'),
+      expect.stringContaining('Legal Documents'),
+      expect.stringContaining('Projects'),
+      expect.stringContaining('Minutes of Meetings'),
+      expect.stringContaining('Correspondences'),
+      expect.stringContaining('General'),
+    ]));
+
+    act(() => mounted.unmount());
+  });
+
+  it('updates the active area and clears expanded, edit, and form state when switching tiles', () => {
+    mockedUseApp.mockReturnValue(corporateAppState({
+      role: 'csm',
+      legalMatters: [{
+        id: 1,
+        title: 'Lease Review',
+        type: 'Contract',
+        status: 'Active',
+        party: 'Company Counsel',
+        openedAt: '2026-08-20',
+        priority: 'High',
+        notes: 'Legal notes',
+        approval: { status: 'draft' },
+        attachments: [],
+      }],
+    }) as any);
+
+    let renderer: ReactTestRenderer | null = null;
+    act(() => {
+      renderer = create(<CorporateScreen />);
+    });
+    const mounted = renderer as unknown as ReactTestRenderer;
+
+    act(() => {
+      documentAreaTile(mounted, 'Legal Documents').props.onPress();
+    });
+    expect(documentAreaTile(mounted, 'Legal Documents').props.accessibilityState).toEqual({ selected: true });
+
+    const legalCardHeader = mounted.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Lease Review'),
+    );
+    act(() => {
+      legalCardHeader.props.onPress();
+    });
+    expect(renderedText(mounted)).toContain('Attachments (0)');
+
+    const editButton = mounted.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Edit',
+    );
+    act(() => {
+      editButton.props.onPress();
+    });
+    expect(renderedText(mounted)).toContain('Edit Legal Matter');
+
+    act(() => {
+      documentAreaTile(mounted, 'Projects').props.onPress();
+    });
+    expect(documentAreaTile(mounted, 'Projects').props.accessibilityState).toEqual({ selected: true });
+    expect(renderedText(mounted)).not.toContain('Edit Legal Matter');
+    expect(renderedText(mounted)).not.toContain('Attachments (0)');
+
+    act(() => {
+      documentAreaTile(mounted, 'Legal Documents').props.onPress();
+    });
+    expect(documentAreaTile(mounted, 'Legal Documents').props.accessibilityState).toEqual({ selected: true });
+    expect(renderedText(mounted)).not.toContain('New Legal Matter');
+    expect(renderedText(mounted)).not.toContain('Edit Legal Matter');
+    expect(renderedText(mounted)).not.toContain('Attachments (0)');
+
+    act(() => mounted.unmount());
   });
 });
