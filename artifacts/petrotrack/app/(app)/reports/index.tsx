@@ -1216,11 +1216,11 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
         </View>
       </View>
       <View style={[s.plFinal, { backgroundColor: netPnl >= 0 ? '#EAF3DE' : '#FCEBEB', borderColor: netPnl >= 0 ? '#27500A33' : '#791F1F33' }]}>
-        <View>
+        <View style={s.plFinalCopy}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: netPnl >= 0 ? '#27500A' : '#791F1F' }}>{netPnl >= 0 ? 'Net Profit' : 'Net Loss'}</Text>
-          <Text style={{ fontSize: 10, marginTop: 3, color: netPnl >= 0 ? '#3a6e1c' : '#aa2222' }}>Gross Profit − Operating Expenses − Depreciation − Bank Charges − Loan Interest − CITA</Text>
+          <Text style={{ fontSize: 10, marginTop: 3, color: netPnl >= 0 ? '#3a6e1c' : '#aa2222' }}>Gross Profit − Expenses − Depreciation − Finance Costs − CITA</Text>
         </View>
-        <Text style={{ fontSize: 22, fontWeight: '900', marginLeft: 'auto', color: netPnl >= 0 ? '#27500A' : '#791F1F' }}>{fmt(netPnl)}</Text>
+        <Text style={[s.plFinalValue, { color: netPnl >= 0 ? '#27500A' : '#791F1F' }]}>{fmt(netPnl)}</Text>
       </View>
     </>
   );
@@ -1328,6 +1328,8 @@ const s = StyleSheet.create({
   plRow:          { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   plOpex:         { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
   plFinal:        { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
+  plFinalCopy:    { flex: 1, minWidth: 0 },
+  plFinalValue:   { flexShrink: 0, fontSize: 22, fontWeight: '900', textAlign: 'right' },
 
   /* ── Empty ── */
   empty:          { alignItems: 'center', paddingVertical: 40, gap: 10 },
