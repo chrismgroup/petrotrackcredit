@@ -76,16 +76,20 @@ it('allows an authorized accountant to add, edit, and delete a company asset', a
     edited = app().updateCompanyAsset(created.id, {
       ...assetInput,
       name: 'Edited Branch Generator',
-      branchId: 'B2',
       category: 'Pumps',
     });
   });
   expect(edited).toBe(true);
   expect(app().companyAssets[0]).toMatchObject({
     name: 'Edited Branch Generator',
-    branchId: 'B2',
+    branchId: 'B1',
     category: 'Pumps',
   });
+  expect(app().updateCompanyAsset(created.id, {
+    ...assetInput,
+    branchId: 'B2',
+  })).toBe(false);
+  expect(app().companyAssets[0].branchId).toBe('B1');
 
   let deleted = false;
   await act(async () => {
@@ -95,7 +99,41 @@ it('allows an authorized accountant to add, edit, and delete a company asset', a
   expect(app().companyAssets).toEqual([]);
 });
 
-it.each(['mgr', 'att', 'csm'] as const)(
+it('lets a manager mutate assets for the assigned branch only', async () => {
+  jest.mocked(stateApi.getAll).mockResolvedValue({
+    userAccounts: [],
+    branches: [
+      { id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 },
+      { id: 'B2', name: 'Wuse Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 },
+    ],
+    companyAssets: [],
+  });
+
+  await act(async () => {
+    renderer = create(
+      <AppProvider>
+        <ContextCapture />
+      </AppProvider>,
+    );
+  });
+  await act(async () => {
+    expect(await app().login('mgr', 'Test Manager', 8, 'B1')).toBe(true);
+  });
+
+  await act(async () => {
+    expect(app().addCompanyAsset(assetInput)).toBe(true);
+  });
+  const created = app().companyAssets[0];
+  expect(created.branchId).toBe('B1');
+  expect(app().addCompanyAsset({ ...assetInput, branchId: 'B2' })).toBe(false);
+  expect(app().updateCompanyAsset(created.id, { ...assetInput, branchId: 'B2' })).toBe(false);
+  await act(async () => {
+    expect(app().deleteCompanyAsset(created.id)).toBe(true);
+  });
+  expect(app().companyAssets).toEqual([]);
+});
+
+it.each(['att', 'csm'] as const)(
   'rejects company asset mutations from unauthorized %s users',
   async role => {
     jest.mocked(stateApi.getAll).mockResolvedValue({

@@ -4458,9 +4458,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setFinancialEntry(prev => ({ ...prev, ...updates, updatedBy: userName, updatedAt: nowTs() }));
   }, [userName]);
 
-  const canManageCompanyAssets = role === 'admin' || role === 'ceo' || role === 'md' || role === 'acc';
+  const canManageCompanyAssets =
+    role === 'admin' || role === 'ceo' || role === 'md' || role === 'acc' ||
+    (role === 'mgr' && !!branchId);
+  const canManageCompanyAssetBranch = useCallback((assetBranchId: string) =>
+    role !== 'mgr' || (!!branchId && assetBranchId === branchId),
+  [role, branchId]);
   const addCompanyAsset = useCallback((asset: AssetInput) => {
-    if (!canManageCompanyAssets) return false;
+    if (!canManageCompanyAssets || !canManageCompanyAssetBranch(asset.branchId)) return false;
     const timestamp = nowTs();
     const created: CompanyAsset = {
       ...asset,
@@ -4486,12 +4491,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     });
     return true;
-  }, [canManageCompanyAssets, userName]);
+  }, [canManageCompanyAssets, canManageCompanyAssetBranch, userName]);
 
   const updateCompanyAsset = useCallback((id: string, updates: AssetInput) => {
     if (!canManageCompanyAssets) return false;
     const previous = companyAssets.find(asset => asset.id === id);
-    if (!previous) return false;
+    if (
+      !previous ||
+      updates.branchId !== previous.branchId ||
+      !canManageCompanyAssetBranch(previous.branchId)
+    ) return false;
     const updated = { ...previous, ...updates, updatedBy: userName, updatedAt: nowTs() };
     setCompanyAssets(prev => prev.map(asset => asset.id === id ? updated : asset));
     void stateApi.upsertCompanyAsset(updated, previous.revision ?? 0).then(async result => {
@@ -4509,7 +4518,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     });
     return true;
-  }, [canManageCompanyAssets, companyAssets, userName]);
+  }, [canManageCompanyAssets, canManageCompanyAssetBranch, companyAssets, userName]);
 
   const deleteCompanyAsset = useCallback((id: string) => {
     if (!canManageCompanyAssets) return false;
@@ -4517,6 +4526,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // an older app version may send an incomplete or empty asset register.
     // Only this explicit authenticated request may remove the server record.
     const removed = companyAssets.find(asset => asset.id === id);
+    if (!removed || !canManageCompanyAssetBranch(removed.branchId)) return false;
     void stateApi.deleteCompanyAsset(id).then(result => {
       if (result?.assets) {
         setCompanyAssets(result.assets as CompanyAsset[]);
@@ -4526,7 +4536,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     setCompanyAssets(prev => prev.filter(asset => asset.id !== id));
     return true;
-  }, [canManageCompanyAssets, companyAssets]);
+  }, [canManageCompanyAssets, canManageCompanyAssetBranch, companyAssets]);
 
   // General Library is available to every signed-in user; sensitive sections
   // are gated within the My Folder dashboard itself.

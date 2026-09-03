@@ -172,6 +172,27 @@ test("rejects an edit based on an older server revision", () => {
   );
 });
 
+test("keeps an assigned asset in its original branch until explicit deletion", () => {
+  const current = {
+    id: "asset-1",
+    name: "Branch Generator",
+    branchId: "B1",
+    revision: 2,
+    updatedAt: "2026-09-03T10:00:00.000Z",
+  };
+  const moved = { ...current, branchId: "B2" };
+  assert.deepEqual(
+    upsertCompanyAsset([current], moved, "2026-09-03T11:00:00.000Z", "accountant", 2),
+    { conflict: true, assets: [current] },
+  );
+
+  const legacy = { ...current, branchId: "", revision: 0 };
+  assert.equal(
+    upsertCompanyAsset([legacy], { ...legacy, branchId: "B1" }, "2026-09-03T11:00:00.000Z", "admin", 0).conflict,
+    false,
+  );
+});
+
 test("never resurrects deleted asset IDs from stale snapshots", () => {
   const deleted = deletedCompanyAssetIds({ "asset-1": "2026-09-03T10:00:00.000Z" });
   const stale = { id: "asset-1", name: "Generator", updatedAt: "2099-01-01T00:00:00.000Z" };
