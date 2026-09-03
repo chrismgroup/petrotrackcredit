@@ -53,7 +53,11 @@ test_username="${PETROTRACK_TEST_USERNAME:-native-outbox-${SAFE_RUN_ID}}"
 test_password="${PETROTRACK_TEST_PASSWORD:-native-outbox-${SAFE_RUN_ID}-$(date +%s)-${RANDOM}}"
 test_date="${PETROTRACK_TEST_DATE:-$(date +%-d)}"
 test_closing_meter="${PETROTRACK_TEST_CLOSING_METER:-1001}"
+fixture_report_marker="native-outbox-fixture-${SAFE_RUN_ID}"
 test_note="${PETROTRACK_TEST_NOTE:-native-outbox-${SAFE_RUN_ID}-$(date +%s)}"
+if [[ "${test_note}" != *"${fixture_report_marker}"* ]]; then
+  test_note="${test_note} [${fixture_report_marker}]"
+fi
 
 create_payload="$(
   PETROTRACK_TEST_EMP_NAME="Native Outbox ${SAFE_RUN_ID}" \
@@ -88,6 +92,7 @@ umask 077
   printf 'PETROTRACK_TEST_NOTE=%q\n' "${test_note}"
   printf 'PETROTRACK_FIXTURE_USER_ID=%q\n' "${user_id}"
   printf 'PETROTRACK_FIXTURE_USERNAME=%q\n' "${test_username}"
+  printf 'PETROTRACK_FIXTURE_REPORT_MARKER=%q\n' "${test_note}"
 } >"${FIXTURE_FILE}"
 
 echo "Created disposable native outbox account for run ${SAFE_RUN_ID}."

@@ -74,9 +74,11 @@ Configure these repository secrets for the job:
 Each run builds a fresh EAS preview APK, creates a unique active attendant
 account on the isolated test deployment, clears the device's app data, and
 passes the generated credentials and unique note to the existing runner. The
-account is deleted in an `always()` cleanup step. The flow itself remains
-responsible for the exit status: a missing `Queued` or `Confirmed` assertion
-fails the job, while `adb` and Maestro logs are uploaded even when it fails.
+fixture-owned report and account are deleted in an `always()` cleanup step.
+Cleanup matches the exact run marker and fixture submitter, so unrelated
+reports are not touched. The flow itself remains responsible for the exit
+status: a missing `Queued` or `Confirmed` assertion fails the job, while `adb`
+and Maestro logs are uploaded even when it fails.
 The dedicated branch and pump are never changed by fixture provisioning.
 
 ## iOS

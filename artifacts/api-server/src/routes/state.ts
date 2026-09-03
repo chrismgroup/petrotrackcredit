@@ -791,6 +791,94 @@ router.post("/state/reset-operational", async (req, res): Promise<void> => {
 });
 
 /**
+ * Native device validation creates one report with a unique marker in its
+ * note. Cleanup is deliberately narrower than the normal Admin deletion
+ * route: it requires the exact marker and the exact fixture submitter, and
+ * records tombstones so a stale offline outbox cannot recreate the report.
+ */
+router.post("/state/pump-reports/cleanup-fixture", async (req, res): Promise<void> => {
+  if (req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const reportMarker = req.body?.reportMarker;
+  const submittedBy = req.body?.submittedBy;
+  if (
+    typeof reportMarker !== "string" ||
+    !reportMarker.trim() ||
+    typeof submittedBy !== "string" ||
+    !submittedBy.trim()
+  ) {
+    res.status(400).json({ error: "reportMarker and submittedBy are required" });
+    return;
+  }
+
+  const result = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
+    const [stateRow] = await tx.select().from(appStateTable)
+      .where(eq(appStateTable.key, "pumpDailyReports"));
+    const durableReports = await tx.select().from(pumpReportsTable);
+    const stateReports = Array.isArray(stateRow?.data)
+      ? stateRow.data.filter(value => value && typeof value === "object" && !Array.isArray(value)) as JsonRecord[]
+      : [];
+    const matchingIds = new Set<string>();
+
+    for (const report of [...stateReports, ...durableReports.map(row => row.data)]) {
+      if (
+        report &&
+        typeof report === "object" &&
+        !Array.isArray(report) &&
+        (report as JsonRecord).note === reportMarker &&
+        (report as JsonRecord).submittedBy === submittedBy
+      ) {
+        const id = String((report as JsonRecord).id ?? "").trim();
+        if (id) matchingIds.add(id);
+      }
+    }
+
+    if (matchingIds.size === 0) return { deleted: 0 };
+
+    const deletedIds = [...matchingIds];
+    const nextReports = stateReports.filter(report => !matchingIds.has(String(report.id ?? "")));
+    if (stateRow) {
+      await tx.insert(appStateTable).values({ key: "pumpDailyReports", data: nextReports })
+        .onConflictDoUpdate({
+          target: appStateTable.key,
+          set: { data: nextReports, updatedAt: new Date() },
+        });
+    }
+
+    const [deletionsRow] = await tx.select().from(appStateTable)
+      .where(eq(appStateTable.key, PUMP_REPORT_DELETIONS_KEY));
+    const existingTombstones = Array.isArray(deletionsRow?.data) ? deletionsRow.data : [];
+    const existingIds = new Set(pumpReportDeletionIds(existingTombstones));
+    const newTombstones = deletedIds
+      .filter(id => !existingIds.has(id))
+      .map(id => ({ id, deletedAt: new Date().toISOString() }));
+    if (newTombstones.length > 0) {
+      await tx.insert(appStateTable).values({
+        key: PUMP_REPORT_DELETIONS_KEY,
+        data: [...existingTombstones, ...newTombstones],
+      }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: {
+          data: [...existingTombstones, ...newTombstones],
+          updatedAt: new Date(),
+        },
+      });
+    }
+    await tx.delete(pumpReportsTable).where(inArray(pumpReportsTable.id, deletedIds));
+    return { deleted: deletedIds.length };
+  });
+
+  if (result.deleted > 0) {
+    broadcastRealtime({ type: "pump-report.changed", deleted: true });
+  }
+  res.json({ ok: true, deleted: result.deleted });
+});
+
+/**
  * An approved shift report ordinarily remains immutable. Admin may remove one
  * only when it was approved against the wrong business date so an attendant
  * can enter a clean replacement. This makes the report, sale, tank effect,
