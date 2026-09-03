@@ -70,45 +70,6 @@ export default function AccountsScreen() {
   const todayDpkRev = todayReports.filter(report => report.product === 'DPK').reduce((sum, report) => sum + num(report.grossAmount), 0);
   const todayLpgRev = todayReports.filter(report => report.product === 'LPG').reduce((sum, report) => sum + num(report.grossAmount), 0);
   const todayLubeRev = todayReports.filter(report => report.product === 'Lube Oil').reduce((sum, report) => sum + num(report.grossAmount), 0);
-  const dailyRevenueLog = Array.from(
-    scopedRevenueReports
-      .reduce((log, report) => {
-        const date = businessDateKey(report.date);
-        if (!date) return log;
-        const current = log.get(date) ?? { date, revenue: 0, reports: 0 };
-        current.revenue += num(report.grossAmount);
-        current.reports += 1;
-        log.set(date, current);
-        return log;
-      }, new Map<string, { date: string; revenue: number; reports: number }>())
-      .values(),
-  ).sort((a, b) => b.date.localeCompare(a.date));
-  const dailyBranchRevenueLog = Array.from(
-    scopedRevenueReports
-      .reduce((log, report) => {
-        const date = businessDateKey(report.date);
-        if (!date) return log;
-        const branchId = report.branchId || 'unassigned';
-        const current = log.get(date) ?? { date, total: 0, byBranch: new Map<string, number>() };
-        current.total += num(report.grossAmount);
-        current.byBranch.set(branchId, (current.byBranch.get(branchId) || 0) + num(report.grossAmount));
-        log.set(date, current);
-        return log;
-      }, new Map<string, { date: string; total: number; byBranch: Map<string, number> }>())
-      .values(),
-  )
-    .map(entry => ({
-      date: entry.date,
-      total: Math.round(entry.total),
-      branches: Array.from(entry.byBranch.entries())
-        .map(([id, revenue]) => ({
-          id,
-          name: id === 'unassigned' ? 'Unassigned / Company-level' : branches.find(branch => branch.id === id)?.name || 'Unknown branch',
-          revenue: Math.round(revenue),
-        }))
-        .sort((a, b) => b.revenue - a.revenue),
-    }))
-    .sort((a, b) => b.date.localeCompare(a.date));
   // Use the same historical delivery set as FinancialStatusCard so a
   // product's last known cost price carries into months without a delivery.
   const scopedDeliveries = deliveries.filter(
@@ -264,58 +225,6 @@ export default function AccountsScreen() {
           </View>
         </View>
 
-        {/* Business-date revenue log */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Daily Business-Date Revenue Log</Text>
-        <View style={[styles.dailyLogCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.dailyLogHint, { color: colors.textMuted }]}>
-            Each row is grouped by the shift report business date, not submission time.
-          </Text>
-          {dailyRevenueLog.length === 0 ? (
-            <Text style={[styles.dailyLogEmpty, { color: colors.textMuted }]}>No business-date revenue recorded yet.</Text>
-          ) : (
-            dailyRevenueLog.map(entry => (
-              <View key={entry.date} style={[styles.dailyLogRow, { borderTopColor: colors.border }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.dailyLogDate, { color: colors.text }]}>{formatBusinessDate(entry.date)}</Text>
-                  <Text style={[styles.dailyLogMeta, { color: colors.textMuted }]}>
-                    {entry.reports} shift report{entry.reports === 1 ? '' : 's'}
-                  </Text>
-                </View>
-                <Text style={[styles.dailyLogRevenue, { color: roleColor }]}>{fmt(Math.round(entry.revenue))}</Text>
-              </View>
-            ))
-          )}
-        </View>
-
-        {/* Branch revenue by business date */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Branch Revenue by Business Date</Text>
-        <View style={[styles.dailyBranchCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.dailyLogHint, { color: colors.textMuted }]}>
-            Compare each branch’s revenue for every recorded business date.
-          </Text>
-          {dailyBranchRevenueLog.length === 0 ? (
-            <Text style={[styles.dailyLogEmpty, { color: colors.textMuted }]}>No branch revenue recorded yet.</Text>
-          ) : (
-            dailyBranchRevenueLog.map(entry => (
-              <View key={entry.date} style={[styles.dailyBranchDay, { borderTopColor: colors.border }]}>
-                <View style={styles.dailyBranchHeader}>
-                  <Text style={[styles.dailyLogDate, { color: colors.text }]}>{formatBusinessDate(entry.date)}</Text>
-                  <Text style={[styles.dailyLogRevenue, { color: roleColor }]}>{fmt(entry.total)}</Text>
-                </View>
-                {entry.branches.map(branch => (
-                  <View key={`${entry.date}-${branch.id}`} style={styles.dailyBranchRow}>
-                    <View style={[styles.dailyBranchDot, { backgroundColor: roleColor }]} />
-                    <Text style={[styles.dailyBranchName, { color: colors.text }]} numberOfLines={1}>
-                      {branch.name}
-                    </Text>
-                    <Text style={[styles.dailyBranchRevenue, { color: colors.text }]}>{fmt(branch.revenue)}</Text>
-                  </View>
-                ))}
-              </View>
-            ))
-          )}
-        </View>
-
         {/* Branch revenue */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Branches Revenue</Text>
         {visibleBranches.map(b => (
@@ -392,22 +301,6 @@ const styles = StyleSheet.create({
   prodLabel:     { fontSize: 12, fontWeight: '700' },
   prodAmt:       { fontSize: 13, fontWeight: '600', marginTop: 2 },
   prodPrice:     { fontSize: 10, marginTop: 1 },
-
-  dailyLogCard:  { borderRadius: 14, borderWidth: 1, marginBottom: 16, overflow: 'hidden' },
-  dailyLogHint:  { fontSize: 12, lineHeight: 17, padding: 14, paddingBottom: 8 },
-  dailyLogEmpty: { fontSize: 13, padding: 14, paddingTop: 4 },
-  dailyLogRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: StyleSheet.hairlineWidth },
-  dailyLogDate:  { fontSize: 14, fontWeight: '600' },
-  dailyLogMeta:  { fontSize: 11, marginTop: 2 },
-  dailyLogRevenue: { fontSize: 15, fontWeight: '700' },
-
-  dailyBranchCard: { borderRadius: 14, borderWidth: 1, marginBottom: 16, overflow: 'hidden' },
-  dailyBranchDay:  { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  dailyBranchHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  dailyBranchRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, paddingLeft: 4 },
-  dailyBranchDot:   { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
-  dailyBranchName:  { flex: 1, fontSize: 13 },
-  dailyBranchRevenue: { fontSize: 13, fontWeight: '600', marginLeft: 8 },
 
   branchRow:     { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
   branchIcon:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

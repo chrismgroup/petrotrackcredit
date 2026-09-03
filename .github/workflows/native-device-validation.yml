@@ -88,6 +88,7 @@ jobs:
             printf 'PETROTRACK_TEST_NOTE=%s\n' "$PETROTRACK_TEST_NOTE"
             printf 'PETROTRACK_FIXTURE_USER_ID=%s\n' "$PETROTRACK_FIXTURE_USER_ID"
             printf 'PETROTRACK_FIXTURE_USERNAME=%s\n' "$PETROTRACK_FIXTURE_USERNAME"
+            printf 'PETROTRACK_FIXTURE_REPORT_MARKER=%s\n' "$PETROTRACK_FIXTURE_REPORT_MARKER"
           } >>"$GITHUB_ENV"
 
       - name: Install preview APK and clear device data
@@ -113,7 +114,7 @@ jobs:
             # Cleanup must not hide the original queued/confirmed assertion.
             # The isolated test API retains no shared production state.
             set +e
-            source <(grep -E '^PETROTRACK_FIXTURE_(USER_ID|USERNAME)=' "$PETROTRACK_FIXTURE_FILE")
+            source <(grep -E '^PETROTRACK_FIXTURE_(USER_ID|USERNAME|REPORT_MARKER)=' "$PETROTRACK_FIXTURE_FILE")
             bash artifacts/petrotrack/scripts/cleanup-native-outbox-fixture.sh
             cleanup_status=$?
             set -e

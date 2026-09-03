@@ -47,7 +47,12 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
   };
   const reportIds = [`${marker}-approved`, `${marker}-returned`];
   const deletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
-  const cleanupReportIds = [...reportIds, deletedReportId];
+  const cleanupReportIds = [
+    ...reportIds,
+    deletedReportId,
+    `${marker}-fixture`,
+    `${marker}-unrelated`,
+  ];
   const server = app.listen(0);
   await once(server, "listening");
   const { port } = server.address() as AddressInfo;
@@ -301,6 +306,48 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       false,
     );
     assert.equal(durableReport.rowCount, 0);
+
+    const fixtureMarker = `native-outbox-fixture-${marker}`;
+    const fixtureReport = report(`${marker}-fixture`, usernames.attendantA, {
+      note: fixtureMarker,
+    });
+    const unrelatedFixtureReport = report(`${marker}-unrelated`, usernames.attendantB, {
+      note: fixtureMarker,
+    });
+    const seededFixtureReports = await putReports(admin.token, [
+      fixtureReport,
+      unrelatedFixtureReport,
+    ]);
+    assert.equal(seededFixtureReports.status, 200);
+
+    const fixtureCleanup = await request<{ ok: boolean; deleted: number }>(
+      "/state/pump-reports/cleanup-fixture",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          reportMarker: fixtureMarker,
+          submittedBy: usernames.attendantA,
+        }),
+      },
+      admin.token,
+    );
+    assert.deepEqual(fixtureCleanup, {
+      status: 200,
+      body: { ok: true, deleted: 1 },
+    });
+
+    // Matching the exact marker and submitter keeps another fixture or test
+    // account with the same note untouched.
+    const afterFixtureCleanup = await request<Record<string, unknown>>("/state", {}, admin.token);
+    const remainingFixtureReports = afterFixtureCleanup.body.pumpDailyReports as PumpReport[];
+    assert.equal(remainingFixtureReports.some(candidate => candidate.id === fixtureReport.id), false);
+    assert.equal(remainingFixtureReports.some(candidate => candidate.id === unrelatedFixtureReport.id), true);
+
+    // Cleanup also leaves a tombstone, so a stale admin/device copy cannot
+    // recreate the report after the cleanup request.
+    const staleFixtureWrite = await putReports(admin.token, [fixtureReport]);
+    assert.equal(staleFixtureWrite.status, 200);
+    assert.equal(staleFixtureWrite.body.reports.some(candidate => candidate.id === fixtureReport.id), false);
   } finally {
     await pool.query("BEGIN");
     try {
