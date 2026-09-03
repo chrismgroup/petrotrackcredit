@@ -99,7 +99,7 @@ it('allows an authorized accountant to add, edit, and delete a company asset', a
   expect(app().companyAssets).toEqual([]);
 });
 
-it('lets a manager mutate assets for the assigned branch only', async () => {
+it.each(['csm', 'mktg'] as const)('allows %s to mutate company assets', async role => {
   jest.mocked(stateApi.getAll).mockResolvedValue({
     userAccounts: [],
     branches: [
@@ -117,7 +117,7 @@ it('lets a manager mutate assets for the assigned branch only', async () => {
     );
   });
   await act(async () => {
-    expect(await app().login('mgr', 'Test Manager', 8, 'B1')).toBe(true);
+    expect(await app().login(role, `Test ${role}`, 8, 'B1')).toBe(true);
   });
 
   await act(async () => {
@@ -125,7 +125,6 @@ it('lets a manager mutate assets for the assigned branch only', async () => {
   });
   const created = app().companyAssets[0];
   expect(created.branchId).toBe('B1');
-  expect(app().addCompanyAsset({ ...assetInput, branchId: 'B2' })).toBe(false);
   expect(app().updateCompanyAsset(created.id, { ...assetInput, branchId: 'B2' })).toBe(false);
   await act(async () => {
     expect(app().deleteCompanyAsset(created.id)).toBe(true);
@@ -133,9 +132,8 @@ it('lets a manager mutate assets for the assigned branch only', async () => {
   expect(app().companyAssets).toEqual([]);
 });
 
-it.each(['att', 'csm'] as const)(
-  'rejects company asset mutations from unauthorized %s users',
-  async role => {
+it('rejects company asset mutations from branch managers and attendants', async () => {
+  for (const role of ['mgr', 'att'] as const) {
     jest.mocked(stateApi.getAll).mockResolvedValue({
       userAccounts: [],
       branches: [{ id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 }],
@@ -157,5 +155,8 @@ it.each(['att', 'csm'] as const)(
     expect(app().updateCompanyAsset('missing', assetInput)).toBe(false);
     expect(app().deleteCompanyAsset('missing')).toBe(false);
     expect(app().companyAssets).toEqual([]);
-  },
-);
+    act(() => renderer?.unmount());
+    renderer = null;
+    capturedApp = null;
+  }
+});
