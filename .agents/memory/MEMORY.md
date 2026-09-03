@@ -36,3 +36,4 @@
 - [JSONB state comparisons](jsonb-state-comparisons.md) — compare synced records structurally because PostgreSQL JSONB can reorder object keys
 - [Daily timer compatibility](daily-timer-compatibility.md) — Daily RN 0.86 still imports the legacy timer; a reproducible patch keeps standard timers and native call services
 - [Action Items workflow](action-items.md) — separate Tasks collection with person assignment, terminal close/lock, urgency colors, and branch archives
+- [Asset depreciation](asset-depreciation.md) — straight-line monthly depreciation is branch-scoped and deducted before CITA when calculating monthly net profit

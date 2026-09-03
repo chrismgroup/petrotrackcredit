@@ -18,6 +18,7 @@ import {
   type BankLoan,
 } from '@/context/AppContext';
 import { computePumpReportCOGS, getLastKnownCostPrice } from '@/lib/report-helpers';
+import { monthlyDepreciationTotal } from '@/lib/asset-depreciation';
 import { useColors } from '@/hooks/useColors';
 
 const PROD_COLOR: Record<string, string> = {
@@ -177,7 +178,7 @@ function EditModal({
 export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const {
     role, branchId, tanks, lpgTanks, dips, deliveries, branches, pumpDailyReports,
-    expenses, companyInfo, financialEntry, updateFinancialEntry,
+    expenses, companyInfo, financialEntry, updateFinancialEntry, companyAssets,
   } = useApp();
   const colors = useColors();
   const [expanded, setExpanded] = useState(false);
@@ -254,10 +255,12 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     .reduce((s, e) => s + e.amt, 0);
   const citaRate = parseFloat(companyInfo.citaRate || '30') / 100;
   const monthlyOperatingProfit = monthRevenue - monthCOGS - monthExpenses;
-  const monthCita = monthlyOperatingProfit > 0
-    ? Math.round(monthlyOperatingProfit * citaRate)
+  const monthDepreciation = monthlyDepreciationTotal(companyAssets, currentMonthKey, scopedBranchId);
+  const profitBeforeTax = monthlyOperatingProfit - monthDepreciation;
+  const monthCita = profitBeforeTax > 0
+    ? Math.round(profitBeforeTax * citaRate)
     : 0;
-  const netProfit = monthlyOperatingProfit - monthCita;
+  const netProfit = profitBeforeTax - monthCita;
 
   /* ── previous month's net profit for the operating-capital waterfall ── */
   const previousMonthAnchor = new Date(`${currentMonthRange.from}T12:00:00`);
@@ -291,10 +294,13 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     )
     .reduce((s, e) => s + e.amt, 0);
   const previousMonthOperatingProfit = previousMonthRevenue - previousMonthCOGS - previousMonthExpenses;
-  const previousMonthCita = previousMonthOperatingProfit > 0
-    ? Math.round(previousMonthOperatingProfit * citaRate)
+  const previousMonthKey = previousMonthRange.from.slice(0, 7);
+  const previousMonthDepreciation = monthlyDepreciationTotal(companyAssets, previousMonthKey, scopedBranchId);
+  const previousMonthProfitBeforeTax = previousMonthOperatingProfit - previousMonthDepreciation;
+  const previousMonthCita = previousMonthProfitBeforeTax > 0
+    ? Math.round(previousMonthProfitBeforeTax * citaRate)
     : 0;
-  const previousMonthNetProfit = previousMonthOperatingProfit - previousMonthCita;
+  const previousMonthNetProfit = previousMonthProfitBeforeTax - previousMonthCita;
 
   /* ── operating capital formula ── */
   const fe = financialEntry;
@@ -472,6 +478,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
             <Row label="Monthly Revenue" value={fmt(monthRevenue)} color="#27500A" />
             <Row label="− Monthly Cost of Goods" value={fmt(monthCOGS)} color="#791F1F" />
             <Row label="− Monthly Expenses" value={fmt(monthExpenses)} color="#791F1F" />
+            <Row label="− Monthly Asset Depreciation" value={fmt(monthDepreciation)} color="#791F1F" />
             <Row label={`− CITA (${(citaRate * 100).toFixed(0)}%)`} value={fmt(monthCita)} color="#BA7517" />
             <Row label="= Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? '#27500A' : '#791F1F'} bold />
           </View>
