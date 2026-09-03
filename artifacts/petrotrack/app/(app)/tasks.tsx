@@ -4,7 +4,8 @@ import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import { ModalSheet } from '@/components/FormSheet';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ActionItem, ActionItemStatus, ActionItemUrgency, KPI, ROLE_COLORS, ROLE_LABELS, TASK_CAN_ASSIGN, Task, TaskCadence, TaskPriority, TaskStatus, UINFO, resolveUserInfo, fmtDate, getActionItemUrgency, useApp } from '@/context/AppContext';
+import { ActionItemsTable } from '@/components/ActionItemsTable';
+import { ActionItem, ActionItemStatus, KPI, ROLE_COLORS, ROLE_LABELS, TASK_CAN_ASSIGN, Task, TaskCadence, TaskPriority, TaskStatus, UINFO, resolveUserInfo, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 type TabId = 'mine' | 'assigned' | 'action-items' | 'kpis';
@@ -46,12 +47,6 @@ const ACTION_STATUS_META: Record<ActionItemStatus, { label: string; color: strin
   'on-going': { label: 'On-going', color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline' },
   closed: { label: 'Closed', color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle' },
 };
-const ACTION_URGENCY_META: Record<ActionItemUrgency, { label: string; color: string; bg: string }> = {
-  overdue: { label: 'Overdue', color: '#B42318', bg: '#FCEBEB' },
-  'due-soon': { label: 'Due within 2 weeks', color: '#9A6700', bg: '#FFF4CC' },
-  'on-track': { label: 'More than 2 weeks', color: '#137333', bg: '#EAF5EA' },
-};
-
 export default function TasksScreen() {
   const {
     role, userName, staffId, branchId, branches, userAccounts, tasks, kpis, actionItems,
@@ -325,77 +320,6 @@ export default function TasksScreen() {
     );
   }
 
-  function renderActionItemCard(item: ActionItem) {
-    const urgency = ACTION_URGENCY_META[getActionItemUrgency(item.targetDate)];
-    const status = ACTION_STATUS_META[item.status];
-    const canUpdate = canUpdateActionItem(item);
-    return (
-      <View key={item.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: item.status === 'closed' ? colors.border : urgency.color + '55' }]}>
-        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <View style={[styles.badge, { backgroundColor: status.bg }]}>
-            <Ionicons name={status.icon as any} size={10} color={status.color} />
-            <Text style={[styles.badgeText, { color: status.color }]}>{status.label}</Text>
-          </View>
-          <View style={[styles.badge, { backgroundColor: urgency.bg }]}>
-            <Text style={[styles.badgeText, { color: urgency.color }]}>{urgency.label}</Text>
-          </View>
-          <View style={{ flex: 1 }} />
-          {item.status === 'closed' && <Ionicons name="lock-closed-outline" size={15} color={colors.textSubtle} />}
-        </View>
-
-        <Text style={[styles.cardTitle, { color: colors.text, opacity: item.status === 'closed' ? 0.65 : 1 }]} numberOfLines={2}>
-          {item.title}
-        </Text>
-        {!!item.desc && <Text style={[styles.cardDesc, { color: colors.textMuted }]} numberOfLines={3}>{item.desc}</Text>}
-
-        <View style={[styles.actionMetaBox, { backgroundColor: urgency.bg + '80', borderColor: urgency.color + '35' }]}>
-          <View style={styles.actionMetaLine}>
-            <Ionicons name="person-outline" size={12} color={urgency.color} />
-            <Text style={[styles.metaText, { color: colors.text }]}>Action party: <Text style={{ fontWeight: '700' }}>{item.actionPartyName}</Text></Text>
-          </View>
-          <View style={styles.actionMetaLine}>
-            <Ionicons name="business-outline" size={12} color={urgency.color} />
-            <Text style={[styles.metaText, { color: colors.text }]}>{item.branchName}</Text>
-          </View>
-          <View style={styles.actionMetaLine}>
-            <Ionicons name="calendar-outline" size={12} color={urgency.color} />
-            <Text style={[styles.metaText, { color: urgency.color, fontWeight: '700' }]}>Target close: {fmtDate(item.targetDate)}</Text>
-          </View>
-        </View>
-
-        {item.status === 'closed' ? (
-          <View style={styles.lockedRow}>
-            <Ionicons name="lock-closed-outline" size={13} color={colors.textMuted} />
-            <Text style={[styles.metaText, { color: colors.textMuted }]}>
-              Locked by {item.closedBy ?? 'user'} · archived {item.closedAt ? fmtDate(item.closedAt) : ''}
-            </Text>
-          </View>
-        ) : canUpdate ? (
-          <View style={styles.statusBtns}>
-            {(['open', 'on-going', 'closed'] as ActionItemStatus[]).map(nextStatus => {
-              const meta = ACTION_STATUS_META[nextStatus];
-              const active = item.status === nextStatus;
-              return (
-                <TouchableOpacity
-                  key={nextStatus}
-                  onPress={() => !active && handleActionStatus(item, nextStatus)}
-                  style={[styles.statusBtn, { backgroundColor: active ? meta.color : colors.background, borderColor: active ? meta.color : colors.border }]}
-                >
-                  <Text style={[styles.statusBtnText, { color: active ? '#fff' : colors.textMuted }]}>{meta.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ) : (
-          <View style={styles.lockedRow}>
-            <Ionicons name="information-circle-outline" size={13} color={colors.textSubtle} />
-            <Text style={[styles.metaText, { color: colors.textMuted }]}>Only the action party or CEO can update this item.</Text>
-          </View>
-        )}
-      </View>
-    );
-  }
-
   function renderActionItems() {
     const activeItems = visibleActionItems.filter(item => item.status !== 'closed');
     if (!visibleActionItems.length) {
@@ -426,7 +350,11 @@ export default function TasksScreen() {
                   <Ionicons name="archive-outline" size={13} color={colors.textMuted} />
                   <Text style={[styles.groupLabel, { color: colors.textMuted }]}>{group[0]?.branchName ?? groupBranchId} · {group.length}</Text>
                 </View>
-                {group.map(renderActionItemCard)}
+                <ActionItemsTable
+                  items={group}
+                  colors={colors}
+                  emptyText="No closed action items in this branch archive"
+                />
               </View>
             );
           })}
@@ -446,7 +374,12 @@ export default function TasksScreen() {
                 <View style={[styles.groupDot, { backgroundColor: meta.color }]} />
                 <Text style={[styles.groupLabel, { color: meta.color }]}>{meta.label} · {group.length}</Text>
               </View>
-              {group.map(renderActionItemCard)}
+              <ActionItemsTable
+                items={group}
+                colors={colors}
+                canUpdate={canUpdateActionItem}
+                onStatusChange={handleActionStatus}
+              />
             </View>
           );
         })}
@@ -968,9 +901,6 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 11 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
   badgeText: { fontSize: 10, fontWeight: '700' },
-  actionMetaBox: { borderRadius: 10, borderWidth: 1, padding: 9, gap: 5 },
-  actionMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  lockedRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   iconBtn: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   statusBtns: { flexDirection: 'row', gap: 6 },
   statusBtn: { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
