@@ -1,3 +1,8 @@
+// Expo 57's Jest preset defaults to a native runtime. The Petrotrack test
+// harness uses web-compatible React Native mocks, so keep Expo's runtime
+// branch consistent and avoid loading unavailable native logger modules.
+process.env.EXPO_OS = 'web';
+
 jest.mock('@react-native-async-storage/async-storage', () => {
   const storage = new Map<string, string>();
   return {
@@ -28,6 +33,14 @@ jest.mock('react-native', () => {
         listeners.add(listener);
         return { remove: jest.fn(() => listeners.delete(listener)) };
       }),
+    },
+    Platform: {
+      OS: 'web',
+      select: (options: Record<string, unknown>) => options.web ?? options.default ?? options.native,
+    },
+    TurboModuleRegistry: {
+      get: jest.fn(() => null),
+      getEnforcing: jest.fn(() => null),
     },
   };
 });

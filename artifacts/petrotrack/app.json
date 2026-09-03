@@ -7,12 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "petrotrack",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.replit.petrotrack",
@@ -44,6 +38,14 @@
       "expo-web-browser",
       "expo-document-picker",
       "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
       [
         "@daily-co/config-plugin-rn-daily-js",
         {
