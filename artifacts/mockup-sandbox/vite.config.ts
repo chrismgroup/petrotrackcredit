@@ -5,45 +5,45 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { mockupPreviewPlugin } from "./mockupPreviewPlugin";
 
-const rawPort = process.env.PORT;
+const replitDevelopmentPlugins =
+  process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined
+    ? [
+        (await import("@replit/vite-plugin-cartographer")).cartographer({
+          root: path.resolve(import.meta.dirname, ".."),
+        }),
+      ]
+    : [];
 
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
+export default defineConfig(({ command }) => {
+  const rawPort = process.env.PORT;
+  const basePath = process.env.BASE_PATH ?? (command === "build" ? "/" : undefined);
 
-const port = Number(rawPort);
+  if (command === "serve" && !rawPort) {
+    throw new Error(
+      "PORT environment variable is required but was not provided.",
+    );
+  }
 
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+  const port = Number(rawPort);
 
-const basePath = process.env.BASE_PATH;
+  if (command === "serve" && (Number.isNaN(port) || port <= 0)) {
+    throw new Error(`Invalid PORT value: "${rawPort}"`);
+  }
 
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+  if (!basePath) {
+    throw new Error(
+      "BASE_PATH environment variable is required but was not provided.",
+    );
+  }
 
-export default defineConfig({
+  return {
   base: basePath,
   plugins: [
     mockupPreviewPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, ".."),
-            }),
-          ),
-        ]
-      : []),
+    ...replitDevelopmentPlugins,
   ],
   resolve: {
     alias: {
@@ -68,4 +68,5 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
   },
+  };
 });

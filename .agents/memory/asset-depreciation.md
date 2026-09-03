@@ -8,3 +8,9 @@ Company assets use straight-line depreciation: annual depreciation is initial co
 **Why:** The asset register must connect directly to branch and company profitability rather than remain a standalone inventory list, while avoiding repetitive entry for identical assets.
 
 **How to apply:** Charge depreciation from the acquisition month through the final month of useful life. Company-wide views sum every branch; branch-scoped views include only that branch’s assets. Land may be registered with equal initial and end-of-life values when it should carry no depreciation.
+
+Company asset snapshots are recovery-only: they may contribute a previously unseen ID but must never edit, omit, or resurrect an existing server record. Add/edit/delete operations use explicit server-authoritative actions; edits require the current server revision, and deletes retain durable tombstones.
+
+**Why:** App upgrades and stale devices can emit empty or outdated full-array snapshots. Treating those snapshots as replacements can silently erase registrations, overwrite newer edits, or resurrect deliberately deleted assets.
+
+**How to apply:** Preserve user-entered fields exactly, use server revisions for edit conflicts rather than device clocks, and keep deletion markers available during hydration so stale local caches cannot display or re-upload deleted records.

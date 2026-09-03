@@ -152,6 +152,10 @@ export const stateApi = {
   getAll: () => get<Record<string, unknown>>('/state'),
   get: <T>(key: string) => get<T>(`/state/${key}`),
   put: (key: string, data: unknown) => put(`/state/${key}`, data),
+  upsertCompanyAsset: <T>(asset: T, baseRevision: number | null) =>
+    post<{ ok: boolean; asset: T; assets: T[] }>('/state/company-assets/upsert', { asset, baseRevision }),
+  deleteCompanyAsset: (id: string) =>
+    post<{ ok: boolean; assets: unknown[] }>(`/state/company-assets/${encodeURIComponent(id)}/delete`, {}),
   submitPumpReport: <T>(report: T, idempotencyKey?: string) =>
     post<{ ok: boolean; report: T }>('/pump-reports', {
       report,

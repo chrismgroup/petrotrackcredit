@@ -29,9 +29,24 @@ export interface CompanyAsset {
   createdAt: string;
   updatedBy: string;
   updatedAt: string;
+  /** Server-managed optimistic concurrency revision. Legacy rows start at zero. */
+  revision?: number;
 }
 
 export type AssetInput = Omit<CompanyAsset, 'id' | 'createdBy' | 'createdAt' | 'updatedBy' | 'updatedAt'>;
+
+export function mergeCompanyAssetSnapshots(
+  server: CompanyAsset[],
+  local: CompanyAsset[],
+  deletedIds: Iterable<string> = [],
+): CompanyAsset[] {
+  const serverIds = new Set(server.map(asset => asset.id));
+  const deleted = new Set(deletedIds);
+  return [
+    ...server,
+    ...local.filter(asset => asset.id && !serverIds.has(asset.id) && !deleted.has(asset.id)),
+  ];
+}
 
 export function annualAssetDepreciation(asset: Pick<CompanyAsset, 'initialCost' | 'endOfLifeValue' | 'usefulLifeYears'>): number {
   if (!Number.isFinite(asset.usefulLifeYears) || asset.usefulLifeYears <= 0) return 0;

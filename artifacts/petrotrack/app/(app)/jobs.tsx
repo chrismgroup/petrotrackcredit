@@ -24,7 +24,7 @@ const operations: JobItem[] = [
   { id: 'stock-snapshot', label: 'Stock snapshot', description: 'Compare book stock, tank dips and variance', icon: 'analytics-outline', route: SCREEN_ROUTES.stockSnapshot, accent: '#0F6E56' },
   { id: 'maint', label: 'Maintenance', description: 'Log and follow up on station issues', icon: 'construct-outline', route: SCREEN_ROUTES.maint, accent: '#B45309' },
   { id: 'dips', label: 'Tank dipping approvals', description: 'Review physical tank readings and approvals', icon: 'water-outline', route: SCREEN_ROUTES.ops, accent: '#28698B' },
-  { id: 'receiving', label: 'Products receiving', description: 'Track deliveries, costs and variances', icon: 'truck-outline', route: SCREEN_ROUTES.recv, accent: '#7C3AED' },
+  { id: 'receiving', label: 'Products receiving', description: 'Track deliveries, costs and variances', icon: 'car-outline', route: SCREEN_ROUTES.recv, accent: '#7C3AED' },
   { id: 'inventory', label: 'Product inventory', description: 'View live stock by dip reading and branch balances', icon: 'layers-outline', route: SCREEN_ROUTES.inventory, accent: '#0F6E56' },
 ];
 

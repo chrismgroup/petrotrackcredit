@@ -18,7 +18,11 @@ import {
   validatePriceProposal,
   type PriceValidationResult,
 } from '@/lib/report-helpers';
-import type { AssetInput, CompanyAsset } from '@/lib/asset-depreciation';
+import {
+  mergeCompanyAssetSnapshots,
+  type AssetInput,
+  type CompanyAsset,
+} from '@/lib/asset-depreciation';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
@@ -1316,7 +1320,7 @@ function normaliseFinancialEntry(value: unknown): FinancialEntry {
 interface AppContextType {
   companyInfo: CompanyInfo; updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
   role: Role | null; userName: string; branchId: string | null; staffId: number | null;
-  isServerAuthenticated: boolean;
+  isServerAuthenticated: boolean; isHydrated: boolean;
   navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
   login: (role: Role, name: string, staffId?: number, branchId?: string) => Promise<boolean>; logout: () => Promise<void>;
   updateMgrPerms: (branchId: string, perms: Partial<MgrPermissions>) => void;
@@ -1644,25 +1648,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       loadedResolveRef.current?.();
       loadedResolveRef.current = null;
     };
-    AsyncStorage.multiGet([...KEYS]).then(pairs => {
+    AsyncStorage.multiGet([...KEYS]).then(async pairs => {
       const s: Record<string, any> = {};
       for (const [k, v] of pairs) if (v) s[k] = JSON.parse(v);
       if (s.auth) {
         const { r, n, sid, bid } = s.auth;
         // Clear legacy auto-admin session (solomon.okon) — require explicit login
         if (n === 'Solomon Okon' && !sid) {
-          AsyncStorage.removeItem('auth');
+          await AsyncStorage.removeItem('auth');
         } else {
           // Only restore session if a server-issued JWT token is also present
-          AsyncStorage.getItem('pt_auth_token').then(token => {
-            if (token) {
-              setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null);
-              setIsServerAuthenticated(true);
-            } else {
-              // No token means no valid server session; discard the stale auth record
-              AsyncStorage.removeItem('auth');
-            }
-          });
+          const token = await AsyncStorage.getItem('pt_auth_token');
+          if (token) {
+            setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null);
+            setIsServerAuthenticated(true);
+          } else {
+            // No token means no valid server session; discard the stale auth record
+            await AsyncStorage.removeItem('auth');
+          }
         }
       }
        if (s.companyInfo)       setCompanyInfo(s.companyInfo);
@@ -1919,7 +1922,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
       if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
-      if (!p.has('companyAssets')) setCompanyAssets(safeArray<CompanyAsset>(s.companyAssets));
+      if (!p.has('companyAssets') && Array.isArray(s.companyAssets)) {
+        setCompanyAssets(prev => mergeCompanyAssetSnapshots(
+          s.companyAssets as CompanyAsset[],
+          prev,
+          Array.isArray(s.companyAssetDeletedIds)
+            ? s.companyAssetDeletedIds.filter((id): id is string => typeof id === 'string')
+            : [],
+        ));
+      }
        if (!p.has('startupStocks'))       setStartupStocks(safeArray<StartupStock>(s.startupStocks));
        if (!p.has('stockLogs'))           setStockLogs(safeArray<StockLogEntry>(s.stockLogs));
       // Lift the startup write-gate ONLY on success: server state is now applied, safe to accept user writes.
@@ -2359,6 +2370,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
    useEffect(() => {
      if (loaded && stateSyncReadyTick === 1) syncSlice('dips', dips);
    }, [dips, loaded, stateSyncReadyTick]);
+  // Preserve and flush assets registered locally before authenticated startup
+  // sync. The server accepts only IDs it has never seen, so this cannot alter
+  // or delete an existing canonical asset.
+  useEffect(() => {
+    if (loaded && stateSyncReadyTick === 1) syncSlice('companyAssets', companyAssets);
+  }, [companyAssets, loaded, stateSyncReadyTick]);
 
   /* ── Version-check poll: 3 s lightweight ping → full sync only when data changed ── */
   // /api/version returns a ~50-byte timestamp. syncFromServer() only fires when it changes,
@@ -4445,30 +4462,71 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addCompanyAsset = useCallback((asset: AssetInput) => {
     if (!canManageCompanyAssets) return false;
     const timestamp = nowTs();
-    setCompanyAssets(prev => [...prev, {
+    const created: CompanyAsset = {
       ...asset,
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       createdBy: userName,
       createdAt: timestamp,
       updatedBy: userName,
       updatedAt: timestamp,
-    }]);
+    };
+    setCompanyAssets(prev => [...prev, created]);
+    void stateApi.upsertCompanyAsset(created, null).then(async result => {
+      if (result?.asset) {
+        setCompanyAssets(prev => prev.map(item =>
+          item.id === created.id && item.updatedAt === created.updatedAt ? result.asset : item,
+        ));
+      } else {
+        const canonical = await stateApi.get<CompanyAsset[]>('companyAssets');
+        if (canonical) {
+          setCompanyAssets(prev => prev.some(item =>
+            item.id === created.id && item.updatedAt !== created.updatedAt,
+          ) ? prev : canonical);
+        }
+      }
+    });
     return true;
   }, [canManageCompanyAssets, userName]);
 
   const updateCompanyAsset = useCallback((id: string, updates: AssetInput) => {
     if (!canManageCompanyAssets) return false;
-    setCompanyAssets(prev => prev.map(asset => asset.id === id
-      ? { ...asset, ...updates, updatedBy: userName, updatedAt: nowTs() }
-      : asset));
+    const previous = companyAssets.find(asset => asset.id === id);
+    if (!previous) return false;
+    const updated = { ...previous, ...updates, updatedBy: userName, updatedAt: nowTs() };
+    setCompanyAssets(prev => prev.map(asset => asset.id === id ? updated : asset));
+    void stateApi.upsertCompanyAsset(updated, previous.revision ?? 0).then(async result => {
+      if (result?.asset) {
+        setCompanyAssets(prev => prev.map(item =>
+          item.id === id && item.updatedAt === updated.updatedAt ? result.asset : item,
+        ));
+      } else {
+        const canonical = await stateApi.get<CompanyAsset[]>('companyAssets');
+        if (canonical) {
+          setCompanyAssets(prev => prev.some(item =>
+            item.id === id && item.updatedAt !== updated.updatedAt,
+          ) ? prev : canonical);
+        }
+      }
+    });
     return true;
-  }, [canManageCompanyAssets, userName]);
+  }, [canManageCompanyAssets, companyAssets, userName]);
 
   const deleteCompanyAsset = useCallback((id: string) => {
     if (!canManageCompanyAssets) return false;
+    // Full-array state snapshots intentionally cannot imply deletion because
+    // an older app version may send an incomplete or empty asset register.
+    // Only this explicit authenticated request may remove the server record.
+    const removed = companyAssets.find(asset => asset.id === id);
+    void stateApi.deleteCompanyAsset(id).then(result => {
+      if (result?.assets) {
+        setCompanyAssets(result.assets as CompanyAsset[]);
+      } else if (removed) {
+        setCompanyAssets(prev => prev.some(asset => asset.id === id) ? prev : [...prev, removed]);
+      }
+    });
     setCompanyAssets(prev => prev.filter(asset => asset.id !== id));
     return true;
-  }, [canManageCompanyAssets]);
+  }, [canManageCompanyAssets, companyAssets]);
 
   // General Library is available to every signed-in user; sensitive sections
   // are gated within the My Folder dashboard itself.
@@ -4490,7 +4548,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       companyInfo, updateCompanyInfo,
-      role, userName, branchId, staffId, isServerAuthenticated, navItems, mgrPerms,
+      role, userName, branchId, staffId, isServerAuthenticated, isHydrated: loaded, navItems, mgrPerms,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
        maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts, callLog,
