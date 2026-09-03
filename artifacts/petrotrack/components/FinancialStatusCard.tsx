@@ -19,6 +19,7 @@ import {
 } from '@/context/AppContext';
 import { computePumpReportCOGS, getLastKnownCostPrice } from '@/lib/report-helpers';
 import { monthlyDepreciationTotal } from '@/lib/asset-depreciation';
+import { calculateNetProfit } from '@/lib/net-profit';
 import { useColors } from '@/hooks/useColors';
 
 const PROD_COLOR: Record<string, string> = {
@@ -59,6 +60,8 @@ function EditModal({
   const [goodsOnTransit, setGoodsOnTransit]   = useState(String(entry.goodsOnTransit));
   const [cashInHand, setCashInHand]           = useState(String(entry.cashInHand));
   const [capitalInjection, setCapitalInjection] = useState(String(entry.capitalInjection ?? 0));
+  const [bankCharges, setBankCharges]         = useState(String(entry.bankCharges ?? 0));
+  const [loanInterest, setLoanInterest]       = useState(String(entry.loanInterest ?? 0));
   const [liabilities, setLiabilities]        = useState(String(entry.liabilities));
   const [startupCapital, setStartupCapital]   = useState(String(entry.startupCapital ?? 0));
   const [loans, setLoans]                     = useState<BankLoan[]>(entry.bankLoans.length ? entry.bankLoans : [{ bank: '', amount: 0 }]);
@@ -76,6 +79,8 @@ function EditModal({
       cashInBank: n(cashInBank), posValue: n(posValue),
       goodsOnTransit: n(goodsOnTransit), cashInHand: n(cashInHand),
       capitalInjection: Math.max(0, n(capitalInjection)),
+      bankCharges: Math.max(0, n(bankCharges)),
+      loanInterest: Math.max(0, n(loanInterest)),
       bankLoans: loans.filter(l => l.bank.trim()),
       liabilities: n(liabilities),
       ...(canSeedStartupCapital ? {
@@ -117,6 +122,11 @@ function EditModal({
           {field('Cost of Goods on Transit', goodsOnTransit, setGoodsOnTransit)}
           {field('Cash in Hand', cashInHand, setCashInHand)}
           {field('Capital Injected as Loan', capitalInjection, setCapitalInjection)}
+          {field('Bank Charges (this month)', bankCharges, setBankCharges)}
+          {field('Interest Paid on Loans (this month)', loanInterest, setLoanInterest)}
+          <Text style={[fStyles.editHint, { color: colors.textMuted }]}>
+            These accountant-entered costs are deducted from profit before CITA.
+          </Text>
           <Text style={[fStyles.editHint, { color: colors.textMuted }]}>
             This is shown as a funding source in the Operating Capital Waterfall and does not affect monthly profit.
           </Text>
@@ -253,14 +263,21 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const monthExpenses = expenses
     .filter(e => e.status === 'approved' && inCurrentMonth(e.dt) && inFinancialScope(e.branchId))
     .reduce((s, e) => s + e.amt, 0);
+  const bankCharges = Math.max(0, Number(financialEntry.bankCharges) || 0);
+  const loanInterest = Math.max(0, Number(financialEntry.loanInterest) || 0);
   const citaRate = parseFloat(companyInfo.citaRate || '30') / 100;
   const monthlyOperatingProfit = monthRevenue - monthCOGS - monthExpenses;
   const monthDepreciation = monthlyDepreciationTotal(companyAssets, currentMonthKey, scopedBranchId);
-  const profitBeforeTax = monthlyOperatingProfit - monthDepreciation;
-  const monthCita = profitBeforeTax > 0
-    ? Math.round(profitBeforeTax * citaRate)
-    : 0;
-  const netProfit = profitBeforeTax - monthCita;
+  const {
+    citaProvision: monthCita,
+    netProfit,
+  } = calculateNetProfit({
+    operatingProfit: monthlyOperatingProfit,
+    depreciation: monthDepreciation,
+    bankCharges,
+    loanInterest,
+    citaRate,
+  });
 
   /* ── previous month's net profit for the operating-capital waterfall ── */
   const previousMonthAnchor = new Date(`${currentMonthRange.from}T12:00:00`);
@@ -296,11 +313,13 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const previousMonthOperatingProfit = previousMonthRevenue - previousMonthCOGS - previousMonthExpenses;
   const previousMonthKey = previousMonthRange.from.slice(0, 7);
   const previousMonthDepreciation = monthlyDepreciationTotal(companyAssets, previousMonthKey, scopedBranchId);
-  const previousMonthProfitBeforeTax = previousMonthOperatingProfit - previousMonthDepreciation;
-  const previousMonthCita = previousMonthProfitBeforeTax > 0
-    ? Math.round(previousMonthProfitBeforeTax * citaRate)
-    : 0;
-  const previousMonthNetProfit = previousMonthProfitBeforeTax - previousMonthCita;
+  const { netProfit: previousMonthNetProfit } = calculateNetProfit({
+    operatingProfit: previousMonthOperatingProfit,
+    depreciation: previousMonthDepreciation,
+    bankCharges,
+    loanInterest,
+    citaRate,
+  });
 
   /* ── operating capital formula ── */
   const fe = financialEntry;
@@ -479,6 +498,8 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
             <Row label="− Monthly Cost of Goods" value={fmt(monthCOGS)} color="#791F1F" />
             <Row label="− Monthly Expenses" value={fmt(monthExpenses)} color="#791F1F" />
             <Row label="− Monthly Asset Depreciation" value={fmt(monthDepreciation)} color="#791F1F" />
+            <Row label="− Bank Charges" value={fmt(bankCharges)} color="#791F1F" />
+            <Row label="− Interest Paid on Loans" value={fmt(loanInterest)} color="#791F1F" />
             <Row label={`− CITA (${(citaRate * 100).toFixed(0)}%)`} value={fmt(monthCita)} color="#BA7517" />
             <Row label="= Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? '#27500A' : '#791F1F'} bold />
           </View>

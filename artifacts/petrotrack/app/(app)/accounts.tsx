@@ -15,6 +15,8 @@ import {
   useApp,
 } from '@/context/AppContext';
 import { computePumpReportCOGS } from '@/lib/report-helpers';
+import { monthlyDepreciationTotal } from '@/lib/asset-depreciation';
+import { calculateNetProfit } from '@/lib/net-profit';
 import { useColors } from '@/hooks/useColors';
 
 function localDateKey(date: Date): string {
@@ -34,7 +36,10 @@ function formatBusinessDate(value: string): string {
 }
 
 export default function AccountsScreen() {
-  const { role, branchId, prices, branches, expenses, companyInfo, pumpDailyReports, deliveries } = useApp();
+  const {
+    role, branchId, prices, branches, expenses, companyInfo, pumpDailyReports, deliveries,
+    financialEntry, companyAssets,
+  } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
 
@@ -122,6 +127,9 @@ export default function AccountsScreen() {
   const totalCOGS     = computePumpReportCOGS(monthlyReports, scopedDeliveries);
   const grossProfit   = totalRevenue - totalCOGS;
   const operatingProfit = grossProfit - totalExpenses;
+  const bankCharges = Math.max(0, Number(financialEntry.bankCharges) || 0);
+  const loanInterest = Math.max(0, Number(financialEntry.loanInterest) || 0);
+  const depreciation = monthlyDepreciationTotal(companyAssets, currentMonthRange.from.slice(0, 7), scopedBranchId);
 
   // Tax computations
   const vatRate    = parseFloat(companyInfo.vatRate  || '7.5') / 100;
@@ -129,8 +137,13 @@ export default function AccountsScreen() {
   const payeAmt    = 80_000; // fixed PAYE provision placeholder
 
   const vatProvision  = Math.round(totalRevenue * vatRate);
-  const citaProvision = operatingProfit > 0 ? Math.round(operatingProfit * citaRate) : 0;
-  const netProfit     = operatingProfit - citaProvision;
+  const { profitBeforeTax, citaProvision, netProfit } = calculateNetProfit({
+    operatingProfit,
+    depreciation,
+    bankCharges,
+    loanInterest,
+    citaRate,
+  });
 
   const taxItems = [
     {
@@ -203,6 +216,10 @@ export default function AccountsScreen() {
             { label: 'Gross Profit',       value: grossProfit,     color: colors.text,     sign: '=' },
             { label: 'Total Expenses',     value: totalExpenses,   color: colors.error,    sign: '−' },
             { label: 'Operating Profit',   value: operatingProfit, color: colors.text,     sign: '=' },
+            { label: 'Asset Depreciation', value: depreciation,     color: colors.error,   sign: '−' },
+            { label: 'Bank Charges',       value: bankCharges,       color: colors.error,   sign: '−' },
+            { label: 'Interest Paid on Loans', value: loanInterest,  color: colors.error,   sign: '−' },
+            { label: 'Profit Before CITA', value: profitBeforeTax,  color: colors.text,     sign: '=' },
             { label: `CITA @ ${(citaRate * 100).toFixed(0)}%`, value: citaProvision, color: colors.amber, sign: '−' },
             { label: 'Net Profit',         value: netProfit,       color: roleColor,       sign: '=' },
           ].map((row, i) => (
