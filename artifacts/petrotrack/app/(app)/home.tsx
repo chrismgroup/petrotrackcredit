@@ -904,7 +904,7 @@ export default function HomeScreen() {
         </Section>
 
         {canViewOutstandingActionItems ? (
-          <Section label="OUTSTANDING ACTION ITEMS" route={SCREEN_ROUTES.tasks} colors={colors}>
+          <Section label="OUTSTANDING ACTION ITEMS" route={SCREEN_ROUTES.actionItems} colors={colors}>
             <View style={[s.actionItemsIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
               <Ionicons name="flash-outline" size={15} color={colors.info} />
               <Text style={[s.actionItemsIntroText, { color: colors.textMuted }]}>
