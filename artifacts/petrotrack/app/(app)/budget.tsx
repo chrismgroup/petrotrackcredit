@@ -36,6 +36,28 @@ const WARN_BG     = '#FAEEDA';
 type LineItem = { cat: string; amt: string };
 function blankItem(): LineItem { return { cat: '', amt: '' }; }
 
+const ARCHIVE_THRESHOLDS = [1, 3, 6, 9, 12] as const;
+const ARCHIVABLE_STATUSES = new Set(['draft', 'fully_approved', 'rejected']);
+
+function budgetPeriodStart(budget: Budget): Date {
+  const appliesOn = budget.appliesOn?.slice(0, 10);
+  if (appliesOn && !Number.isNaN(new Date(`${appliesOn}T00:00:00`).getTime())) {
+    return new Date(`${appliesOn}T00:00:00`);
+  }
+  return new Date(budget.year, budget.month - 1, 1);
+}
+
+function budgetAgeInMonths(budget: Budget, now = new Date()): number {
+  const period = budgetPeriodStart(budget);
+  return (now.getFullYear() - period.getFullYear()) * 12
+    + now.getMonth() - period.getMonth();
+}
+
+function compareBudgetsNewestFirst(a: Budget, b: Budget): number {
+  const dateDiff = budgetPeriodStart(b).getTime() - budgetPeriodStart(a).getTime();
+  return dateDiff || b.id - a.id;
+}
+
 type ItemEditorProps = { items: LineItem[]; setItems: React.Dispatch<React.SetStateAction<LineItem[]>>; roleColor: string };
 function ItemEditor({ items, setItems, roleColor }: ItemEditorProps) {
   const colors = useColors();
@@ -134,7 +156,7 @@ function PerfBar({ pct, isOver, isWarning }: { pct: number; isOver: boolean; isW
 export default function BudgetScreen() {
   const {
     role, userName, branchId, budgets, expenses, branches,
-    addBudget, updateBudget, deleteBudget, submitBudgetToAcc,
+    addBudget, updateBudget, deleteBudget, archiveBudgets, submitBudgetToAcc,
     forwardBudget, approveBudget, rejectBudget,
   } = useApp();
 
@@ -160,32 +182,41 @@ export default function BudgetScreen() {
   const [formDate, setFormDate]     = useState('');
   const [formItems, setFormItems]   = useState<LineItem[]>([blankItem()]);
   const [filterDate, setFilterDate] = useState('');
+  const [archiveThreshold, setArchiveThreshold] = useState<number>(3);
 
   /* Branch name lookup */
   const branchMap: Record<string, string> = {};
   for (const br of branches) branchMap[br.id] = br.name;
 
-  const pendingForAcc = budgets.filter(b => b.status === 'submitted');
-  const pendingForMD  = budgets.filter(b => b.status === 'acc_forwarded');
+  const activeBudgets = budgets.filter(b => !b.archivedAt);
+  const archivedBudgets = budgets.filter(b => !!b.archivedAt);
+  const pendingForAcc = activeBudgets.filter(b => b.status === 'submitted');
+  const pendingForMD  = activeBudgets.filter(b => b.status === 'acc_forwarded');
   // mgr: only budgets they personally submitted (not all mgr-role budgets across branches)
-  const myBudgets     = budgets.filter(b =>
+  const myBudgets     = activeBudgets.filter(b =>
     role === 'mgr' ? b.byName === userName : (b.by === role || b.byName === userName)
   );
 
   const displayListBase: Budget[] =
-    isCeo || role === 'csm' ? budgets
-    : isMD  ? (tab === 'pending' ? pendingForMD  : budgets)
-    : isAcc ? (tab === 'pending' ? pendingForAcc : budgets)
+    isCeo || role === 'csm' ? activeBudgets
+    : isMD  ? (tab === 'pending' ? pendingForMD  : activeBudgets)
+    : isAcc ? (tab === 'pending' ? pendingForAcc : tab === 'archived' ? archivedBudgets : activeBudgets)
     : myBudgets;
   const displayList = filterDate
-    ? displayListBase.filter(b => (b.appliesOn ?? '').slice(0, 10) === filterDate)
-    : displayListBase;
+    ? displayListBase.filter(b => (b.appliesOn ?? '').slice(0, 10) === filterDate).sort(compareBudgetsNewestFirst)
+    : [...displayListBase].sort(compareBudgetsNewestFirst);
 
   /* Approved budgets summary for MD/ACC overview */
-  const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
+  const approvedBudgets = activeBudgets.filter(b => b.status === 'fully_approved');
   const totalApproved   = approvedBudgets.reduce((s, b) => s + b.total, 0);
   const totalSpentAll   = approvedBudgets.reduce((s, b) => s + calcPerf(b, expenses, branchMap).totalSpent, 0);
-  const showSummary     = (isMD || isAcc || isCeo || role === 'csm') && approvedBudgets.length > 0 && tab !== 'pending';
+  const showSummary     = (isMD || isAcc || isCeo || role === 'csm') && approvedBudgets.length > 0 && tab === 'all';
+
+  const eligibleToArchive = isAcc
+    ? activeBudgets.filter(b =>
+        ARCHIVABLE_STATUSES.has(b.status) && budgetAgeInMonths(b) > archiveThreshold
+      )
+    : [];
 
   function openCreate() {
     setEditTarget(null);
@@ -251,6 +282,31 @@ export default function BudgetScreen() {
     ]);
   }
 
+  function handleArchiveOldBudgets() {
+    if (!isAcc) return;
+    if (eligibleToArchive.length === 0) {
+      Alert.alert(
+        'Nothing to archive',
+        `There are no completed or rejected budgets older than ${archiveThreshold} month${archiveThreshold === 1 ? '' : 's'}. Pending budgets stay visible for workflow review.`,
+      );
+      return;
+    }
+    Alert.alert(
+      `Archive ${eligibleToArchive.length} budget${eligibleToArchive.length === 1 ? '' : 's'}?`,
+      `These completed, rejected, or draft budgets are older than ${archiveThreshold} month${archiveThreshold === 1 ? '' : 's'} and will move out of the active list. They will remain available in Archived.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Archive budgets',
+          onPress: () => {
+            archiveBudgets(eligibleToArchive.map(b => b.id));
+            setTab('archived');
+          },
+        },
+      ],
+    );
+  }
+
   function handleSubmitToAcc(b: Budget) {
     Alert.alert('Submit to Accountant?',
       `${b.label} — ${fmt(b.total)}\nOnce submitted you cannot edit or delete until the accountant acts.`,
@@ -271,14 +327,15 @@ export default function BudgetScreen() {
   }
 
   const mgrCanEdit   = (b: Budget) =>
-    isMgr && (b.status === 'draft' || b.status === 'rejected') && (b.by === role || b.byName === userName);
-  const accCanEdit   = (b: Budget) => isAcc && (b.status === 'submitted' || b.status === 'rejected');
-  const accCanDelete = (b: Budget) => isAcc && (b.status === 'submitted' || b.status === 'rejected');
+    isMgr && !b.archivedAt && (b.status === 'draft' || b.status === 'rejected') && (b.by === role || b.byName === userName);
+  const accCanEdit   = (b: Budget) => isAcc && !b.archivedAt && (b.status === 'submitted' || b.status === 'rejected');
+  const accCanDelete = (b: Budget) => isAcc && !b.archivedAt && (b.status === 'submitted' || b.status === 'rejected');
 
   const TABS_MGR = [{ key: 'mine', label: 'My Budgets' }];
   const TABS_ACC = [
     { key: 'pending', label: 'For Review', count: pendingForAcc.length },
     { key: 'all',     label: 'All Budgets' },
+    { key: 'archived', label: 'Archived', count: archivedBudgets.length },
   ];
   const TABS_MD  = [
     { key: 'pending', label: 'For Approval', count: pendingForMD.length },
@@ -326,6 +383,52 @@ export default function BudgetScreen() {
               ) : null}
             </TouchableOpacity>
           ))}
+        </View>
+      ) : null}
+
+      {isAcc ? (
+        <View style={[styles.archivePanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.archivePanelHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.archiveTitle, { color: colors.text }]}>Tidy up old budgets</Text>
+              <Text style={[styles.archiveHelp, { color: colors.textMuted }]}>
+                Archive completed, rejected, or draft budgets older than the selected age. Pending reviews are never archived.
+              </Text>
+            </View>
+            <Ionicons name="archive-outline" size={20} color={roleColor} />
+          </View>
+          <View style={styles.archiveOptions}>
+            {ARCHIVE_THRESHOLDS.map(months => (
+              <TouchableOpacity
+                key={months}
+                onPress={() => setArchiveThreshold(months)}
+                style={[
+                  styles.archiveOption,
+                  {
+                    backgroundColor: archiveThreshold === months ? roleColor : colors.background,
+                    borderColor: archiveThreshold === months ? roleColor : colors.border,
+                  },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Archive budgets older than ${months} month${months === 1 ? '' : 's'}`}
+              >
+                <Text style={[styles.archiveOptionText, { color: archiveThreshold === months ? '#fff' : colors.textMuted }]}>
+                  {months} mo
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              onPress={handleArchiveOldBudgets}
+              style={[styles.archiveAction, { backgroundColor: roleColor }]}
+              accessibilityRole="button"
+              accessibilityLabel={`Archive eligible budgets older than ${archiveThreshold} month${archiveThreshold === 1 ? '' : 's'}`}
+            >
+              <Text style={styles.archiveActionText}>Archive</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.archiveCount, { color: colors.textMuted }]}>
+            {eligibleToArchive.length} eligible budget{eligibleToArchive.length === 1 ? '' : 's'} at this threshold
+          </Text>
         </View>
       ) : null}
 
@@ -388,6 +491,7 @@ export default function BudgetScreen() {
           const canAccEdit = accCanEdit(b);
           const locked    = b.status === 'fully_approved';
           const perf      = locked ? calcPerf(b, expenses, branchMap) : null;
+           const archived = !!b.archivedAt;
 
           return (
             <TouchableOpacity key={b.id} onPress={() => setSelected(b)} activeOpacity={0.85}
@@ -405,8 +509,8 @@ export default function BudgetScreen() {
                   <Text style={[styles.cardTitle, { color: colors.text }]}>{b.label}{' Budget'}</Text>
                   <Text style={[styles.cardSub, { color: colors.textMuted }]}>{'By '}{b.byName}{' · '}{b.items.length}{' items'}</Text>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
-                  <Text style={[styles.statusText, { color: st.color }]}>{st.label}</Text>
+                 <View style={[styles.statusBadge, { backgroundColor: archived ? '#F0F0F0' : st.bg }]}>
+                   <Text style={[styles.statusText, { color: archived ? '#555' : st.color }]}>{archived ? 'Archived' : st.label}</Text>
                 </View>
               </View>
 
@@ -816,6 +920,16 @@ const styles = StyleSheet.create({
   badge:             { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8 },
   badgeText:         { color: '#fff', fontSize: 11, fontWeight: '700' },
   headerBtn:         { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  archivePanel:      { borderWidth: 1, borderRadius: 14, padding: 14, margin: 16, marginBottom: 8, gap: 10 },
+  archivePanelHeader:{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  archiveTitle:      { fontSize: 13, fontWeight: '800' },
+  archiveHelp:       { fontSize: 11, lineHeight: 16, marginTop: 3 },
+  archiveOptions:    { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  archiveOption:     { minWidth: 42, alignItems: 'center', paddingHorizontal: 9, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
+  archiveOptionText: { fontSize: 11, fontWeight: '700' },
+  archiveAction:     { paddingHorizontal: 13, paddingVertical: 8, borderRadius: 8, marginLeft: 'auto' },
+  archiveActionText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  archiveCount:      { fontSize: 10 },
 
   /* Summary banner */
   summaryCard:       { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 16, backgroundColor: '#F3FAF0', gap: 8 },

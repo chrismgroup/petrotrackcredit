@@ -97,6 +97,66 @@ function mergeActionItems(existing: unknown, incoming: unknown): JsonRecord[] {
   return Array.from(merged.values());
 }
 
+const BUDGET_STATUS_RANK: Record<string, number> = {
+  draft: 1,
+  submitted: 2,
+  acc_forwarded: 3,
+  rejected: 4,
+  fully_approved: 5,
+};
+
+function budgetActivityMs(budget: JsonRecord): number {
+  const workflow = Array.isArray(budget.workflow)
+    ? budget.workflow.filter(step => step && typeof step === "object" && !Array.isArray(step)) as JsonRecord[]
+    : [];
+  const timestamps = [
+    budget.submittedAt,
+    budget.archivedAt,
+    ...workflow.map(step => step.dt),
+  ]
+    .map(value => Date.parse(String(value ?? "")))
+    .filter(value => Number.isFinite(value));
+  return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+}
+
+export function mergeBudgets(existing: unknown, incoming: unknown): JsonRecord[] {
+  const merged = new Map<string, JsonRecord>();
+  const add = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const budget = value as JsonRecord;
+    const id = String(budget.id ?? "");
+    if (!id) return;
+    const current = merged.get(id);
+    if (!current) {
+      merged.set(id, budget);
+      return;
+    }
+
+    // Archiving is additive metadata. A stale device that has not yet received
+    // the archive must never restore the budget to the active list.
+    if (current.archivedAt && !budget.archivedAt) return;
+    if (budget.archivedAt && !current.archivedAt) {
+      merged.set(id, budget);
+      return;
+    }
+
+    const currentRank = BUDGET_STATUS_RANK[String(current.status ?? "")] ?? 0;
+    const candidateRank = BUDGET_STATUS_RANK[String(budget.status ?? "")] ?? 0;
+    const currentActivity = budgetActivityMs(current);
+    const candidateActivity = budgetActivityMs(budget);
+    if (
+      candidateRank > currentRank
+      || (candidateRank === currentRank && candidateActivity >= currentActivity)
+    ) {
+      merged.set(id, budget);
+    }
+  };
+
+  if (Array.isArray(existing)) existing.forEach(add);
+  if (Array.isArray(incoming)) incoming.forEach(add);
+  return Array.from(merged.values());
+}
+
 export { validatePriceHistoryPayload, validatePriceProposalsPayload } from "./price-state-validation";
 
 const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
@@ -1372,6 +1432,44 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       .from(appStateTable)
       .where(eq(appStateTable.key, "dips"));
     data = mergeDips(existingRow?.data, data);
+  }
+
+  if (key === "budgets" && Array.isArray(data)) {
+    const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:budgets'))`);
+      const [existingRow] = await tx
+        .select()
+        .from(appStateTable)
+        .where(eq(appStateTable.key, "budgets"));
+      const current = Array.isArray(existingRow?.data) ? existingRow.data as JsonRecord[] : [];
+      const currentById = new Map(current.map(budget => [String(budget.id ?? ""), budget]));
+      const invalidArchive = (data as unknown[]).some(value => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return true;
+        const candidate = value as JsonRecord;
+        const previous = currentById.get(String(candidate.id ?? ""));
+        const introducesArchive = Boolean(candidate.archivedAt)
+          && candidate.archivedAt !== previous?.archivedAt;
+        if (!introducesArchive) return false;
+        return (
+          (req.auth?.role !== "acc" && req.auth?.role !== "admin")
+          || !["draft", "fully_approved", "rejected"].includes(String(candidate.status ?? ""))
+        );
+      });
+      if (invalidArchive) return { error: "Only accountants may archive completed, rejected, or draft budgets" as const };
+      const merged = mergeBudgets(existingRow?.data, data);
+      await tx.insert(appStateTable).values({ key, data: merged }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: merged, updatedAt: new Date() },
+      });
+      return { budgets: merged };
+    });
+    if ("error" in result) {
+      res.status(403).json({ error: result.error });
+      return;
+    }
+    data = result.budgets;
+    res.json({ ok: true });
+    return;
   }
 
   // Action items are shared workflow records. Merge by stable ID so a stale
