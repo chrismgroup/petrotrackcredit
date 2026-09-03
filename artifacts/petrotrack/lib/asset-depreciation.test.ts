@@ -36,8 +36,8 @@ describe('asset depreciation', () => {
   });
 
   it('supports branch-scoped monthly totals', () => {
-    const otherBranch = { ...asset, id: 'asset-2', branchId: 'branch-b' };
-    expect(monthlyDepreciationTotal([asset, otherBranch], '2026-09')).toBe(40_000);
+    const otherBranch = { ...asset, id: 'asset-2', branchId: 'branch-b', quantity: 2 };
+    expect(monthlyDepreciationTotal([asset, otherBranch], '2026-09')).toBe(60_000);
     expect(monthlyDepreciationTotal([asset, otherBranch], '2026-09', 'branch-a')).toBe(20_000);
   });
 
