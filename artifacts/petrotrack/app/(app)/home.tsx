@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { ActionItemsTable } from '@/components/ActionItemsTable';
 import {
   fmt,
   GLOBAL_OVERVIEW_ROLES,
@@ -32,6 +33,8 @@ import {
   type MyFolderFile,
   type PumpDailyReport,
   type StockProduct,
+  type ActionItem,
+  getActionItemUrgency,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { getDashboardApprovalRoute } from '@/lib/dashboard-approval-routing';
@@ -372,7 +375,7 @@ export default function HomeScreen() {
     pumpDailyReports, userAccounts, messages, notifications,
     approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
-    sales, startupStocks, stockSnapshotConfig, myFolderFiles,
+    sales, startupStocks, stockSnapshotConfig, myFolderFiles, actionItems,
   } = useApp();
 
   const colors = useColors();
@@ -526,6 +529,22 @@ export default function HomeScreen() {
     { shiftReports: pendingPumpReports.length, deliveries: pendingDeliveries.length },
     { shift: SCREEN_ROUTES.shift, receiving: SCREEN_ROUTES.recv, reports: SCREEN_ROUTES.exprpt },
   );
+
+  const canViewOutstandingActionItems = new Set(['ceo', 'md', 'acc', 'csm', 'mgr']).has(role);
+  const outstandingActionItems = useMemo(() => {
+    if (!canViewOutstandingActionItems) return [] as ActionItem[];
+    const urgencyOrder: Record<string, number> = { overdue: 0, 'due-soon': 1, 'on-track': 2 };
+    return actionItems
+      .filter(item =>
+        item.status !== 'closed'
+        && (isGlobalOverview || !scopedBranchId || item.branchId === scopedBranchId),
+      )
+      .sort((a, b) => {
+        const urgencyDiff = urgencyOrder[getActionItemUrgency(a.targetDate)] - urgencyOrder[getActionItemUrgency(b.targetDate)];
+        if (urgencyDiff !== 0) return urgencyDiff;
+        return new Date(`${a.targetDate}T00:00:00`).getTime() - new Date(`${b.targetDate}T00:00:00`).getTime();
+      });
+  }, [actionItems, canViewOutstandingActionItems, isGlobalOverview, scopedBranchId]);
 
   const totalApprovals =
     pendingDips.length + pendingDeliveries.length + pendingExpenses.length +
@@ -870,6 +889,32 @@ export default function HomeScreen() {
           </View>
         </Section>
 
+        {canViewOutstandingActionItems ? (
+          <Section label="OUTSTANDING ACTION ITEMS" route={SCREEN_ROUTES.tasks} colors={colors}>
+            <View style={[s.actionItemsIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
+              <Ionicons name="flash-outline" size={15} color={colors.info} />
+              <Text style={[s.actionItemsIntroText, { color: colors.textMuted }]}>
+                Open follow-ups are sorted by urgency. Red is overdue, yellow is due within two weeks, and green is more than two weeks away.
+              </Text>
+            </View>
+            <ActionItemsTable
+              items={outstandingActionItems.slice(0, 8)}
+              colors={colors}
+              showBranch={isGlobalOverview}
+              emptyText="No outstanding action items"
+              onRowPress={() => router.push(SCREEN_ROUTES.tasks as never)}
+            />
+            {outstandingActionItems.length > 8 ? (
+              <TouchableOpacity onPress={() => router.push(SCREEN_ROUTES.tasks as never)} style={[s.actionItemsSeeAll, { borderColor: colors.border }]} activeOpacity={0.78}>
+                <Text style={[s.actionItemsSeeAllText, { color: colors.primary }]}>
+                  View all {outstandingActionItems.length} outstanding items
+                </Text>
+                <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+              </TouchableOpacity>
+            ) : null}
+          </Section>
+        ) : null}
+
         {/* ── Financial Status ─────────────────────────────────────── */}
         <Section label="FINANCIAL STATUS" route={SCREEN_ROUTES.acct} colors={colors}>
           <RevenueTrendChart
@@ -1162,6 +1207,17 @@ const s = StyleSheet.create({
 
   // card wrapper
   card: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  actionItemsIntro: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginBottom: 8, paddingHorizontal: 11, paddingVertical: 9,
+    borderRadius: 11, borderWidth: 1,
+  },
+  actionItemsIntroText: { flex: 1, fontSize: 10, fontWeight: '600', lineHeight: 15 },
+  actionItemsSeeAll: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: 8, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  actionItemsSeeAllText: { fontSize: 11, fontWeight: '800' },
   // stock snapshot
   snapshotCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
   snapshotIntro: {
