@@ -12,6 +12,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   ActionItem,
   ActionItemStatus,
+  GLOBAL_OVERVIEW_ROLES,
   ROLE_COLORS,
   ROLE_LABELS,
   getActionItemUrgency,
@@ -44,9 +45,9 @@ export default function ActionItemsScreen() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'md'] || colors.primary;
-  const isCorporateAdmin = role === 'admin' || role === 'ceo';
+  const isGlobalOverview = role === 'admin' || (role ? GLOBAL_OVERVIEW_ROLES.has(role) : false);
   const availableBranches = branches.filter(branch =>
-    branch.st === 'Active' && (isCorporateAdmin || !branchId || branch.id === branchId),
+    branch.st === 'Active' && (isGlobalOverview || !branchId || branch.id === branchId),
   );
   const actionPartyAccounts = userAccounts.filter(account =>
     account.status === 'active' && account.role && account.role !== 'admin'
@@ -77,7 +78,7 @@ export default function ActionItemsScreen() {
   });
 
   const visibleItems = actionItems.filter(item => {
-    const userBranchMatches = isCorporateAdmin || !branchId || item.branchId === branchId;
+    const userBranchMatches = isGlobalOverview || !branchId || item.branchId === branchId;
     const selectedBranchMatches = actionBranchFilter === 'all' || item.branchId === actionBranchFilter;
     const archived = item.status === 'closed' || !!item.archivedAt;
     return userBranchMatches && selectedBranchMatches && (actionView === 'archived' ? archived : !archived);
