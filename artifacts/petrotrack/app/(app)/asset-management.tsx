@@ -9,9 +9,9 @@ import { useColors } from '@/hooks/useColors';
 import {
   ASSET_CATEGORIES,
   annualAssetDepreciation,
+  assetQuantity,
   monthlyAssetDepreciation,
   monthlyDepreciationTotal,
-  type AssetCategory,
   type AssetInput,
   type CompanyAsset,
 } from '@/lib/asset-depreciation';
@@ -20,6 +20,7 @@ const EMPTY_FORM: AssetInput = {
   name: '',
   category: 'Vehicles',
   branchId: '',
+  quantity: 1,
   initialCost: 0,
   endOfLifeValue: 0,
   usefulLifeYears: 1,
@@ -55,7 +56,7 @@ export default function AssetManagementScreen() {
     }))
     .filter(group => group.assets.length > 0 || group.branch.st === 'Active'), [branches, companyAssets]);
 
-  const totalCost = companyAssets.reduce((sum, asset) => sum + asset.initialCost, 0);
+  const totalCost = companyAssets.reduce((sum, asset) => sum + (asset.initialCost * assetQuantity(asset)), 0);
   const totalBookDepreciation = monthlyDepreciationTotal(companyAssets, currentMonth);
 
   function openCreate() {
@@ -70,6 +71,7 @@ export default function AssetManagementScreen() {
       name: asset.name,
       category: asset.category,
       branchId: asset.branchId,
+      quantity: assetQuantity(asset),
       initialCost: asset.initialCost,
       endOfLifeValue: asset.endOfLifeValue,
       usefulLifeYears: asset.usefulLifeYears,
@@ -92,7 +94,12 @@ export default function AssetManagementScreen() {
       Alert.alert('Invalid useful life', 'Useful life must be greater than zero years.');
       return;
     }
-    const payload = { ...form, name: form.name.trim(), notes: form.notes?.trim() };
+    const quantity = form.quantity ?? 1;
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      Alert.alert('Invalid asset number', 'Number of assets must be a whole number greater than zero.');
+      return;
+    }
+    const payload = { ...form, quantity, name: form.name.trim(), notes: form.notes?.trim() };
     const saved = editingId ? updateCompanyAsset(editingId, payload) : addCompanyAsset(payload);
     if (!saved) {
       Alert.alert('Not permitted', 'Only Admin, CEO, Managing Director and Accountant can change the asset register.');
@@ -119,7 +126,7 @@ export default function AssetManagementScreen() {
         <View style={[styles.hero, { backgroundColor: colors.primary }]}>
           <View>
             <Text style={styles.heroEyebrow}>COMPANY ASSET REGISTER</Text>
-            <Text style={styles.heroTitle}>{companyAssets.length} assets across {branchGroups.length} branches</Text>
+            <Text style={styles.heroTitle}>{companyAssets.reduce((sum, asset) => sum + assetQuantity(asset), 0)} assets across {branchGroups.length} branches</Text>
           </View>
           <View style={styles.heroMetrics}>
             <View style={styles.heroMetric}>
@@ -181,13 +188,41 @@ export default function AssetManagementScreen() {
               ))}
             </View>
 
+            <View>
+              <View style={styles.flex}>
+                <Text style={[styles.label, { color: colors.textMuted }]}>Number of assets</Text>
+                <View style={styles.quantityControl}>
+                  <TouchableOpacity
+                    onPress={() => setForm(prev => ({ ...prev, quantity: Math.max(1, (prev.quantity ?? 1) - 1) }))}
+                    style={[styles.quantityButton, { borderColor: colors.border }]}
+                    accessibilityLabel="Decrease number of assets"
+                  >
+                    <Ionicons name="remove" size={16} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TextInput
+                    value={String(form.quantity ?? 1)}
+                    onChangeText={value => setForm(prev => ({ ...prev, quantity: Math.max(0, Math.floor(numeric(value))) }))}
+                    keyboardType="number-pad"
+                    style={[styles.quantityInput, { color: colors.text, borderColor: colors.border }]}
+                    accessibilityLabel="Number of assets"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setForm(prev => ({ ...prev, quantity: (prev.quantity ?? 1) + 1 }))}
+                    style={[styles.quantityButton, { borderColor: colors.border }]}
+                    accessibilityLabel="Increase number of assets"
+                  >
+                    <Ionicons name="add" size={16} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
             <View style={styles.fieldRow}>
               <View style={styles.flex}>
                 <Text style={[styles.label, { color: colors.textMuted }]}>Initial cost</Text>
-                <TextInput value={String(form.initialCost || '')} onChangeText={value => setForm(prev => ({ ...prev, initialCost: numeric(value) }))} keyboardType="numeric" style={[styles.input, { color: colors.text, borderColor: colors.border }]} placeholder="0" placeholderTextColor={colors.textSubtle} />
+                <TextInput value={String(form.initialCost || '')} onChangeText={value => setForm(prev => ({ ...prev, initialCost: numeric(value) }))} keyboardType="numeric" style={[styles.input, { color: colors.text, borderColor: colors.border }]} placeholder="Per unit" placeholderTextColor={colors.textSubtle} />
               </View>
               <View style={styles.flex}>
-                <Text style={[styles.label, { color: colors.textMuted }]}>End-of-life value</Text>
+                <Text style={[styles.label, { color: colors.textMuted }]}>End value / unit</Text>
                 <TextInput value={String(form.endOfLifeValue || '')} onChangeText={value => setForm(prev => ({ ...prev, endOfLifeValue: numeric(value) }))} keyboardType="numeric" style={[styles.input, { color: colors.text, borderColor: colors.border }]} placeholder="0" placeholderTextColor={colors.textSubtle} />
               </View>
             </View>
@@ -204,8 +239,8 @@ export default function AssetManagementScreen() {
             <Text style={[styles.label, { color: colors.textMuted }]}>Notes</Text>
             <TextInput value={form.notes} onChangeText={notes => setForm(prev => ({ ...prev, notes }))} multiline style={[styles.input, styles.notes, { color: colors.text, borderColor: colors.border }]} placeholder="Optional asset details" placeholderTextColor={colors.textSubtle} />
             <View style={[styles.preview, { backgroundColor: colors.card }]}>
-              <Text style={[styles.previewText, { color: colors.textMuted }]}>Annual depreciation: {money(annualAssetDepreciation(form))}</Text>
-              <Text style={[styles.previewValue, { color: colors.primary }]}>Monthly: {money(monthlyAssetDepreciation(form))}</Text>
+              <Text style={[styles.previewText, { color: colors.textMuted }]}>Annual depreciation per unit: {money(annualAssetDepreciation(form))}</Text>
+              <Text style={[styles.previewValue, { color: colors.primary }]}>Monthly total ({form.quantity ?? 1} units): {money(monthlyAssetDepreciation(form) * (form.quantity ?? 1))}</Text>
             </View>
             <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.primary }]} onPress={save} testID="save-asset">
               <Ionicons name="save-outline" size={18} color="#fff" />
@@ -217,6 +252,7 @@ export default function AssetManagementScreen() {
         {branchGroups.map(({ branch, assets }) => {
           const expanded = expandedBranches[branch.id] !== false;
           const branchMonthly = monthlyDepreciationTotal(assets, currentMonth);
+          const branchQuantity = assets.reduce((sum, asset) => sum + assetQuantity(asset), 0);
           const grouped = ASSET_CATEGORIES
             .map(category => ({ category, assets: assets.filter(asset => asset.category === category) }))
             .filter(group => group.assets.length > 0);
@@ -226,7 +262,7 @@ export default function AssetManagementScreen() {
                 <View style={[styles.branchIcon, { backgroundColor: colors.primary + '16' }]}><Ionicons name="business-outline" size={19} color={colors.primary} /></View>
                 <View style={styles.flex}>
                   <Text style={[styles.branchName, { color: colors.text }]}>{branch.name}</Text>
-                  <Text style={[styles.branchMeta, { color: colors.textMuted }]}>{assets.length} assets · {money(branchMonthly)}/month</Text>
+                  <Text style={[styles.branchMeta, { color: colors.textMuted }]}>{branchQuantity} assets · {money(branchMonthly)}/month</Text>
                 </View>
                 <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
               </TouchableOpacity>
@@ -238,9 +274,9 @@ export default function AssetManagementScreen() {
                       {group.assets.map(asset => (
                         <View key={asset.id} style={[styles.assetRow, { borderTopColor: colors.border }]}>
                           <View style={styles.flex}>
-                            <Text style={[styles.assetName, { color: colors.text }]}>{asset.name}</Text>
-                            <Text style={[styles.assetMeta, { color: colors.textMuted }]}>Cost {money(asset.initialCost)} · End value {money(asset.endOfLifeValue)} · {asset.usefulLifeYears} years</Text>
-                            <Text style={[styles.assetDepreciation, { color: colors.primary }]}>{money(monthlyAssetDepreciation(asset))}/month · {money(annualAssetDepreciation(asset))}/year</Text>
+                            <Text style={[styles.assetName, { color: colors.text }]}>{asset.name} <Text style={[styles.quantityBadge, { color: colors.primary }]}>×{assetQuantity(asset)}</Text></Text>
+                            <Text style={[styles.assetMeta, { color: colors.textMuted }]}>Per unit: {money(asset.initialCost)} · End value {money(asset.endOfLifeValue)} · {asset.usefulLifeYears} years</Text>
+                            <Text style={[styles.assetDepreciation, { color: colors.primary }]}>{money(monthlyAssetDepreciation(asset) * assetQuantity(asset))}/month total · {money(annualAssetDepreciation(asset) * assetQuantity(asset))}/year total</Text>
                           </View>
                           {canManage && (
                             <View style={styles.actions}>
@@ -287,6 +323,9 @@ const styles = StyleSheet.create({
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7 },
   chipText: { fontSize: 11, fontWeight: '700' },
   fieldRow: { flexDirection: 'row', gap: 10 },
+  quantityControl: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  quantityButton: { width: 40, height: 46, borderWidth: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  quantityInput: { flex: 1, minWidth: 45, height: 46, borderWidth: 1, borderRadius: 11, textAlign: 'center', fontSize: 14, fontWeight: '800' },
   preview: { padding: 12, borderRadius: 11, gap: 3 },
   previewText: { fontSize: 11 },
   previewValue: { fontSize: 14, fontWeight: '800' },
@@ -299,6 +338,7 @@ const styles = StyleSheet.create({
   categoryTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: 3 },
   assetRow: { flexDirection: 'row', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 11 },
   assetName: { fontSize: 13, fontWeight: '800' },
+  quantityBadge: { fontSize: 12, fontWeight: '900' },
   assetMeta: { fontSize: 10, lineHeight: 15, marginTop: 3 },
   assetDepreciation: { fontSize: 11, fontWeight: '700', marginTop: 4 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 4 },

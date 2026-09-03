@@ -18,6 +18,8 @@ export interface CompanyAsset {
   name: string;
   category: AssetCategory;
   branchId: string;
+  /** Number of identical units represented by this register row. Legacy rows default to one. */
+  quantity?: number;
   initialCost: number;
   endOfLifeValue: number;
   usefulLifeYears: number;
@@ -40,6 +42,10 @@ export function monthlyAssetDepreciation(asset: Pick<CompanyAsset, 'initialCost'
   return annualAssetDepreciation(asset) / 12;
 }
 
+export function assetQuantity(asset: Pick<CompanyAsset, 'quantity'>): number {
+  return Number.isInteger(asset.quantity) && (asset.quantity ?? 0) > 0 ? asset.quantity ?? 1 : 1;
+}
+
 export function isAssetDepreciatingInMonth(
   asset: Pick<CompanyAsset, 'acquiredOn' | 'usefulLifeYears'>,
   monthKey: string,
@@ -59,7 +65,7 @@ export function monthlyDepreciationTotal(
 ): number {
   return assets
     .filter(asset => (!branchId || asset.branchId === branchId) && isAssetDepreciatingInMonth(asset, monthKey))
-    .reduce((total, asset) => total + monthlyAssetDepreciation(asset), 0);
+    .reduce((total, asset) => total + (monthlyAssetDepreciation(asset) * assetQuantity(asset)), 0);
 }
 
 export function depreciationTotalForDateRange(
