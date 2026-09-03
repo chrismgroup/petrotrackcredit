@@ -6,6 +6,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { SCREEN_ROUTES, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { safeNotificationRoute } from '@/lib/navigation-routing';
 
 function timeLabel(value: string): string {
   const date = new Date(value);
@@ -35,11 +36,7 @@ export default function NotificationsScreen() {
 
   async function openNotification(id: number, data: Record<string, unknown> | null) {
     await markNotificationRead(id);
-    const requestedRoute = typeof data?.route === 'string' ? data.route : '';
-    const isKnownRoute = Object.values(SCREEN_ROUTES).some(route =>
-      requestedRoute === route || requestedRoute.startsWith(`${route}?`),
-    );
-    router.push((isKnownRoute ? requestedRoute : SCREEN_ROUTES.home) as never);
+    router.push(safeNotificationRoute(data?.route) as never);
   }
 
   return (
