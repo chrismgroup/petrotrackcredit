@@ -1,10 +1,10 @@
 ---
 name: Expo build port conflict
-description: The standalone Petrotrack build script can conflict with the mockup sandbox's Metro port.
+description: The standalone Petrotrack build must isolate its Metro port from managed preview workflows.
 ---
 
-Use the configured `artifacts/petrotrack: expo` workflow for normal Expo verification when the mockup sandbox is running; the standalone static build may attempt to claim the same Metro port and fail before compiling the app.
+The standalone Petrotrack static build must allocate its own available Metro port, or use an explicitly supplied `METRO_PORT`, and pass that same port to every Metro request.
 
-**Why:** The static build script starts its own Metro process, while the managed workspace already has Metro on port 8081 for the mockup sandbox.
+**Why:** Managed previews reserve fixed ports, including the mockup sandbox on 8081 and Expo on 26086. Assuming Metro's default port makes full builds prompt or stall when previews are open.
 
-**How to apply:** Prefer workflow restart, typecheck, logs, and preview checks. Only run the standalone build after isolating or stopping the conflicting Metro service.
+**How to apply:** Keep preview workflows on their artifact-managed ports. New status, manifest, bundle, or asset requests in the static build must use the one selected build port rather than a hardcoded default.
