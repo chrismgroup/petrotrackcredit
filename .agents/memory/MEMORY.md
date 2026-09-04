@@ -49,3 +49,4 @@
 - [Post-merge setup](post-merge-setup.md) — closed-stdin merges require CI-mode pnpm and enough timeout for install plus database schema verification
 - [Command-owned workflows](command-owned-workflows.md) — deliveries, expenses, budgets, dips, and price proposals mutate only through revisioned server commands
 - [Expo monorepo root](expo-monorepo-root.md) — Expo must resolve from artifacts/petrotrack, not the workspace root, which has no app entry
+- [Expo DevTools headless mode](expo-devtools-headless.md) — Replit’s Linux preview should skip the optional standalone DevTools shell while keeping Metro and app debugging available
