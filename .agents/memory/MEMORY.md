@@ -48,3 +48,4 @@
 - [Budget history archives](budget-history-archives.md) — budgets display newest-first; only finance roles archive terminal historical records, never pending workflow items
 - [Post-merge setup](post-merge-setup.md) — closed-stdin merges require CI-mode pnpm and enough timeout for install plus database schema verification
 - [Command-owned workflows](command-owned-workflows.md) — deliveries, expenses, budgets, dips, and price proposals mutate only through revisioned server commands
+- [Expo monorepo root](expo-monorepo-root.md) — Expo must resolve from artifacts/petrotrack, not the workspace root, which has no app entry
