@@ -25,7 +25,7 @@ timeoutMs = 120000
 
 [nix]
 channel = "stable-25_05"
-packages = ["haskellPackages.servant-multipart-client", "unpackerr"]
+packages = ["haskellPackages.servant-multipart-client", "unpackerr", "glib"]
 
 [[ports]]
 localPort = 8080
