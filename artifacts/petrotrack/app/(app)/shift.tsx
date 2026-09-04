@@ -8,6 +8,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
+import { ModalSheet } from '@/components/FormSheet';
 import {
   PumpDailyReport, ROLE_COLORS, currentBusinessDateKey, fmt, fmtDate, fmtDateTime, getPumpOpeningMeter, getPriceForPump, isFutureBusinessDate, unitForProd, useApp,
 } from '@/context/AppContext';
@@ -464,6 +465,10 @@ export default function ShiftReportScreen() {
   const [editDate, setEditDate] = useState('');
   const [isCorrectingDate, setIsCorrectingDate] = useState(false);
   const [correctedDate, setCorrectedDate] = useState('');
+  const [returnToAttendant, setReturnToAttendant] = useState<{
+    report: PumpDailyReport;
+    note: string;
+  } | null>(null);
 
   function openReport(r: PumpDailyReport) {
     setViewing(r);
@@ -640,22 +645,16 @@ export default function ShiftReportScreen() {
   function handleMgrReturnToAttendant() {
     if (!viewing) return;
     if (!reviewNote.trim()) { Alert.alert('Required', 'Add a note telling the attendant what to correct.'); return; }
-    const report = viewing;
-    Alert.alert(
-      'Return to Attendant',
-      `Send this report back to ${report.submittedByName} for correction?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Return', style: 'destructive',
-          onPress: () => {
-            mgrReturnPumpReportToAttendant(report.id, reviewNote.trim());
-            Alert.alert('Returned', `Report sent back to ${report.submittedByName} for correction.`);
-            closeModal();
-          },
-        },
-      ]
-    );
+    setReturnToAttendant({ report: viewing, note: reviewNote.trim() });
+  }
+
+  function confirmMgrReturnToAttendant() {
+    if (!returnToAttendant) return;
+    const { report, note } = returnToAttendant;
+    setReturnToAttendant(null);
+    mgrReturnPumpReportToAttendant(report.id, note);
+    closeModal();
+    Alert.alert('Returned', `Report sent back to ${report.submittedByName} for correction.`);
   }
 
   function handleAttResubmit() {
@@ -1778,6 +1777,35 @@ export default function ShiftReportScreen() {
         </View>
       )}
       {confirmationModal}
+      <ModalSheet visible={returnToAttendant !== null} onClose={() => setReturnToAttendant(null)}>
+        <View style={[c.confirmSheet, { backgroundColor: colors.surface }]}>
+          <View style={c.confirmIcon}>
+            <Ionicons name="return-down-back" size={22} color="#8A3B0F" />
+          </View>
+          <Text style={[c.confirmTitle, { color: colors.text }]}>Return to Attendant?</Text>
+          <Text style={[c.confirmBody, { color: colors.textMuted }]}>
+            Send this report back to {returnToAttendant?.report.submittedByName ?? 'the attendant'} for correction?
+          </Text>
+          <View style={c.confirmActions}>
+            <TouchableOpacity
+              onPress={() => setReturnToAttendant(null)}
+              style={[c.confirmCancel, { borderColor: colors.border }]}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel return to attendant"
+            >
+              <Text style={[c.confirmCancelText, { color: colors.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={confirmMgrReturnToAttendant}
+              style={c.confirmReturn}
+              accessibilityRole="button"
+              accessibilityLabel="Confirm return to attendant"
+            >
+              <Text style={c.confirmReturnText}>Return</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ModalSheet>
     </ScreenLayout>
   );
 }
@@ -1788,6 +1816,15 @@ const c = StyleSheet.create({
   tabBar:        { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 14, gap: 4, borderBottomWidth: StyleSheet.hairlineWidth },
   tabBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 2.5 },
   tabLabel:      { fontSize: 13 },
+  confirmSheet:  { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 12 },
+  confirmIcon:   { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FBEADD' },
+  confirmTitle:  { fontSize: 20, fontWeight: '800' },
+  confirmBody:   { fontSize: 14, lineHeight: 20 },
+  confirmActions:{ flexDirection: 'row', gap: 8, marginTop: 4 },
+  confirmCancel: { flex: 1, borderWidth: 1, borderRadius: 11, paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
+  confirmReturn: { flex: 1.5, borderRadius: 11, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8A3B0F' },
+  confirmCancelText: { fontSize: 14, fontWeight: '700' },
+  confirmReturnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   tabBadge:      { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9, minWidth: 18, alignItems: 'center' },
   tabBadgeTxt:   { fontSize: 10, fontWeight: '800', color: '#fff' },
   scroll:        { padding: 14 },
