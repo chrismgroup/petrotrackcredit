@@ -45,7 +45,7 @@ async function sendPush(tokens: string[], title: string, body: string, data: Rec
   }
 }
 
-async function deliverNotification(input: {
+export async function deliverNotification(input: {
   target: string;
   branchId?: string | null;
   type: typeof NOTIFICATION_TYPES[number];

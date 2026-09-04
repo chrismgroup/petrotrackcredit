@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import {
-  stateApi, versionApi, usersApi, notificationsApi, sendOperationalNotification, maintenanceApi, realtimeApi,
+  stateApi, versionApi, usersApi, notificationsApi, sendOperationalNotification, maintenanceApi, realtimeApi, workflowApi,
   AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken,
   enqueueShiftReportOutbox, loadShiftReportOutbox, removeShiftReportOutbox,
   SHIFT_REPORT_OUTBOX_STORAGE_KEY,
@@ -32,8 +32,8 @@ export interface Tank {
 }
 export interface LPGTank { id: string; name: string; cap: number; op: number; rv: number; sl: number; branchId?: string; }
 export interface Pump { id: string; name: string; prod: 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil'; active: boolean; branchId?: string; lpgCategory?: 'single' | 'distributor'; }
-export interface DipRecord { id: number; dt: string; submittedAt?: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; branchId?: string; }
-export interface Delivery { id: number; dt: string; submittedAt?: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'returned' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; }
+export interface DipRecord { id: number; dt: string; submittedAt?: string; by: string; rd: Record<string, number>; lpg: Record<string, number>; obs: string; status: 'pending' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; branchId?: string; workflowRevision?: number; }
+export interface Delivery { id: number; dt: string; submittedAt?: string; sup: string; prod: string; wb: string; ord: number; rec: number; st: 'ok' | 'short' | 'spill' | 'seal'; notes: string; costPrice?: number; sellingPrice?: number; mdNote?: string; receivedBy?: string; approvalStatus?: 'draft' | 'pending' | 'pending_acc' | 'pending_md' | 'returned' | 'md_approved' | 'approved' | 'rejected'; approvedBy?: string; approvedAt?: string; rejectedNote?: string; branchId?: string; accNote?: string; accBy?: string; accAt?: string; mdBy?: string; mdAt?: string; workflowVersion?: number; }
 /** A saved receipt's received quantity changes operational stock immediately,
  * including submitted and approved workflow states. Approval controls pricing
  * and accounting; rejected receipts never affect inventory. */
@@ -123,15 +123,15 @@ export interface PriceProposal {
   proposedBy: string; proposedAt: string;
   status: 'pending' | 'approved' | 'rejected';
   branchId?: string;
-  reviewedBy?: string; reviewedAt?: string; note?: string;
+  reviewedBy?: string; reviewedAt?: string; note?: string; workflowRevision?: number;
 }
-export interface Expense { id: number; dt: string; submittedAt?: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId?: string; }
+export interface Expense { id: number; dt: string; submittedAt?: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId?: string; revision?: number; }
 export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
 export interface Budget {
   id: number; month: number; year: number; appliesOn?: string; submittedAt?: string;
   label: string; by: string; byName: string; items: { cat: string; amt: number }[];
   total: number; status: string; workflow: BudgetWorkflowStep[];
-  archivedAt?: string; archivedBy?: string;
+  archivedAt?: string; archivedBy?: string; revision?: number;
 }
 export interface BankLoan { bank: string; amount: number; }
 export interface FinancialEntry {
@@ -1397,6 +1397,7 @@ interface AppContextType {
   deleteCompanyAsset: (id: string) => boolean;
   addBudget: (b: Omit<Budget, 'id' | 'workflow'>) => void;
   updateBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string; appliesOn?: string }) => void;
+  updateAndSubmitBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string; appliesOn?: string }) => void;
   deleteBudget: (id: number) => void;
   archiveBudgets: (ids: number[]) => void;
   submitBudgetToAcc: (id: number) => void;
@@ -1878,16 +1879,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (arr.length === 0 && prev.length > 0) return prev; // protect against empty wipe
         return arr;
       };
-      if (s.expenses && !p.has('expenses'))                   setExpenses(s.expenses as Expense[]);
-      if (s.budgets && !p.has('budgets'))                     setBudgets(s.budgets as Budget[]);
+      if (Array.isArray(s.expenses) && !p.has('expenses'))    setExpenses(s.expenses as Expense[]);
+      if (Array.isArray(s.budgets) && !p.has('budgets'))      setBudgets(s.budgets as Budget[]);
       if (!p.has('sales'))           setSales(safeArray<SalesEntry>(s.sales));
-       if (!p.has('dips')) {
-         setDips(prev => mergeDipRecords(
-           prev,
-           Array.isArray(s.dips) ? s.dips as DipRecord[] : [],
-         ));
-       }
-      if (!p.has('deliveries'))      setDeliveries(safeArray<Delivery>(s.deliveries));
+       if (Array.isArray(s.dips) && !p.has('dips'))           setDips(s.dips as DipRecord[]);
+      if (Array.isArray(s.deliveries) && !p.has('deliveries')) setDeliveries(s.deliveries as Delivery[]);
       if (!p.has('maintenance'))     setMaintenance(Array.isArray(s.maintenance) ? s.maintenance as MaintenanceItem[] : []);
       if (Array.isArray(s.audit) && !p.has('audit'))          setAudit(s.audit as AuditEntry[]);
       if (Array.isArray(s.handoverNotes) && !p.has('handoverNotes')) setHandoverNotes(s.handoverNotes as ShiftHandoverNote[]);
@@ -1957,7 +1953,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!p.has('hrEmployees'))       setHrEmployees(safeArray<HREmployee>(s.hrEmployees));
       if (!p.has('hrHandbooks'))       setHrHandbooks(safeArray<HREmployeeDoc>(s.hrHandbooks));
       if (!p.has('hrRecommendations')) setHrRecommendations(safeArray<HRRecommendation>(s.hrRecommendations));
-      if (!p.has('priceProposals'))    setPriceProposals(safeArray<PriceProposal>(s.priceProposals));
+      if (Array.isArray(s.priceProposals) && !p.has('priceProposals')) setPriceProposals(s.priceProposals as PriceProposal[]);
       if (!p.has('legalMatters'))      setLegalMatters(safeArray<LegalMatter>(s.legalMatters));
       if (!p.has('corpProjects'))      setCorpProjects(safeArray<CorpProject>(s.corpProjects));
       if (!p.has('broadcasts'))        setBroadcasts(safeArray<Broadcast>(s.broadcasts));
@@ -2399,11 +2395,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       syncSlice('reportAccessPolicyVersion', { version: reportAccessPolicyVersion });
     }
   }, [reportAccessPolicyVersion, loaded, role]);
-  useEffect(() => { if (loaded) syncSlice('expenses',          expenses); },          [expenses, loaded]);
-  useEffect(() => { if (loaded) syncSlice('budgets',           budgets); },           [budgets, loaded]);
   useEffect(() => { if (loaded) syncSlice('sales',             sales); },             [sales, loaded]);
-  useEffect(() => { if (loaded) syncSlice('dips',              dips); },              [dips, loaded]);
-  useEffect(() => { if (loaded) syncSlice('deliveries',        deliveries); },        [deliveries, loaded]);
   // Audit log is capped to the most recent MAX_AUDIT_ENTRIES to keep payloads small.
   useEffect(() => {
     if (audit.length > MAX_AUDIT_ENTRIES) { setAudit(a => a.slice(0, MAX_AUDIT_ENTRIES)); return; }
@@ -2426,7 +2418,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('hrEmployees',       hrEmployees); },       [hrEmployees, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrHandbooks',       hrHandbooks); },       [hrHandbooks, loaded]);
   useEffect(() => { if (loaded) syncSlice('hrRecommendations', hrRecommendations); }, [hrRecommendations, loaded]);
-  useEffect(() => { if (loaded) syncSlice('priceProposals',    priceProposals); },    [priceProposals, loaded]);
   useEffect(() => { if (loaded) syncSlice('legalMatters',      legalMatters); },      [legalMatters, loaded]);
   useEffect(() => { if (loaded) syncSlice('corpProjects',      corpProjects); },      [corpProjects, loaded]);
   useEffect(() => { if (loaded) syncSlice('meetingMinutes',    meetingMinutes); },    [meetingMinutes, loaded]);
@@ -2455,12 +2446,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        syncSlice('pumpDailyReports', pumpDailyReports.filter(report => report.deliveryStatus !== 'queued'));
      }
    }, [loaded, stateSyncReadyTick, pumpDailyReports]);
-   // A dip can be submitted from a locally restored session before the first
-   // authenticated sync completes. safeArray intentionally preserves that
-   // local record when the server is empty, so flush it once the sync gate opens.
-   useEffect(() => {
-     if (loaded && stateSyncReadyTick === 1) syncSlice('dips', dips);
-   }, [dips, loaded, stateSyncReadyTick]);
   // Preserve and flush assets registered locally before authenticated startup
   // sync. The server accepts only IDs it has never seen, so this cannot alter
   // or delete an existing canonical asset.
@@ -2515,6 +2500,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [flushPumpReportOutbox, role, loaded, isServerAuthenticated, syncFromServer]);
 
   const DRAFT_APPROVAL: CorpApproval = { status: 'draft' };
+
+  // These workflows are command-backed.  Never manufacture a terminal state
+  // locally: the response (and a refresh after a failed command) is canonical.
+  const workflowMeta = (expectedRevision: number) => ({
+    expectedRevision,
+    idempotencyKey: `${userName || 'device'}-${Date.now()}-${genId()}`,
+  });
+  const workflowFailure = (label: string) => {
+    void syncFromServer();
+    Alert.alert('Unable to save', `${label} could not be completed. The latest server data has been refreshed.`);
+  };
+  const applyDelivery = (record: Delivery, deleted = false) => setDeliveries(current =>
+    deleted ? current.filter(item => item.id !== record.id) : [
+      ...(current.some(item => item.id === record.id)
+        ? current.map(item => item.id === record.id ? record : item)
+        : [record]),
+    ],
+  );
+  const applyExpense = (record: Expense, deleted = false) => setExpenses(current =>
+    deleted ? current.filter(item => item.id !== record.id) : current.some(item => item.id === record.id)
+      ? current.map(item => item.id === record.id ? record : item) : [record, ...current],
+  );
+  const applyBudget = (record: Budget, deleted = false) => setBudgets(current =>
+    deleted ? current.filter(item => item.id !== record.id) : current.some(item => item.id === record.id)
+      ? current.map(item => item.id === record.id ? record : item) : [record, ...current],
+  );
+  const applyDip = (record: DipRecord, deleted = false) => setDips(current =>
+    deleted ? current.filter(item => item.id !== record.id) : current.some(item => item.id === record.id)
+      ? current.map(item => item.id === record.id ? record : item) : [record, ...current],
+  );
+  const applyProposal = (record: PriceProposal) => setPriceProposals(current =>
+    current.some(item => item.id === record.id)
+      ? current.map(item => item.id === record.id ? record : item) : [record, ...current],
+  );
 
   const addLegalMatter = useCallback((m: Omit<LegalMatter, 'id' | 'openedAt' | 'approval' | 'attachments'>) => {
     setLegalMatters(prev => [{ ...m, id: genId(), openedAt: nowTs(), approval: { status: 'draft' }, attachments: [] }, ...prev]);
@@ -2668,13 +2687,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       proposedBy: userName,
     });
     if (!validation.ok) return validation;
-    setPriceProposals(ps => [
-      { id: genId(), prod, currentPrice, proposedPrice, proposedBy: userName, proposedAt: nowTs(), status: 'pending', branchId: proposalBranchId },
-      ...ps,
-    ]);
-    const unit = prod === 'LPG' || prod.startsWith('LPG') ? 'kg' : 'L';
-    const scopeLabel = proposalBranchId ? ` at branch ${proposalBranchId}` : '';
-    setAudit(a => [{ id: genId(), action: 'Price proposal submitted', user: userName, detail: `${prod}: ₦${currentPrice} → ₦${proposedPrice}/${unit}${scopeLabel} (awaiting CEO approval)`, ts: nowTs() }, ...a]);
+    void workflowApi.priceProposals.create({ prod, proposedPrice }, workflowMeta(0))
+      .then(result => result?.proposal ? applyProposal(result.proposal as PriceProposal) : workflowFailure('Price proposal'));
     return { ok: true };
   }, [userName, prices, branchId]);
 
@@ -2683,60 +2697,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!proposal) return { ok: false, reason: 'invalid_proposed_price' };
     const proposalValidation = validatePriceProposal(proposal);
     if (!proposalValidation.ok) return proposalValidation;
-    const priceResult = updatePrice(proposal.prod, proposal.proposedPrice, userName, undefined, proposal.branchId);
-    if (!priceResult.ok) return priceResult;
-    setPriceProposals(ps => ps.map(p =>
-      p.id === id ? { ...p, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
-    ));
-    void sendOperationalNotification({
-      target: 'md',
-      title: 'Price Change Approved',
-      body: `Price approved: ${proposal.prod} is now ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)}`,
-      route: SCREEN_ROUTES.prices,
-      data: { proposalId: id, product: proposal.prod },
-    });
+    void workflowApi.priceProposals.decide(id, 'approve', workflowMeta(proposal.workflowRevision ?? 0))
+      .then(result => {
+        if (!result?.proposal) return workflowFailure('Price proposal approval');
+        applyProposal(result.proposal as PriceProposal);
+        if (result.prices) setPrices(result.prices as Prices);
+        if (result.priceHistory) setPriceHistory(history => [result.priceHistory as PriceChange, ...history]);
+      });
     return { ok: true };
-  }, [userName, updatePrice, priceProposals]);
+  }, [priceProposals]);
 
   const updateAndApprovePriceProposal = useCallback((id: number, updatedPrice: number): PriceValidationResult => {
     const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
     if (!proposal) return { ok: false, reason: 'invalid_proposed_price' };
     const proposalValidation = validatePriceProposal(proposal);
     if (!proposalValidation.ok) return proposalValidation;
-    const priceResult = updatePrice(proposal.prod, updatedPrice, userName, undefined, proposal.branchId);
-    if (!priceResult.ok) return priceResult;
-    setPriceProposals(ps => ps.map(p =>
-      p.id === id ? { ...p, proposedPrice: updatedPrice, status: 'approved' as const, reviewedBy: userName, reviewedAt: nowTs() } : p
-    ));
-    setAudit(a => [{ id: genId(), action: 'Price proposal updated & approved', user: userName, detail: `${proposal.prod}: ₦${proposal.proposedPrice.toLocaleString()} → ₦${updatedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (CEO updated price)`, ts: nowTs() }, ...a]);
-    void sendOperationalNotification({
-      target: 'md',
-      title: 'Price Updated & Approved',
-      body: `Price updated & approved: ${proposal.prod} is now ₦${updatedPrice.toLocaleString()}/${unitForProd(proposal.prod)} (CEO adjusted from your ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)})`,
-      route: SCREEN_ROUTES.prices,
-      data: { proposalId: id, product: proposal.prod },
+    void workflowApi.priceProposals.decide(id, 'approve', {
+      ...workflowMeta(proposal.workflowRevision ?? 0), editedPrice: updatedPrice,
+    }).then(result => {
+      if (!result?.proposal) return workflowFailure('Price proposal approval');
+      applyProposal(result.proposal as PriceProposal);
+      if (result.prices) setPrices(result.prices as Prices);
+      if (result.priceHistory) setPriceHistory(history => [result.priceHistory as PriceChange, ...history]);
     });
     return { ok: true };
-  }, [userName, updatePrice, priceProposals]);
+  }, [priceProposals]);
 
   const rejectPriceProposal = useCallback((id: number, note?: string) => {
     const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
-    setPriceProposals(ps => ps.map(p =>
-      p.id === id && p.status === 'pending'
-        ? { ...p, status: 'rejected' as const, reviewedBy: userName, reviewedAt: nowTs(), note }
-        : p
-    ));
-    setAudit(a => [{ id: genId(), action: 'Price proposal rejected', user: userName, detail: `Proposal #${id}${note ? ': ' + note : ''}`, ts: nowTs() }, ...a]);
-    if (proposal) {
-      void sendOperationalNotification({
-        target: 'md',
-        title: 'Price Change Rejected',
-        body: `Price proposal rejected: ${proposal.prod} ₦${proposal.proposedPrice.toLocaleString()}/${unitForProd(proposal.prod)} was not approved${note ? ` — ${note}` : ''}`,
-        route: SCREEN_ROUTES.prices,
-        data: { proposalId: id, product: proposal.prod },
-      });
-    }
-  }, [userName, priceProposals]);
+    if (!proposal) return;
+    void workflowApi.priceProposals.decide(id, 'reject', { ...workflowMeta(proposal.workflowRevision ?? 0), note })
+      .then(result => result?.proposal ? applyProposal(result.proposal as PriceProposal) : workflowFailure('Price proposal rejection'));
+  }, [priceProposals]);
 
   const addTank = useCallback((t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => {
     const id = `T${Date.now()}`;
@@ -2785,119 +2777,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const addDip = useCallback((dip: Omit<DipRecord, 'id'>) => {
-    const status = dip.status ?? 'pending';
-    setDips(d => [{ ...dip, id: genId(), status, branchId: dip.branchId ?? branchId ?? undefined, submittedAt: dip.submittedAt ?? nowTs() }, ...d]);
-    setAudit(a => [{ id: genId(), action: 'Dip submitted', user: userName, detail: 'All tanks dipped — awaiting MD approval.', ts: nowTs() }, ...a]);
+    void workflowApi.dips.create({ dt: dip.dt, rd: dip.rd, lpg: dip.lpg, obs: dip.obs }, workflowMeta(0))
+      .then(result => result?.dip ? applyDip(result.dip as DipRecord) : workflowFailure('Dip submission'));
   }, [userName, branchId]);
 
   const approveDip = useCallback((id: number) => {
     const rec = dips.find(r => r.id === id);
-    if (rec) {
-      // Snapshot tank state BEFORE resetting to compute discrepancies
-      const logEntries: InventoryLogEntry[] = [];
-      for (const tank of tanks) {
-        const lvl = rec.rd[tank.id];
-        if (lvl !== undefined) {
-          const expected = getCurrentTankStock(tank, dips);
-          const actual = dipReadingToLiters(lvl);
-          logEntries.push({
-            id: genId(),
-            dipId: id,
-            dt: nowTs(),
-            approvedBy: userName ?? 'admin',
-            tankId: tank.id,
-            tankName: tank.name,
-            product: tank.prod,
-            opening: tank.op,
-            received: tank.rv,
-            sold: tank.sl,
-            expected,
-            actual,
-            discrepancy: actual - expected,
-            branchId: tank.branchId,
-          });
-        }
-      }
-      for (const tank of lpgTanks) {
-        const lvl = rec.lpg[tank.id];
-        if (lvl !== undefined) {
-          const expected = getCurrentTankStock(tank, dips, 'lpg');
-          const actual = lvl;
-          logEntries.push({
-            id: genId(),
-            dipId: id,
-            dt: nowTs(),
-            approvedBy: userName ?? 'admin',
-            tankId: tank.id,
-            tankName: tank.name,
-            product: 'LPG',
-            opening: tank.op,
-            received: tank.rv,
-            sold: tank.sl,
-            expected,
-            actual,
-            discrepancy: actual - expected,
-            branchId: tank.branchId,
-          });
-        }
-      }
-
-      setTanks(ts => ts.map(tank => {
-        const lvl = rec.rd[tank.id];
-        return lvl !== undefined ? { ...tank, op: dipReadingToLiters(lvl), rv: 0, sl: 0 } : tank;
-      }));
-      setLpgTanks(ts => ts.map(lt => {
-        const lvl = rec.lpg[lt.id];
-        return lvl !== undefined ? { ...lt, op: lvl, rv: 0, sl: 0 } : lt;
-      }));
-
-      if (logEntries.length > 0) {
-        // Send notifications for discrepancies > 50L
-        const notifRoles: Role[] = ['md', 'ceo', 'acc', 'csm'];
-        for (const entry of logEntries) {
-          if (Math.abs(entry.discrepancy) > 50) {
-            const dir = entry.discrepancy < 0 ? 'Shortage' : 'Overage';
-             const unit = unitForProd(entry.product);
-             const detail = `${entry.tankName} (${entry.product}): Expected ${entry.expected.toLocaleString()}${unit} · Actual ${entry.actual.toLocaleString()}${unit} · ${dir}: ${Math.abs(entry.discrepancy).toLocaleString()}${unit}`;
-            for (const toRole of notifRoles) {
-              void sendOperationalNotification({
-                target: toRole,
-                title: `Inventory Discrepancy — ${entry.tankName}`,
-                body: detail,
-                route: SCREEN_ROUTES.inventory,
-                data: { dipId: id, tankId: entry.tankId, product: entry.product },
-              }).catch(() => {
-                // Notification persistence is best-effort from the client; the
-                // inventory record itself remains authoritative.
-              });
-            }
-          }
-        }
-      }
-    }
-    setDips(d => d.map(r => r.id === id ? { ...r, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : r));
-    setAudit(a => [{ id: genId(), action: 'Dip approved', user: userName, detail: `Dip record #${id} approved.`, ts: nowTs() }, ...a]);
-  }, [userName, dips, tanks, lpgTanks]);
+    if (!rec) return;
+    void workflowApi.dips.decide(id, 'approve', workflowMeta(rec.workflowRevision ?? 0))
+      .then(result => result?.dip ? applyDip(result.dip as DipRecord) : workflowFailure('Dip approval'));
+  }, [dips]);
 
   const rejectDip = useCallback((id: number) => {
-    setDips(d => d.map(rec => rec.id === id ? { ...rec, status: 'rejected', approvedBy: userName, approvedDt: nowTs() } : rec));
-    setAudit(a => [{ id: genId(), action: 'Dip rejected', user: userName, detail: `Dip record #${id} rejected.`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const rec = dips.find(item => item.id === id); if (!rec) return;
+    void workflowApi.dips.decide(id, 'reject', workflowMeta(rec.workflowRevision ?? 0))
+      .then(result => result?.dip ? applyDip(result.dip as DipRecord) : workflowFailure('Dip rejection'));
+  }, [dips]);
 
   const updateDip = useCallback((id: number, updates: Partial<Omit<DipRecord, 'id'>>) => {
-    setDips(ds => ds.map(d => d.id === id ? { ...d, ...updates } : d));
-    setAudit(a => [{ id: genId(), action: 'Dip record updated', user: userName, detail: `Dip #${id} edited`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const rec = dips.find(item => item.id === id); if (!rec) return;
+    void workflowApi.dips.update(id, updates, workflowMeta(rec.workflowRevision ?? 0))
+      .then(result => result?.dip ? applyDip(result.dip as DipRecord) : workflowFailure('Dip update'));
+  }, [dips]);
 
   const deleteDip = useCallback((id: number) => {
-    setDips(ds => ds.filter(d => d.id !== id));
-    setInventoryLog(log => log.filter(e => e.dipId !== id));
-    setAudit(a => [{ id: genId(), action: 'Dip record deleted', user: userName, detail: `Dip #${id} deleted`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const rec = dips.find(item => item.id === id); if (!rec) return;
+    void workflowApi.dips.remove(id, workflowMeta(rec.workflowRevision ?? 0))
+      .then(result => result?.dip ? applyDip(result.dip as DipRecord, true) : workflowFailure('Dip deletion'));
+  }, [dips]);
 
   const addDelivery = useCallback((rec: Omit<Delivery, 'id'>) => {
-    setDeliveries(d => [{ ...rec, id: genId(), submittedAt: rec.submittedAt ?? nowTs(), branchId: rec.branchId ?? branchId ?? undefined }, ...d]);
-    setAudit(a => [{ id: genId(), action: 'Delivery recorded', user: userName, detail: `${rec.prod} — ${rec.rec}L from ${rec.sup}`, ts: nowTs() }, ...a]);
+    void workflowApi.deliveries.create({ ...rec, id: genId() }, workflowMeta(0))
+      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery submission'));
   }, [userName, branchId]);
 
   const updateDelivery = useCallback((id: number, updates: Partial<Omit<Delivery, 'id'>>) => {
@@ -2908,8 +2819,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (isApproved || (isReturnedToOriginator && role !== 'admin' && (role !== 'mgr' || existing.receivedBy !== userName))) {
       return false;
     }
-    setDeliveries(ds => ds.map(d => d.id === id ? { ...d, ...updates } : d));
-    setAudit(a => [{ id: genId(), action: 'Delivery updated', user: userName, detail: `Delivery #${id} edited`, ts: nowTs() }, ...a]);
+    void workflowApi.deliveries.update(id, updates, workflowMeta(existing.workflowVersion ?? 0))
+      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery update'));
     return true;
   }, [deliveries, role, userName]);
 
@@ -2922,112 +2833,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       (isApproved && role !== 'admin') ||
       (isReturnedToOriginator && role !== 'admin' && (role !== 'mgr' || delivery.receivedBy !== userName))
     ) return false;
-    setDeliveries(ds => ds.filter(r => r.id !== id));
-    setAudit(a => [{ id: genId(), action: 'Delivery deleted', user: userName, detail: `Delivery #${id} removed`, ts: nowTs() }, ...a]);
+    void workflowApi.deliveries.remove(id, workflowMeta(delivery.workflowVersion ?? 0))
+      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery, true) : workflowFailure('Delivery deletion'));
     return true;
   }, [deliveries, role, userName]);
 
   const submitDeliveryForApproval = useCallback((id: number) => {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_acc' as const } : rec));
-    setAudit(a => [{ id: genId(), action: 'Delivery forwarded to accountant', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L from ${d.sup}`, ts: nowTs() }, ...a]);
-    void sendOperationalNotification({
-      target: 'acc',
-      title: 'Delivery Awaiting Cost Entry',
-      body: `Product receipt forwarded for cost pricing: ${d.prod} ${d.rec.toLocaleString()}L from ${d.sup} (WB: ${d.wb})`,
-      route: SCREEN_ROUTES.recv,
-      data: { deliveryId: id },
-    });
+    void workflowApi.deliveries.submit(id, workflowMeta(d.workflowVersion ?? 0))
+      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery submission'));
   }, [userName, deliveries]);
 
   const accForwardToMd = useCallback((id: number, costPrice: number, accNote: string) => {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_md' as const, costPrice, accNote, accBy: userName, accAt: nowTs() } : rec));
-    setAudit(a => [{ id: genId(), action: 'Delivery forwarded to MD', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L · Cost ₦${costPrice}/L`, ts: nowTs() }, ...a]);
-    void sendOperationalNotification({
-      target: 'md',
-      title: 'Delivery Awaiting MD Approval',
-      body: `Delivery record awaiting MD approval: ${d.prod} ${d.rec.toLocaleString()}L · Cost ₦${costPrice.toLocaleString()}/L (WB: ${d.wb})`,
-      route: SCREEN_ROUTES.recv,
-      data: { deliveryId: id },
-    });
+    void workflowApi.deliveries.forward(id, costPrice, accNote, workflowMeta(d.workflowVersion ?? 0))
+      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery forwarding'));
   }, [userName, deliveries]);
 
   const accRecallDelivery = useCallback((id: number) => {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'pending_acc' as const } : rec));
-    setAudit(a => [{ id: genId(), action: 'Delivery recalled from MD', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}L`, ts: nowTs() }, ...a]);
+    void workflowApi.deliveries.recall(id, workflowMeta(d.workflowVersion ?? 0))
+      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery recall'));
   }, [userName, deliveries]);
 
   const approveDelivery = useCallback((id: number, sellingPrice: number, mdNote?: string) => {
     const d = deliveries.find(d => d.id === id);
     if (!d) return;
-    const priceResult = updatePrice(d.prod, sellingPrice, userName, undefined, d.branchId);
-    if (!priceResult.ok) return priceResult;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'md_approved' as const, sellingPrice, mdNote: mdNote || '', approvedBy: userName, approvedAt: nowTs(), mdBy: userName, mdAt: nowTs() } : rec));
-    setTanks(ts => {
-      const matching = ts.filter(t => t.prod === d.prod && (!d.branchId || !t.branchId || t.branchId === d.branchId));
-      if (matching.length === 0) return ts;
-      const share = d.rec / matching.length;
-      const ids = new Set(matching.map(t => t.id));
-      return ts.map(t => ids.has(t.id) ? { ...t, rv: t.rv + share } : t);
-    });
-    // A delivery price belongs to the delivery's branch. Keep other branches
-    // independent, while the global fallback remains available for branches
-    // without a local override.
-    // For LPG, seed both category prices in the same branch if they are unset
-    // so single-buyer and distributor pumps inherit this delivery price.
-    if (d.prod === 'LPG') {
-      setPrices(p => {
-        if (d.branchId) {
-          const branch = p.branchPrices?.[d.branchId] ?? {};
-          return {
-            ...p,
-            branchPrices: {
-              ...(p.branchPrices ?? {}),
-              [d.branchId]: {
-                ...branch,
-                LPG_Single: branch.LPG_Single || sellingPrice,
-                LPG_Distributor: branch.LPG_Distributor || sellingPrice,
-              },
-            },
-          };
-        }
-        return {
-          ...p,
-          LPG_Single: p.LPG_Single || sellingPrice,
-          LPG_Distributor: p.LPG_Distributor || sellingPrice,
-        };
-      });
-    }
-    const unit = unitForProd(d.prod);
-    setAudit(a => [{ id: genId(), action: 'Delivery MD-approved', user: userName, detail: `WB: ${d.wb} — ${d.prod} ${d.rec}${unit} · Cost ₦${d.costPrice}/${unit} · Sell ₦${sellingPrice}/${unit} · permanently locked`, ts: nowTs() }, ...a]);
-    void sendOperationalNotification({
-      target: 'acc',
-      title: 'Delivery MD Approved — Price Updated',
-      body: `Delivery approved by MD: ${d.prod} ${d.rec.toLocaleString()}${unit} from ${d.sup} (WB: ${d.wb}). Selling price set to ₦${sellingPrice.toLocaleString()}/${unit}. Record locked.`,
-      route: SCREEN_ROUTES.recv,
-      data: { deliveryId: id },
-    });
-  }, [userName, deliveries, updatePrice]);
+    void workflowApi.deliveries.approve(id, sellingPrice, mdNote ?? '', workflowMeta(d.workflowVersion ?? 0))
+      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery approval'));
+    return { ok: true };
+  }, [deliveries]);
 
   const rejectDelivery = useCallback((id: number, note?: string) => {
     const d = deliveries.find(d => d.id === id);
     if (!d || (role !== 'md' && role !== 'admin') || d.approvalStatus !== 'pending_md') return;
-    setDeliveries(ds => ds.map(rec => rec.id === id ? { ...rec, approvalStatus: 'returned' as const, rejectedNote: note } : rec));
-    setAudit(a => [{ id: genId(), action: 'Delivery returned to originator', user: userName, detail: `WB: ${d.wb}${note ? ' — ' + note : ''} · returned to ${d.receivedBy || 'originating manager'}`, ts: nowTs() }, ...a]);
-    void sendOperationalNotification({
-      target: d.receivedBy || 'mgr',
-      branchId: d.branchId,
-      title: 'Delivery Returned for Correction',
-      body: `Delivery returned to originator: ${d.prod} WB: ${d.wb}${note ? ' — ' + note : ''}. Please edit and resubmit.`,
-      route: SCREEN_ROUTES.recv,
-      data: { deliveryId: id },
-    });
-  }, [role, userName, deliveries]);
+    void workflowApi.deliveries.reject(id, note ?? '', workflowMeta(d.workflowVersion ?? 0))
+      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery rejection'));
+  }, [role, deliveries]);
 
   const applyMaintenanceRecord = useCallback((record: MaintenanceItem) => {
     setMaintenance(previous => {
@@ -3171,103 +3016,73 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [setConversationArchived]);
 
   const approveExpense = useCallback((id: number) => {
-    setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'approved', approvedBy: userName, approvedDt: nowTs() } : x));
-  }, [userName]);
+    const expense = expenses.find(item => item.id === id); if (!expense) return;
+    void workflowApi.expenses.transition(id, 'approve', workflowMeta(expense.revision ?? 0))
+      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense approval'));
+  }, [expenses]);
 
   const rejectExpense = useCallback((id: number) => {
-    setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'rejected' } : x));
-  }, []);
+    const expense = expenses.find(item => item.id === id); if (!expense) return;
+    void workflowApi.expenses.transition(id, 'reject', workflowMeta(expense.revision ?? 0))
+      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense rejection'));
+  }, [expenses]);
 
   const addBudget = useCallback((b: Omit<Budget, 'id' | 'workflow'>) => {
-    const isDraft = b.status === 'draft';
-    const newBudget: Budget = {
-      ...b, id: genId(), submittedAt: b.submittedAt ?? nowTs(),
-      workflow: isDraft ? [] : [{ stage: 'Submitted to Accountant', by: userName, role: b.by, dt: nowTs(), action: 'submit', note: `${b.items.length} line items — ₦${b.total.toLocaleString()}` }],
-    };
-    setBudgets(prev => [...prev, newBudget]);
-    setAudit(a => [{ id: genId(), action: isDraft ? 'Budget saved as draft' : 'Budget submitted to Accountant', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
-    if (!isDraft) {
-      void sendOperationalNotification({
-        target: 'acc',
-        title: 'Budget Awaiting Accountant Review',
-        body: `Budget submitted for review: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
-        route: SCREEN_ROUTES.budget,
-        data: { budgetId: newBudget.id },
-      });
-    }
+    void workflowApi.budgets.create(b, workflowMeta(0))
+      .then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget submission'));
   }, [userName]);
 
   const updateBudget = useCallback((id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string; appliesOn?: string }) => {
-    setBudgets(prev => prev.map(b => b.id !== id ? b : { ...b, ...updates }));
-    setAudit(a => [{ id: genId(), action: 'Budget updated', user: userName, detail: `Budget #${id} edited`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const budget = budgets.find(item => item.id === id); if (!budget) return;
+    void workflowApi.budgets.update(id, updates, workflowMeta(budget.revision ?? 0))
+      .then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget update'));
+  }, [budgets]);
+
+  const updateAndSubmitBudget = useCallback((id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string; appliesOn?: string }) => {
+    const budget = budgets.find(item => item.id === id); if (!budget) return;
+    void workflowApi.budgets.updateAndSubmit(id, updates, workflowMeta(budget.revision ?? 0))
+      .then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget update and submission'));
+  }, [budgets]);
 
   const deleteBudget = useCallback((id: number) => {
-    setBudgets(prev => prev.filter(b => b.id !== id));
-    setAudit(a => [{ id: genId(), action: 'Budget deleted', user: userName, detail: `Budget #${id} removed`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const budget = budgets.find(item => item.id === id); if (!budget) return;
+    void workflowApi.budgets.remove(id, workflowMeta(budget.revision ?? 0))
+      .then(result => result?.record
+        ? applyBudget(result.record as Budget, result.deleted === true)
+        : workflowFailure('Budget deletion'));
+  }, [budgets]);
 
   const archiveBudgets = useCallback((ids: number[]) => {
     if (role !== 'acc' && role !== 'admin') return;
-    const idSet = new Set(ids);
-    if (idSet.size === 0) return;
-    const archivedAt = nowTs();
-    setBudgets(prev => prev.map(b => (
-      idSet.has(b.id)
-      && !b.archivedAt
-      && (b.status === 'draft' || b.status === 'fully_approved' || b.status === 'rejected')
-        ? { ...b, archivedAt, archivedBy: userName }
-        : b
-    )));
-    setAudit(a => [{
-      id: genId(),
-      action: 'Budgets archived',
-      user: userName,
-      detail: `${ids.length} historical budget${ids.length === 1 ? '' : 's'} archived`,
-      ts: archivedAt,
-    }, ...a]);
-  }, [role, userName]);
+    ids.forEach(id => {
+      const budget = budgets.find(item => item.id === id);
+      if (!budget) return;
+      void workflowApi.budgets.archive(id, workflowMeta(budget.revision ?? 0))
+        .then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget archive'));
+    });
+  }, [role, budgets]);
 
   const submitBudgetToAcc = useCallback((id: number) => {
     const b = budgets.find(b => b.id === id);
     if (!b) return;
-    setBudgets(prev => prev.map(bud => bud.id !== id ? bud : {
-      ...bud, status: 'submitted',
-      workflow: [...bud.workflow, { stage: 'Submitted to Accountant', by: userName, role: bud.by, dt: nowTs(), action: 'submit', note: `${bud.items.length} line items — ₦${bud.total.toLocaleString()}` }],
-    }));
-    setAudit(a => [{ id: genId(), action: 'Budget submitted to Accountant', user: userName, detail: `${b.label} — ₦${b.total.toLocaleString()}`, ts: nowTs() }, ...a]);
-    void sendOperationalNotification({
-      target: 'acc',
-      title: 'Budget Awaiting Accountant Review',
-      body: `Budget submitted for review: ${b.label} — ₦${b.total.toLocaleString()} (${b.items.length} items)`,
-      route: SCREEN_ROUTES.budget,
-      data: { budgetId: id },
-    });
-  }, [userName, budgets]);
+    void workflowApi.budgets.transition(id, 'submit', '', workflowMeta(b.revision ?? 0))
+      .then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget submission'));
+  }, [budgets]);
 
   const forwardBudget = useCallback((id: number, note: string) => {
-    setBudgets(prev => prev.map(b => b.id !== id ? b : {
-      ...b, status: 'acc_forwarded',
-      workflow: [...b.workflow, { stage: 'Accountant reviewed', by: userName, role: 'acc', dt: nowTs(), action: 'forward', note }],
-    }));
-    setAudit(a => [{ id: genId(), action: 'Budget forwarded to MD', user: userName, detail: `Budget #${id}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const budget = budgets.find(item => item.id === id); if (!budget) return;
+    void workflowApi.budgets.transition(id, 'forward', note, workflowMeta(budget.revision ?? 0)).then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget forwarding'));
+  }, [budgets]);
 
   const approveBudget = useCallback((id: number, note: string) => {
-    setBudgets(prev => prev.map(b => b.id !== id ? b : {
-      ...b, status: 'fully_approved',
-      workflow: [...b.workflow, { stage: 'MD approved', by: userName, role: 'md', dt: nowTs(), action: 'approve', note }],
-    }));
-    setAudit(a => [{ id: genId(), action: 'Budget approved by MD', user: userName, detail: `Budget #${id}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const budget = budgets.find(item => item.id === id); if (!budget) return;
+    void workflowApi.budgets.transition(id, 'approve', note, workflowMeta(budget.revision ?? 0)).then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget approval'));
+  }, [budgets]);
 
   const rejectBudget = useCallback((id: number, note: string) => {
-    setBudgets(prev => prev.map(b => b.id !== id ? b : {
-      ...b, status: 'rejected',
-      workflow: [...b.workflow, { stage: 'Rejected', by: userName, role: 'md', dt: nowTs(), action: 'reject', note }],
-    }));
-    setAudit(a => [{ id: genId(), action: 'Budget rejected', user: userName, detail: `Budget #${id}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const budget = budgets.find(item => item.id === id); if (!budget) return;
+    void workflowApi.budgets.transition(id, 'reject', note, workflowMeta(budget.revision ?? 0)).then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget rejection'));
+  }, [budgets]);
 
   const addStaff = useCallback((s: Omit<Staff, 'id'>) => {
     const id = genId();
@@ -3722,33 +3537,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const addExpense = useCallback((exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => {
-    setExpenses(e => [...e, { ...exp, id: genId(), submittedAt: nowTs(), status: 'pending', branchId: exp.branchId ?? branchId ?? undefined }]);
-    setAudit(a => [{ id: genId(), action: 'Expense submitted', user: userName, detail: `${exp.cat} — ₦${exp.amt.toLocaleString()}`, ts: nowTs() }, ...a]);
+    void workflowApi.expenses.create(exp, workflowMeta(0))
+      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense submission'));
   }, [userName, branchId]);
 
   const updateExpense = useCallback((id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => {
-    setExpenses(e => e.map(x => x.id === id ? { ...x, ...updates } : x));
-    setAudit(a => [{ id: genId(), action: 'Expense updated', user: userName, detail: `Expense #${id} edited`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const expense = expenses.find(item => item.id === id); if (!expense) return;
+    void workflowApi.expenses.update(id, { ...expense, ...updates }, workflowMeta(expense.revision ?? 0))
+      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense update'));
+  }, [expenses]);
 
   const deleteExpense = useCallback((id: number) => {
-    setExpenses(e => e.filter(x => x.id !== id));
-    setAudit(a => [{ id: genId(), action: 'Expense deleted', user: userName, detail: `Expense #${id} removed`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    const expense = expenses.find(item => item.id === id); if (!expense) return;
+    void workflowApi.expenses.remove(id, workflowMeta(expense.revision ?? 0))
+      .then(result => result?.record ? applyExpense(result.record as Expense, result.deleted === true) : workflowFailure('Expense deletion'));
+  }, [expenses]);
 
   const forwardExpenseToMD = useCallback((id: number, note?: string) => {
     const exp = expenses.find(e => e.id === id);
     if (!exp) return;
-    setExpenses(e => e.map(x => x.id === id ? { ...x, status: 'acc_forwarded' as const } : x));
-    setAudit(a => [{ id: genId(), action: 'Expense forwarded to MD', user: userName, detail: `${exp.cat} — ₦${exp.amt.toLocaleString()}${note ? ' · ' + note : ''}`, ts: nowTs() }, ...a]);
-    void sendOperationalNotification({
-      target: 'md',
-      title: 'Expense Awaiting MD Approval',
-      body: `Expense forwarded for approval: ${exp.cat} — ₦${exp.amt.toLocaleString()} by ${exp.byName}`,
-      route: SCREEN_ROUTES.exp,
-      data: { expenseId: id },
-    });
-  }, [userName, expenses]);
+    void workflowApi.expenses.transition(id, 'forward', workflowMeta(exp.revision ?? 0))
+      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense forwarding'));
+  }, [expenses]);
 
   const addCompanyFile = useCallback((file: Omit<CompanyFile, 'id' | 'dt'>) => {
     setCompanyFiles(f => [...f, { ...file, id: genId(), dt: nowTs() }]);
@@ -4821,7 +4631,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
       updatePrice, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
-       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, deleteBudget, archiveBudgets, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
+       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
        addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,

@@ -3,7 +3,7 @@ import { act, create } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { clearToken, notificationsApi, stateApi } from '@/lib/api';
+import { clearToken, notificationsApi, stateApi, workflowApi } from '@/lib/api';
 import { AppProvider, chatKey, messageActivityMs, useApp } from './AppContext';
 
 type AppState = ReturnType<typeof useApp>;
@@ -94,15 +94,11 @@ describe('persistent chats stay separate from reports notifications', () => {
       });
     });
 
-    expect(notificationsApi.send).toHaveBeenCalledWith(expect.objectContaining({
-      target: 'acc',
-      type: 'operational',
-      title: 'Budget Awaiting Accountant Review',
-      data: expect.objectContaining({
-        route: '/(app)/budget',
-        budgetId: expect.any(Number),
-      }),
-    }));
+    expect(workflowApi.budgets.create).toHaveBeenCalledWith(
+      expect.objectContaining({ label: 'September operations', status: 'submitted' }),
+      expect.objectContaining({ expectedRevision: 0, idempotencyKey: expect.any(String) }),
+    );
+    expect(notificationsApi.send).not.toHaveBeenCalled();
     expect(app().getConversation('Station Manager')).toEqual([]);
   });
 
