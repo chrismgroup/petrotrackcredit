@@ -1,20 +1,25 @@
 # Dependency security decisions
 
-## Expo SDK 54 and `image-size`
+## Expo and `image-size`
 
-As of September 3, 2026, `pnpm audit --prod` reports two high-severity
-advisories for `image-size` through Expo's Metro bundler. The advisory metadata
-marks every published `image-size` release through 2.0.2 as affected and lists
-no patched version.
+The Expo SDK 57 / React Native 0.86 dependency upgrade removed the two
+high-severity `image-size` advisories from the release dependency graph.
+`pnpm audit --prod` and the full `pnpm audit` both report no known
+vulnerabilities, and the lockfile contains no `image-size` package.
 
-Petrotrack remains on Expo SDK 54 because moving to SDK 55 or later is a
-framework migration that requires separate native regression testing. Metro
-uses `image-size` while bundling local image assets; it is not used by the API
-server or by Petrotrack to parse user-uploaded or remote images at runtime.
-Given that limited build-time exposure, replacing Metro or forcing an
-incompatible package is a greater release risk than retaining this dependency.
+As of September 4, 2026, npm still lists `image-size` 2.0.2 as the latest
+published release and does not list a patched release. The Expo 57-compatible
+Metro stack now used by Petrotrack (`@expo/metro-config` 57 and Metro 0.84)
+does not depend on `image-size`, so no override or replacement of Metro is
+needed.
 
-Revisit this decision when Expo publishes an SDK-compatible Metro release that
-removes or replaces `image-size`, or when `image-size` publishes a patched
-release. All other production advisories with available fixes are pinned to
-patched versions in the workspace overrides.
+The registry currently advertises newer Expo 57 patch packages, but those
+releases are still inside the workspace's 24-hour minimum release-age window.
+Keep the last mature, compatible versions in the lockfile until those updates
+can be installed without weakening the supply-chain safeguard.
+
+Expo and React Native were upgraded together and the Daily React Native
+package remains on its compatibility patch. Native bundle checks must continue
+to verify that Daily's published bundle does not restore the removed legacy
+background-timer dependency. All other production advisories with available
+fixes remain pinned to patched versions in the workspace overrides.

@@ -277,13 +277,15 @@ function mergePumpDailyReports(existing: unknown, incoming: unknown, actorRole?:
 function canMutatePumpReport(
   current: JsonRecord | undefined,
   candidate: JsonRecord,
-  auth: { username: string; role: string; branchId?: string | null },
+  auth: { username: string; empName?: string; role: string; branchId?: string | null },
 ): boolean {
+  const isSubmittingAttendant = candidate.submittedBy === auth.username
+    || (!!auth.empName && candidate.submittedBy === auth.empName);
   if (auth.role === "admin") return true;
   if (!current) {
     return auth.role === "att"
       && candidate.status === "pending_manager"
-      && candidate.submittedBy === auth.username
+      && isSubmittingAttendant
       && (!auth.branchId || candidate.branchId === auth.branchId);
   }
   // JSONB may return object keys in a different order from the request body,
@@ -303,7 +305,7 @@ function canMutatePumpReport(
   const to = String(candidate.status ?? "");
   const sameBranch = !auth.branchId || candidate.branchId === auth.branchId;
   if (auth.role === "att") {
-    return candidate.submittedBy === auth.username
+    return isSubmittingAttendant
       && from === "returned_attendant"
       && (to === "returned_attendant" || to === "pending_manager");
   }
@@ -715,11 +717,19 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     res.status(400).json({ error: "A valid pending manager report is required" });
     return;
   }
+  const authEmpName = req.auth?.empName ?? (
+    req.auth
+      ? await db.select({ empName: staffUsersTable.empName })
+        .from(staffUsersTable)
+        .where(eq(staffUsersTable.username, req.auth.username))
+        .then(rows => rows[0]?.empName)
+      : undefined
+  );
   if (
     !req.auth ||
     (req.auth.role !== "att" && req.auth.role !== "admin") ||
     (req.auth.role === "att" && (
-      report.submittedBy !== req.auth.username ||
+      (report.submittedBy !== req.auth.username && report.submittedBy !== authEmpName) ||
       (!!req.auth.branchId && report.branchId !== req.auth.branchId)
     ))
   ) {
@@ -1405,6 +1415,14 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   // array so a stale attendant/manager/accountant client cannot erase reports
   // submitted by another device between its initial sync and its next PUT.
   if (key === "pumpDailyReports" && Array.isArray(data)) {
+    const authEmpName = req.auth?.empName ?? (
+      req.auth
+        ? await db.select({ empName: staffUsersTable.empName })
+          .from(staffUsersTable)
+          .where(eq(staffUsersTable.username, req.auth.username))
+          .then(rows => rows[0]?.empName)
+        : undefined
+    );
     const result = await db.transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
       const [existingRow] = await tx.select().from(appStateTable)
@@ -1416,13 +1434,20 @@ router.put("/state/:key", async (req, res): Promise<void> => {
         ? existingRow.data as JsonRecord[]
         : [];
       const existingById = new Map(existingReports.map(report => [String(report.id ?? ""), report]));
-      const unauthorized = (data as unknown[]).some(value => {
-        if (!value || typeof value !== "object" || Array.isArray(value) || !req.auth) return true;
+      const rejectedReportIds: string[] = [];
+      const acceptedReports = (data as unknown[]).filter(value => {
+        if (!value || typeof value !== "object" || Array.isArray(value) || !req.auth) return false;
         const candidate = value as JsonRecord;
-        return !canMutatePumpReport(existingById.get(String(candidate.id ?? "")), candidate, req.auth);
+        const id = String(candidate.id ?? "");
+        const accepted = canMutatePumpReport(
+          existingById.get(id),
+          candidate,
+          { ...req.auth, empName: authEmpName },
+        );
+        if (!accepted && id) rejectedReportIds.push(id);
+        return accepted;
       });
-      if (unauthorized) return { error: "Forbidden" as const };
-      const next = mergePumpDailyReports(existingRow?.data, data, req.auth?.role)
+      const next = mergePumpDailyReports(existingRow?.data, acceptedReports, req.auth?.role)
         .filter(report => !deletedPumpReportIds.has(String(report.id ?? "")));
       for (const report of next) {
         const id = String(report.id ?? "");
@@ -1446,14 +1471,14 @@ router.put("/state/:key", async (req, res): Promise<void> => {
         target: appStateTable.key,
         set: { data: next, updatedAt: new Date() },
       });
-      return { reports: next };
+      return { reports: next, rejectedReportIds };
     });
-    if ("error" in result) {
-      res.status(403).json({ error: result.error });
-      return;
-    }
     broadcastRealtime({ type: "pump-report.changed" });
-    res.json({ ok: true, reports: result.reports });
+    res.json({
+      ok: result.rejectedReportIds.length === 0,
+      reports: result.reports,
+      rejectedReportIds: result.rejectedReportIds,
+    });
     return;
   }
 

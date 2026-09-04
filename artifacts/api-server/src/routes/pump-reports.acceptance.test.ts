@@ -87,7 +87,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
   }
 
   async function putReports(token: string, reports: PumpReport[]) {
-    return request<{ ok: boolean; reports: PumpReport[] }>(
+    return request<{ ok: boolean; reports: PumpReport[]; rejectedReportIds?: string[] }>(
       "/state/pumpDailyReports",
       { method: "PUT", body: JSON.stringify(reports) },
       token,
@@ -103,6 +103,14 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       openingMeter: 1000,
       closingMeter: 1050,
       liters: 50,
+      unitPrice: 700,
+      grossAmount: 35000,
+      posAmount: 10000,
+      cashAmount: 25000,
+      transferAmount: 0,
+      creditAmount: 0,
+      totalCollected: 35000,
+      variance: 0,
       status: "pending_manager",
       submittedBy,
       submittedAt: "2026-09-02T10:00:00.000Z",
@@ -171,7 +179,10 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
 
     const approvedId = reportIds[0];
     const returnedId = reportIds[1];
-    const approvedPending = report(approvedId, usernames.attendantA, { closingMeter: 1100 });
+    const approvedPending = report(approvedId, "Acceptance Attendant A", {
+      closingMeter: 1100,
+      submittedByName: "Acceptance Attendant A",
+    });
     const returnedPending = report(returnedId, usernames.attendantB, {
       closingMeter: 1200,
       submittedAt: "2026-09-02T10:01:00.000Z",
@@ -181,8 +192,15 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     // The next writes are separate authenticated actors sending complete,
     // overlapping arrays at the same time. Neither request may erase the
     // other's report.
-    const seedWrite = await putReports(attendantA.token, [approvedPending]);
-    assert.equal(seedWrite.status, 200);
+    const seedWrite = await request<{ ok: boolean; report: PumpReport }>(
+      "/pump-reports",
+      {
+        method: "POST",
+        body: JSON.stringify({ report: approvedPending, idempotencyKey: approvedId }),
+      },
+      attendantA.token,
+    );
+    assert.equal(seedWrite.status, 201);
     const [firstWrite, secondWrite] = await Promise.all([
       putReports(attendantA.token, [approvedPending]),
       putReports(attendantB.token, [approvedPending, returnedPending]),
@@ -214,9 +232,20 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       status: "pending_accountant",
       mgrAt: "2026-09-02T11:00:00.000Z",
     };
-    const forwarded = await putReports(manager.token, [approvedForwarded]);
+    const unauthorizedUnrelatedTransition = {
+      ...returnedPending,
+      status: "approved",
+      accAt: "2026-09-02T11:00:00.000Z",
+      workflowVersion: 99,
+    };
+    const forwarded = await putReports(manager.token, [
+      approvedForwarded,
+      unauthorizedUnrelatedTransition,
+    ]);
     assert.equal(forwarded.status, 200);
     assert.equal(findReport(forwarded.body.reports, approvedId).status, "pending_accountant");
+    assert.equal(findReport(forwarded.body.reports, returnedId).status, "pending_manager");
+    assert.deepEqual(forwarded.body.rejectedReportIds, [returnedId]);
 
     const approved = {
       ...approvedForwarded,

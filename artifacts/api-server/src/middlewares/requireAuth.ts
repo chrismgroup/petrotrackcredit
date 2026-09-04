@@ -5,6 +5,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 export interface AuthPayload {
   username: string;
+  empName?: string;
   role: string;
   branchId?: string | null;
 }
