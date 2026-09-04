@@ -79,7 +79,12 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     }
 
     const token = jwt.sign(
-      { username: dbUser.username!, role: dbUser.role, branchId: dbUser.branchId ?? null },
+      {
+        username: dbUser.username!,
+        empName: dbUser.empName,
+        role: dbUser.role,
+        branchId: dbUser.branchId ?? null,
+      },
       JWT_SECRET,
       { expiresIn: TOKEN_TTL },
     );
@@ -167,7 +172,12 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
 
   const token = jwt.sign(
-    { username: legacyAccount.username, role: legacyAccount.role!, branchId: legacyAccount.branchId ?? null },
+    {
+      username: legacyAccount.username,
+      empName: legacyAccount.empName,
+      role: legacyAccount.role!,
+      branchId: legacyAccount.branchId ?? null,
+    },
     JWT_SECRET,
     { expiresIn: TOKEN_TTL },
   );

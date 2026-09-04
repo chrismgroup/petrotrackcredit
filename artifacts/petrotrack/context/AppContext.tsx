@@ -1190,6 +1190,23 @@ function defaultRoleAccess(): Record<string, Record<string, boolean>> {
   return result;
 }
 
+function isRequiredWorkflowAccess(targetRole: string | null, moduleId: string): boolean {
+  return moduleId === 'shift'
+    && (targetRole === 'att' || targetRole === 'mgr' || targetRole === 'acc');
+}
+
+function normalizeRequiredWorkflowAccess(
+  access: Record<string, Record<string, boolean>>,
+): Record<string, Record<string, boolean>> {
+  let next = access;
+  for (const requiredRole of ['att', 'mgr', 'acc']) {
+    if (access[requiredRole]?.shift === true) continue;
+    if (next === access) next = { ...access };
+    next[requiredRole] = { ...(access[requiredRole] ?? {}), shift: true };
+  }
+  return next;
+}
+
 export const SCREEN_ROUTES: Record<string, string> = {
   home: '/(app)/home', users: '/(app)/users', depts: '/(app)/departments',
   audit: '/(app)/audit', settings: '/(app)/system-settings', ops: '/(app)/operations',
@@ -1727,7 +1744,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.prices)            setPrices(s.prices);
       if (s.priceHistory)      setPriceHistory(s.priceHistory);
       if (s.mgrPerms)          setMgrPerms(s.mgrPerms);
-      if (s.roleAccess)        setRoleAccess(s.roleAccess);
+      if (s.roleAccess)        setRoleAccess(normalizeRequiredWorkflowAccess(s.roleAccess));
       if (s.userAccess)        setUserAccess(s.userAccess);
        setReportAccessPolicyVersion(readReportAccessPolicyVersion(s.reportAccessPolicyVersion));
       if (s.expenses)          setExpenses(s.expenses);
@@ -1833,7 +1850,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.prices && !p.has('prices'))                       setPrices(s.prices as Prices);
       if (s.priceHistory && !p.has('priceHistory'))           setPriceHistory(s.priceHistory as PriceChange[]);
       if (s.mgrPerms && !p.has('mgrPerms'))                   setMgrPerms(s.mgrPerms as Record<string, MgrPermissions>);
-      if (s.roleAccess && !p.has('roleAccess'))               setRoleAccess(s.roleAccess as Record<string, Record<string, boolean>>);
+      if (s.roleAccess && !p.has('roleAccess')) {
+        setRoleAccess(normalizeRequiredWorkflowAccess(
+          s.roleAccess as Record<string, Record<string, boolean>>,
+        ));
+      }
       if (s.userAccess && !p.has('userAccess'))               setUserAccess(s.userAccess as Record<number, Record<string, boolean>>);
        if (!p.has('reportAccessPolicyVersion')) {
          setReportAccessPolicyVersion(readReportAccessPolicyVersion(s.reportAccessPolicyVersion));
@@ -4512,6 +4533,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateRoleAccess = useCallback((targetRole: string, moduleId: string, enabled: boolean) => {
     if (role !== 'admin') return;
+    if (!enabled && isRequiredWorkflowAccess(targetRole, moduleId)) return;
     setRoleAccess(prev => ({
       ...prev,
       [targetRole]: { ...(prev[targetRole] ?? {}), [moduleId]: enabled },
@@ -4542,11 +4564,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateUserAccess = useCallback((uid: number, moduleId: string, enabled: boolean) => {
     if (role !== 'admin') return;
+    const targetRole = userAccounts.find(account => account.id === uid)?.role ?? null;
+    if (!enabled && isRequiredWorkflowAccess(targetRole, moduleId)) return;
     setUserAccess(prev => ({
       ...prev,
       [uid]: { ...(prev[uid] ?? {}), [moduleId]: enabled },
     }));
-  }, [role]);
+  }, [role, userAccounts]);
 
   const clearUserAccess = useCallback((uid: number) => {
     if (role !== 'admin') return;
@@ -4768,6 +4792,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const navItems: NavItem[] = role === 'admin'
     ? filterFolder(baseNav)
     : filterFolder(baseNav.filter(item => {
+        // Shift reports cannot complete their required attendant → manager →
+        // accountant handoff if any of those roles loses this module.
+        if (isRequiredWorkflowAccess(role, item.id)) return true;
         // Per-user override takes priority over the role default.
         // This applies equally to CEO, MD, accountant, CSM, manager,
         // marketing, and attendant accounts.
