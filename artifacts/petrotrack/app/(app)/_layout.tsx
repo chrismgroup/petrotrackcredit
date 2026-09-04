@@ -2,38 +2,7 @@ import { Redirect, Stack, usePathname } from 'expo-router';
 import React from 'react';
 
 import { SCREEN_ROUTES, useApp } from '@/context/AppContext';
-
-const ROUTE_ACCESS: Record<string, string> = {
-  '/operations': 'ops',
-  '/tanks': 'ops',
-  '/maintenance': 'maint',
-  '/receiving': 'recv',
-  '/stock-snapshot': 'recv',
-  '/inventory': 'recv',
-  '/sales': 'sales',
-  '/shift': 'shift',
-  '/pump-report': 'shift',
-  '/accounts': 'acct',
-  '/daily-revenue-log': 'acct',
-  '/branch-revenue-log': 'acct',
-  '/asset-management': 'assets',
-  '/expenses': 'exp',
-  '/budget': 'budget',
-  '/reports': 'exprpt',
-  '/marketing': 'mktg',
-  '/prices': 'prices',
-  '/hr': 'hr',
-  '/corporate': 'corp',
-  '/corporate-workspace': 'corp',
-  '/document-preview': 'corp',
-  '/tasks': 'tasks',
-  '/action-items': 'actionItems',
-  '/branches': 'branches',
-  '/call': 'comms',
-  '/comms': 'comms',
-};
-const ADMIN_ONLY_ROUTES = ['/departments', '/audit', '/system-settings'];
-const STAFF_ACCOUNT_ROLES = new Set(['admin', 'csm', 'md']);
+import { canAccessWorkspaceRoute } from '@/lib/workspace-access';
 
 export default function AppLayout() {
   const { role, isServerAuthenticated, isHydrated, navItems } = useApp();
@@ -52,15 +21,7 @@ export default function AppLayout() {
   // deep links can also push a route directly. Enforce the same admin-managed
   // role/user permission at the route boundary.
   if (role !== 'admin') {
-    if (pathname.includes('/users') && !STAFF_ACCOUNT_ROLES.has(role)) {
-      return <Redirect href={SCREEN_ROUTES.home as never} />;
-    }
-    if (ADMIN_ONLY_ROUTES.some(path => pathname.includes(path))) {
-      return <Redirect href={SCREEN_ROUTES.home as never} />;
-    }
-    const requiredModule = Object.entries(ROUTE_ACCESS)
-      .find(([path]) => pathname.includes(path))?.[1];
-    if (requiredModule && !navItems.some(item => item.id === requiredModule)) {
+    if (!canAccessWorkspaceRoute(pathname, role, navItems)) {
       const fallback = navItems.find(item => SCREEN_ROUTES[item.id])?.id ?? 'home';
       return <Redirect href={(SCREEN_ROUTES[fallback] ?? SCREEN_ROUTES.home) as never} />;
     }

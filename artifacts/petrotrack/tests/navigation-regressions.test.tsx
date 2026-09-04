@@ -224,6 +224,7 @@ import { Header } from '../components/Header';
 import { TabBar } from '../components/TabBar';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { safeNotificationRoute } from '../lib/navigation-routing';
+import { canAccessWorkspaceRoute, workspaceRouteAccess } from '../lib/workspace-access';
 
 function nodeText(node: ReactTestInstance): string {
   return node.children
@@ -399,6 +400,43 @@ describe('global navigation safeguards', () => {
 });
 
 describe('role-aware route access and stale notification links', () => {
+  it.each([
+    ['Stock snapshot', '/(app)/stock-snapshot', 'recv'],
+    ['Daily Business-Date Revenue Log', '/(app)/daily-revenue-log', 'acct'],
+    ['Branches', '/(app)/branches', 'branches'],
+  ])('keeps the %s card and direct route aligned for restricted roles', (label, route, permission) => {
+    const navItems = [{ id: permission }];
+    mockUseApp.mockReturnValue(baseAppState({ role: 'att', navItems }));
+
+    let jobsRenderer!: ReactTestRenderer;
+    act(() => { jobsRenderer = create(<JobsScreen />); });
+    expect(buttons(jobsRenderer).some(button => nodeText(button).includes(label))).toBe(true);
+    expect(canAccessWorkspaceRoute(route, 'att', navItems)).toBe(true);
+    act(() => jobsRenderer.unmount());
+
+    mockUseApp.mockReturnValue(baseAppState({ role: 'att', navItems: [] }));
+    act(() => { jobsRenderer = create(<JobsScreen />); });
+    expect(buttons(jobsRenderer).some(button => nodeText(button).includes(label))).toBe(false);
+    expect(canAccessWorkspaceRoute(route, 'att', [])).toBe(false);
+    act(() => jobsRenderer.unmount());
+  });
+
+  it('keeps protected workspace cards and routes available to admins', () => {
+    mockUseApp.mockReturnValue(baseAppState({ role: 'admin', navItems: [] }));
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<JobsScreen />); });
+
+    expect(buttons(renderer).some(button => nodeText(button).includes('System settings'))).toBe(true);
+    expect(canAccessWorkspaceRoute('/(app)/system-settings', 'admin', [])).toBe(true);
+    act(() => renderer.unmount());
+  });
+
+  it('requires each protected My Jobs destination to be declared in the shared policy', () => {
+    expect(workspaceRouteAccess('/(app)/stock-snapshot')).toEqual(expect.objectContaining({ permission: 'recv' }));
+    expect(workspaceRouteAccess('/(app)/future-workspace')).toBeUndefined();
+  });
+
   it('redirects a restricted role to its first permitted primary module', () => {
     mockUseApp.mockReturnValue({
       role: 'att',
