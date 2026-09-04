@@ -233,10 +233,55 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       ...returnedForwarded,
       status: "returned",
       accAt: "2026-09-02T12:01:00.000Z",
+      workflowVersion: 3,
     };
     const returnedWrite = await putReports(accountant.token, [returned]);
     assert.equal(returnedWrite.status, 200);
     assert.equal(findReport(returnedWrite.body.reports, returnedId).status, "returned");
+
+    // A manager must be able to send a returned report to its original
+    // attendant even when the manager's device clock is behind the accountant.
+    const returnedToAttendant = {
+      ...returned,
+      status: "returned_attendant",
+      mgrAt: "2026-09-02T09:00:00.000Z",
+      workflowVersion: 4,
+    };
+    const returnedToAttendantWrite = await putReports(manager.token, [returnedToAttendant]);
+    assert.equal(returnedToAttendantWrite.status, 200);
+    assert.equal(findReport(returnedToAttendantWrite.body.reports, returnedId).status, "returned_attendant");
+
+    // The original attendant's corrected resubmission also advances by
+    // revision, so an older phone clock cannot leave it stuck with the manager.
+    const attendantResubmitted = {
+      ...returnedToAttendant,
+      status: "pending_manager",
+      submittedAt: "2026-09-02T08:00:00.000Z",
+      workflowVersion: 5,
+    };
+    const attendantResubmittedWrite = await putReports(attendantB.token, [attendantResubmitted]);
+    assert.equal(attendantResubmittedWrite.status, 200);
+    assert.equal(findReport(attendantResubmittedWrite.body.reports, returnedId).status, "pending_manager");
+
+    const returnedForwardedAgain = {
+      ...attendantResubmitted,
+      status: "pending_accountant",
+      mgrAt: "2026-09-02T07:00:00.000Z",
+      workflowVersion: 6,
+    };
+    const returnedForwardedAgainWrite = await putReports(manager.token, [returnedForwardedAgain]);
+    assert.equal(returnedForwardedAgainWrite.status, 200);
+    assert.equal(findReport(returnedForwardedAgainWrite.body.reports, returnedId).status, "pending_accountant");
+
+    const returnedApproved = {
+      ...returnedForwardedAgain,
+      status: "approved",
+      accAt: "2026-09-02T06:00:00.000Z",
+      workflowVersion: 7,
+    };
+    const returnedApprovedWrite = await putReports(accountant.token, [returnedApproved]);
+    assert.equal(returnedApprovedWrite.status, 200);
+    assert.equal(findReport(returnedApprovedWrite.body.reports, returnedId).status, "approved");
 
     const staleReturnedPending = {
       ...returnedPending,
@@ -244,13 +289,14 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     };
     const staleReturnedWrite = await putReports(attendantB.token, [staleReturnedPending]);
     assert.equal(staleReturnedWrite.status, 200);
-    assert.equal(findReport(staleReturnedWrite.body.reports, returnedId).status, "returned");
+    assert.equal(findReport(staleReturnedWrite.body.reports, returnedId).status, "approved");
 
     const adminReturned = {
       ...approved,
       status: "pending_accountant",
       adminReturnedAt: "2026-09-02T14:00:00.000Z",
       adminReturnedBy: usernames.admin,
+      workflowVersion: 4,
     };
     const adminReturnWrite = await putReports(admin.token, [adminReturned]);
     assert.equal(adminReturnWrite.status, 200);

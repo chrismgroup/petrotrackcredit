@@ -794,6 +794,29 @@ describe('pump opening meter rollover', () => {
     expect(getPumpOpeningMeter(merged, approved.pumpId, {}, { [approved.pumpId]: 1000 })).toBe(1400);
   });
 
+  it('uses workflow revisions when valid returned-report transitions have older device timestamps', () => {
+    const returned = {
+      ...reportWithStatus('returned'),
+      workflowVersion: 2,
+      accAt: '2026-08-20T12:00:00.000Z',
+    };
+    const withAttendant = {
+      ...returned,
+      status: 'returned_attendant' as const,
+      workflowVersion: 3,
+      mgrAt: '2026-08-20T09:00:00.000Z',
+    };
+    const resubmitted = {
+      ...withAttendant,
+      status: 'pending_manager' as const,
+      workflowVersion: 4,
+      submittedAt: '2026-08-20T08:00:00.000Z',
+    };
+
+    expect(mergePumpDailyReports([returned], [withAttendant])).toEqual([withAttendant]);
+    expect(mergePumpDailyReports([withAttendant], [resubmitted])).toEqual([resubmitted]);
+  });
+
   it('ignores incomplete meter intervals and falls back to the configured meter', () => {
     const incomplete = {
       ...reportWithStatus('pending_manager'),

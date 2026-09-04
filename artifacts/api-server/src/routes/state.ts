@@ -182,6 +182,11 @@ function pumpReportActivityMs(report: JsonRecord): number {
   return timestamps.length > 0 ? Math.max(...timestamps) : 0;
 }
 
+function pumpReportWorkflowVersion(report: JsonRecord): number {
+  const version = Number(report.workflowVersion);
+  return Number.isFinite(version) && version >= 0 ? version : 0;
+}
+
 function pumpReportDeletionIds(data: unknown): Set<string> {
   if (!Array.isArray(data)) return new Set();
   return new Set(data.flatMap(value => {
@@ -216,6 +221,8 @@ function mergePumpDailyReports(existing: unknown, incoming: unknown, actorRole?:
     }
     const currentActivity = pumpReportActivityMs(current);
     const candidateActivity = pumpReportActivityMs(report);
+    const currentVersion = pumpReportWorkflowVersion(current);
+    const candidateVersion = pumpReportWorkflowVersion(report);
 
     // Approved reports are immutable unless an Admin either corrects their
     // business date or explicitly returns them to the accountant for a full
@@ -226,7 +233,7 @@ function mergePumpDailyReports(existing: unknown, incoming: unknown, actorRole?:
         if (
           actorRole !== "admin" ||
           !Number.isFinite(correctionMs) ||
-          correctionMs <= currentActivity
+          (correctionMs <= currentActivity && candidateVersion <= currentVersion)
         ) {
           return;
         }
@@ -235,12 +242,20 @@ function mergePumpDailyReports(existing: unknown, incoming: unknown, actorRole?:
         if (
           actorRole !== "admin" ||
           report.status !== "pending_accountant" ||
-          !Number.isFinite(returnedAt) ||
-          returnedAt <= currentActivity
+          (!Number.isFinite(returnedAt) ||
+            (returnedAt <= currentActivity && candidateVersion <= currentVersion))
         ) {
           return;
         }
       }
+    }
+
+    // Use the explicit workflow revision before wall-clock timestamps. Mobile
+    // devices can have different clocks, but a valid transition must still
+    // advance the record instead of being discarded as stale.
+    if (candidateVersion !== currentVersion) {
+      if (candidateVersion > currentVersion) merged.set(id, report);
+      return;
     }
 
     const currentRank = PUMP_REPORT_STATUS_RANK[String(current.status ?? "")] ?? 0;

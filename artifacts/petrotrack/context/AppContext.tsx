@@ -401,6 +401,8 @@ export interface PumpDailyReport {
   idempotencyKey?: string;
   /** Delivery state is local-only; missing means a legacy/server-confirmed report. */
   deliveryStatus?: 'queued' | 'confirmed';
+  /** Monotonic workflow revision used to order transitions across device clocks. */
+  workflowVersion?: number;
   status: PumpReportStatus;
   mgrNote?: string;
   mgrBy?: string;
@@ -876,6 +878,16 @@ const PUMP_REPORT_STATUS_RANK: Record<string, number> = {
   approved: 5,
 };
 
+function pumpReportWorkflowVersion(report: Pick<PumpDailyReport, 'workflowVersion'>): number {
+  return Number.isFinite(report.workflowVersion) && (report.workflowVersion ?? 0) >= 0
+    ? report.workflowVersion ?? 0
+    : 0;
+}
+
+function nextPumpReportWorkflowVersion(report: Pick<PumpDailyReport, 'workflowVersion'>): number {
+  return pumpReportWorkflowVersion(report) + 1;
+}
+
 const DIP_STATUS_RANK: Record<DipRecord['status'], number> = {
   pending: 1,
   rejected: 2,
@@ -915,21 +927,32 @@ export function mergePumpDailyReports(current: PumpDailyReport[], incoming: Pump
 
     const currentActivity = pumpReportActivityMs(existing);
     const incomingActivity = pumpReportActivityMs(report);
+    const currentVersion = pumpReportWorkflowVersion(existing);
+    const incomingVersion = pumpReportWorkflowVersion(report);
     const currentRank = PUMP_REPORT_STATUS_RANK[existing.status] ?? 0;
     const incomingRank = PUMP_REPORT_STATUS_RANK[report.status] ?? 0;
 
     if (existing.status === 'approved') {
       if (report.status === 'approved' && existing.date !== report.date) {
         const correctionMs = timestampMs(report.dateCorrectedAt);
-        if (!Number.isFinite(correctionMs) || correctionMs <= currentActivity) return;
+        if (incomingVersion <= currentVersion
+          && (!Number.isFinite(correctionMs) || correctionMs <= currentActivity)) return;
       } else if (report.status !== 'approved') {
         const returnedAt = timestampMs(report.adminReturnedAt);
         if (
           report.status !== 'pending_accountant' ||
-          !Number.isFinite(returnedAt) ||
-          returnedAt <= currentActivity
+          (incomingVersion <= currentVersion
+            && (!Number.isFinite(returnedAt) || returnedAt <= currentActivity))
         ) return;
       }
+    }
+
+    // Workflow revisions are authoritative when present. They are assigned
+    // locally before a transition is persisted, so a valid action cannot be
+    // rejected merely because two phones have different wall clocks.
+    if (incomingVersion !== currentVersion) {
+      if (incomingVersion > currentVersion) merged.set(report.id, report);
+      return;
     }
 
     if (
@@ -2313,7 +2336,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // stale AsyncStorage snapshots can't overwrite data written by other users.
     if (!initialSyncDoneRef.current) return;
     pendingWritesRef.current.add(key);
-    stateApi.put(key, value).finally(() => pendingWritesRef.current.delete(key));
+    void stateApi.put<{ ok?: boolean; reports?: PumpDailyReport[] }>(key, value)
+      .then(result => {
+        if (result === null) {
+          // Never leave an optimistic local approval or edit visible after a
+          // rejected/network-failed write. Reconcile every shared workflow
+          // slice, not just pump reports.
+          void syncFromServer();
+          return;
+        }
+        // Some local test/runtime adapters intentionally do not return the
+        // response body. They still represent a completed fire-and-forget
+        // write, so there is no canonical payload to merge.
+        if (!result) return;
+        if (key !== 'pumpDailyReports') return;
+        if (Array.isArray(result.reports)) {
+          setPumpDailyReports(current => {
+            const merged = mergePumpDailyReports(current, result.reports!);
+            return JSON.stringify(merged) === JSON.stringify(current) ? current : merged;
+          });
+          return;
+        }
+      })
+      .finally(() => pendingWritesRef.current.delete(key));
   }
   useEffect(() => { if (loaded) syncSlice('companyInfo',       companyInfo); },       [companyInfo, loaded]);
   useEffect(() => { if (loaded) syncSlice('tanks',             tanks); },             [tanks, loaded]);
@@ -3908,6 +3953,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id: genId(),
       status: 'pending_manager',
       submittedAt: nowTs(),
+      workflowVersion: 1,
     };
     recordSubmittedPumpReport(report, r);
     return true;
@@ -3922,6 +3968,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id,
       status: 'pending_manager',
       submittedAt: nowTs(),
+      workflowVersion: 1,
       idempotencyKey,
       deliveryStatus: 'queued',
     };
@@ -3958,7 +4005,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Only reports awaiting manager review may be forwarded — this also keeps
     // approved reports permanently locked against re-entering the workflow.
     if (!report || report.status !== 'pending_manager') return;
-    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'pending_manager' ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs() } : r));
+    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'pending_manager'
+      ? { ...r, status: 'pending_accountant', workflowVersion: nextPumpReportWorkflowVersion(r), mgrNote, mgrBy: userName, mgrAt: nowTs() }
+      : r
+    ));
     setAudit(a => [{ id: genId(), action: 'Pump report forwarded to accountant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
     if (report) void notificationsApi.send({
       target: 'acc',
@@ -3974,7 +4024,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Only accountant-rejected reports may be re-submitted; approved reports
     // stay permanently locked.
     if (!report || report.status !== 'returned') return;
-    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'returned' ? { ...r, status: 'pending_accountant', mgrNote, mgrBy: userName, mgrAt: nowTs(), rejectionReason: undefined } : r));
+    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'returned'
+      ? { ...r, status: 'pending_accountant', workflowVersion: nextPumpReportWorkflowVersion(r), mgrNote, mgrBy: userName, mgrAt: nowTs(), rejectionReason: undefined }
+      : r
+    ));
     setAudit(a => [{ id: genId(), action: 'Pump report re-submitted to accountant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
     if (report) void notificationsApi.send({
       target: 'acc',
@@ -3989,7 +4042,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const report = pumpDailyReports.find(r => r.id === id);
     // Only accountant-rejected reports can be pushed back to the attendant.
     if (!report || report.status !== 'returned') return;
-    setPumpDailyReports(rs => rs.map(r => r.id === id ? { ...r, status: 'returned_attendant', mgrNote, mgrBy: userName, mgrAt: nowTs() } : r));
+    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'returned'
+      ? { ...r, status: 'returned_attendant', workflowVersion: nextPumpReportWorkflowVersion(r), mgrNote, mgrBy: userName, mgrAt: nowTs() }
+      : r
+    ));
     setAudit(a => [{ id: genId(), action: 'Pump report returned to attendant', user: userName, detail: `Report #${id} — ${mgrNote}`, ts: nowTs() }, ...a]);
     void notificationsApi.send({
       target: report.submittedBy,
@@ -4007,7 +4063,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!report || report.status !== 'returned_attendant' || report.submittedBy !== userName) return false;
     if (role === 'att' && isFutureBusinessDate(report.date)) return false;
     setPumpDailyReports(rs => rs.map(r => r.id === id
-      ? { ...r, status: 'pending_manager', note: note || r.note, submittedAt: nowTs(), rejectionReason: undefined }
+      ? { ...r, status: 'pending_manager', workflowVersion: nextPumpReportWorkflowVersion(r), note: note || r.note, submittedAt: nowTs(), rejectionReason: undefined }
       : r
     ));
     setAudit(a => [{ id: genId(), action: 'Pump report re-submitted by attendant', user: userName, detail: `Report #${id} — ${report.pumpName}`, ts: nowTs() }, ...a]);
@@ -4066,6 +4122,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ? {
           ...candidate,
           status: 'pending_accountant',
+          workflowVersion: nextPumpReportWorkflowVersion(candidate),
           adminReturnNote: returnNote,
           adminReturnedBy: userName,
           adminReturnedAt: returnedAt,
@@ -4108,7 +4165,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const pump = pumps.find(p => p.id === currentReport.pumpId);
     const resolvedBranchId = currentReport.branchId || pump?.branchId || '';
     setPumpDailyReports(rs => rs.map(r => r.id === id
-      ? { ...r, branchId: r.branchId || resolvedBranchId, status: 'approved', accNote, accBy: userName, accAt: nowTs() }
+      ? { ...r, branchId: r.branchId || resolvedBranchId, status: 'approved', workflowVersion: nextPumpReportWorkflowVersion(r), accNote, accBy: userName, accAt: nowTs() }
       : r
     ));
     setSales(s => {
@@ -4160,7 +4217,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Only reports awaiting accountant review may be rejected — approved
     // reports are permanently locked and cannot re-enter the workflow.
     if (!report || report.status !== 'pending_accountant') return;
-    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'pending_accountant' ? { ...r, status: 'returned', rejectionReason, accBy: userName, accAt: nowTs() } : r));
+    setPumpDailyReports(rs => rs.map(r => r.id === id && r.status === 'pending_accountant'
+      ? { ...r, status: 'returned', workflowVersion: nextPumpReportWorkflowVersion(r), rejectionReason, accBy: userName, accAt: nowTs() }
+      : r
+    ));
     setAudit(a => [{ id: genId(), action: 'Pump report rejected', user: userName, detail: `Report #${id} — ${rejectionReason}`, ts: nowTs() }, ...a]);
     if (report) void notificationsApi.send({
       target: report.submittedBy,
