@@ -156,7 +156,7 @@ function PerfBar({ pct, isOver, isWarning }: { pct: number; isOver: boolean; isW
 export default function BudgetScreen() {
   const {
     role, userName, branchId, budgets, expenses, branches,
-    addBudget, updateBudget, deleteBudget, archiveBudgets, submitBudgetToAcc,
+    addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, submitBudgetToAcc,
     forwardBudget, approveBudget, rejectBudget,
   } = useApp();
 
@@ -266,8 +266,7 @@ export default function BudgetScreen() {
     if (!built) return;
     requestDateConfirmation('budget', formDate, () => {
       if (editTarget) {
-        updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
-        setTimeout(() => submitBudgetToAcc(editTarget.id), 50);
+        updateAndSubmitBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
       } else {
         addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted' });
       }

@@ -80,6 +80,29 @@ async function post<T>(path: string, data: unknown): Promise<T | null> {
   }
 }
 
+export type JsonCommandMethod = 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+
+/** Executes an authenticated JSON workflow command and returns its canonical response. */
+export async function authenticatedJsonCommand<T>(
+  method: JsonCommandMethod,
+  path: string,
+  data: unknown,
+): Promise<T | null> {
+  if (!BASE) return null;
+  try {
+    const headers = await authHeaders();
+    const response = await fetch(`${BASE}${path}`, {
+      method,
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) return null;
+    return await response.json() as T;
+  } catch {
+    return null;
+  }
+}
+
 async function putR<T>(path: string, data: unknown): Promise<T | null> {
   if (!BASE) return null;
   try {
@@ -166,6 +189,63 @@ export const stateApi = {
     }),
   resetOperational: () => post<{ ok: boolean; seedMeters?: Record<string, number> }>('/state/reset-operational', {}),
   deleteApprovedPumpReport: (id: number) => post<{ ok: boolean }>(`/state/pump-reports/${id}/delete`, {}),
+};
+
+export interface WorkflowCommand {
+  expectedRevision: number;
+  idempotencyKey: string;
+}
+export type WorkflowRecordResponse<T> = { record: T; deleted?: boolean; replay?: boolean };
+export type DeliveryWorkflowResponse<T> = { delivery: T; replayed?: boolean };
+export type DipWorkflowResponse<T> = { dip: T; inventoryLog?: unknown[]; replayed?: boolean };
+export type PriceProposalWorkflowResponse<T> = {
+  proposal: T; prices?: unknown; priceHistory?: unknown; replayed?: boolean;
+};
+
+const workflowPath = (id: string | number) => encodeURIComponent(String(id));
+export const workflowApi = {
+  deliveries: {
+    create: <T>(delivery: T, command: WorkflowCommand) =>
+      authenticatedJsonCommand<DeliveryWorkflowResponse<T>>('POST', '/deliveries', { delivery, ...command }),
+    update: <T>(id: number, delivery: Partial<T>, command: WorkflowCommand) =>
+      authenticatedJsonCommand<DeliveryWorkflowResponse<T>>('PUT', `/deliveries/${workflowPath(id)}`, { delivery, ...command }),
+    remove: <T>(id: number, command: WorkflowCommand) =>
+      authenticatedJsonCommand<DeliveryWorkflowResponse<T>>('DELETE', `/deliveries/${workflowPath(id)}`, command),
+    submit: <T>(id: number, command: WorkflowCommand) =>
+      authenticatedJsonCommand<DeliveryWorkflowResponse<T>>('POST', `/deliveries/${workflowPath(id)}/submit`, command),
+    forward: <T>(id: number, costPrice: number, note: string, command: WorkflowCommand) =>
+      authenticatedJsonCommand<DeliveryWorkflowResponse<T>>('POST', `/deliveries/${workflowPath(id)}/forward`, { costPrice, note, ...command }),
+    recall: <T>(id: number, command: WorkflowCommand) =>
+      authenticatedJsonCommand<DeliveryWorkflowResponse<T>>('POST', `/deliveries/${workflowPath(id)}/recall`, command),
+    approve: <T>(id: number, sellingPrice: number, note: string, command: WorkflowCommand) =>
+      authenticatedJsonCommand<DeliveryWorkflowResponse<T>>('POST', `/deliveries/${workflowPath(id)}/approve`, { sellingPrice, note, ...command }),
+    reject: <T>(id: number, note: string, command: WorkflowCommand) =>
+      authenticatedJsonCommand<DeliveryWorkflowResponse<T>>('POST', `/deliveries/${workflowPath(id)}/reject`, { note, ...command }),
+  },
+  expenses: {
+    create: <T>(expense: T, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', '/finance/expenses', { expense, ...command }),
+    update: <T>(id: number, expense: Partial<T>, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('PATCH', `/finance/expenses/${workflowPath(id)}`, { expense, ...command }),
+    remove: <T>(id: number, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('DELETE', `/finance/expenses/${workflowPath(id)}`, command),
+    transition: <T>(id: number, action: 'forward' | 'approve' | 'reject', command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/expenses/${workflowPath(id)}/${action}`, command),
+  },
+  budgets: {
+    create: <T>(budget: T, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', '/finance/budgets', { budget, ...command }),
+    update: <T>(id: number, budget: Partial<T>, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('PATCH', `/finance/budgets/${workflowPath(id)}`, { budget, ...command }),
+    updateAndSubmit: <T>(id: number, budget: Partial<T>, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/update-submit`, { budget, ...command }),
+    remove: <T>(id: number, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('DELETE', `/finance/budgets/${workflowPath(id)}`, command),
+    archive: <T>(id: number, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/archive`, command),
+    transition: <T>(id: number, action: 'submit' | 'forward' | 'approve' | 'reject', note: string, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/${action}`, { note, ...command }),
+  },
+  dips: {
+    create: <T>(dip: T, command: WorkflowCommand) => authenticatedJsonCommand<DipWorkflowResponse<T>>('POST', '/workflows/dips', { dip, ...command }),
+    update: <T>(id: number, dip: Partial<T>, command: WorkflowCommand) => authenticatedJsonCommand<DipWorkflowResponse<T>>('PATCH', `/workflows/dips/${workflowPath(id)}`, { dip, ...command }),
+    remove: <T>(id: number, command: WorkflowCommand) => authenticatedJsonCommand<DipWorkflowResponse<T>>('DELETE', `/workflows/dips/${workflowPath(id)}`, command),
+    decide: <T>(id: number, decision: 'approve' | 'reject', command: WorkflowCommand) => authenticatedJsonCommand<DipWorkflowResponse<T>>('POST', `/workflows/dips/${workflowPath(id)}/${decision}`, command),
+  },
+  priceProposals: {
+    create: <T>(proposal: T, command: WorkflowCommand) => authenticatedJsonCommand<PriceProposalWorkflowResponse<T>>('POST', '/workflows/price-proposals', { proposal, ...command }),
+    decide: <T>(id: number, decision: 'approve' | 'reject', command: WorkflowCommand & { editedPrice?: number; note?: string }) => authenticatedJsonCommand<PriceProposalWorkflowResponse<T>>('POST', `/workflows/price-proposals/${workflowPath(id)}/${decision}`, command),
+  },
 };
 
 export const realtimeApi = {

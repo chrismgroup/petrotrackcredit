@@ -34,6 +34,13 @@ const ALLOWED_KEYS = new Set([
   "stockLogs", "reportAccessPolicyVersion",
   "companyAssets",
 ]);
+const COMMAND_OWNED_WORKFLOW_KEYS = new Set([
+  "deliveries",
+  "expenses",
+  "budgets",
+  "dips",
+  "priceProposals",
+]);
 const MY_FOLDER_WRITE_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
 const COMPANY_ASSET_WRITE_ROLES = new Set(["admin", "acc", "md", "ceo", "csm", "mktg", "mgr"]);
 
@@ -1299,6 +1306,12 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   const key = Array.isArray(req.params.key) ? req.params.key[0] : req.params.key;
   if (!ALLOWED_KEYS.has(key)) {
     res.status(400).json({ error: "Unknown state key" });
+    return;
+  }
+  if (COMMAND_OWNED_WORKFLOW_KEYS.has(key)) {
+    res.status(409).json({
+      error: `${key} is server-authoritative; use its workflow command endpoint`,
+    });
     return;
   }
 
