@@ -9,6 +9,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { REPORT_META, getPerms, ReportType } from '@/lib/report-helpers';
 import { ROLE_COLORS, SCREEN_ROUTES, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { canAccessWorkspaceRoute, workspaceRouteAccess } from '@/lib/workspace-access';
 
 type JobItem = {
   id: string;
@@ -109,31 +110,14 @@ export default function JobsScreen() {
 
   const allowed = new Set(navItems.map(item => item.id));
   const canSee = (item: JobItem) => {
-    if (role === 'admin') return true;
-    if (item.id === 'stock-snapshot') return allowed.has('recv');
+    if (!workspaceRouteAccess(item.route)) return false;
     if (item.id === 'dips') return role === 'md' && (allowed.has('ops') || allowed.has('tanks'));
-    if (item.id === 'financial-status') return allowed.has('acct');
-    if (item.id === 'daily-revenue-log') return allowed.has('acct');
-    if (item.id === 'branch-revenue-log') return allowed.has('acct');
-    if (item.id === 'assets') return allowed.has('assets');
-    if (item.id === 'people') return allowed.has('hr') || allowed.has('users');
-    return Object.values(SCREEN_ROUTES).includes(item.route) && (
-      item.id === 'maint' ? allowed.has('maint') :
-      item.id === 'receiving' ? allowed.has('recv') :
-      item.id === 'inventory' ? allowed.has('recv') :
-      item.id === 'budgets' ? allowed.has('budget') :
-      item.id === 'expenses' ? allowed.has('exp') :
-      item.id === 'sales' ? allowed.has('sales') :
-      item.id === 'shift' ? allowed.has('shift') :
-      true
-    );
+    return canAccessWorkspaceRoute(item.route, role, navItems);
   };
   const visibleOperations = operations.filter(canSee);
   const visibleSales = sales.filter(canSee);
   const visibleFinance = finance.filter(canSee);
-  const visibleSupport = supportItems.filter(item => role === 'admin' || allowed.has(
-    item.id === 'people' ? 'hr' : item.id === 'marketing' ? 'mktg' : item.id === 'settings' ? 'settings' : item.id,
-  ));
+  const visibleSupport = supportItems.filter(canSee);
   const visibleReportTypes = getPerms(role).visible;
   const pending = dips.filter(d => d.status === 'pending').length;
   const openMaintenance = maintenance.filter(item => item.st === 'Open').length;
@@ -238,7 +222,7 @@ export default function JobsScreen() {
         <JobSection icon="trending-up-outline" title="Sales" subtitle="Track shifts and commercial performance" items={visibleSales} onPress={openJob} colors={colors} />
         <JobSection icon="wallet-outline" title="Finance" subtitle="Stay ahead of spend and financial health" items={visibleFinance} onPress={openJob} colors={colors} />
 
-        {allowed.has('exprpt') && (
+        {canAccessWorkspaceRoute(SCREEN_ROUTES.exprpt, role, navItems) && (
           <View style={styles.section}>
             <SectionHeader icon="document-text-outline" title="Reports" subtitle="Open a focused report or export the full picture" colors={colors} />
             <View style={styles.reportGrid}>
