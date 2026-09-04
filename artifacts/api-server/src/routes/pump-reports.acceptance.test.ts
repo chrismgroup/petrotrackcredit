@@ -116,6 +116,23 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     return found;
   }
 
+  async function reopenAndRead(
+    token: string,
+    id: string,
+    expectedStatus: string,
+  ): Promise<PumpReport> {
+    // A foreground resume first checks the lightweight version endpoint, then
+    // hydrates a fresh authenticated state snapshot.
+    const version = await request<{ version: string }>("/version", {}, token);
+    assert.equal(version.status, 200);
+    assert.equal(typeof version.body.version, "string");
+    const state = await request<PumpReport[]>("/state/pumpDailyReports", {}, token);
+    assert.equal(state.status, 200);
+    const current = findReport(state.body, id);
+    assert.equal(current.status, expectedStatus);
+    return current;
+  }
+
   try {
     await pool.query(`
       INSERT INTO staff_users (
@@ -238,6 +255,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     const returnedWrite = await putReports(accountant.token, [returned]);
     assert.equal(returnedWrite.status, 200);
     assert.equal(findReport(returnedWrite.body.reports, returnedId).status, "returned");
+    await reopenAndRead(manager.token, returnedId, "returned");
 
     // A manager must be able to send a returned report to its original
     // attendant even when the manager's device clock is behind the accountant.
@@ -250,6 +268,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     const returnedToAttendantWrite = await putReports(manager.token, [returnedToAttendant]);
     assert.equal(returnedToAttendantWrite.status, 200);
     assert.equal(findReport(returnedToAttendantWrite.body.reports, returnedId).status, "returned_attendant");
+    await reopenAndRead(attendantB.token, returnedId, "returned_attendant");
 
     // The original attendant's corrected resubmission also advances by
     // revision, so an older phone clock cannot leave it stuck with the manager.
@@ -262,6 +281,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     const attendantResubmittedWrite = await putReports(attendantB.token, [attendantResubmitted]);
     assert.equal(attendantResubmittedWrite.status, 200);
     assert.equal(findReport(attendantResubmittedWrite.body.reports, returnedId).status, "pending_manager");
+    await reopenAndRead(manager.token, returnedId, "pending_manager");
 
     const returnedForwardedAgain = {
       ...attendantResubmitted,
@@ -272,6 +292,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     const returnedForwardedAgainWrite = await putReports(manager.token, [returnedForwardedAgain]);
     assert.equal(returnedForwardedAgainWrite.status, 200);
     assert.equal(findReport(returnedForwardedAgainWrite.body.reports, returnedId).status, "pending_accountant");
+    await reopenAndRead(accountant.token, returnedId, "pending_accountant");
 
     const returnedApproved = {
       ...returnedForwardedAgain,
@@ -282,6 +303,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     const returnedApprovedWrite = await putReports(accountant.token, [returnedApproved]);
     assert.equal(returnedApprovedWrite.status, 200);
     assert.equal(findReport(returnedApprovedWrite.body.reports, returnedId).status, "approved");
+    await reopenAndRead(attendantB.token, returnedId, "approved");
 
     const staleReturnedPending = {
       ...returnedPending,
