@@ -48,16 +48,19 @@ async function get<T>(path: string): Promise<T | null> {
   }
 }
 
-async function put(path: string, data: unknown): Promise<void> {
-  if (!BASE) return;
+async function put<T = unknown>(path: string, data: unknown): Promise<T | null> {
+  if (!BASE) return null;
   try {
     const headers = await authHeaders();
-    await fetch(`${BASE}${path}`, {
+    const r = await fetch(`${BASE}${path}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(data),
     });
+    if (!r.ok) return null;
+    return await r.json() as T;
   } catch {
+    return null;
   }
 }
 
@@ -151,7 +154,7 @@ export async function apiLogin(username: string, password: string): Promise<Logi
 export const stateApi = {
   getAll: () => get<Record<string, unknown>>('/state'),
   get: <T>(key: string) => get<T>(`/state/${key}`),
-  put: (key: string, data: unknown) => put(`/state/${key}`, data),
+  put: <T = unknown>(key: string, data: unknown) => put<T>(`/state/${key}`, data),
   upsertCompanyAsset: <T>(asset: T, baseRevision: number | null) =>
     post<{ ok: boolean; asset: T; assets: T[] }>('/state/company-assets/upsert', { asset, baseRevision }),
   deleteCompanyAsset: (id: string) =>
