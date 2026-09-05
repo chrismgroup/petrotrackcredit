@@ -47,9 +47,11 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
   };
   const reportIds = [`${marker}-approved`, `${marker}-returned`];
   const deletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
+  const attendantDeletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
   const cleanupReportIds = [
     ...reportIds,
     deletedReportId,
+    attendantDeletedReportId,
     `${marker}-fixture`,
     `${marker}-unrelated`,
   ];
@@ -403,6 +405,54 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       false,
     );
     assert.equal(durableReport.rowCount, 0);
+
+    const returnedForAttendant = report(attendantDeletedReportId, usernames.attendantA, {
+      status: "returned",
+      submittedByName: "Acceptance Attendant A",
+      accNote: "Correct the rejected figures",
+      workflowVersion: 3,
+    });
+    const seedReturnedForAttendant = await putReports(admin.token, [returnedForAttendant]);
+    assert.equal(seedReturnedForAttendant.status, 200);
+    assert.equal(
+      findReport(seedReturnedForAttendant.body.reports, attendantDeletedReportId).status,
+      "returned",
+    );
+
+    const correctedByAttendant = {
+      ...returnedForAttendant,
+      closingMeter: 1060,
+      note: "Corrected by original attendant",
+      workflowVersion: 4,
+    };
+    const attendantEdit = await putReports(attendantA.token, [correctedByAttendant]);
+    assert.equal(attendantEdit.status, 200);
+    assert.equal(
+      findReport(attendantEdit.body.reports, attendantDeletedReportId).closingMeter,
+      1060,
+    );
+
+    const otherAttendantDelete = await request<{ error: string }>(
+      `/state/pump-reports/${attendantDeletedReportId}/delete`,
+      { method: "POST", body: JSON.stringify({}) },
+      attendantB.token,
+    );
+    assert.equal(otherAttendantDelete.status, 403);
+
+    const attendantDelete = await request<{ ok: boolean }>(
+      `/state/pump-reports/${attendantDeletedReportId}/delete`,
+      { method: "POST", body: JSON.stringify({}) },
+      attendantA.token,
+    );
+    assert.equal(attendantDelete.status, 200);
+    assert.equal(attendantDelete.body.ok, true);
+
+    const staleAttendantDeletedWrite = await putReports(admin.token, [returnedForAttendant]);
+    assert.equal(staleAttendantDeletedWrite.status, 200);
+    assert.equal(
+      staleAttendantDeletedWrite.body.reports.some(candidate => candidate.id === attendantDeletedReportId),
+      false,
+    );
 
     const fixtureMarker = `native-outbox-fixture-${marker}`;
     const fixtureReport = report(`${marker}-fixture`, usernames.attendantA, {

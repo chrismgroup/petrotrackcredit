@@ -127,6 +127,11 @@ function getConfiguredMetroPort() {
   return port;
 }
 
+function metroUrl(metroPort, pathname) {
+  const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return new URL(`http://localhost:${metroPort}${normalizedPath}`);
+}
+
 async function findAvailableMetroPort() {
   const configuredPort = getConfiguredMetroPort();
   if (configuredPort !== null) {
@@ -160,7 +165,7 @@ async function findAvailableMetroPort() {
 
 async function checkMetroHealth(metroPort) {
   try {
-    const response = await fetch(`http://localhost:${metroPort}/status`, {
+    const response = await fetch(metroUrl(metroPort, "/status"), {
       signal: AbortSignal.timeout(5000),
     });
     return response.ok;
@@ -278,7 +283,7 @@ async function downloadFile(url, outputPath) {
 async function downloadBundle(platform, timestamp, metroPort) {
   const entryPath = path.resolve(projectRoot, "node_modules", "expo-router", "entry");
   const bundlePath = path.relative(workspaceRoot, entryPath);
-  const url = new URL(`http://localhost:${metroPort}/${bundlePath}.bundle`);
+  const url = metroUrl(metroPort, `${bundlePath}.bundle`);
   url.searchParams.set("platform", platform);
   url.searchParams.set("dev", "false");
   url.searchParams.set("hot", "false");
@@ -306,7 +311,7 @@ async function downloadManifest(platform, metroPort) {
 
   try {
     console.log(`Fetching ${platform} manifest...`);
-    const response = await fetch(`http://localhost:${metroPort}/manifest`, {
+    const response = await fetch(metroUrl(metroPort, "/manifest"), {
       headers: { "expo-platform": platform },
       signal: controller.signal,
     });
@@ -374,7 +379,7 @@ function extractAssets(timestamp, metroPort) {
       const originalPath = match[1];
       const filename = match[3] + "." + match[4];
 
-      const tempUrl = new URL(`http://localhost:${metroPort}${originalPath}`);
+      const tempUrl = metroUrl(metroPort, originalPath);
       const unstablePath = tempUrl.searchParams.get("unstable_path");
 
       if (!unstablePath) {
@@ -416,9 +421,7 @@ async function downloadAssets(assets, timestamp, metroPort) {
   const failures = [];
 
   const downloadPromises = assets.map(async (asset) => {
-    const tempUrl = new URL(
-      `http://localhost:${metroPort}${asset.originalPath}`,
-    );
+    const tempUrl = metroUrl(metroPort, asset.originalPath);
     const unstablePath = tempUrl.searchParams.get("unstable_path");
 
     if (!unstablePath) {
@@ -491,9 +494,7 @@ function updateBundleUrls(timestamp, baseUrl, metroPort) {
     bundle = bundle.replace(
       /httpServerLocation:"(\/[^"]+)"/g,
       (_match, capturedPath) => {
-        const tempUrl = new URL(
-          `http://localhost:${metroPort}${capturedPath}`,
-        );
+        const tempUrl = metroUrl(metroPort, capturedPath);
         const unstablePath = tempUrl.searchParams.get("unstable_path");
 
         if (!unstablePath) {
@@ -618,10 +619,24 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((error) => {
-  console.error("Build failed:", error.message);
-  if (metroProcess) {
-    metroProcess.kill();
-  }
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error("Build failed:", error.message);
+    if (metroProcess) {
+      metroProcess.kill();
+    }
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  checkMetroHealth,
+  downloadBundle,
+  downloadManifest,
+  extractAssets,
+  findAvailableMetroPort,
+  getConfiguredMetroPort,
+  metroUrl,
+  prepareDirectories,
+  updateBundleUrls,
+};

@@ -99,7 +99,7 @@ jest.mock('@/lib/api', () => {
       deleteCompanyAsset: jest.fn(async () => ({ ok: true, assets: [] })),
       submitPumpReport: jest.fn(async (report: unknown) => ({ ok: true, report })),
       resetOperational: jest.fn(async () => ({ ok: true })),
-      deleteApprovedPumpReport: jest.fn(async () => ({ ok: true })),
+      deletePumpReport: jest.fn(async () => ({ ok: true })),
     },
     workflowApi: {
       deliveries: {
