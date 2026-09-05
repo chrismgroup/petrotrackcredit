@@ -362,6 +362,8 @@ export default function ShiftReportScreen() {
   const isMd    = role === 'md';
   const isCeo   = role === 'ceo';
   const isCsm   = role === 'csm';
+  const canReviewAsManager = isMgr || isAdmin;
+  const canReviewAsAccountant = isAcc || isAdmin;
   const canView = isAtt || isMgr || isAcc || isAdmin || isMd || isCeo || isCsm;
   const isGlobalOverview = isAcc || isAdmin || isMd || isCeo || isCsm;
 
@@ -1668,7 +1670,7 @@ export default function ShiftReportScreen() {
             {viewing.note    && <Field label="Attendant Note" value={viewing.note} colors={colors} />}
 
             {/* Manager actions */}
-            {isMgr && viewing.status === 'pending_manager' && (
+            {canReviewAsManager && viewing.status === 'pending_manager' && (
               <>
                 <Text style={[c.sectionLabel, { color: colors.text, marginTop: 16 }]}>Manager Review</Text>
                 <TextInput
@@ -1683,7 +1685,7 @@ export default function ShiftReportScreen() {
               </>
             )}
 
-            {isMgr && viewing.status === 'returned' && (
+            {canReviewAsManager && viewing.status === 'returned' && (
               <>
                 <Text style={[c.sectionLabel, { color: colors.text, marginTop: 16 }]}>Re-submit to Accountant</Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
@@ -1747,7 +1749,7 @@ export default function ShiftReportScreen() {
             )}
 
             {/* Accountant actions */}
-            {isAcc && viewing.status === 'pending_accountant' && (
+            {canReviewAsAccountant && viewing.status === 'pending_accountant' && (
               <>
                 <Text style={[c.sectionLabel, { color: colors.text, marginTop: 16 }]}>Accountant Decision</Text>
                 <TextInput

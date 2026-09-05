@@ -592,26 +592,75 @@ export default function HomeScreen() {
   // ── Approval items ────────────────────────────────────────────────────
   const inApprovalScope = (item: { branchId?: string }) =>
     isGlobalOverview || !scopedBranchId || !item.branchId || item.branchId === scopedBranchId;
-  const pendingDips = dips.filter(d => d.status === 'pending' && inApprovalScope(d));
-  const pendingDeliveries = deliveries.filter(d =>
-    d.approvalStatus === 'pending' || d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending_md',
-  );
-  const pendingExpenses = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded');
-  const pendingPriceProps = priceProposals.filter(p => p.status === 'pending');
+  const isAdmin = role === 'admin';
+  const isExecutive = role === 'md' || role === 'ceo';
+  const pendingDips = role === 'md' || isAdmin
+    ? dips.filter(d => d.status === 'pending' && inApprovalScope(d))
+    : [];
+  const pendingDeliveries = deliveries.filter(delivery => {
+    const status = delivery.approvalStatus;
+    if (isAdmin) return status === 'pending' || status === 'pending_acc' || status === 'pending_md' || status === 'returned';
+    if (role === 'acc') return status === 'pending' || status === 'pending_acc';
+    if (isExecutive) return status === 'pending_md';
+    if (role === 'mgr' || role === 'csm') {
+      return status === 'returned' && (!delivery.receivedBy || delivery.receivedBy === userName);
+    }
+    return false;
+  });
+  const pendingExpenses = expenses.filter(expense => {
+    if (isAdmin) return expense.status === 'pending' || expense.status === 'acc_forwarded' || expense.status === 'rejected';
+    if (role === 'acc') return expense.status === 'pending' || expense.status === 'rejected';
+    if (isExecutive) return expense.status === 'acc_forwarded';
+    if (role === 'mgr' || role === 'csm' || role === 'mktg') {
+      return expense.status === 'rejected' && (expense.by === role || expense.byName === userName);
+    }
+    return false;
+  });
+  const pendingPriceProps = role === 'ceo' || isAdmin
+    ? priceProposals.filter(p => p.status === 'pending')
+    : [];
   const pendingPumpReports = pumpDailyReports.filter(r =>
-    (r.status === 'pending_manager' || r.status === 'pending_accountant' || r.status === 'returned_attendant') &&
+    (
+      (isAdmin && ['pending_manager', 'pending_accountant', 'returned', 'returned_attendant'].includes(r.status)) ||
+      (role === 'mgr' && (r.status === 'pending_manager' || r.status === 'returned')) ||
+      (role === 'acc' && r.status === 'pending_accountant') ||
+      (role === 'att' && r.status === 'returned_attendant' && r.submittedBy === userName)
+    ) &&
     (isGlobalOverview || !scopedBranchId || r.branchId === scopedBranchId || !r.branchId),
   );
-  const pendingBudgets = budgets.filter(b =>
-    b.status === 'submitted' || b.status === 'forwarded',
-  );
+  const pendingBudgets = budgets.filter(budget => {
+    if (isAdmin) return budget.status === 'submitted' || budget.status === 'acc_forwarded' || budget.status === 'rejected';
+    if (role === 'acc') return budget.status === 'submitted' || budget.status === 'rejected';
+    if (isExecutive) return budget.status === 'acc_forwarded';
+    if (role === 'mgr' || role === 'csm' || role === 'mktg') {
+      return budget.status === 'rejected' && (budget.by === role || budget.byName === userName);
+    }
+    return false;
+  });
   const pendingAccounts = userAccounts.filter(a =>
-    a.status === 'pending' || a.status === 'pending_md' || a.status === 'pending_admin',
+    (role === 'md' && a.status === 'pending_md') ||
+    (isAdmin && (a.status === 'pending' || a.status === 'pending_admin')) ||
+    (role === 'csm' && a.status === 'pending_md'),
+  );
+  const shiftApprovalRoute = getDashboardApprovalRoute(
+    { shiftReports: pendingPumpReports.length, deliveries: 0 },
+    { shift: SCREEN_ROUTES.shift, receiving: SCREEN_ROUTES.recv, reports: SCREEN_ROUTES.exprpt },
+    role,
   );
   const pendingReviewRoute = getDashboardApprovalRoute(
     { shiftReports: pendingPumpReports.length, deliveries: pendingDeliveries.length },
     { shift: SCREEN_ROUTES.shift, receiving: SCREEN_ROUTES.recv, reports: SCREEN_ROUTES.exprpt },
+    role,
   );
+  const primaryApprovalRoute =
+    pendingDips.length > 0 ? `${SCREEN_ROUTES.ops}?tab=dip-approvals`
+      : pendingDeliveries.length > 0 ? SCREEN_ROUTES.recv
+        : pendingExpenses.length > 0 ? SCREEN_ROUTES.exp
+          : pendingPriceProps.length > 0 ? SCREEN_ROUTES.prices
+            : pendingPumpReports.length > 0 ? shiftApprovalRoute
+              : pendingBudgets.length > 0 ? SCREEN_ROUTES.budget
+                : pendingAccounts.length > 0 ? SCREEN_ROUTES.users
+                  : SCREEN_ROUTES.exprpt;
 
   const canViewOutstandingActionItems = canViewActionItemsDashboard(role, staffId, userAccess);
   const outstandingActionItems = useMemo(() => {
@@ -841,7 +890,7 @@ export default function HomeScreen() {
             ) : null}
             {totalApprovals > 0 ? (
               <TouchableOpacity
-                onPress={() => router.push(pendingReviewRoute as never)}
+                onPress={() => router.push(primaryApprovalRoute as never)}
                 style={[s.heroPill, { backgroundColor: colors.amber + '28', borderColor: colors.amber + '55' }]}
                 activeOpacity={0.78}
                 accessibilityRole="button"
@@ -983,7 +1032,7 @@ export default function HomeScreen() {
                 title="Tank Dip Readings"
                 meta={`${pendingDips.length} reading${pendingDips.length > 1 ? 's' : ''} awaiting approval`}
                 count={pendingDips.length}
-                onPress={() => setApprovalDetail('dips')}
+                onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=dip-approvals` as never)}
                 colors={colors}
               />
             ) : null}
@@ -995,7 +1044,7 @@ export default function HomeScreen() {
                 title="Product Deliveries"
                 meta={`${pendingDeliveries.length} delivery receipt${pendingDeliveries.length > 1 ? 's' : ''} pending review`}
                 count={pendingDeliveries.length}
-                onPress={() => setApprovalDetail('deliveries')}
+                onPress={() => router.push(SCREEN_ROUTES.recv as never)}
                 colors={colors}
               />
             ) : null}
@@ -1022,7 +1071,7 @@ export default function HomeScreen() {
                 title="Price Proposals"
                 meta={`${pendingPriceProps.length} fuel price change${pendingPriceProps.length > 1 ? 's' : ''} to review`}
                 count={pendingPriceProps.length}
-                onPress={() => setApprovalDetail('prices')}
+                onPress={() => router.push(SCREEN_ROUTES.prices as never)}
                 colors={colors}
               />
             ) : null}
@@ -1034,7 +1083,7 @@ export default function HomeScreen() {
                 title="Pump Daily Reports"
                 meta={`${pendingPumpReports.length} shift report${pendingPumpReports.length > 1 ? 's' : ''} needing action`}
                 count={pendingPumpReports.length}
-                onPress={() => setApprovalDetail('pumpReports')}
+                onPress={() => router.push(shiftApprovalRoute as never)}
                 colors={colors}
               />
             ) : null}
@@ -1046,7 +1095,7 @@ export default function HomeScreen() {
                 title="Budget Submissions"
                 meta={`${pendingBudgets.length} budget${pendingBudgets.length > 1 ? 's' : ''} awaiting sign-off`}
                 count={pendingBudgets.length}
-                onPress={() => setApprovalDetail('budgets')}
+                onPress={() => router.push(SCREEN_ROUTES.budget as never)}
                 colors={colors}
               />
             ) : null}
@@ -1058,7 +1107,7 @@ export default function HomeScreen() {
                 title="Staff Enrolments"
                 meta={`${pendingAccounts.length} new account${pendingAccounts.length > 1 ? 's' : ''} awaiting activation`}
                 count={pendingAccounts.length}
-                onPress={() => setApprovalDetail('accounts')}
+                onPress={() => router.push(SCREEN_ROUTES.users as never)}
                 colors={colors}
               />
             ) : null}
@@ -1276,7 +1325,7 @@ export default function HomeScreen() {
                 accent={colors.coral}
                 title={`${r.pumpName} · ${r.date}`}
                 meta={`${r.submittedByName} · ${fmtK(r.grossAmount)} gross · ${r.status.replace(/_/g, ' ')}`}
-                onPress={() => router.push(SCREEN_ROUTES.shift as never)}
+                onPress={() => router.push(shiftApprovalRoute as never)}
                 colors={colors}
               />
             ))}
