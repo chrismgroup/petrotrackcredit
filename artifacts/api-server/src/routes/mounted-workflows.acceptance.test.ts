@@ -131,8 +131,11 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
         ('Workflow Manager', $1, $8, 'mgr', $9, 'active', $10, $10, NOW()),
         ('Other Workflow Manager', $2, $8, 'mgr', $11, 'active', $10, $10, NOW()),
         ('Workflow CSM', $3, $8, 'csm', $9, 'active', $10, $10, NOW()),
-        ('Workflow Accountant', $4, $8, 'acc', NULL, 'active', $10, $10, NOW()),
-        ('Workflow MD', $5, $8, 'md', NULL, 'active', $10, $10, NOW()),
+        -- These reviewers intentionally retain branch assignments. Finance
+        -- reviewers are still company-wide and must not be blocked by legacy
+        -- branch fields on their account or on the record.
+        ('Workflow Accountant', $4, $8, 'acc', $9, 'active', $10, $10, NOW()),
+        ('Workflow MD', $5, $8, 'md', $11, 'active', $10, $10, NOW()),
         ('Workflow CEO', $6, $8, 'ceo', NULL, 'active', $10, $10, NOW()),
         ('Workflow Attendant', $7, $8, 'att', $9, 'active', $10, $10, NOW())
     `, [
@@ -327,6 +330,31 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     const expenseReplay = await command(md.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
     assert.equal(expenseReplay.status, 200);
     assert.equal(expenseReplay.body.replay, true);
+
+    const ceoExpense = await command(manager.token, "/finance/expenses", {
+      expense: {
+        cat: "Operations",
+        desc: `${marker} CEO expense`,
+        amt: 900,
+        dt: "2026-10-02",
+        budgetId: 1,
+      },
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-ceo-expense-create`,
+    });
+    assert.equal(ceoExpense.status, 201);
+    const ceoExpenseId = String(recordFrom(ceoExpense).id);
+    const ceoExpenseForwarded = await command(accountant.token, `/finance/expenses/${ceoExpenseId}/forward`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-ceo-expense-forward`,
+    });
+    assert.equal(ceoExpenseForwarded.status, 201);
+    const ceoExpenseApproved = await command(ceo.token, `/finance/expenses/${ceoExpenseId}/approve`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-ceo-expense-approve`,
+    });
+    assert.equal(ceoExpenseApproved.status, 201);
+    assert.equal(recordFrom(ceoExpenseApproved).status, "approved");
 
     const budgetInput = (label: string, status?: string) => ({
       month: 10,

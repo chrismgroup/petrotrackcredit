@@ -2507,9 +2507,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     expectedRevision,
     idempotencyKey: `${userName || 'device'}-${Date.now()}-${genId()}`,
   });
-  const workflowFailure = (label: string) => {
+  const workflowFailure = (label: string, reason?: unknown) => {
     void syncFromServer();
-    Alert.alert('Unable to save', `${label} could not be completed. The latest server data has been refreshed.`);
+    const detail = typeof reason === 'string' && reason.trim()
+      ? ` ${reason.trim()}.`
+      : ' The latest server data has been refreshed.';
+    Alert.alert('Unable to save', `${label} could not be completed.${detail}`);
   };
   const applyDelivery = (record: Delivery, deleted = false) => setDeliveries(current =>
     deleted ? current.filter(item => item.id !== record.id) : [
@@ -3018,13 +3021,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const approveExpense = useCallback((id: number) => {
     const expense = expenses.find(item => item.id === id); if (!expense) return;
     void workflowApi.expenses.transition(id, 'approve', workflowMeta(expense.revision ?? 0))
-      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense approval'));
+      .then(result => result?.record
+        ? applyExpense(result.record as Expense)
+        : workflowFailure('Expense approval', result?.error));
   }, [expenses]);
 
   const rejectExpense = useCallback((id: number) => {
     const expense = expenses.find(item => item.id === id); if (!expense) return;
     void workflowApi.expenses.transition(id, 'reject', workflowMeta(expense.revision ?? 0))
-      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense rejection'));
+      .then(result => result?.record
+        ? applyExpense(result.record as Expense)
+        : workflowFailure('Expense rejection', result?.error));
   }, [expenses]);
 
   const addBudget = useCallback((b: Omit<Budget, 'id' | 'workflow'>) => {

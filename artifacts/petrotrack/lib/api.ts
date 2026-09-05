@@ -81,13 +81,14 @@ async function post<T>(path: string, data: unknown): Promise<T | null> {
 }
 
 export type JsonCommandMethod = 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+export type WorkflowCommandResult<T> = (T & { error?: string; status?: number }) | null;
 
 /** Executes an authenticated JSON workflow command and returns its canonical response. */
 export async function authenticatedJsonCommand<T>(
   method: JsonCommandMethod,
   path: string,
   data: unknown,
-): Promise<T | null> {
+): Promise<WorkflowCommandResult<T>> {
   if (!BASE) return null;
   try {
     const headers = await authHeaders();
@@ -96,8 +97,18 @@ export async function authenticatedJsonCommand<T>(
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(data),
     });
-    if (!response.ok) return null;
-    return await response.json() as T;
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = body && typeof body === 'object' && 'error' in body
+        ? String((body as { error?: unknown }).error ?? '')
+        : '';
+      return {
+        ...(body && typeof body === 'object' ? body : {}),
+        error: message || `Request failed (${response.status})`,
+        status: response.status,
+      } as WorkflowCommandResult<T>;
+    }
+    return body as WorkflowCommandResult<T>;
   } catch {
     return null;
   }

@@ -166,7 +166,7 @@ export default function BudgetScreen() {
 
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const isAcc = role === 'acc' || role === 'admin';
-  const isMD  = role === 'md'  || role === 'admin';
+  const isMD  = role === 'md'  || role === 'ceo' || role === 'admin';
   const isCeo = role === 'ceo';
 
   const [tab, setTab] = useState<string>(isMgr ? 'mine' : 'pending');
