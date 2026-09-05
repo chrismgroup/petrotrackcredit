@@ -310,7 +310,10 @@ function canMutatePumpReport(
 
   const from = String(current.status ?? "");
   const to = String(candidate.status ?? "");
-  const sameBranch = !auth.branchId || candidate.branchId === auth.branchId;
+  // A branch-scoped manager may still need to complete a legacy report that
+  // predates branch tagging. Do not let a missing branch ID make that report
+  // impossible to forward or return.
+  const sameBranch = !auth.branchId || !candidate.branchId || candidate.branchId === auth.branchId;
   if (auth.role === "att") {
     return isSubmittingAttendant
       && from === "returned_attendant"

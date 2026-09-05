@@ -17,9 +17,10 @@ type Failure = { kind: "conflict" | "forbidden"; error: string };
 const EXPENSE_CREATORS = new Set(["mgr", "csm", "mktg", "acc", "admin"]);
 const BUDGET_CREATORS = new Set(["mgr", "csm", "mktg", "acc", "admin"]);
 const ACCOUNTANTS = new Set(["acc", "admin"]);
-const MD = new Set(["md", "admin"]);
+const MD = new Set(["md", "ceo", "admin"]);
 const MANAGERS = new Set(["mgr", "csm", "mktg"]);
 const FINAL_BUDGETS = new Set(["draft", "fully_approved", "rejected"]);
+const GLOBAL_FINANCE_REVIEWERS = new Set(["acc", "md", "ceo", "admin"]);
 
 function record(value: unknown): value is JsonRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -40,9 +41,14 @@ function validCommand(body: unknown): { expectedRevision: number; idempotencyKey
     : null;
 }
 function sameBranch(item: JsonRecord, auth: Auth): boolean {
-  // A branch-scoped user may never operate on another branch's record. Global
-  // finance roles have no branch assignment and can review the network queue.
-  return !auth.branchId || !item.branchId || String(item.branchId) === String(auth.branchId);
+  // Accountants and MDs review the network queue. Some existing accounts still
+  // carry a legacy branch assignment, so that field must not turn a global
+  // reviewer into a branch-scoped approver. A missing record branch is also a
+  // supported legacy value and must remain actionable.
+  return GLOBAL_FINANCE_REVIEWERS.has(auth.role)
+    || !auth.branchId
+    || !item.branchId
+    || String(item.branchId) === String(auth.branchId);
 }
 function canEditOwned(item: JsonRecord, auth: Auth): boolean {
   return (auth.role === "admin" || (MANAGERS.has(auth.role) && String(item.createdBy ?? item.byName ?? "") === auth.username))

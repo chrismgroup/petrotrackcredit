@@ -11,6 +11,7 @@ type JsonRecord = Record<string, unknown>;
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 const IDEMPOTENCY_KEY = "deliveryWorkflowIdempotency";
 const ORIGINATOR_ROLES = new Set(["mgr", "csm", "admin"]);
+const GLOBAL_REVIEW_ROLES = new Set(["acc", "md", "ceo", "admin"]);
 
 async function notify(result: any, input: Parameters<typeof deliverNotification>[0]) {
   if (!result?.error && !result?.replayed) {
@@ -37,7 +38,12 @@ function fingerprint(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 function isBranchAllowed(item: JsonRecord, auth: { role: string; branchId?: string | null }): boolean {
-  return auth.role === "admin" || !auth.branchId || item.branchId === auth.branchId;
+  // Finance reviewers and executive approvers can review the network queue.
+  // Missing branch IDs are legacy delivery records, not another branch.
+  return GLOBAL_REVIEW_ROLES.has(auth.role)
+    || !auth.branchId
+    || !item.branchId
+    || item.branchId === auth.branchId;
 }
 function isOriginator(item: JsonRecord, auth: NonNullable<Request["auth"]>): boolean {
   return item.receivedByUsername === auth.username
@@ -243,7 +249,7 @@ router.post("/deliveries/:id/submit", async (req, res) => {
   if (!("error" in result)) broadcastRealtime({ type: "delivery.changed", deliveryId: req.params.id }); respond(res, result);
 });
 router.post("/deliveries/:id/forward", async (req, res) => {
-  if (req.auth!.role !== "acc") { res.status(403).json({ error: "Only an accountant may forward deliveries" }); return; }
+  if (!["acc", "admin"].includes(req.auth!.role)) { res.status(403).json({ error: "Only an accountant or admin may forward deliveries" }); return; }
   if (!validPositiveNumber(req.body?.costPrice)) { res.status(400).json({ error: "A positive costPrice is required" }); return; }
   const result = await transition(req, ["pending_acc"], "pending_md", (item, now) => ({ ...item, costPrice: req.body.costPrice, accNote: String(req.body.note ?? ""), accBy: req.auth!.username, accAt: now }));
   if (!("error" in result)) await notify(result, {
