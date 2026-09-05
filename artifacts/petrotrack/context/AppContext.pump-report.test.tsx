@@ -136,7 +136,10 @@ async function createApprovedReport() {
   return approved;
 }
 
-async function createReturnedAttendantReport(submittedBy: string) {
+async function createReturnedAttendantReport(
+  submittedBy: string,
+  status: Extract<PumpReportStatus, 'returned' | 'returned_attendant'> = 'returned_attendant',
+) {
   const submitted = await submitReport(submittedBy);
   await act(async () => {
     app().mgrForwardPumpReport(submitted.id, 'Manager review');
@@ -144,11 +147,13 @@ async function createReturnedAttendantReport(submittedBy: string) {
   await act(async () => {
     app().accRejectPumpReport(submitted.id, 'Please correct the reading');
   });
-  await act(async () => {
-    app().mgrReturnPumpReportToAttendant(submitted.id, 'Correct the meter reading');
-  });
+  if (status === 'returned_attendant') {
+    await act(async () => {
+      app().mgrReturnPumpReportToAttendant(submitted.id, 'Correct the meter reading');
+    });
+  }
   const returned = app().pumpDailyReports[0];
-  expect(returned.status).toBe('returned_attendant');
+  expect(returned.status).toBe(status);
   return returned;
 }
 
@@ -436,7 +441,7 @@ describe('approved pump report lock', () => {
     expect(app().sales.find(entry => entry.shiftReportId === approvedReport.id)).toBeUndefined();
     expect(app().pumpInitialMeters[approvedReport.pumpId]).toBe(approvedReport.openingMeter);
     expect(app().pumpLockedMeters[approvedReport.pumpId]).toBeUndefined();
-    expect(stateApi.deleteApprovedPumpReport).toHaveBeenCalledWith(approvedReport.id);
+    expect(stateApi.deletePumpReport).toHaveBeenCalledWith(approvedReport.id);
     expect(app().audit[0]).toMatchObject({
       action: 'Approved pump report deleted for re-entry',
       user: 'Operations Admin',
@@ -621,7 +626,7 @@ describe('stock book report eligibility', () => {
     },
   );
 
-  it.each<PumpReportStatus>(['returned', 'returned_attendant'])(
+  it.each(['returned', 'returned_attendant'] as const)(
     'excludes a %s report from sold stock',
     status => {
       const result = calculateStockBook(
@@ -1277,14 +1282,20 @@ describe('attendant report resubmission', () => {
     expect(today.bookStock).toBe(50);
   });
 
-  it('lets the original attendant edit and delete a returned report', async () => {
+  it.each<{ status: 'returned' | 'returned_attendant' }>([
+    { status: 'returned' },
+    { status: 'returned_attendant' },
+  ])(
+  'lets the original attendant edit and durably delete a $status report',
+  async ({ status }) => {
     await renderProvider();
     jest.mocked(stateApi.getAll).mockResolvedValue({});
+    jest.mocked(stateApi.deletePumpReport).mockResolvedValue({ ok: true });
 
     await act(async () => {
       expect(await app().login('att', 'Original Attendant', 1, 'branch-1')).toBe(true);
     });
-    const returnedReport = await createReturnedAttendantReport('Original Attendant');
+    const returnedReport = await createReturnedAttendantReport('Original Attendant', status);
 
     await act(async () => {
       app().updatePumpReport(returnedReport.id, {
@@ -1297,7 +1308,8 @@ describe('attendant report resubmission', () => {
       date: '2026-08-21',
       closingMeter: 1060,
       note: 'Corrected returned report',
-      status: 'returned_attendant',
+      status,
+      workflowVersion: expect.any(Number),
     });
 
     let deleted = false;
@@ -1305,7 +1317,40 @@ describe('attendant report resubmission', () => {
       deleted = await app().deletePumpReport(returnedReport.id);
     });
     expect(deleted).toBe(true);
+    expect(stateApi.deletePumpReport).toHaveBeenCalledWith(returnedReport.id);
     expect(app().pumpDailyReports).toEqual([]);
+  });
+
+  it('keeps another attendant from editing or deleting a rejected report', async () => {
+    await renderProvider();
+    jest.mocked(stateApi.getAll).mockResolvedValue({});
+    jest.mocked(stateApi.deletePumpReport).mockResolvedValue({ ok: true });
+
+    await act(async () => {
+      expect(await app().login('att', 'Original Attendant', 1, 'branch-1')).toBe(true);
+    });
+    const returnedReport = await createReturnedAttendantReport('Different Attendant', 'returned');
+    const originalVersion = returnedReport.workflowVersion;
+
+    await act(async () => {
+      app().updatePumpReport(returnedReport.id, {
+        closingMeter: 1060,
+        note: 'Unauthorized edit',
+      });
+    });
+    expect(app().pumpDailyReports[0]).toMatchObject({
+      closingMeter: returnedReport.closingMeter,
+      note: returnedReport.note,
+      workflowVersion: originalVersion,
+    });
+
+    let deleted = true;
+    await act(async () => {
+      deleted = await app().deletePumpReport(returnedReport.id);
+    });
+    expect(deleted).toBe(false);
+    expect(stateApi.deletePumpReport).not.toHaveBeenCalled();
+    expect(app().pumpDailyReports).toHaveLength(1);
   });
 
   it('does not let an attendant re-submit a returned report dated in the future', async () => {

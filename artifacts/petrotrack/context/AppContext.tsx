@@ -4077,26 +4077,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // resurrect stale data.
     if (report.deliveryStatus === 'queued') return Promise.resolve(false);
     if (report.status === 'approved' && role !== 'admin') return Promise.resolve(false);
-    if (report.status === 'returned_attendant' && role !== 'admin' && report.submittedBy !== userName) {
+    if (
+      (report.status === 'returned' || report.status === 'returned_attendant') &&
+      role !== 'admin' &&
+      report.submittedBy !== userName &&
+      report.submittedByName !== userName
+    ) {
       return Promise.resolve(false);
     }
-    if (report.status === 'approved') {
-      return stateApi.deleteApprovedPumpReport(id).then(result => {
+    if (report.status === 'approved' || report.status === 'returned' || report.status === 'returned_attendant') {
+      return stateApi.deletePumpReport(id).then(result => {
         if (!result?.ok) return false;
-        appliedPumpReportApprovals.current.delete(id);
+        if (report.status === 'approved') appliedPumpReportApprovals.current.delete(id);
         setPumpDailyReports(reports => reports.filter(candidate => candidate.id !== id));
-        reverseApprovedPumpReportEffects(report);
-        setPumpLockedMeters(meters => {
-          const next = { ...meters };
-          delete next[report.pumpId];
-          return next;
-        });
-        setPumpInitialMeters(meters => ({ ...meters, [report.pumpId]: report.openingMeter }));
+        if (report.status === 'approved') {
+          reverseApprovedPumpReportEffects(report);
+          setPumpLockedMeters(meters => {
+            const next = { ...meters };
+            delete next[report.pumpId];
+            return next;
+          });
+          setPumpInitialMeters(meters => ({ ...meters, [report.pumpId]: report.openingMeter }));
+        }
         setAudit(entries => [{
           id: genId(),
-          action: 'Approved pump report deleted for re-entry',
+          action: report.status === 'approved' ? 'Approved pump report deleted for re-entry' : 'Returned pump report deleted',
           user: userName,
-          detail: `Report #${id} deleted after wrong-date review; ${report.pumpName} opening meter reset to ${report.openingMeter.toLocaleString()} for attendant re-entry`,
+          detail: report.status === 'approved'
+            ? `Report #${id} deleted after wrong-date review; ${report.pumpName} opening meter reset to ${report.openingMeter.toLocaleString()} for attendant re-entry`
+            : `Returned report #${id} deleted by its original attendant`,
           ts: nowTs(),
         }, ...entries]);
         return true;
@@ -4122,14 +4131,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // A report returned to the attendant may only be corrected by the
     // attendant who originally submitted it (admins retain controlled
     // workflow access to non-approved records).
-    if (prev.status === 'returned_attendant' && role !== 'admin' && prev.submittedBy !== userName) return;
+    if (
+      (prev.status === 'returned' || prev.status === 'returned_attendant') &&
+      role !== 'admin' &&
+      prev.submittedBy !== userName &&
+      prev.submittedByName !== userName
+    ) return;
     const merged = { ...prev, ...updates } as PumpDailyReport;
     // Recalculate derived values when meter or price values change.
     const liters = merged.closingMeter > merged.openingMeter ? parseFloat((merged.closingMeter - merged.openingMeter).toFixed(4)) : 0;
     const grossAmount = liters * merged.unitPrice;
     const totalCollected = merged.posAmount + merged.cashAmount + merged.transferAmount;
     const variance = totalCollected + merged.creditAmount - grossAmount;
-    const next: PumpDailyReport = { ...merged, liters, grossAmount, totalCollected, variance };
+    const next: PumpDailyReport = {
+      ...merged,
+      liters,
+      grossAmount,
+      totalCollected,
+      variance,
+      workflowVersion: nextPumpReportWorkflowVersion(prev),
+    };
     setPumpDailyReports(rs => rs.map(r => r.id === id ? next : r));
     // Keep a linked sales record synchronized when an editable report changes.
     setSales(current => current.map(entry => entry.shiftReportId === id

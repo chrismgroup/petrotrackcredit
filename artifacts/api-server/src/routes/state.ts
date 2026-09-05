@@ -316,8 +316,10 @@ function canMutatePumpReport(
   const sameBranch = !auth.branchId || !candidate.branchId || candidate.branchId === auth.branchId;
   if (auth.role === "att") {
     return isSubmittingAttendant
-      && from === "returned_attendant"
-      && (to === "returned_attendant" || to === "pending_manager");
+      && (
+        (from === "returned_attendant" && (to === "returned_attendant" || to === "pending_manager")) ||
+        (from === "returned" && to === "returned")
+      );
   }
   if (auth.role === "mgr" && sameBranch) {
     return (
@@ -986,14 +988,13 @@ router.post("/state/pump-reports/cleanup-fixture", async (req, res): Promise<voi
 });
 
 /**
- * An approved shift report ordinarily remains immutable. Admin may remove one
- * only when it was approved against the wrong business date so an attendant
- * can enter a clean replacement. This makes the report, sale, tank effect,
- * and opening-meter reset one server-side transaction.
+ * Delete a shift report without allowing a stale device to resurrect it.
+ * Admin may remove an approved report for wrong-date re-entry. The original
+ * attendant may remove a report returned by either the accountant or manager.
  */
 router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> => {
-  if (req.auth?.role !== "admin") {
-    res.status(403).json({ error: "Only an admin can delete an approved pump report" });
+  if (!req.auth) {
+    res.status(401).json({ error: "Authentication required" });
     return;
   }
 
@@ -1016,8 +1017,19 @@ router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> =>
     res.status(404).json({ error: "Pump report not found" });
     return;
   }
-  if (report.status !== "approved") {
-    res.status(409).json({ error: "Only an approved pump report uses this delete-and-reopen action" });
+  const authEmpName = req.auth.empName ?? await db
+    .select({ empName: staffUsersTable.empName })
+    .from(staffUsersTable)
+    .where(eq(staffUsersTable.username, req.auth.username))
+    .then(result => result[0]?.empName);
+  const isOriginalAttendant = report.submittedBy === req.auth.username
+    || (!!authEmpName && (report.submittedBy === authEmpName || report.submittedByName === authEmpName));
+  const isApproved = report.status === "approved";
+  const isReturned = report.status === "returned" || report.status === "returned_attendant";
+  const mayDelete = (req.auth.role === "admin" && (isApproved || isReturned))
+    || (req.auth.role === "att" && isReturned && isOriginalAttendant);
+  if (!mayDelete) {
+    res.status(403).json({ error: "Only Admin or the original attendant can delete this returned pump report" });
     return;
   }
 
@@ -1045,18 +1057,20 @@ router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> =>
     ? { ...tank, sl: Math.max(0, Number(tank.sl ?? 0) - share) }
     : tank
   );
-  const nextTanks = product === "LPG" ? tanks : reverseTankSales(tanks);
-  const nextLpgTanks = product === "LPG" ? reverseTankSales(lpgTanks) : lpgTanks;
-  if (pumpId) {
+  const nextTanks = isApproved && product !== "LPG" ? reverseTankSales(tanks) : tanks;
+  const nextLpgTanks = isApproved && product === "LPG" ? reverseTankSales(lpgTanks) : lpgTanks;
+  if (isApproved && pumpId) {
     initialMeters[pumpId] = Number(report.openingMeter ?? 0);
     delete lockedMeters[pumpId];
   }
   const audit = Array.isArray(state.audit) ? state.audit as JsonRecord[] : [];
   const auditEntry: JsonRecord = {
     id: Math.floor(Math.random() * 1_000_000_000),
-    action: "Approved pump report deleted for re-entry",
+    action: isApproved ? "Approved pump report deleted for re-entry" : "Returned pump report deleted",
     user: req.auth.username,
-    detail: `Report #${reportId} deleted after wrong-date review; ${String(report.pumpName ?? "Pump")} opening meter reset for attendant re-entry.`,
+    detail: isApproved
+      ? `Report #${reportId} deleted after wrong-date review; ${String(report.pumpName ?? "Pump")} opening meter reset for attendant re-entry.`
+      : `Returned report #${reportId} for ${String(report.pumpName ?? "Pump")} deleted by its original attendant.`,
     ts: new Date().toISOString(),
   };
 

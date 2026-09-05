@@ -199,7 +199,7 @@ export const stateApi = {
       idempotencyKey: idempotencyKey ?? String((report as { id?: unknown })?.id ?? ''),
     }),
   resetOperational: () => post<{ ok: boolean; seedMeters?: Record<string, number> }>('/state/reset-operational', {}),
-  deleteApprovedPumpReport: (id: number) => post<{ ok: boolean }>(`/state/pump-reports/${id}/delete`, {}),
+  deletePumpReport: (id: number) => post<{ ok: boolean }>(`/state/pump-reports/${id}/delete`, {}),
 };
 
 export interface WorkflowCommand {

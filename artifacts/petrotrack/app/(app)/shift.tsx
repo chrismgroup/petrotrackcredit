@@ -364,6 +364,8 @@ export default function ShiftReportScreen() {
   const isCsm   = role === 'csm';
   const canReviewAsManager = isMgr || isAdmin;
   const canReviewAsAccountant = isAcc || isAdmin;
+  const isOwnAttendantReport = (report: PumpDailyReport) =>
+    isAtt && (report.submittedBy === userName || report.submittedByName === userName);
   const canView = isAtt || isMgr || isAcc || isAdmin || isMd || isCeo || isCsm;
   const isGlobalOverview = isAcc || isAdmin || isMd || isCeo || isCsm;
 
@@ -1472,8 +1474,8 @@ export default function ShiftReportScreen() {
                 <Text style={[c.modalTitle, { color: colors.text }]}>{viewing.pumpName}</Text>
                 <Text style={[c.cardSub, { color: colors.textMuted }]}>{viewing.product} · {fmtDate(viewing.date)}</Text>
               </View>
-              {viewing.deliveryStatus !== 'queued' && ((isAtt && viewing.submittedBy === userName &&
-                (viewing.status === 'pending_manager' || viewing.status === 'returned_attendant')) ||
+              {viewing.deliveryStatus !== 'queued' && ((isOwnAttendantReport(viewing) &&
+                (viewing.status === 'pending_manager' || viewing.status === 'returned' || viewing.status === 'returned_attendant')) ||
                 ((isAdmin || isMd || isCeo) && viewing.status !== 'approved')) && !isEditing && !isCorrectingDate && (
                 <TouchableOpacity onPress={startEdit} style={{ marginRight: 10 }}>
                   <Ionicons name="create-outline" size={22} color={roleColor} />
@@ -1484,8 +1486,8 @@ export default function ShiftReportScreen() {
                   <Ionicons name="calendar-outline" size={22} color={roleColor} />
                 </TouchableOpacity>
               )}
-              {viewing.deliveryStatus !== 'queued' && ((isAtt && viewing.submittedBy === userName &&
-                (viewing.status === 'pending_manager' || viewing.status === 'returned_attendant')) ||
+              {viewing.deliveryStatus !== 'queued' && ((isOwnAttendantReport(viewing) &&
+                (viewing.status === 'pending_manager' || viewing.status === 'returned' || viewing.status === 'returned_attendant')) ||
                 ((isAdmin || isMd) && viewing.status !== 'approved') ||
                 (isAdmin && viewing.status === 'approved')) && !isEditing && !isCorrectingDate && (
                 <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10 }}>
