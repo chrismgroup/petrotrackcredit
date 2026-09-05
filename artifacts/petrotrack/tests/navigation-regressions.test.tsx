@@ -314,6 +314,30 @@ describe('dashboard and workspace navigation', () => {
     act(() => renderer.unmount());
   });
 
+  it('opens MD expense claims from Approvals & Actions in the actionable Expenses screen', () => {
+    mockUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      expenses: [{
+        id: 101,
+        dt: '2026-09-05',
+        cat: 'Utilities',
+        desc: 'Generator service',
+        amt: 25000,
+        by: 'mgr',
+        byName: 'Station Manager',
+        status: 'acc_forwarded',
+        budgetId: 1,
+      }],
+    }));
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<HomeScreen />); });
+    act(() => { buttonWithText(renderer, 'Expense Claims').props.onPress(); });
+
+    expect(mockPush).toHaveBeenCalledWith('/(app)/expenses');
+    act(() => renderer.unmount());
+  });
+
   it('opens the Home stock snapshot card in the stock snapshot screen', () => {
     mockUseApp.mockReturnValue(baseAppState());
 
