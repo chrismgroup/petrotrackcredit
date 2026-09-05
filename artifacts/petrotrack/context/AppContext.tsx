@@ -3896,9 +3896,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const attResubmitPumpReport = useCallback((id: number, note: string) => {
     const report = pumpDailyReports.find(r => r.id === id);
-    // Only reports sitting with the attendant can be re-submitted, and only by
-    // the attendant who originally generated the report.
-    if (!report || report.status !== 'returned_attendant' || report.submittedBy !== userName) return false;
+    // The original attendant may correct a report rejected by either the
+    // accountant or manager and send it back through manager review.
+    if (
+      !report ||
+      (report.status !== 'returned' && report.status !== 'returned_attendant') ||
+      (report.submittedBy !== userName && report.submittedByName !== userName)
+    ) return false;
     if (role === 'att' && isFutureBusinessDate(report.date)) return false;
     setPumpDailyReports(rs => rs.map(r => r.id === id
       ? { ...r, status: 'pending_manager', workflowVersion: nextPumpReportWorkflowVersion(r), note: note || r.note, submittedAt: nowTs(), rejectionReason: undefined }

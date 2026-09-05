@@ -1198,14 +1198,16 @@ describe('tank dip synchronization', () => {
 });
 
 describe('attendant report resubmission', () => {
-  it('only allows the attendant who submitted the returned report to resubmit it', async () => {
+  it.each(['returned', 'returned_attendant'] as const)(
+  'only allows the original attendant to resubmit a $status report',
+  async status => {
     await renderProvider();
     jest.mocked(stateApi.getAll).mockResolvedValue({});
 
     await act(async () => {
       expect(await app().login('att', 'Another Attendant', 1, 'branch-1')).toBe(true);
     });
-    const returnedReport = await createReturnedAttendantReport('Original Attendant');
+    const returnedReport = await createReturnedAttendantReport('Original Attendant', status);
     await act(async () => {
       app().attResubmitPumpReport(returnedReport.id, 'I should not be able to do this');
     });
