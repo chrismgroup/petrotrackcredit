@@ -2,6 +2,8 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import type { ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 
+const mockPush = jest.fn();
+
 jest.mock('react-native', () => {
   const React = require('react');
   const primitive = (name: string) => ({ children, ...props }: any) =>
@@ -42,7 +44,7 @@ jest.mock('react-native-svg', () => {
 });
 
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockPush }),
 }));
 
 jest.mock('@/components/FormSheet', () => ({
@@ -681,9 +683,9 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     act(() => renderer.unmount());
   });
 
-  it('opens tank dip details on Home and shows the current approval owner', () => {
+  it('opens pending tank dips in the MD approval screen', () => {
     mockedUseApp.mockReturnValue(baseAppState({
-      role: 'acc',
+      role: 'md',
       tanks: [{ id: 'T1', name: 'PMS Tank 1', prod: 'PMS', cap: 20000, dip: 0, op: 0, rv: 0, sl: 0, branchId: 'B1' }],
       dips: [{
         id: 701,
@@ -700,20 +702,16 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     const renderer = render(<HomeScreen />);
     act(() => touchableWithText(renderer, 'Tank Dip Readings').props.onPress());
 
-    const text = renderedText(renderer);
-    expect(text).toContain('Tank dip report #701');
-    expect(text).toContain('With MD for approval');
-    expect(text).toContain('PMS Tank 1: 12,500 L');
-    expect(text).toContain('Morning physical reading');
+    expect(mockPush).toHaveBeenCalledWith('/(app)/operations?tab=dip-approvals');
     act(() => renderer.unmount());
   });
 
   it.each([
-    ['pending_manager', 'With Manager for approval'],
-    ['pending_accountant', 'With Accountant for approval'],
-  ])('shows who owns a %s pump report', (status, ownerLabel) => {
+    ['mgr', 'pending_manager', '/(app)/shift?tab=review'],
+    ['acc', 'pending_accountant', '/(app)/shift?tab=pending_acc'],
+  ])('opens a %s pump-report queue in its actionable tab', (role, status, route) => {
     mockedUseApp.mockReturnValue(baseAppState({
-      role: 'md',
+      role,
       pumpDailyReports: [{
         id: 801,
         date: '2026-09-03',
@@ -743,11 +741,7 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     const renderer = render(<HomeScreen />);
     act(() => touchableWithText(renderer, 'Pump Daily Reports').props.onPress());
 
-    const text = renderedText(renderer);
-    expect(text).toContain('Pump 1 · PMS');
-    expect(text).toContain(ownerLabel);
-    expect(text).toContain('Meter: 1,000 → 1,150');
-    expect(text).toContain('Gross: ₦105,000');
+    expect(mockPush).toHaveBeenCalledWith(route);
     act(() => renderer.unmount());
   });
 });

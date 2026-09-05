@@ -338,6 +338,112 @@ describe('dashboard and workspace navigation', () => {
     act(() => renderer.unmount());
   });
 
+  it.each([
+    {
+      label: 'MD tank-dip approval',
+      role: 'md',
+      title: 'Tank Dip Readings',
+      route: '/(app)/operations?tab=dip-approvals',
+      state: {
+        dips: [{
+          id: 201, dt: '2026-09-05', by: 'manager', rd: {}, lpg: {},
+          obs: '', status: 'pending',
+        }],
+      },
+    },
+    {
+      label: 'CEO price approval',
+      role: 'ceo',
+      title: 'Price Proposals',
+      route: '/(app)/prices',
+      state: {
+        priceProposals: [{
+          id: 202, prod: 'PMS', currentPrice: 900, proposedPrice: 920,
+          proposedBy: 'manager', proposedAt: '2026-09-05T08:00:00.000Z',
+          status: 'pending',
+        }],
+      },
+    },
+    {
+      label: 'Accountant delivery review',
+      role: 'acc',
+      title: 'Product Deliveries',
+      route: '/(app)/receiving',
+      state: {
+        deliveries: [{
+          id: 203, dt: '2026-09-05', sup: 'Supplier', prod: 'PMS', wb: 'WB-1',
+          ord: 1000, rec: 1000, st: 'ok', notes: '', approvalStatus: 'pending_acc',
+        }],
+      },
+    },
+    {
+      label: 'Manager pump-report review',
+      role: 'mgr',
+      title: 'Pump Daily Reports',
+      route: '/(app)/shift?tab=review',
+      state: {
+        pumpDailyReports: [{
+          id: 204, pumpId: 'pump-1', pumpName: 'Pump 1', product: 'PMS',
+          date: '2026-09-05', submittedAt: '2026-09-05T08:00:00.000Z',
+          submittedBy: 'attendant', submittedByName: 'Pump Attendant',
+          status: 'pending_manager', openingMeter: 100, closingMeter: 110,
+          liters: 10, grossAmount: 9000,
+        }],
+      },
+    },
+    {
+      label: 'Attendant returned report correction',
+      role: 'att',
+      title: 'Pump Daily Reports',
+      route: '/(app)/shift?tab=dashboard',
+      state: {
+        userName: 'Pump Attendant',
+        pumpDailyReports: [{
+          id: 205, pumpId: 'pump-1', pumpName: 'Pump 1', product: 'PMS',
+          date: '2026-09-05', submittedAt: '2026-09-05T08:00:00.000Z',
+          submittedBy: 'Pump Attendant', submittedByName: 'Pump Attendant',
+          status: 'returned_attendant', openingMeter: 100, closingMeter: 110,
+          liters: 10, grossAmount: 9000,
+        }],
+      },
+    },
+    {
+      label: 'CSM returned delivery correction',
+      role: 'csm',
+      title: 'Product Deliveries',
+      route: '/(app)/receiving',
+      state: {
+        userName: 'Corporate Services',
+        deliveries: [{
+          id: 206, dt: '2026-09-05', sup: 'Supplier', prod: 'AGO', wb: 'WB-2',
+          ord: 500, rec: 490, st: 'short', notes: '', approvalStatus: 'returned',
+          receivedBy: 'Corporate Services',
+        }],
+      },
+    },
+    {
+      label: 'Admin staff activation',
+      role: 'admin',
+      title: 'Staff Enrolments',
+      route: '/(app)/users',
+      state: {
+        userAccounts: [{
+          id: 207, empName: 'New Staff', username: '', role: 'att',
+          status: 'pending_admin', createdAt: '2026-09-05T08:00:00.000Z',
+        }],
+      },
+    },
+  ])('opens the actionable screen for $label', ({ role, title, route, state }) => {
+    mockUseApp.mockReturnValue(baseAppState({ role, ...state }));
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<HomeScreen />); });
+    act(() => { buttonWithText(renderer, title).props.onPress(); });
+
+    expect(mockPush).toHaveBeenCalledWith(route);
+    act(() => renderer.unmount());
+  });
+
   it('opens the Home stock snapshot card in the stock snapshot screen', () => {
     mockUseApp.mockReturnValue(baseAppState());
 

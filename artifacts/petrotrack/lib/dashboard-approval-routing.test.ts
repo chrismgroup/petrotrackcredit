@@ -21,4 +21,16 @@ describe('getDashboardApprovalRoute', () => {
     expect(getDashboardApprovalRoute({ shiftReports: 0, deliveries: 0 }, routes))
       .toBe('/(app)/reports');
   });
+
+  it.each([
+    ['mgr', '/(app)/shift?tab=review'],
+    ['acc', '/(app)/shift?tab=pending_acc'],
+    ['att', '/(app)/shift?tab=dashboard'],
+    ['md', '/(app)/shift?tab=all_records'],
+    ['ceo', '/(app)/shift?tab=all_records'],
+    ['admin', '/(app)/shift?tab=all_records'],
+  ])('opens the correct shift approval tab for %s', (role, expected) => {
+    expect(getDashboardApprovalRoute({ shiftReports: 1, deliveries: 0 }, routes, role))
+      .toBe(expected);
+  });
 });

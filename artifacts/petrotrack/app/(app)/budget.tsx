@@ -198,9 +198,9 @@ export default function BudgetScreen() {
   );
 
   const displayListBase: Budget[] =
-    isCeo || role === 'csm' ? activeBudgets
-    : isMD  ? (tab === 'pending' ? pendingForMD  : activeBudgets)
+    isMD  ? (tab === 'pending' ? pendingForMD  : activeBudgets)
     : isAcc ? (tab === 'pending' ? pendingForAcc : tab === 'archived' ? archivedBudgets : activeBudgets)
+    : role === 'csm' ? activeBudgets
     : myBudgets;
   const displayList = filterDate
     ? displayListBase.filter(b => (b.appliesOn ?? '').slice(0, 10) === filterDate).sort(compareBudgetsNewestFirst)
