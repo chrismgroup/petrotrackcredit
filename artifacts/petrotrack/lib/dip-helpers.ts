@@ -1,10 +1,9 @@
 import type { DipRecord, LPGTank, StockProduct, Tank } from '@/context/AppContext';
 
 /**
- * Finds the newest dip that has a reading for one product in the requested
- * branch. Dips can be submitted separately by product, so the newest
- * branch-wide record must not hide an earlier approved reading for PMS, AGO,
- * DPK, Lube Oil, or LPG on the same business date.
+ * Finds the newest approved dip that has a reading for one product in the
+ * requested branch. Pending readings are intentionally excluded because only
+ * an approved dip is an authoritative physical-stock snapshot.
  */
 export function findLatestDipForProduct(
   dips: DipRecord[],
@@ -13,9 +12,9 @@ export function findLatestDipForProduct(
   product: StockProduct,
   petrolTanks: Pick<Tank, 'id' | 'prod'>[],
   branchLpgTanks: Pick<LPGTank, 'id'>[],
-  options: { beforeDate?: boolean; approvedOnly?: boolean } = {},
+  options: { beforeDate?: boolean } = {},
 ): DipRecord | undefined {
-  const { beforeDate = false, approvedOnly = true } = options;
+  const { beforeDate = false } = options;
   const hasProductReading = (dip: DipRecord) => product === 'LPG'
     ? branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)
     : petrolTanks.some(tank =>
@@ -27,9 +26,8 @@ export function findLatestDipForProduct(
       const dipDate = dip.dt?.slice(0, 10) ?? '';
       return dipDate !== '' &&
         (beforeDate ? dipDate < dateKey : dipDate === dateKey) &&
-        (!approvedOnly || dip.status === 'approved') &&
-        (approvedOnly || dip.status !== 'rejected') &&
-        (dip.branchId === branchId || hasProductReading(dip)) &&
+        dip.status === 'approved' &&
+        (branchId === null || dip.branchId === branchId) &&
         hasProductReading(dip);
     })
     .sort((a, b) =>

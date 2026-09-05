@@ -113,7 +113,6 @@ export default function StockSnapshotScreen() {
               product,
               branchTanks,
               branchLpgTanks,
-              { approvedOnly: false },
             );
             const stockBook = calculateDailyOperationalStock(
               startupRecord,
@@ -176,7 +175,7 @@ export default function StockSnapshotScreen() {
           <Text style={styles.eyebrow}>MY JOBS · INVENTORY CONTROL</Text>
           <Text style={styles.heroTitle}>Stock snapshot</Text>
           <Text style={styles.heroSubtitle}>
-            Compare today&apos;s book stock with the latest submitted tank dip. Book stock rolls forward from the opening balance using today&apos;s approved deliveries and shift sales.
+            Compare today&apos;s book stock with the latest approved tank dip. Book stock rolls forward from the opening balance using today&apos;s approved deliveries and shift sales.
           </Text>
           <View style={styles.heroStats}>
             <View style={styles.heroStat}>

@@ -554,7 +554,6 @@ export default function HomeScreen() {
           );
           const todayDip = findLatestDipForProduct(
              dips, todayKey, scope.branchId, product, branchTanks, branchLpgTanks,
-             { approvedOnly: false },
           );
           const stockBook = calculateDailyOperationalStock(
              startupRecord,
@@ -936,7 +935,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                     <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                   Live inputs: yesterday&apos;s expected book stock rolls forward as opening + today&apos;s deliveries − today&apos;s approved shift sales, compared with today&apos;s submitted tank dip
+                   Live inputs: yesterday&apos;s expected book stock rolls forward as opening + today&apos;s deliveries − today&apos;s approved shift sales, compared with today&apos;s approved tank dip
                 </Text>
               </View>
               {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (
