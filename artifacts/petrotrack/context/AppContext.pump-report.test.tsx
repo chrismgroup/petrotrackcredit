@@ -1195,6 +1195,53 @@ describe('tank dip synchronization', () => {
       [],
     )).toEqual(pmsDip);
   });
+
+  it('uses an approved product dip when a newer pending dip exists', () => {
+    const approved = baseDip('approved', '2026-08-20T08:00:00.000Z', '2026-08-20T09:00:00.000Z');
+    const pending: DipRecord = {
+      ...baseDip('pending', '2026-08-20T10:00:00.000Z'),
+      id: 503,
+      rd: { 'tank-uyo-pms': 7_500 },
+    };
+
+    expect(findLatestDipForProduct(
+      [approved, pending],
+      '2026-08-20',
+      'uyo-fuel',
+      'PMS',
+      [{ id: 'tank-uyo-pms', prod: 'PMS' }],
+      [],
+    )).toEqual(approved);
+  });
+
+  it('does not treat a pending product dip as a physical stock snapshot', () => {
+    const pending = baseDip('pending', '2026-08-20T10:00:00.000Z');
+
+    expect(findLatestDipForProduct(
+      [pending],
+      '2026-08-20',
+      'uyo-fuel',
+      'PMS',
+      [{ id: 'tank-uyo-pms', prod: 'PMS' }],
+      [],
+    )).toBeUndefined();
+  });
+
+  it('does not use a product reading submitted for another branch', () => {
+    const otherBranchDip: DipRecord = {
+      ...baseDip('approved', '2026-08-20T08:00:00.000Z', '2026-08-20T09:00:00.000Z'),
+      branchId: 'lagos-fuel',
+    };
+
+    expect(findLatestDipForProduct(
+      [otherBranchDip],
+      '2026-08-20',
+      'uyo-fuel',
+      'PMS',
+      [{ id: 'tank-uyo-pms', prod: 'PMS' }],
+      [],
+    )).toBeUndefined();
+  });
 });
 
 describe('attendant report resubmission', () => {

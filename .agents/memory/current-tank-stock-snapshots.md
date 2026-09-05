@@ -7,4 +7,4 @@ An approved tank dip is the current physical stock snapshot for that tank. Histo
 
 **Why:** Those counters represent cumulative movement history, so adding them to an already-current dip can materially inflate stock values and every financial calculation that depends on them.
 
-**How to apply:** Use the latest approved reading for current tank stock; fall back to opening + received − sold only when no approved reading exists. Keep operational book-stock formulas separate, since those intentionally calculate opening + dated deliveries − dated sales.
+**How to apply:** Use the latest approved reading for current tank stock; pending or rejected dips must never shadow it. Match the dip to the exact branch and product tank IDs. Fall back to opening + received − sold only when no approved reading exists. Keep operational book-stock formulas separate, since those intentionally calculate opening + dated deliveries − dated sales.

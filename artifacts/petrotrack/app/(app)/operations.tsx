@@ -149,7 +149,6 @@ function StockLogPanel() {
 
         const todayDip = findLatestDipForProduct(
           dips, businessDate, branch.id, product, branchTanks, branchLpgTanks,
-          { approvedOnly: false },
         );
         const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
         const stockBook = calculateDailyOperationalStock(
@@ -266,7 +265,7 @@ function StockLogPanel() {
         <View style={styles.stockHeroOrb} />
         <Text style={styles.stockEyebrow}>OPERATIONS · INVENTORY CONTROL</Text>
         <Text style={styles.stockHeroTitle}>Daily stock log</Text>
-        <Text style={styles.stockHeroSubtitle}>Yesterday&apos;s expected book stock rolls forward as opening + today&apos;s deliveries − today&apos;s approved sales, compared with today&apos;s submitted dip.</Text>
+        <Text style={styles.stockHeroSubtitle}>Yesterday&apos;s expected book stock rolls forward as opening + today&apos;s deliveries − today&apos;s approved sales, compared with today&apos;s approved dip.</Text>
         <View style={styles.stockMarquee}>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{summaryEntries.length}</Text><Text style={styles.stockMarqueeLabel}>Products</Text></View>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{balancedCount}</Text><Text style={styles.stockMarqueeLabel}>Balanced</Text></View>
