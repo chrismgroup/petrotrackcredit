@@ -1007,7 +1007,10 @@ export default function HomeScreen() {
                 title="Expense Claims"
                 meta={`${pendingExpenses.length} claim${pendingExpenses.length > 1 ? 's' : ''} waiting for decision`}
                 count={pendingExpenses.length}
-                onPress={() => setApprovalDetail('expenses')}
+                // Expense claims have role-specific actions on the Expenses
+                // screen. Open that screen directly so MD lands on the
+                // "For Approval" tab instead of a read-only details sheet.
+                onPress={() => router.push(SCREEN_ROUTES.exp as never)}
                 colors={colors}
               />
             ) : null}
