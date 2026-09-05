@@ -318,7 +318,7 @@ function canMutatePumpReport(
     return isSubmittingAttendant
       && (
         (from === "returned_attendant" && (to === "returned_attendant" || to === "pending_manager")) ||
-        (from === "returned" && to === "returned")
+        (from === "returned" && (to === "returned" || to === "pending_manager"))
       );
   }
   if (auth.role === "mgr" && sameBranch) {

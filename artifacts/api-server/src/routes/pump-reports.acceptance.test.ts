@@ -48,10 +48,12 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
   const reportIds = [`${marker}-approved`, `${marker}-returned`];
   const deletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
   const attendantDeletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
+  const attendantResubmittedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
   const cleanupReportIds = [
     ...reportIds,
     deletedReportId,
     attendantDeletedReportId,
+    attendantResubmittedReportId,
     `${marker}-fixture`,
     `${marker}-unrelated`,
   ];
@@ -452,6 +454,40 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     assert.equal(
       staleAttendantDeletedWrite.body.reports.some(candidate => candidate.id === attendantDeletedReportId),
       false,
+    );
+
+    const returnedForResubmission = report(attendantResubmittedReportId, usernames.attendantA, {
+      status: "returned",
+      submittedByName: "Acceptance Attendant A",
+      accNote: "Correct and resubmit",
+      workflowVersion: 3,
+    });
+    const seedReturnedForResubmission = await putReports(admin.token, [returnedForResubmission]);
+    assert.equal(seedReturnedForResubmission.status, 200);
+
+    const unauthorizedResubmission = await putReports(attendantB.token, [{
+      ...returnedForResubmission,
+      status: "pending_manager",
+      workflowVersion: 4,
+    }]);
+    assert.equal(unauthorizedResubmission.status, 200);
+    assert.deepEqual(unauthorizedResubmission.body.rejectedReportIds, [attendantResubmittedReportId]);
+    assert.equal(
+      findReport(unauthorizedResubmission.body.reports, attendantResubmittedReportId).status,
+      "returned",
+    );
+
+    const attendantResubmission = await putReports(attendantA.token, [{
+      ...returnedForResubmission,
+      status: "pending_manager",
+      note: "Corrected and re-submitted",
+      submittedAt: "2026-09-02T16:00:00.000Z",
+      workflowVersion: 4,
+    }]);
+    assert.equal(attendantResubmission.status, 200);
+    assert.equal(
+      findReport(attendantResubmission.body.reports, attendantResubmittedReportId).status,
+      "pending_manager",
     );
 
     const fixtureMarker = `native-outbox-fixture-${marker}`;

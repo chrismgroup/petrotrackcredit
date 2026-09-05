@@ -1713,12 +1713,13 @@ export default function ShiftReportScreen() {
               </>
             )}
 
-            {/* Attendant action: re-submit a report the manager sent back */}
-            {isAtt && viewing.submittedBy === userName && viewing.status === 'returned_attendant' && (
+            {/* Attendant action: correct and re-submit a returned or rejected report */}
+            {isOwnAttendantReport(viewing) &&
+              (viewing.status === 'returned' || viewing.status === 'returned_attendant') && (
               <>
                 <Text style={[c.sectionLabel, { color: colors.text, marginTop: 16 }]}>Correct & Re-submit</Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
-                  Your manager sent this report back to you. Use the pencil icon above to correct the business date or figures, then re-submit it for review.
+                  This report was returned for correction. Use the pencil icon above to correct the business date or figures, then re-submit it to your manager for review.
                 </Text>
                 <TextInput
                   style={[c.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
