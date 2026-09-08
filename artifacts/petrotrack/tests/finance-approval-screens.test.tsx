@@ -235,6 +235,31 @@ describe('expense approval controls', () => {
     act(() => renderer.unmount());
   });
 
+  it('explains why a manager cannot submit until the new budget is fully approved', () => {
+    mockedUseApp.mockReturnValue(appState({
+      role: 'mgr',
+      userName: 'Iniobong Inyang Edward',
+      branchId: 'branch-ikot-ekpene',
+      budgets: [budget({
+        id: 20,
+        status: 'submitted',
+        branchId: 'branch-ikot-ekpene',
+        branchName: 'Ikot Ekpene Branch',
+      })],
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const addButton = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === '',
+    )[0];
+    act(() => { addButton.props.onPress(); });
+
+    expect(nodeText(renderer.root)).toContain('No approved budgets available');
+    expect(nodeText(renderer.root)).toContain('Expenses can only be submitted against a fully approved budget');
+    act(() => renderer.unmount());
+  });
+
   it('lets only the accountant approve or reject a pending expense', async () => {
     const approveExpenseConfirmed = jest.fn(async () => ({ ok: true }));
     const rejectExpenseConfirmed = jest.fn(async () => ({ ok: true }));

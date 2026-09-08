@@ -124,6 +124,7 @@ export default function ExpensesScreen() {
   const [showForm, setShowForm]     = useState(false);
   const [editTarget, setEditTarget] = useState<Expense | null>(null);
   const [form, setForm]             = useState<FormState>(blankForm());
+  const [formError, setFormError]   = useState('');
 
   const [filterDate, setFilterDate] = useState('');
 
@@ -167,17 +168,19 @@ export default function ExpensesScreen() {
   function openCreate() {
     setEditTarget(null);
     setForm({ ...blankForm(), budgetId: approvedBudgets[0]?.id ?? 0 });
+    setFormError('');
     setShowForm(true);
   }
-  function openEdit(e: Expense) { setEditTarget(e); setForm(expToForm(e)); setShowForm(true); }
+  function openEdit(e: Expense) { setEditTarget(e); setForm(expToForm(e)); setFormError(''); setShowForm(true); }
 
   function handleSave() {
     const amount = parseFloat(form.amt.replace(/,/g, ''));
-    if (!form.desc.trim()) { Alert.alert('Error', 'Please enter a description.'); return; }
-    if (!amount || amount <= 0) { Alert.alert('Error', 'Please enter a valid amount.'); return; }
-    if (!form.dt) { Alert.alert('Date required', 'Select the date this expense applies to.'); return; }
+    setFormError('');
+    if (!form.desc.trim()) { setFormError('Please enter a description.'); return; }
+    if (!amount || amount <= 0) { setFormError('Please enter a valid amount.'); return; }
+    if (!form.dt) { setFormError('Select the date this expense applies to.'); return; }
     if (!editTarget && (!form.budgetId || !approvedBudgets.find(b => b.id === form.budgetId))) {
-      Alert.alert('No Budget Selected', 'Please select an approved budget to charge this expense to.');
+      setFormError('Select a fully approved budget before submitting this expense.');
       return;
     }
     requestDateConfirmation('expense', form.dt, async () => {
@@ -198,9 +201,13 @@ export default function ExpensesScreen() {
           ref: form.ref.trim() || undefined,
           budgetId: form.budgetId,
         });
-        if (!result.ok) return;
+        if (!result.ok) {
+          setFormError(result.error ?? 'The server could not save this expense. Check the selected budget and try again.');
+          return;
+        }
       }
       setShowForm(false);
+      setFormError('');
     }, 'Confirm & save');
   }
 
@@ -414,19 +421,33 @@ export default function ExpensesScreen() {
       </ScrollView>
 
       {/* Add / Edit Modal */}
-      <ModalSheet visible={showForm} onClose={() => setShowForm(false)}>
+      <ModalSheet visible={showForm} onClose={() => { setShowForm(false); setFormError(''); }}>
           <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>
               {editTarget ? 'Edit Expense' : 'New Expense'}
             </Text>
+            {formError ? (
+              <View style={[styles.formError, { backgroundColor: colors.errorBg, borderColor: colors.errorBorder }]}>
+                <Ionicons name="alert-circle-outline" size={16} color={colors.error} />
+                <Text style={[styles.formErrorText, { color: colors.error }]}>{formError}</Text>
+              </View>
+            ) : null}
             <FormSheet f={form} setF={setForm} roleColor={roleColor} approvedBudgets={approvedBudgets} />
+            {!editTarget && approvedBudgets.length === 0 ? (
+              <View style={[styles.budgetRequirement, { backgroundColor: colors.infoBg, borderColor: colors.info }]}>
+                <Ionicons name="information-circle-outline" size={16} color={colors.info} />
+                <Text style={[styles.budgetRequirementText, { color: colors.info }]}>
+                  Expenses can only be submitted against a fully approved budget. Submit the new budget for review and wait for final approval before recording an expense.
+                </Text>
+              </View>
+            ) : null}
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
               <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, { flex: 2, backgroundColor: roleColor }]}>
                 <Ionicons name={editTarget ? 'checkmark' : 'send'} size={16} color="#fff" />
                 <Text style={styles.saveBtnText}>{editTarget ? 'Save Changes' : 'Submit Expense'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowForm(false)} style={[styles.cancelBtn, { flex: 1 }]}>
+              <TouchableOpacity onPress={() => { setShowForm(false); setFormError(''); }} style={[styles.cancelBtn, { flex: 1 }]}>
                 <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
@@ -480,6 +501,10 @@ const styles = StyleSheet.create({
   sheet:        { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 20, maxHeight: '92%' },
   smallModal:   { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 10 },
   sheetTitle:   { fontSize: 18, fontWeight: '700', marginBottom: 14 },
+  formError: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 11, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
+  formErrorText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  budgetRequirement: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 11, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
+  budgetRequirementText: { flex: 1, fontSize: 12, lineHeight: 17 },
   fwdIconBox:   { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   fwdSub:       { fontSize: 12, marginTop: 2 },
   fieldLabel:   { fontSize: 13, fontWeight: '600', marginBottom: 6 },
