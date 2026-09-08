@@ -108,7 +108,7 @@ async function run(req: Request, res: Response, action: (tx: Tx, now: string) =>
     const dip = record(result.body.dip) ? result.body.dip : null;
     const proposal = record(result.body.proposal) ? result.body.proposal : null;
     if (req.path === "/workflows/dips" && dip) {
-      for (const target of ["md", "ceo", "acc", "csm"]) {
+      for (const target of ["md"]) {
         await safeNotify({
           target,
           type: "operational",
@@ -121,6 +121,18 @@ async function run(req: Request, res: Response, action: (tx: Tx, now: string) =>
           },
         });
       }
+    } else if (req.method === "PATCH" && dip && dip.status === "pending") {
+      await safeNotify({
+        target: "md",
+        type: "operational",
+        title: "Tank Dip Resubmitted for MD Approval",
+        body: `${dip.by ?? "A manager"} resubmitted tank dip readings for ${dip.dt ?? "the selected date"}.`,
+        data: {
+          route: "/(app)/tanks",
+          dipId: dip.id,
+          branchId: dip.branchId ?? null,
+        },
+      });
     } else if (req.path.endsWith("/approve") && Array.isArray(result.body.inventoryLog)) {
       for (const value of result.body.inventoryLog.filter(record)) {
         const discrepancy = Number(value.discrepancy);
@@ -200,8 +212,11 @@ router.patch("/workflows/dips/:id", async (req, res) => run(req, res, async (tx,
   const old = dips[index];
   if (revision(old) !== cmd.expectedRevision) return { status: 409, body: { error: "Dip revision is stale" } };
   const isAdmin = req.auth!.role === "admin";
-  if (!isAdmin && old.status !== "pending") return { status: 409, body: { error: "Approved or rejected dips are locked; only admin may update them" } };
-  if (!isAdmin && (req.auth!.role !== "mgr" || old.by !== req.auth!.username || !sameBranch(req.auth!, old.branchId))) return { status: 403, body: { error: "Only the submitting branch manager may edit this pending dip" } };
+  if (old.status === "approved") return { status: 409, body: { error: "Approved dips are permanently locked" } };
+  if (!isAdmin && !["pending", "rejected"].includes(String(old.status))) {
+    return { status: 409, body: { error: "Approved dips are locked; rejected dips may only be corrected by the submitting manager" } };
+  }
+  if (!isAdmin && (req.auth!.role !== "mgr" || old.by !== req.auth!.username || !sameBranch(req.auth!, old.branchId))) return { status: 403, body: { error: "Only the submitting branch manager may edit this dip" } };
   const input = record(req.body?.dip) ? req.body.dip : {};
   if ((input.rd !== undefined && !record(input.rd)) || (input.lpg !== undefined && !record(input.lpg))) return { status: 400, body: { error: "Readings must be objects" } };
   const revisedRd = record(input.rd) ? input.rd : (record(old.rd) ? old.rd : {});
@@ -209,31 +224,20 @@ router.patch("/workflows/dips/:id", async (req, res) => run(req, res, async (tx,
   const validationBranchId = isAdmin && typeof old.branchId === "string" ? old.branchId : req.auth!.branchId;
   const readingError = await validateReadings(tx, revisedRd, revisedLpg, validationBranchId);
   if (readingError) return { status: 400, body: { error: readingError } };
-  const dip = { ...old, ...(typeof input.dt === "string" ? { dt: input.dt } : {}), ...(record(input.rd) ? { rd: input.rd } : {}), ...(record(input.lpg) ? { lpg: input.lpg } : {}), ...(typeof input.obs === "string" ? { obs: input.obs } : {}), workflowRevision: revision(old) + 1, updatedAt: now };
+  const managerResubmission = !isAdmin && old.status === "rejected";
+  const dip = {
+    ...old,
+    ...(typeof input.dt === "string" ? { dt: input.dt } : {}),
+    ...(record(input.rd) ? { rd: input.rd } : {}),
+    ...(record(input.lpg) ? { lpg: input.lpg } : {}),
+    ...(typeof input.obs === "string" ? { obs: input.obs } : {}),
+    ...(managerResubmission ? { status: "pending", submittedAt: now, approvedBy: null, approvedDt: null } : {}),
+    workflowRevision: revision(old) + 1,
+    updatedAt: now,
+  };
   dips[index] = dip;
   await save(tx, "dips", dips);
-  if (isAdmin && old.status === "approved") {
-    const [inventory, alerts] = await Promise.all([state(tx, "inventoryLog"), state(tx, "inventoryAlerts")]);
-    const correctedInventory = inventory.map(entry => {
-      if (String(entry.dipId) !== String(old.id)) return entry;
-      const tankId = String(entry.tankId ?? "");
-      const actual = revisedRd[tankId] ?? revisedLpg[tankId];
-      if (typeof actual !== "number" || !Number.isFinite(actual)) return entry;
-      const expected = Number(entry.expected) || 0;
-      return { ...entry, actual, discrepancy: actual - expected, correctedBy: req.auth!.username, correctedAt: now };
-    });
-    const correctedAlerts = correctedInventory
-      .filter(entry => String(entry.dipId) === String(old.id) && Math.abs(Number(entry.discrepancy)) > 50)
-      .map(entry => ({ id: randomUUID(), type: "inventory_discrepancy", ...entry, createdAt: now }));
-    await Promise.all([
-      save(tx, "inventoryLog", correctedInventory),
-      save(tx, "inventoryAlerts", [
-        ...correctedAlerts,
-        ...alerts.filter(entry => String(entry.dipId) !== String(old.id)),
-      ]),
-    ]);
-  }
-  await audit(tx, isAdmin && old.status !== "pending" ? "Approved dip corrected by admin" : "Dip updated", req.auth!.username, `Dip ${old.id} updated`, now);
+  await audit(tx, managerResubmission ? "Dip resubmitted" : "Dip updated", req.auth!.username, `Dip ${old.id} updated`, now);
   return { status: 200, body: { dip } };
 }));
 
@@ -242,18 +246,14 @@ router.delete("/workflows/dips/:id", async (req, res) => run(req, res, async (tx
   if (index < 0) return { status: 404, body: { error: "Dip not found" } }; const dip = dips[index];
   if (revision(dip) !== cmd.expectedRevision) return { status: 409, body: { error: "Dip revision is stale" } };
   const isAdmin = req.auth!.role === "admin";
-  if (!isAdmin && dip.status !== "pending") return { status: 409, body: { error: "Approved or rejected dips are locked; only admin may delete them" } };
-  if (!isAdmin && (req.auth!.role !== "mgr" || dip.by !== req.auth!.username || !sameBranch(req.auth!, dip.branchId))) return { status: 403, body: { error: "Only the submitting branch manager may delete this pending dip" } };
+  if (dip.status === "approved") return { status: 409, body: { error: "Approved dips are permanently locked" } };
+  if (!isAdmin && !["pending", "rejected"].includes(String(dip.status))) {
+    return { status: 409, body: { error: "Approved dips are locked; rejected dips may be deleted by the submitting manager" } };
+  }
+  if (!isAdmin && (req.auth!.role !== "mgr" || dip.by !== req.auth!.username || !sameBranch(req.auth!, dip.branchId))) return { status: 403, body: { error: "Only the submitting branch manager may delete this dip" } };
   dips.splice(index, 1);
   await save(tx, "dips", dips);
-  if (isAdmin && dip.status === "approved") {
-    const [inventory, alerts] = await Promise.all([state(tx, "inventoryLog"), state(tx, "inventoryAlerts")]);
-    await Promise.all([
-      save(tx, "inventoryLog", inventory.filter(entry => String(entry.dipId) !== String(dip.id))),
-      save(tx, "inventoryAlerts", alerts.filter(entry => String(entry.dipId) !== String(dip.id))),
-    ]);
-  }
-  await audit(tx, isAdmin && dip.status === "approved" ? "Approved dip deleted by admin" : "Dip deleted", req.auth!.username, `Dip ${dip.id} deleted`, now);
+  await audit(tx, "Dip deleted", req.auth!.username, `Dip ${dip.id} deleted`, now);
   return { status: 200, body: { dip: { ...dip, deleted: true, workflowRevision: revision(dip) + 1 } } };
 }));
 

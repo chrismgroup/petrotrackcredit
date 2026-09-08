@@ -577,7 +577,7 @@ describe('screens tolerate incomplete synced records', () => {
     act(() => mounted.unmount());
   });
 
-  it('shows approved dip correction controls only to Admin', () => {
+  it('keeps approved dips out of the workflow review surface', () => {
     const tank = {
       id: 'tank-1',
       name: 'PMS Tank',
@@ -631,9 +631,11 @@ describe('screens tolerate incomplete synced records', () => {
       adminRenderer = create(<TanksScreen />);
     });
     const mountedAdmin = adminRenderer as unknown as ReactTestRenderer;
-    expect(renderedText(mountedAdmin)).toContain('Edit');
-    expect(renderedText(mountedAdmin)).toContain('Delete');
-    expect(renderedText(mountedAdmin)).toContain('Inventory');
+    expect(renderedText(mountedAdmin)).toContain('Pending Dip Reports for Review');
+    expect(renderedText(mountedAdmin)).not.toContain('Edit');
+    expect(renderedText(mountedAdmin)).not.toContain('Delete');
+    expect(renderedText(mountedAdmin)).not.toContain('History');
+    expect(renderedText(mountedAdmin)).not.toContain('Inventory');
     act(() => mountedAdmin.unmount());
   });
 
