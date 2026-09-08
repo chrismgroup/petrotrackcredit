@@ -51,9 +51,11 @@ function sameBranch(item: JsonRecord, auth: Auth): boolean {
   // reviewer into a branch-scoped approver. A missing record branch is also a
   // supported legacy value and must remain actionable.
   return GLOBAL_FINANCE_REVIEWERS.has(auth.role)
-    || !auth.branchId
-    || !item.branchId
-    || String(item.branchId) === String(auth.branchId);
+    || (
+      !!auth.branchId
+      && !!item.branchId
+      && String(item.branchId) === String(auth.branchId)
+    );
 }
 function canEditOwned(item: JsonRecord, auth: Auth): boolean {
   return (auth.role === "admin" || (MANAGERS.has(auth.role) && String(item.createdBy ?? item.byName ?? "") === auth.username))

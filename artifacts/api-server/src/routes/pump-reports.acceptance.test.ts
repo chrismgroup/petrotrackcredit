@@ -181,6 +181,32 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
         ('Other Branch Attendant', $1, $3, 'att', $4, 'active', $5, $5, NOW()),
         ('Other Branch Manager', $2, $3, 'mgr', $4, 'active', $5, $5, NOW())
     `, [usernames.otherAttendant, usernames.otherManager, password, otherBranchId, marker]);
+    await pool.query(`
+      INSERT INTO app_state (key, data)
+      VALUES (
+        'branches',
+        jsonb_build_array(
+          jsonb_build_object('id', $1::text, 'name', 'Acceptance Branch'),
+          jsonb_build_object('id', $2::text, 'name', 'Other Acceptance Branch')
+        )
+      )
+      ON CONFLICT (key) DO UPDATE
+      SET data = COALESCE(app_state.data, '[]'::jsonb) || EXCLUDED.data
+    `, [branchId, otherBranchId]);
+    for (const key of ["expenses", "budgets", "deliveries", "dips", "sales", "inventoryLog", "stockLogs"]) {
+      await pool.query(`
+        INSERT INTO app_state (key, data)
+        VALUES (
+          $1,
+          jsonb_build_array(
+            jsonb_build_object('id', $2::text || '-own-' || $1::text, 'branchId', $3::text, 'branchName', 'Acceptance Branch'),
+            jsonb_build_object('id', $2::text || '-foreign-' || $1::text, 'branchId', $4::text, 'branchName', 'Other Acceptance Branch')
+          )
+        )
+        ON CONFLICT (key) DO UPDATE
+        SET data = COALESCE(app_state.data, '[]'::jsonb) || EXCLUDED.data
+      `, [key, marker, branchId, otherBranchId]);
+    }
 
     const [attendantA, attendantB, manager, otherAttendant, otherManager, accountant, admin] = await Promise.all([
       login(usernames.attendantA),
@@ -222,6 +248,8 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       attendantA.token,
     );
     assert.equal(seedWrite.status, 201);
+    assert.equal(seedWrite.body.report.branchId, branchId);
+    assert.equal(seedWrite.body.report.branchName, "Acceptance Branch");
     const otherBranchPending = report(otherBranchReportId, usernames.otherAttendant, {
       branchId: otherBranchId,
       pumpId: `${marker}-other-pump`,
@@ -235,10 +263,15 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       otherAttendant.token,
     );
     assert.equal(otherBranchSeed.status, 201);
-    const managerFullState = await request<{ pumpDailyReports: PumpReport[] }>("/state", {}, manager.token);
+    const managerFullState = await request<Record<string, unknown> & { pumpDailyReports: PumpReport[] }>("/state", {}, manager.token);
     assert.equal(managerFullState.status, 200);
     assert.equal(managerFullState.body.pumpDailyReports.some(item => item.id === otherBranchReportId), false);
     assert.ok(managerFullState.body.pumpDailyReports.every(item => item.branchId === branchId));
+    for (const key of ["expenses", "budgets", "deliveries", "dips", "sales", "inventoryLog", "stockLogs"]) {
+      const records = managerFullState.body[key] as PumpReport[];
+      assert.ok(records.some(item => item.id === `${marker}-own-${key}`));
+      assert.ok(records.every(item => item.branchId === branchId));
+    }
     const managerReportState = await request<PumpReport[]>("/state/pumpDailyReports", {}, manager.token);
     assert.equal(managerReportState.status, 200);
     assert.equal(managerReportState.body.some(item => item.id === otherBranchReportId), false);
@@ -603,6 +636,26 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
         ), '[]'::jsonb)
         WHERE key = 'pumpReportDeletionTombstones'
       `, [cleanupReportIds]);
+      await pool.query(`
+        UPDATE app_state
+        SET data = COALESCE((
+          SELECT jsonb_agg(item)
+          FROM jsonb_array_elements(data) item
+          WHERE NOT (item->>'id' = ANY($1::text[]))
+        ), '[]'::jsonb)
+        WHERE key = 'branches'
+      `, [[branchId, otherBranchId]]);
+      for (const key of ["expenses", "budgets", "deliveries", "dips", "sales", "inventoryLog", "stockLogs"]) {
+        await pool.query(`
+          UPDATE app_state
+          SET data = COALESCE((
+            SELECT jsonb_agg(item)
+            FROM jsonb_array_elements(data) item
+            WHERE item->>'id' NOT LIKE $1
+          ), '[]'::jsonb)
+          WHERE key = $2
+        `, [`${marker}-%`, key]);
+      }
       await pool.query("DELETE FROM staff_users WHERE created_by = $1", [marker]);
       await pool.query("COMMIT");
     } catch (error) {

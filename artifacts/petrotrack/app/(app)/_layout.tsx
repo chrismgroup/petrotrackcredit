@@ -5,7 +5,7 @@ import { SCREEN_ROUTES, useApp } from '@/context/AppContext';
 import { canAccessWorkspaceRoute } from '@/lib/workspace-access';
 
 export default function AppLayout() {
-  const { role, isServerAuthenticated, isHydrated, navItems } = useApp();
+  const { role, staffId, isServerAuthenticated, isHydrated, navItems, roleAccess, userAccess } = useApp();
   const pathname = usePathname();
 
   // On a browser/native reload, wait for AsyncStorage and the saved auth token
@@ -21,9 +21,12 @@ export default function AppLayout() {
   // deep links can also push a route directly. Enforce the same admin-managed
   // role/user permission at the route boundary.
   if (role !== 'admin') {
-    if (!canAccessWorkspaceRoute(pathname, role, navItems)) {
-      const fallback = navItems.find(item => SCREEN_ROUTES[item.id])?.id ?? 'home';
-      return <Redirect href={(SCREEN_ROUTES[fallback] ?? SCREEN_ROUTES.home) as never} />;
+    if (!canAccessWorkspaceRoute(pathname, role, navItems, roleAccess, userAccess, staffId)) {
+      const fallback = Object.values(SCREEN_ROUTES).find(route =>
+        canAccessWorkspaceRoute(route, role, navItems, roleAccess, userAccess, staffId)
+      );
+      if (!fallback) return <Redirect href="/" />;
+      return <Redirect href={fallback as never} />;
     }
   }
 

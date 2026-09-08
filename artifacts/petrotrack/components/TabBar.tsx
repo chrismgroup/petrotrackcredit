@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ROLE_COLORS, SCREEN_ROUTES, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { canAccessWorkspaceRoute } from '@/lib/workspace-access';
 
 const PRIMARY_TABS = [
   { id: 'home', label: 'Home', icon: 'home', route: SCREEN_ROUTES.home },
@@ -24,7 +25,7 @@ const JOB_PATHS = [
 ];
 
 export function TabBar() {
-  const { role } = useApp();
+  const { role, staffId, navItems: grantedNavItems, roleAccess, userAccess } = useApp();
   const colors = useColors();
   const router = useRouter();
   const pathname = usePathname();
@@ -53,7 +54,10 @@ export function TabBar() {
 
   const bottomPad = Platform.OS === 'web' ? 30 : insets.bottom;
   const compact = width < 360;
-  const navItems = PRIMARY_TABS.filter(item => item.id !== 'folder' || canOpenFolder);
+  const navItems = PRIMARY_TABS.filter(item =>
+    (item.id !== 'folder' || canOpenFolder)
+    && canAccessWorkspaceRoute(item.route, role, grantedNavItems, roleAccess, userAccess, staffId)
+  );
 
   return (
     <View style={[styles.container, {

@@ -55,3 +55,5 @@
 - [Expo monorepo root](expo-monorepo-root.md) — Expo must resolve from artifacts/petrotrack, not the workspace root, which has no app entry
 - [Expo DevTools headless mode](expo-devtools-headless.md) — Replit’s Linux preview should skip the optional standalone DevTools shell while keeping Metro and app debugging available
 - [Native biometric verification](native-biometric-verification.md) — mocked iOS/Android branches prove fallback logic, but only enrolled physical devices can prove Face ID/fingerprint acceptance
+- [Branch data isolation](branch-data-isolation.md) — branch managers receive and mutate only explicitly tagged records for their assigned branch
+- [Admin page access](admin-page-access.md) — role defaults remain, but Admin per-user overrides govern every app route and hidden routes fail closed

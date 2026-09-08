@@ -43,9 +43,14 @@ function isBranchAllowed(item: JsonRecord, auth: { role: string; branchId?: stri
   // Finance reviewers and executive approvers can review the network queue.
   // Missing branch IDs are legacy delivery records, not another branch.
   return GLOBAL_REVIEW_ROLES.has(auth.role)
-    || !auth.branchId
-    || !item.branchId
-    || item.branchId === auth.branchId;
+    || (!!auth.branchId && !!item.branchId && item.branchId === auth.branchId);
+}
+
+async function canonicalBranch(branchId: string): Promise<{ branchId: string; branchName: string } | null> {
+  const [row] = await db.select().from(appStateTable).where(eq(appStateTable.key, "branches"));
+  const branch = deliveries(row?.data).find(value => idOf(value) === branchId);
+  const branchName = String(branch?.name ?? "").trim();
+  return branch && branchName ? { branchId, branchName } : null;
 }
 function isOriginator(item: JsonRecord, auth: NonNullable<Request["auth"]>): boolean {
   return item.receivedByUsername === auth.username
@@ -203,13 +208,15 @@ router.post("/deliveries", async (req, res) => {
   const incoming = record(req.body?.delivery) ? req.body.delivery : null;
   const fields = incoming ? validatedDeliveryFields(incoming) : null;
   if (!incoming || !fields || !idOf(incoming) || !req.auth!.branchId) { res.status(400).json({ error: "Valid delivery fields, an id, and authenticated branch are required" }); return; }
+  const assignedBranch = await canonicalBranch(req.auth!.branchId);
+  if (!assignedBranch) { res.status(400).json({ error: "The authenticated branch does not exist" }); return; }
   const result = await execute(req, "create", (items, now) => {
     if (items.some(item => idOf(item) === idOf(incoming))) return { error: "Delivery id already exists", code: 409 };
     if (supplied(req.body)!.expectedRevision !== 0) return { error: "New deliveries require expectedRevision 0", code: 409 };
     const item = {
       ...fields,
       id: incoming.id,
-      branchId: req.auth!.branchId,
+      ...assignedBranch,
       receivedBy: req.auth!.empName ?? req.auth!.username,
       receivedByUsername: req.auth!.username,
       submittedAt: now,
