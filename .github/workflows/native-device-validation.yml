@@ -37,6 +37,13 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Preflight Petrotrack Expo project
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm install --frozen-lockfile --filter @workspace/petrotrack...
+          pnpm --filter @workspace/petrotrack run preflight:native
+
       - name: Verify scheduled device tools
         shell: bash
         run: |

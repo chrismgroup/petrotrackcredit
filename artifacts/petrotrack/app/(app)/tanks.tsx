@@ -7,8 +7,9 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
- import { DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, ROLE_COLORS, SCREEN_ROUTES, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { sendOperationalNotification } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
 
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
@@ -16,7 +17,7 @@ const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', 
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, userName, branchId, mgrPerms } = useApp();
+  const { role, tanks, lpgTanks, dips, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, prices, userName, branchId, mgrPerms } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
@@ -49,6 +50,8 @@ export default function TanksScreen() {
     Boolean(branchId && dip.branchId === branchId) ||
     Object.keys(dip.rd ?? {}).some(tankId => visiblePetrolTankIds.has(tankId)) ||
     Object.keys(dip.lpg ?? {}).some(tankId => visibleLpgTankIds.has(tankId));
+  const canReviewDip = (dip: (typeof dips)[number]) =>
+    isMD || isAdmin || dipHasVisibleReading(dip);
   const getDipBranch = (dip: (typeof dips)[number]) => {
     if (dip.branchId) {
       return {
@@ -70,9 +73,10 @@ export default function TanksScreen() {
     return { id: 'unassigned', name: 'Unassigned branch' };
   };
   const visibleDipRecords = dips.filter(dip =>
-    canEdit
-      ? dipHasVisibleReading(dip) && dip.status === 'rejected' && dip.by === userName
-      : (isMD || isAdmin) && dip.status === 'pending',
+    canReviewDip(dip)
+    && (canEdit
+      ? dip.status === 'rejected' && dip.by === userName
+      : (isMD || isAdmin) && dip.status === 'pending'),
   );
   const dipHistoryGroups = visibleDipRecords.reduce<Array<{ id: string; name: string; dips: typeof visibleDipRecords }>>((groups, dip) => {
     const branch = getDipBranch(dip);
@@ -103,6 +107,8 @@ export default function TanksScreen() {
     activeHistoryBranchId ? group.id === activeHistoryBranchId : group.dips.length > 0,
   );
   const hasDisplayedHistory = displayedDipHistoryGroups.some(group => group.dips.length > 0);
+  const pendingDips = dips.filter(d => d.status === 'pending' && dipHasVisibleReading(d));
+
   function handleDipSubmit() {
     if (!appliesOn) {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
@@ -116,6 +122,15 @@ export default function TanksScreen() {
     requestDateConfirmation('tank dip', appliesOn, () => {
       addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
       setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
+
+      void sendOperationalNotification({
+        target: 'md',
+        title: 'Tank Dip Report Awaiting Approval',
+        body: `${userName} submitted a tank dip for MD review.`,
+        route: SCREEN_ROUTES.tanks,
+      }).catch(() => {
+        // The dip remains saved locally and will sync independently.
+      });
 
       Alert.alert('Dip Submitted', 'Tank readings recorded and sent to MD for approval.');
     });
@@ -276,7 +291,7 @@ export default function TanksScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             {canEdit ? 'Returned Dip Reports' : 'Pending Dip Reports for Review'}
           </Text>
-          <View style={styles.historyBranchRail}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyBranchRail}>
             {canSeeAllTanks && (
               <TouchableOpacity
                 style={[
@@ -310,7 +325,7 @@ export default function TanksScreen() {
                 </TouchableOpacity>
               );
             })}
-          </View>
+          </ScrollView>
           {!hasDisplayedHistory ? (
             <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="time-outline" size={16} color={colors.textMuted} />
@@ -536,9 +551,9 @@ const styles = StyleSheet.create({
   dipStatusText: { fontSize: 10, fontWeight: '700' },
   approvedByText: { fontSize: 11, marginTop: 4 },
   historyBranchRail: { gap: 8, paddingBottom: 4 },
-  historyBranchTile: { width: '100%', minHeight: 64, padding: 12, borderRadius: 13, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  historyBranchTileName: { flex: 1, fontSize: 12, fontWeight: '800' },
-  historyBranchTileCount: { fontSize: 10, fontWeight: '600' },
+  historyBranchTile: { width: 132, minHeight: 92, padding: 11, borderRadius: 13, borderWidth: 1, justifyContent: 'space-between' },
+  historyBranchTileName: { fontSize: 12, fontWeight: '800', marginTop: 8 },
+  historyBranchTileCount: { fontSize: 10, fontWeight: '600', marginTop: 4 },
   mdActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   approveBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10 },
   rejectBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, borderWidth: 1.5 },
