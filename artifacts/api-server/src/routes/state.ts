@@ -384,6 +384,16 @@ function canMutatePumpReport(
   const isSubmittingAttendant = candidate.submittedBy === auth.username
     || (!!auth.empName && candidate.submittedBy === auth.empName);
   if (auth.role === "admin") return true;
+  if (
+    auth.role === "mgr"
+    && (
+      !auth.branchId
+      || candidate.branchId !== auth.branchId
+      || (current && current.branchId !== auth.branchId)
+    )
+  ) {
+    return false;
+  }
   if (!current) {
     return auth.role === "att"
       && candidate.status === "pending_manager"
@@ -405,10 +415,6 @@ function canMutatePumpReport(
 
   const from = String(current.status ?? "");
   const to = String(candidate.status ?? "");
-  // A branch-scoped manager may still need to complete a legacy report that
-  // predates branch tagging. Do not let a missing branch ID make that report
-  // impossible to forward or return.
-  const sameBranch = !auth.branchId || !candidate.branchId || candidate.branchId === auth.branchId;
   if (auth.role === "att") {
     return isSubmittingAttendant
       && (
@@ -416,7 +422,7 @@ function canMutatePumpReport(
         (from === "returned" && (to === "returned" || to === "pending_manager"))
       );
   }
-  if (auth.role === "mgr" && sameBranch) {
+  if (auth.role === "mgr") {
     return (
       (from === "pending_manager" && (to === "pending_accountant" || to === "returned_attendant")) ||
       (from === "returned" && (to === "pending_accountant" || to === "returned_attendant"))
@@ -425,6 +431,20 @@ function canMutatePumpReport(
   return auth.role === "acc"
     && from === "pending_accountant"
     && (to === "approved" || to === "returned");
+}
+
+function pumpReportsForIdentity(
+  reports: unknown,
+  auth: { role: string; branchId?: string | null } | undefined,
+  resolvedManagerBranchId?: string | null,
+): JsonRecord[] {
+  const rows = Array.isArray(reports)
+    ? reports.filter((value): value is JsonRecord => !!value && typeof value === "object" && !Array.isArray(value))
+    : [];
+  if (auth?.role !== "mgr") return rows;
+  const branchId = auth.branchId ?? resolvedManagerBranchId;
+  if (!branchId) return [];
+  return rows.filter(report => report.branchId === branchId);
 }
 
 function dipActivityMs(dip: JsonRecord): number {
@@ -778,6 +798,9 @@ router.get("/state", async (req, res): Promise<void> => {
   const deletedPumpReportIds = pumpReportDeletionIds(
     rows.find(row => row.key === PUMP_REPORT_DELETIONS_KEY)?.data,
   );
+  const managerBranchId = req.auth?.role === "mgr"
+    ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
+    : null;
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
   for (const row of rows) {
     if (row.key === PUMP_REPORT_DELETIONS_KEY || row.key === COMPANY_ASSET_DELETIONS_KEY) continue;
@@ -809,6 +832,7 @@ router.get("/state", async (req, res): Promise<void> => {
         .map(row => row.data),
       req.auth?.role,
     ).filter(report => !deletedPumpReportIds.has(String(report.id ?? "")));
+    result.pumpDailyReports = pumpReportsForIdentity(result.pumpDailyReports, req.auth, managerBranchId);
   }
   res.json(result);
 });
@@ -1444,6 +1468,13 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     res.json(budgetStateForIdentity(row.data, branchesRow[0]?.data, budgetStaff, req.auth));
     return;
   }
+  if (key === "pumpDailyReports") {
+    const managerBranchId = req.auth?.role === "mgr"
+      ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
+      : null;
+    res.json(pumpReportsForIdentity(row.data, req.auth, managerBranchId));
+    return;
+  }
   res.json(visibleMyFolderState(key, row.data, req.auth?.role));
 });
 
@@ -1612,6 +1643,9 @@ router.put("/state/:key", async (req, res): Promise<void> => {
           .then(rows => rows[0]?.empName)
         : undefined
     );
+    const managerBranchId = req.auth?.role === "mgr"
+      ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
+      : null;
     const result = await db.transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:pump-reports'))`);
       const [existingRow] = await tx.select().from(appStateTable)
@@ -1631,7 +1665,7 @@ router.put("/state/:key", async (req, res): Promise<void> => {
         const accepted = canMutatePumpReport(
           existingById.get(id),
           candidate,
-          { ...req.auth, empName: authEmpName },
+          { ...req.auth, branchId: managerBranchId ?? req.auth.branchId, empName: authEmpName },
         );
         if (!accepted && id) rejectedReportIds.push(id);
         return accepted;
@@ -1665,7 +1699,7 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     broadcastRealtime({ type: "pump-report.changed" });
     res.json({
       ok: result.rejectedReportIds.length === 0,
-      reports: result.reports,
+      reports: pumpReportsForIdentity(result.reports, req.auth, managerBranchId),
       rejectedReportIds: result.rejectedReportIds,
     });
     return;
