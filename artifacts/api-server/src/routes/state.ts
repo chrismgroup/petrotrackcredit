@@ -1206,7 +1206,7 @@ router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> =>
     || (!!authEmpName && (report.submittedBy === authEmpName || report.submittedByName === authEmpName));
   const isApproved = report.status === "approved";
   const isReturned = report.status === "returned" || report.status === "returned_attendant";
-  const mayDelete = (req.auth.role === "admin" && (isApproved || isReturned))
+  const mayDelete = (req.auth.role === "admin")
     || (req.auth.role === "att" && isReturned && isOriginalAttendant);
   if (!mayDelete) {
     res.status(403).json({ error: "Only Admin or the original attendant can delete this returned pump report" });
