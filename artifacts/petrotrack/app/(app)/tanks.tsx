@@ -70,10 +70,9 @@ export default function TanksScreen() {
     return { id: 'unassigned', name: 'Unassigned branch' };
   };
   const visibleDipRecords = dips.filter(dip =>
-    dipHasVisibleReading(dip)
-    && (canEdit
-      ? dip.status === 'rejected' && dip.by === userName
-      : (isMD || isAdmin) && dip.status === 'pending'),
+    canEdit
+      ? dipHasVisibleReading(dip) && dip.status === 'rejected' && dip.by === userName
+      : (isMD || isAdmin) && dip.status === 'pending',
   );
   const dipHistoryGroups = visibleDipRecords.reduce<Array<{ id: string; name: string; dips: typeof visibleDipRecords }>>((groups, dip) => {
     const branch = getDipBranch(dip);
@@ -104,8 +103,6 @@ export default function TanksScreen() {
     activeHistoryBranchId ? group.id === activeHistoryBranchId : group.dips.length > 0,
   );
   const hasDisplayedHistory = displayedDipHistoryGroups.some(group => group.dips.length > 0);
-  const pendingDips = dips.filter(d => d.status === 'pending' && dipHasVisibleReading(d));
-
   function handleDipSubmit() {
     if (!appliesOn) {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
