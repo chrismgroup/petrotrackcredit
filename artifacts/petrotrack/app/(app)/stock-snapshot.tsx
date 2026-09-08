@@ -6,8 +6,6 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   calculateDailyOperationalStock,
   calculateDailyStockLogBalance,
-  carryForwardApprovedDip,
-  businessDateKey,
   dipReadingToLiters,
   ROLE_COLORS,
   type DipRecord,
@@ -32,7 +30,6 @@ type SnapshotRow = {
   sold: number;
   bookStock: number | null;
   tankDip: number | null;
-  dipBusinessDate?: string;
   variance: number | null;
 };
 
@@ -116,7 +113,6 @@ export default function StockSnapshotScreen() {
               product,
               branchTanks,
               branchLpgTanks,
-              { onOrBeforeDate: true },
             );
             const stockBook = calculateDailyOperationalStock(
               startupRecord,
@@ -127,14 +123,7 @@ export default function StockSnapshotScreen() {
               todayKey,
               branchPumps,
             );
-            const dipBusinessDate = businessDateKey(todayDip?.dt);
-            const approvedDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
-            const dipDateBookStock = dipBusinessDate && dipBusinessDate !== todayKey
-              ? calculateDailyOperationalStock(
-                  startupRecord, product, scope.branchId, deliveries, pumpDailyReports, dipBusinessDate, branchPumps,
-                ).bookStock
-              : stockBook.bookStock;
-            const tankDip = carryForwardApprovedDip(approvedDip, dipDateBookStock, stockBook.bookStock);
+            const tankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
             const variance = calculateDailyStockLogBalance(
               stockBook.startupStock,
               stockBook.delivered,
@@ -150,7 +139,6 @@ export default function StockSnapshotScreen() {
               sold: stockBook.sold,
               bookStock: stockBook.bookStock,
               tankDip,
-              dipBusinessDate: dipBusinessDate || undefined,
               variance,
             };
           });
@@ -187,7 +175,7 @@ export default function StockSnapshotScreen() {
           <Text style={styles.eyebrow}>MY JOBS · INVENTORY CONTROL</Text>
           <Text style={styles.heroTitle}>Stock snapshot</Text>
           <Text style={styles.heroSubtitle}>
-            Shows the latest approved tank dip carried forward with subsequent deliveries and approved sales, so current physical stock and variance stay aligned.
+            Compare today&apos;s expected book stock with today&apos;s approved tank dip. Older readings are never carried into today&apos;s variance.
           </Text>
           <View style={styles.heroStats}>
             <View style={styles.heroStat}>
@@ -249,9 +237,7 @@ export default function StockSnapshotScreen() {
                   <View style={styles.productHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.productName, { color: colors.text }]}>{row.product}</Text>
-                       <Text style={[styles.productUnit, { color: colors.textMuted }]}>
-                         Unit: {row.unit}{row.dipBusinessDate ? ` · approved dip ${row.dipBusinessDate}` : ''}
-                       </Text>
+                       <Text style={[styles.productUnit, { color: colors.textMuted }]}>Unit: {row.unit}</Text>
                     </View>
                     {stockSnapshotConfig.metrics.variance ? (
                       <View style={[styles.statusBadge, { backgroundColor: statusColor + '18' }]}>

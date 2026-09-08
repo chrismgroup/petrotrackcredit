@@ -9,7 +9,6 @@ import {
   AppProvider,
   calculateDailyOperationalStock,
   calculateDailyStockLogBalance,
-  carryForwardApprovedDip,
   calculateStockBook,
   getCurrentTankStock,
   getLatestPumpReportForOpeningMeter,
@@ -1244,30 +1243,19 @@ describe('tank dip synchronization', () => {
     )).toBeUndefined();
   });
 
-  it('finds the latest approved dip on or before the requested snapshot date', () => {
-    const earlier = baseDip('approved', '2026-08-20T08:00:00.000Z', '2026-08-20T09:00:00.000Z');
-    const later = {
-      ...baseDip('approved', '2026-08-22T08:00:00.000Z', '2026-08-22T09:00:00.000Z'),
-      id: 504,
-      dt: '2026-08-22',
-      rd: { 'tank-uyo-pms': 10_000 },
-    };
+  it('does not carry an earlier approved dip into a later business day', () => {
+    const priorDay = baseDip('approved', '2026-08-20T08:00:00.000Z', '2026-08-20T09:00:00.000Z');
 
     expect(findLatestDipForProduct(
-      [earlier, later],
-      '2026-08-23',
+      [priorDay],
+      '2026-08-21',
       'uyo-fuel',
       'PMS',
       [{ id: 'tank-uyo-pms', prod: 'PMS' }],
       [],
-      { onOrBeforeDate: true },
-    )).toEqual(later);
+    )).toBeUndefined();
   });
 
-  it('carries an approved dip forward by the same movement as book stock', () => {
-    expect(carryForwardApprovedDip(12_000, 11_500, 10_800)).toBe(11_300);
-    expect(carryForwardApprovedDip(null, 11_500, 10_800)).toBeNull();
-  });
 });
 
 describe('attendant report resubmission', () => {
