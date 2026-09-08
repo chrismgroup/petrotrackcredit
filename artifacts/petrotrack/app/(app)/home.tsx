@@ -654,7 +654,7 @@ export default function HomeScreen() {
     role,
   );
   const primaryApprovalRoute =
-    pendingDips.length > 0 ? `${SCREEN_ROUTES.ops}?tab=dip-approvals`
+    pendingDips.length > 0 ? SCREEN_ROUTES.tanks
       : pendingDeliveries.length > 0 ? SCREEN_ROUTES.recv
         : pendingExpenses.length > 0 ? SCREEN_ROUTES.exp
           : pendingPriceProps.length > 0 ? SCREEN_ROUTES.prices
@@ -1035,7 +1035,7 @@ export default function HomeScreen() {
                 title="Tank Dip Readings"
                 meta={`${pendingDips.length} reading${pendingDips.length > 1 ? 's' : ''} awaiting approval`}
                 count={pendingDips.length}
-                onPress={() => router.push(`${SCREEN_ROUTES.ops}?tab=dip-approvals` as never)}
+                onPress={() => router.push(SCREEN_ROUTES.tanks as never)}
                 colors={colors}
               />
             ) : null}

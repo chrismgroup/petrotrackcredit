@@ -373,7 +373,7 @@ describe('dashboard and workspace navigation', () => {
       label: 'MD tank-dip approval',
       role: 'md',
       title: 'Tank Dip Readings',
-      route: '/(app)/operations?tab=dip-approvals',
+      route: '/(app)/tanks',
       state: {
         dips: [{
           id: 201, dt: '2026-09-05', by: 'manager', rd: {}, lpg: {},

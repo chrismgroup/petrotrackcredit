@@ -178,6 +178,7 @@ jest.mock('@/context/AppContext', () => {
       shift: '/(app)/shift',
       tasks: '/(app)/tasks',
       budget: '/(app)/budget',
+      tanks: '/(app)/tanks',
     },
     canViewActionItemsDashboard: (
       targetRole: string | null,
@@ -683,7 +684,7 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     act(() => renderer.unmount());
   });
 
-  it('opens pending tank dips in the MD approval screen', () => {
+  it('opens pending tank dips in the dedicated Tank Dipping screen', () => {
     mockedUseApp.mockReturnValue(baseAppState({
       role: 'md',
       tanks: [{ id: 'T1', name: 'PMS Tank 1', prod: 'PMS', cap: 20000, dip: 0, op: 0, rv: 0, sl: 0, branchId: 'B1' }],
@@ -702,7 +703,7 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     const renderer = render(<HomeScreen />);
     act(() => touchableWithText(renderer, 'Tank Dip Readings').props.onPress());
 
-    expect(mockPush).toHaveBeenCalledWith('/(app)/operations?tab=dip-approvals');
+    expect(mockPush).toHaveBeenCalledWith('/(app)/tanks');
     act(() => renderer.unmount());
   });
 
