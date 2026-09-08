@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -127,6 +127,8 @@ export default function ExpensesScreen() {
   const [formError, setFormError]   = useState('');
 
   const [filterDate, setFilterDate] = useState('');
+  const [reviewingExpenseIds, setReviewingExpenseIds] = useState<Set<number>>(() => new Set());
+  const reviewingExpenseIdsRef = useRef<Set<number>>(new Set());
 
   const today = new Date().toISOString().slice(0, 10);
   const todaySalesRev    = sales.filter(s => s.dt.startsWith(today)).reduce((s, x) => s + safeNum(x.L) * safeNum(x.price), 0);
@@ -216,6 +218,35 @@ export default function ExpensesScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => deleteExpense(e.id) },
     ]);
+  }
+
+  function setExpenseReviewBusy(id: number, busy: boolean) {
+    setReviewingExpenseIds(current => {
+      const next = new Set(current);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  async function handleExpenseDecision(id: number, decision: 'approve' | 'reject') {
+    if (reviewingExpenseIdsRef.current.has(id)) return;
+    reviewingExpenseIdsRef.current.add(id);
+    setExpenseReviewBusy(id, true);
+    try {
+      const result = decision === 'approve'
+        ? await approveExpenseConfirmed(id)
+        : await rejectExpenseConfirmed(id);
+      if (!result?.ok) {
+        Alert.alert(
+          decision === 'approve' ? 'Expense not approved' : 'Expense not rejected',
+          result?.error ?? `The server could not ${decision} this expense.`,
+        );
+      }
+    } finally {
+      reviewingExpenseIdsRef.current.delete(id);
+      setExpenseReviewBusy(id, false);
+    }
   }
 
   /* Permission helpers */
@@ -371,18 +402,17 @@ export default function ExpensesScreen() {
                {/* Only the Accountant can approve or reject */}
                {accCanDecide(exp) ? (
                 <View style={styles.actionRow}>
-                  <TouchableOpacity onPress={async () => {
-                    const result = await rejectExpenseConfirmed(exp.id);
-                    if (!result?.ok) Alert.alert('Expense not rejected', result?.error ?? 'The server could not reject this expense.');
-                  }}
-                    style={[styles.actionBtn, { borderColor: '#791F1F', flex: 1 }]}>
+                  <TouchableOpacity
+                    disabled={reviewingExpenseIds.has(exp.id)}
+                    onPress={() => handleExpenseDecision(exp.id, 'reject')}
+                    style={[styles.actionBtn, { borderColor: '#791F1F', flex: 1, opacity: reviewingExpenseIds.has(exp.id) ? 0.5 : 1 }]}>
                     <Ionicons name="close" size={13} color="#791F1F" />
                     <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Reject</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={async () => {
-                    const result = await approveExpenseConfirmed(exp.id);
-                    if (!result?.ok) Alert.alert('Expense not approved', result?.error ?? 'The server could not approve this expense.');
-                  }} style={styles.approveBtn}>
+                  <TouchableOpacity
+                    disabled={reviewingExpenseIds.has(exp.id)}
+                    onPress={() => handleExpenseDecision(exp.id, 'approve')}
+                    style={[styles.approveBtn, { opacity: reviewingExpenseIds.has(exp.id) ? 0.5 : 1 }]}>
                     <Ionicons name="checkmark" size={13} color="#fff" />
                     <Text style={styles.approveBtnText}>Approve</Text>
                   </TouchableOpacity>

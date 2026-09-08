@@ -285,6 +285,35 @@ describe('expense approval controls', () => {
     act(() => renderer.unmount());
   });
 
+  it('blocks duplicate expense approvals and recovers after a server rejection', async () => {
+    let resolveApproval!: (result: { ok: boolean; error?: string }) => void;
+    const approveExpenseConfirmed = jest.fn(() => new Promise<{ ok: boolean; error?: string }>(resolve => {
+      resolveApproval = resolve;
+    }));
+    mockedUseApp.mockReturnValue(appState({
+      expenses: [expense()],
+      approveExpenseConfirmed,
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const approveButton = touchable(renderer, 'Approve');
+    let pendingApproval!: Promise<unknown>;
+    act(() => { pendingApproval = approveButton.props.onPress(); });
+
+    expect(approveButton.props.disabled).toBe(true);
+    act(() => { approveButton.props.onPress(); });
+    expect(approveExpenseConfirmed).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveApproval({ ok: false, error: 'This expense was already reviewed.' });
+      await pendingApproval;
+    });
+
+    expect(touchable(renderer, 'Approve').props.disabled).toBe(false);
+    act(() => renderer.unmount());
+  });
+
   it(
     'shows no expense decision controls to MD, CEO, or admin',
     () => {
@@ -397,7 +426,10 @@ describe('budget approval controls', () => {
   );
 
   it('lets the accountant forward a submitted budget from another branch to the MD', async () => {
-    const forwardBudget = jest.fn();
+    let resolveForward!: (result: { ok: boolean; error?: string }) => void;
+    const forwardBudget = jest.fn(() => new Promise<{ ok: boolean; error?: string }>(resolve => {
+      resolveForward = resolve;
+    }));
     mockedUseApp.mockReturnValue(appState({
       budgets: [budget()],
       forwardBudget,
@@ -410,11 +442,24 @@ describe('budget approval controls', () => {
 
     const noteInput = renderer.root.findByType('TextInput' as any);
     act(() => { noteInput.props.onChangeText('All amounts verified.'); });
+    const confirmForward = touchables(renderer, 'Forward to MD').at(-1)!;
+    let pendingForward!: Promise<unknown>;
     await act(async () => {
-      await touchables(renderer, 'Forward to MD').at(-1)?.props.onPress();
+      pendingForward = confirmForward.props.onPress();
     });
 
     expect(forwardBudget).toHaveBeenCalledWith(7, 'All amounts verified.');
+    expect(forwardBudget).toHaveBeenCalledTimes(1);
+    expect(confirmForward.props.disabled).toBe(true);
+    act(() => { confirmForward.props.onPress(); });
+    expect(forwardBudget).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveForward({ ok: false, error: 'This budget was already forwarded.' });
+      await pendingForward;
+    });
+
+    expect(touchable(renderer, 'Forward to MD').props.disabled).toBeFalsy();
     act(() => renderer.unmount());
   });
 

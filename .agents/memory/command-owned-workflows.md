@@ -7,7 +7,7 @@ Deliveries, expenses, budgets, dips, price proposals, and direct selling-price c
 
 **Why:** A stale device array can reverse another user's valid transition, and client-owned approval side effects can duplicate inventory, price history, or audit records. A notification failure after commit must also never turn a successful command into an HTTP error that encourages a duplicate retry.
 
-**How to apply:** Keep legal source-status, role, branch, identity, timestamp, side-effect, and replay decisions inside one server command. Return the canonical record, reconcile clients from it, block generic writes for command-owned collections, and treat durable notification delivery as secondary to the committed command response. Submission screens must await that canonical response and show success only after persistence; on failure, retain the user's inputs and expose the server error.
+**How to apply:** Keep legal source-status, role, branch, identity, timestamp, side-effect, and replay decisions inside one server command. Return the canonical record, reconcile clients from it, block generic writes for command-owned collections, and treat durable notification delivery as secondary to the committed command response. Submission and review screens must await that canonical response, guard each record against duplicate in-flight commands, and show success only after persistence; on failure, retain the user's inputs and expose the server error.
 
 For finance workflows, `acc`, `md`, `ceo`, and `admin` are network-wide reviewers even when an older staff record still contains a branch assignment. Legacy records with no branch tag remain actionable by those reviewers; branch managers remain restricted to their own branch.
 

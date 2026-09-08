@@ -1445,9 +1445,9 @@ interface AppContextType {
   classifyBudgetBranch: (id: number, branchId: string) => Promise<{ ok: boolean; error?: string }>;
   consolidateBudgetMonth: (year: number, month: number, headOfficeBranchId: string) => Promise<{ ok: boolean; error?: string; result?: BudgetConsolidationResult }>;
   submitBudgetToAcc: (id: number) => void;
-  forwardBudget: (id: number, note: string) => void;
-  approveBudget: (id: number, note: string) => void;
-  rejectBudget: (id: number, note: string) => void;
+  forwardBudget: (id: number, note: string) => Promise<{ ok: boolean; error?: string }>;
+  approveBudget: (id: number, note: string) => Promise<{ ok: boolean; error?: string }>;
+  rejectBudget: (id: number, note: string) => Promise<{ ok: boolean; error?: string }>;
   messages: Record<string, Message[]>; broadcasts: Broadcast[]; callLog: CallRecord[];
   notifications: AppNotification[];
   refreshNotifications: () => Promise<void>;
@@ -3352,28 +3352,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget submission'));
   }, [budgets]);
 
-  const forwardBudget = useCallback((id: number, note: string) => {
-    const budget = budgets.find(item => item.id === id); if (!budget) return;
-    void workflowApi.budgets.transition(id, 'forward', note, workflowMeta(budget.revision ?? 0))
-      .then(result => result?.record
-        ? applyBudget(result.record as Budget)
-        : workflowFailure('Budget forwarding', result?.error));
+  const forwardBudget = useCallback(async (id: number, note: string) => {
+    const budget = budgets.find(item => item.id === id);
+    if (!budget) return { ok: false, error: 'This budget no longer exists.' };
+    const result = await workflowApi.budgets.transition(id, 'forward', note, workflowMeta(budget.revision ?? 0));
+    if (result?.record) {
+      applyBudget(result.record as Budget);
+      return { ok: true };
+    }
+    const error = result?.error ?? 'The server could not forward this budget.';
+    workflowFailure('Budget forwarding', error);
+    return { ok: false, error };
   }, [budgets]);
 
-  const approveBudget = useCallback((id: number, note: string) => {
-    const budget = budgets.find(item => item.id === id); if (!budget) return;
-    void workflowApi.budgets.transition(id, 'approve', note, workflowMeta(budget.revision ?? 0))
-      .then(result => result?.record
-        ? applyBudget(result.record as Budget)
-        : workflowFailure('Budget approval', result?.error));
+  const approveBudget = useCallback(async (id: number, note: string) => {
+    const budget = budgets.find(item => item.id === id);
+    if (!budget) return { ok: false, error: 'This budget no longer exists.' };
+    const result = await workflowApi.budgets.transition(id, 'approve', note, workflowMeta(budget.revision ?? 0));
+    if (result?.record) {
+      applyBudget(result.record as Budget);
+      return { ok: true };
+    }
+    const error = result?.error ?? 'The server could not approve this budget.';
+    workflowFailure('Budget approval', error);
+    return { ok: false, error };
   }, [budgets]);
 
-  const rejectBudget = useCallback((id: number, note: string) => {
-    const budget = budgets.find(item => item.id === id); if (!budget) return;
-    void workflowApi.budgets.transition(id, 'reject', note, workflowMeta(budget.revision ?? 0))
-      .then(result => result?.record
-        ? applyBudget(result.record as Budget)
-        : workflowFailure('Budget rejection', result?.error));
+  const rejectBudget = useCallback(async (id: number, note: string) => {
+    const budget = budgets.find(item => item.id === id);
+    if (!budget) return { ok: false, error: 'This budget no longer exists.' };
+    const result = await workflowApi.budgets.transition(id, 'reject', note, workflowMeta(budget.revision ?? 0));
+    if (result?.record) {
+      applyBudget(result.record as Budget);
+      return { ok: true };
+    }
+    const error = result?.error ?? 'The server could not reject this budget.';
+    workflowFailure('Budget rejection', error);
+    return { ok: false, error };
   }, [budgets]);
 
   const addStaff = useCallback((s: Omit<Staff, 'id'>) => {

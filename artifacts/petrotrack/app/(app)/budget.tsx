@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert, Modal,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -178,6 +178,8 @@ export default function BudgetScreen() {
   const [actionNote, setActionNote] = useState('');
   const [classificationBranchId, setClassificationBranchId] = useState('');
   const [classificationBusy, setClassificationBusy] = useState(false);
+  const [reviewingBudgetIds, setReviewingBudgetIds] = useState<Set<number>>(() => new Set());
+  const reviewingBudgetIdsRef = useRef<Set<number>>(new Set());
 
   const [showForm, setShowForm]     = useState(false);
   const [editTarget, setEditTarget] = useState<Budget | null>(null);
@@ -357,13 +359,39 @@ export default function BudgetScreen() {
     );
   }
 
-  function handleAction() {
+  function setBudgetReviewBusy(id: number, busy: boolean) {
+    setReviewingBudgetIds(current => {
+      const next = new Set(current);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  async function handleAction() {
     if (!selected || !actionType) return;
     if (!actionNote.trim()) { Alert.alert('Please add a note before confirming'); return; }
-    if (actionType === 'forward')  forwardBudget(selected.id, actionNote.trim());
-    if (actionType === 'approve')  approveBudget(selected.id, actionNote.trim());
-    if (actionType === 'reject')   rejectBudget(selected.id, actionNote.trim());
-    setActionType(null); setActionNote(''); setSelected(null);
+    const budgetId = selected.id;
+    if (reviewingBudgetIdsRef.current.has(budgetId)) return;
+
+    reviewingBudgetIdsRef.current.add(budgetId);
+    setBudgetReviewBusy(budgetId, true);
+    try {
+      const note = actionNote.trim();
+      const result = actionType === 'forward'
+        ? await forwardBudget(budgetId, note)
+        : actionType === 'approve'
+          ? await approveBudget(budgetId, note)
+          : await rejectBudget(budgetId, note);
+
+      setActionType(null);
+      setActionNote('');
+      if (result?.ok === false) return;
+      setSelected(null);
+    } finally {
+      reviewingBudgetIdsRef.current.delete(budgetId);
+      setBudgetReviewBusy(budgetId, false);
+    }
   }
 
   async function handleClassifyBranch() {
@@ -931,13 +959,22 @@ export default function BudgetScreen() {
                       style={[styles.noteInput, { color: colors.text, borderColor: colors.border }]}
                     />
                     <View style={styles.actionBtns}>
-                      <TouchableOpacity onPress={handleAction}
-                        style={[styles.primaryBtn, { backgroundColor: actionType === 'reject' ? '#791F1F' : actionType === 'forward' ? '#0C447C' : '#1a6e3c' }]}>
+                      <TouchableOpacity
+                        disabled={reviewingBudgetIds.has(selected.id)}
+                        onPress={handleAction}
+                        style={[styles.primaryBtn, {
+                          backgroundColor: actionType === 'reject' ? '#791F1F' : actionType === 'forward' ? '#0C447C' : '#1a6e3c',
+                          opacity: reviewingBudgetIds.has(selected.id) ? 0.5 : 1,
+                        }]}>
                         <Text style={styles.primaryBtnText}>
-                          {actionType === 'forward' ? 'Forward to MD' : actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+                          {reviewingBudgetIds.has(selected.id)
+                            ? 'Saving…'
+                            : actionType === 'forward' ? 'Forward to MD' : actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
                         </Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => { setActionType(null); setActionNote(''); }}
+                      <TouchableOpacity
+                        disabled={reviewingBudgetIds.has(selected.id)}
+                        onPress={() => { setActionType(null); setActionNote(''); }}
                         style={[styles.outlineBtn, { borderColor: colors.border }]}>
                         <Text style={[styles.outlineBtnText, { color: colors.textMuted }]}>Cancel</Text>
                       </TouchableOpacity>
