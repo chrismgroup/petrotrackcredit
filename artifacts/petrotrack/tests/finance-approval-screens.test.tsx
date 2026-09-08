@@ -400,6 +400,46 @@ describe('expense approval controls', () => {
 });
 
 describe('budget approval controls', () => {
+  it('locks manager budget submission while the server command is in flight', async () => {
+    let resolveSubmit!: (result: { ok: boolean }) => void;
+    const submitBudgetToAcc = jest.fn(() => new Promise<{ ok: boolean }>(resolve => {
+      resolveSubmit = resolve;
+    }));
+    mockedUseApp.mockReturnValue(appState({
+      role: 'mgr',
+      userName: 'Station Manager',
+      branchId: 'branch-a',
+      budgets: [budget({
+        status: 'draft',
+        by: 'mgr',
+        byName: 'Station Manager',
+        branchId: 'branch-a',
+        branchName: 'Maitama Branch',
+      })],
+      submitBudgetToAcc,
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BudgetScreen />); });
+    act(() => { touchableContaining(renderer, 'September 2026 Budget').props.onPress(); });
+    act(() => { touchable(renderer, 'Submit to Accountant').props.onPress({ stopPropagation: jest.fn() }); });
+
+    const alertCall = (Alert.alert as jest.Mock).mock.calls.at(-1);
+    act(() => { alertCall[2][1].onPress(); });
+
+    expect(submitBudgetToAcc).toHaveBeenCalledWith(7);
+    const submittingButtons = touchables(renderer, 'Submitting…');
+    expect(submittingButtons).toHaveLength(2);
+    expect(submittingButtons.every(button => button.props.disabled)).toBe(true);
+
+    await act(async () => {
+      resolveSubmit({ ok: true });
+      await Promise.resolve();
+    });
+    expect(touchables(renderer, 'Submitting…')).toHaveLength(0);
+    act(() => renderer.unmount());
+  });
+
   it.each(['acc', 'md', 'ceo'] as const)(
     'lets %s classify an unassigned historical budget once',
     async role => {
