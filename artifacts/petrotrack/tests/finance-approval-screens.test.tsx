@@ -194,6 +194,7 @@ function appState(overrides: Record<string, unknown> = {}) {
     updateAndSubmitBudget: jest.fn(),
     deleteBudget: jest.fn(),
     archiveBudgets: jest.fn(),
+    classifyBudgetBranch: jest.fn(async () => ({ ok: true })),
     submitBudgetToAcc: jest.fn(),
     forwardBudget: jest.fn(),
     approveBudget: jest.fn(),
@@ -229,9 +230,10 @@ describe('expense approval controls', () => {
     act(() => renderer.unmount());
   });
 
-  it.each(['md', 'ceo', 'admin'] as const)(
-    'shows %s approve and reject controls for an expense assigned to another branch',
-    async role => {
+  it(
+    'shows MD approve and reject controls for an expense assigned to another branch',
+    async () => {
+      const role = 'md';
       const approveExpenseConfirmed = jest.fn(async () => ({ ok: true }));
       const rejectExpenseConfirmed = jest.fn(async () => ({ ok: true }));
       mockedUseApp.mockReturnValue(appState({
@@ -258,6 +260,22 @@ describe('expense approval controls', () => {
       });
       expect(rejectExpenseConfirmed).toHaveBeenCalledWith(41);
 
+      act(() => renderer.unmount());
+    },
+  );
+
+  it.each(['ceo', 'admin'] as const)(
+    'does not show expense approval controls to %s',
+    role => {
+      mockedUseApp.mockReturnValue(appState({
+        role,
+        expenses: [expense({ status: 'acc_forwarded' })],
+      }) as any);
+
+      let renderer!: ReactTestRenderer;
+      act(() => { renderer = create(<ExpensesScreen />); });
+      expect(touchables(renderer, 'Approve')).toHaveLength(0);
+      expect(touchables(renderer, 'Reject')).toHaveLength(0);
       act(() => renderer.unmount());
     },
   );
@@ -289,6 +307,31 @@ describe('expense approval controls', () => {
 });
 
 describe('budget approval controls', () => {
+  it.each(['acc', 'md', 'ceo'] as const)(
+    'lets %s classify an unassigned historical budget once',
+    async role => {
+      const classifyBudgetBranch = jest.fn(async () => ({ ok: true }));
+      mockedUseApp.mockReturnValue(appState({
+        role,
+        budgets: [budget({ branchId: '', branchName: '', status: 'fully_approved' })],
+        classifyBudgetBranch,
+      }) as any);
+
+      let renderer!: ReactTestRenderer;
+      act(() => { renderer = create(<BudgetScreen />); });
+      press(renderer, 'All Budgets');
+      act(() => { touchableContaining(renderer, 'September 2026 Budget').props.onPress(); });
+      expect(touchable(renderer, 'Confirm Branch Assignment').props.disabled).toBe(true);
+      press(renderer, 'Wuse Branch');
+      await act(async () => {
+        await touchable(renderer, 'Confirm Branch Assignment').props.onPress();
+      });
+
+      expect(classifyBudgetBranch).toHaveBeenCalledWith(7, 'branch-b');
+      act(() => renderer.unmount());
+    },
+  );
+
   it('lets the accountant forward a submitted budget from another branch to the MD', async () => {
     const forwardBudget = jest.fn();
     mockedUseApp.mockReturnValue(appState({

@@ -60,7 +60,7 @@ function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
           {approvedBudgets.map(b => (
             <TouchableOpacity key={b.id} onPress={() => setF(p => ({ ...p, budgetId: b.id }))}
               style={[styles.catChip, { backgroundColor: f.budgetId === b.id ? roleColor : colors.surface, borderColor: f.budgetId === b.id ? roleColor : colors.border }]}>
-              <Text style={[styles.catChipText, { color: f.budgetId === b.id ? '#fff' : colors.textMuted }]}>{b.label}</Text>
+              <Text style={[styles.catChipText, { color: f.budgetId === b.id ? '#fff' : colors.textMuted }]}>{b.branchName}{' · '}{b.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -100,7 +100,7 @@ export default function ExpensesScreen() {
 
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const isAcc = role === 'acc' || role === 'admin';
-  const isMD  = role === 'md'  || role === 'ceo' || role === 'admin';
+  const isMD  = role === 'md';
   const isCeo = role === 'ceo';
 
   const approvedBudgets = budgets.filter(b =>
@@ -316,7 +316,7 @@ export default function ExpensesScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.expCat, { color: colors.text }]}>{exp.cat}</Text>
                   <Text style={[styles.expDesc, { color: colors.textMuted }]}>{exp.desc}</Text>
-                   <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{'by '}{exp.byName}{' · applies on '}{exp.dt.slice(0, 10)}{' · submitted '}{exp.submittedAt ? fmtDateTime(exp.submittedAt) : fmtDateTime(exp.dt)}</Text>
+                   <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{exp.branchName || 'Branch not assigned'}{' · by '}{exp.byName}{' · applies on '}{exp.dt.slice(0, 10)}{' · submitted '}{exp.submittedAt ? fmtDateTime(exp.submittedAt) : fmtDateTime(exp.dt)}</Text>
                   {exp.ref ? <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{'Ref: '}{exp.ref}</Text> : null}
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 4 }}>

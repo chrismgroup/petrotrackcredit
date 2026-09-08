@@ -338,6 +338,35 @@ describe('dashboard and workspace navigation', () => {
     act(() => renderer.unmount());
   });
 
+  it('keeps CEO expense notices informational on Home and hides the Expenses workspace', () => {
+    mockUseApp.mockReturnValue(baseAppState({
+      role: 'ceo',
+      expenses: [{
+        id: 102,
+        dt: '2026-09-05',
+        cat: 'Utilities',
+        desc: 'Generator service',
+        amt: 25000,
+        by: 'mgr',
+        byName: 'Station Manager',
+        status: 'acc_forwarded',
+        budgetId: 1,
+        branchId: 'branch-a',
+        branchName: 'Maitama Branch',
+      }],
+    }));
+
+    let homeRenderer!: ReactTestRenderer;
+    act(() => { homeRenderer = create(<HomeScreen />); });
+    expect(homeRenderer.root.findAll(node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Expense Claims'))).toHaveLength(0);
+    act(() => homeRenderer.unmount());
+
+    let jobsRenderer!: ReactTestRenderer;
+    act(() => { jobsRenderer = create(<JobsScreen />); });
+    expect(jobsRenderer.root.findAll(node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Expenses'))).toHaveLength(0);
+    act(() => jobsRenderer.unmount());
+  });
+
   it.each([
     {
       label: 'MD tank-dip approval',

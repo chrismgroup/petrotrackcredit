@@ -130,7 +130,7 @@ export interface PriceProposal {
   branchId?: string;
   reviewedBy?: string; reviewedAt?: string; note?: string; workflowRevision?: number;
 }
-export interface Expense { id: number; dt: string; submittedAt?: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId?: string; revision?: number; }
+export interface Expense { id: number; dt: string; submittedAt?: string; cat: string; desc: string; amt: number; by: string; byName: string; status: 'pending' | 'acc_forwarded' | 'approved' | 'rejected'; approvedBy?: string; approvedDt?: string; budgetId: number; ref?: string; branchId: string; branchName: string; revision?: number; }
 export interface BudgetWorkflowStep { stage: string; by: string; role: string; dt: string; action: string; note: string; }
 export interface Budget {
   id: number; month: number; year: number; appliesOn?: string; submittedAt?: string;
@@ -1411,6 +1411,7 @@ interface AppContextType {
   updateAndSubmitBudget: (id: number, updates: { items: { cat: string; amt: number }[]; total: number; month: number; year: number; label: string; appliesOn?: string }) => void;
   deleteBudget: (id: number) => void;
   archiveBudgets: (ids: number[]) => void;
+  classifyBudgetBranch: (id: number, branchId: string) => Promise<{ ok: boolean; error?: string }>;
   submitBudgetToAcc: (id: number) => void;
   forwardBudget: (id: number, note: string) => void;
   approveBudget: (id: number, note: string) => void;
@@ -1477,7 +1478,7 @@ interface AppContextType {
   updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap' | 'branchId'>>) => void;
   updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId' | 'lpgCategory'>>) => void;
   updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId' | 'accountId'>>) => void;
-  addExpense: (exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => Promise<{ ok: boolean; error?: string }>;
+  addExpense: (exp: Omit<Expense, 'id' | 'status' | 'submittedAt' | 'branchId' | 'branchName'>) => Promise<{ ok: boolean; error?: string }>;
   updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => void;
   updateExpenseConfirmed: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => Promise<{ ok: boolean; error?: string }>;
   deleteExpense: (id: number) => void;
@@ -3284,6 +3285,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [role, budgets]);
 
+  const classifyBudgetBranch = useCallback(async (id: number, selectedBranchId: string) => {
+    const budget = budgets.find(item => item.id === id);
+    if (!budget) return { ok: false, error: 'This budget no longer exists.' };
+    const result = await workflowApi.budgets.classifyBranch<Budget>(
+      id,
+      selectedBranchId,
+      workflowMeta(budget.revision ?? 0),
+    );
+    if (!result?.record) return { ok: false, error: result?.error ?? 'The server could not classify this budget.' };
+    applyBudget(result.record);
+    return { ok: true };
+  }, [budgets]);
+
   const submitBudgetToAcc = useCallback((id: number) => {
     const b = budgets.find(b => b.id === id);
     if (!b) return;
@@ -3767,7 +3781,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'KPI removed', user: userName, detail: `KPI #${id} deleted`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const addExpense = useCallback(async (exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => {
+  const addExpense = useCallback(async (exp: Omit<Expense, 'id' | 'status' | 'submittedAt' | 'branchId' | 'branchName'>) => {
     const result = await workflowApi.expenses.create(exp, workflowMeta(0));
     if (result?.record) {
       applyExpense(result.record as Expense);
@@ -4910,7 +4924,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       priceProposals, addPriceProposal, addPriceProposalConfirmed, approvePriceProposal, approvePriceProposalConfirmed, updateAndApprovePriceProposal, updateAndApprovePriceProposalConfirmed, rejectPriceProposal,
       updatePrice, updatePriceConfirmed, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
-       addExpense, updateExpense, updateExpenseConfirmed, deleteExpense, forwardExpenseToMD, forwardExpenseToMDConfirmed, addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
+       addExpense, updateExpense, updateExpenseConfirmed, deleteExpense, forwardExpenseToMD, forwardExpenseToMDConfirmed, addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, classifyBudgetBranch, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
        addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, addDeliveryConfirmed, updateDelivery, updateDeliveryConfirmed, deleteDelivery, submitDeliveryForApproval, submitDeliveryForApprovalConfirmed, accForwardToMd, accForwardToMdConfirmed, accRecallDelivery, approveDelivery, approveDeliveryConfirmed, rejectDelivery, rejectDeliveryConfirmed, addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
