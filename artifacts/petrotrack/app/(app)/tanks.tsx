@@ -12,7 +12,7 @@ import { useColors } from '@/hooks/useColors';
 import { sendOperationalNotification } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
 
-const TABS = ['Dip Form', 'History', 'Inventory'];
+const TABS = ['Dip Form', 'History'];
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
 const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
@@ -221,7 +221,6 @@ export default function TanksScreen() {
       <View style={styles.tabBar}>
         {TABS.map((t, i) => {
           if (i === 0 && !canEdit) return null;
-          if (i === 2 && role === 'mgr') return null;
           const showBadge = i === 1 && (isMD || isAdmin) && pendingDips.length > 0;
           return (
             <TouchableOpacity key={t} onPress={() => setActiveTab(i)} style={[styles.tabBtn, { borderBottomColor: i === activeTab ? roleColor : 'transparent', borderBottomWidth: 2 }]}>
@@ -386,7 +385,7 @@ export default function TanksScreen() {
               </Text>
             </View>
           )}
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Inventory history by branch</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip history by branch</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyBranchRail}>
             {canSeeAllTanks && (
               <TouchableOpacity
