@@ -37,6 +37,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     accountant: `${marker}-accountant`,
     md: `${marker}-md`,
     ceo: `${marker}-ceo`,
+    admin: `${marker}-admin`,
     attendant: `${marker}-attendant`,
   };
   const stateKeys = [
@@ -152,14 +153,22 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       marker,
       branchB,
     ]);
+    await pool.query(`
+      INSERT INTO staff_users (
+        emp_name, username, password, role, branch_id, status,
+        created_by, approved_by, approved_at
+      )
+      VALUES ('Workflow Admin', $1, $2, 'admin', NULL, 'active', $3, $3, NOW())
+    `, [users.admin, password, marker]);
 
-    const [manager, otherManager, csm, accountant, md, ceo, attendant] = await Promise.all([
+    const [manager, otherManager, csm, accountant, md, ceo, admin, attendant] = await Promise.all([
       login(users.manager),
       login(users.otherManager),
       login(users.csm),
       login(users.accountant),
       login(users.md),
       login(users.ceo),
+      login(users.admin),
       login(users.attendant),
     ]);
 
@@ -734,7 +743,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       assert.equal(dipNotification?.read, false);
       assert.equal(
         (dipNotification?.data as JsonRecord | undefined)?.route,
-        "/(app)/operations?tab=dip-approvals",
+        "/(app)/tanks",
       );
     }
     const dipApproveBody = {
@@ -754,6 +763,37 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(staleDip.status, 409);
     const inventory = await readState("inventoryLog") as JsonRecord[];
     assert.equal(inventory.filter(entry => String(entry.dipId) === dipId && entry.tankId === tankId).length, 1);
+    const managerApprovedEdit = await command(manager.token, `/workflows/dips/${dipId}`, {
+      dip: { obs: "Manager attempted approved correction" },
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-dip-approved-manager-edit`,
+    }, "PATCH");
+    assert.equal(managerApprovedEdit.status, 409);
+    const managerApprovedDelete = await command(manager.token, `/workflows/dips/${dipId}`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-dip-approved-manager-delete`,
+    }, "DELETE");
+    assert.equal(managerApprovedDelete.status, 409);
+    const adminApprovedEdit = await command(admin.token, `/workflows/dips/${dipId}`, {
+      dip: { obs: "Admin corrected approved dip" },
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-dip-approved-admin-edit`,
+    }, "PATCH");
+    assert.equal(adminApprovedEdit.status, 200);
+    assert.equal((adminApprovedEdit.body.dip as JsonRecord).obs, "Admin corrected approved dip");
+    assert.equal((adminApprovedEdit.body.dip as JsonRecord).status, "approved");
+    const correctedInventory = await readState("inventoryLog") as JsonRecord[];
+    const correctedInventoryEntry = correctedInventory.find(entry => String(entry.dipId) === dipId && entry.tankId === tankId);
+    assert.equal(correctedInventoryEntry?.actual, 1_125);
+    assert.equal(correctedInventoryEntry?.correctedBy, users.admin);
+    const adminApprovedDelete = await command(admin.token, `/workflows/dips/${dipId}`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-dip-approved-admin-delete`,
+    }, "DELETE");
+    assert.equal(adminApprovedDelete.status, 200);
+    assert.equal((adminApprovedDelete.body.dip as JsonRecord).deleted, true);
+    const inventoryAfterAdminDelete = await readState("inventoryLog") as JsonRecord[];
+    assert.equal(inventoryAfterAdminDelete.some(entry => String(entry.dipId) === dipId), false);
 
     const proposalCreated = await command(manager.token, "/workflows/price-proposals", {
       proposal: { prod: product, proposedPrice: 725 },

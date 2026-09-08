@@ -1,6 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
 import React, { useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -14,53 +12,13 @@ import { useColors } from '@/hooks/useColors';
 import { sendOperationalNotification } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
 
-const TABS = ['Dip Form', 'Log & Delivery', 'Inventory'];
-const STATUS_LABELS: Record<string, string> = { ok: 'OK', short: 'Short', spill: 'Spill', seal: 'Seal Broken' };
-const STATUS_COLORS: Record<string, string> = { ok: '#27500A', short: '#BA7517', spill: '#A32D2D', seal: '#4527a0' };
+const TABS = ['Dip Form', 'History', 'Inventory'];
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
 const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, sales, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, addDeliveryConfirmed, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms } = useApp();
-
-  async function pickCameraEvidence(delivId: number) {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera access is needed to capture delivery evidence.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: false });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      const saved = await addDeliveryEvidence({ delivId, type: 'photo', name: asset.fileName ?? `photo_${Date.now()}.jpg`, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', size: asset.fileSize });
-      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this photo. Please select it again to retry.');
-    }
-  }
-
-  async function pickGalleryEvidence(delivId: number) {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Media library access is needed to attach evidence.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.8, allowsEditing: false });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      const isVid = asset.type === 'video';
-      const saved = await addDeliveryEvidence({ delivId, type: isVid ? 'video' : 'photo', name: asset.fileName ?? `${isVid ? 'video' : 'photo'}_${Date.now()}`, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? (isVid ? 'video/mp4' : 'image/jpeg'), size: asset.fileSize });
-      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this attachment. Please select it again to retry.');
-    }
-  }
-
-  async function pickDocEvidence(delivId: number) {
-    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-    if (!result.canceled && result.assets?.[0]) {
-      const asset = result.assets[0];
-      const saved = await addDeliveryEvidence({ delivId, type: 'document', name: asset.name, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? 'application/octet-stream', size: asset.size });
-      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this document. Please select it again to retry.');
-    }
-  }
+  const { role, tanks, lpgTanks, dips, deliveries, sales, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, prices, userName, branchId, mgrPerms } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
@@ -70,9 +28,6 @@ export default function TanksScreen() {
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs] = useState('');
   const [appliesOn, setAppliesOn] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState('');
-  const [showDeliveryForm, setShowDeliveryForm] = useState(false);
-  const [delForm, setDelForm] = useState({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
   const [editingDipId, setEditingDipId] = useState<number | null>(null);
   const [editDipReadings, setEditDipReadings] = useState<Record<string, string>>({});
   const [editDipLpg, setEditDipLpg] = useState<Record<string, string>>({});
@@ -225,38 +180,6 @@ export default function TanksScreen() {
     });
   }
 
-  function handleDeliverySubmit() {
-    if (!deliveryDate) {
-      Alert.alert('Date required', 'Select the date this delivery applies to.');
-      return;
-    }
-    if (!branchId) {
-      Alert.alert('Branch assignment required', 'Assign this manager to a branch before recording a delivery so the stock is added to the correct inventory ledger.');
-      return;
-    }
-    requestDateConfirmation('delivery', deliveryDate, async () => {
-      const result = await addDeliveryConfirmed({
-        dt: deliveryDate,
-        sup: delForm.sup,
-        prod: delForm.prod,
-        wb: delForm.wb,
-        ord: parseFloat(delForm.ord) || 0,
-        rec: parseFloat(delForm.rec) || 0,
-        st: delForm.st as any,
-        notes: delForm.notes,
-        branchId,
-      });
-      if (!result.ok) {
-        Alert.alert('Delivery not recorded', result.error ?? 'The server could not save this delivery. Your entries remain available so you can retry.');
-        return;
-      }
-      setDelForm({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
-      setDeliveryDate('');
-      setShowDeliveryForm(false);
-      Alert.alert('Delivery Recorded', 'Delivery entry saved.');
-    }, 'Confirm & save');
-  }
-
   function stockPct(t: { id: string; op: number; sl: number; rv: number; cap: number }) {
     const stock = getCurrentTankStock(t, dips);
     return Math.round((stock / t.cap) * 100);
@@ -298,6 +221,7 @@ export default function TanksScreen() {
       <View style={styles.tabBar}>
         {TABS.map((t, i) => {
           if (i === 0 && !canEdit) return null;
+          if (i === 2 && role === 'mgr') return null;
           const showBadge = i === 1 && (isMD || isAdmin) && pendingDips.length > 0;
           return (
             <TouchableOpacity key={t} onPress={() => setActiveTab(i)} style={[styles.tabBtn, { borderBottomColor: i === activeTab ? roleColor : 'transparent', borderBottomWidth: 2 }]}>
@@ -438,59 +362,6 @@ export default function TanksScreen() {
             ) : null;
           })()}
 
-          <Text style={[styles.formSection, { color: colors.text }]}>Record Delivery</Text>
-          {!showDeliveryForm ? (
-            <TouchableOpacity style={[styles.addBtn, { borderColor: roleColor }]} onPress={() => setShowDeliveryForm(true)}>
-              <Ionicons name="add" size={18} color={roleColor} />
-              <Text style={[styles.addBtnText, { color: roleColor }]}>Record New Delivery</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <AppliedDateField
-                value={deliveryDate}
-                onChange={setDeliveryDate}
-                label="Delivery applies on *"
-                accent={roleColor}
-                helper="Select the date the delivery belongs to."
-              />
-              {['PMS', 'AGO', 'DPK', 'LPG'].map(p => (
-                <TouchableOpacity key={p} onPress={() => setDelForm(f => ({ ...f, prod: p }))} style={[styles.prodBtn, { backgroundColor: delForm.prod === p ? roleColor : colors.background, borderColor: delForm.prod === p ? roleColor : colors.border }]}>
-                  <Text style={{ color: delForm.prod === p ? '#fff' : colors.textMuted, fontSize: 12, fontWeight: '600' }}>{p}</Text>
-                </TouchableOpacity>
-              ))}
-              {[
-                { key: 'sup', label: 'Supplier Name' }, { key: 'wb', label: 'Waybill Number' },
-                { key: 'ord', label: delForm.prod === 'LPG' ? 'Ordered Qty (kg)' : 'Ordered Qty (L)' },
-                { key: 'rec', label: delForm.prod === 'LPG' ? 'Received Qty (kg)' : 'Received Qty (L)' },
-                { key: 'notes', label: 'Notes' },
-              ].map(f => (
-                <TextInput
-                  key={f.key}
-                  style={[styles.input, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}
-                  placeholder={f.label}
-                  placeholderTextColor={colors.textSubtle}
-                  keyboardType={['ord', 'rec'].includes(f.key) ? 'numeric' : 'default'}
-                  value={(delForm as any)[f.key]}
-                  onChangeText={v => setDelForm(fv => ({ ...fv, [f.key]: v }))}
-                />
-              ))}
-              <View style={styles.prodRow}>
-                {['ok', 'short', 'spill', 'seal'].map(s => (
-                  <TouchableOpacity key={s} onPress={() => setDelForm(f => ({ ...f, st: s }))} style={[styles.prodBtn, { backgroundColor: delForm.st === s ? roleColor : colors.background, borderColor: delForm.st === s ? roleColor : colors.border }]}>
-                    <Text style={{ color: delForm.st === s ? '#fff' : colors.textMuted, fontSize: 11, fontWeight: '600' }}>{STATUS_LABELS[s]}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleDeliverySubmit} activeOpacity={0.85}>
-                  <Text style={styles.submitBtnText}>Save</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={() => setShowDeliveryForm(false)}>
-                  <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
           <View style={{ height: 8 }} />
         </ScrollView>
 
@@ -609,7 +480,7 @@ export default function TanksScreen() {
                     {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
                   </Text>
                 )}
-                {(canEdit || isAdmin || isMD) && (
+                {(isAdmin || (canEdit && isPending)) && (
                   <View style={[styles.mdActions, { marginTop: 8 }]}>
                     <TouchableOpacity
                       style={[styles.rejectBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]}
@@ -726,76 +597,6 @@ export default function TanksScreen() {
             </View>
           ))}
 
-          <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>Delivery Records</Text>
-          {deliveries.filter(d => !branchId || !d.branchId || d.branchId === branchId).map(rec => {
-            const evidence = deliveryEvidences.filter(e => e.delivId === rec.id);
-            return (
-              <View key={rec.id} style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.logHeader}>
-                  <View>
-                    <Text style={[styles.logDate, { color: colors.text }]}>{rec.prod} — {rec.sup}</Text>
-                    <Text style={[styles.logBy, { color: colors.textMuted }]}>WB: {rec.wb} · {fmtDateTime(rec.dt)}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[rec.st] + '22' }]}>
-                    <Text style={[styles.statusText, { color: STATUS_COLORS[rec.st] }]}>{STATUS_LABELS[rec.st]}</Text>
-                  </View>
-                </View>
-                <View style={styles.deliveryStats}>
-                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Ordered: <Text style={{ color: colors.text, fontWeight: '600' }}>{safeNum(rec.ord).toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text></Text>
-                  <Text style={[styles.deliveryStatItem, { color: colors.textMuted }]}>Received: <Text style={{ color: roleColor, fontWeight: '700' }}>{safeNum(rec.rec).toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text></Text>
-                  {safeNum(rec.ord) !== safeNum(rec.rec) && <Text style={{ color: STATUS_COLORS[rec.st], fontSize: 12 }}>Diff: {(safeNum(rec.rec) - safeNum(rec.ord)).toLocaleString()}{rec.prod === 'LPG' ? 'kg' : 'L'}</Text>}
-                </View>
-                {rec.notes ? <Text style={[styles.dipObs, { color: colors.textMuted }]}>{rec.notes}</Text> : null}
-
-                <View style={[styles.evidenceSection, { borderTopColor: colors.border }]}>
-                  <View style={styles.evidenceHeader}>
-                    <Ionicons name="attach-outline" size={13} color={colors.textMuted} />
-                    <Text style={[styles.evidenceTitle, { color: colors.textMuted }]}>Evidence ({evidence.length})</Text>
-                    {canEdit && (
-                      <View style={styles.evidenceBtns}>
-                        <TouchableOpacity onPress={() => pickCameraEvidence(rec.id)} style={[styles.evidenceAddBtn, { backgroundColor: roleColor + '18', borderColor: roleColor + '44' }]}>
-                          <Ionicons name="camera-outline" size={11} color={roleColor} />
-                          <Text style={[styles.evidenceAddText, { color: roleColor }]}>Camera</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => pickGalleryEvidence(rec.id)} style={[styles.evidenceAddBtn, { backgroundColor: '#2980B918', borderColor: '#2980B944' }]}>
-                          <Ionicons name="images-outline" size={11} color="#2980B9" />
-                          <Text style={[styles.evidenceAddText, { color: '#2980B9' }]}>Gallery</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => pickDocEvidence(rec.id)} style={[styles.evidenceAddBtn, { backgroundColor: '#8E44AD18', borderColor: '#8E44AD44' }]}>
-                          <Ionicons name="document-outline" size={11} color="#8E44AD" />
-                          <Text style={[styles.evidenceAddText, { color: '#8E44AD' }]}>File</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                  {evidence.length === 0 && (
-                    <Text style={[styles.evidenceEmpty, { color: colors.textSubtle }]}>
-                      {canEdit ? 'No files attached — tap Camera, Gallery, or File to upload evidence' : 'No evidence attached'}
-                    </Text>
-                  )}
-                  {evidence.map(ev => {
-                    const isImg = ev.mimeType?.startsWith('image/') || ev.type === 'photo';
-                    const isVid = ev.mimeType?.startsWith('video/') || ev.type === 'video';
-                    const ic = isImg ? 'image-outline' : isVid ? 'videocam-outline' : 'document-text-outline';
-                    const icColor = isImg ? roleColor : isVid ? '#2980B9' : '#8E44AD';
-                    const label = isImg ? 'IMG' : isVid ? 'VID' : 'FILE';
-                    return (
-                      <View key={ev.id} style={[styles.evidenceItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                        <Ionicons name={ic as any} size={14} color={icColor} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.evidenceName, { color: colors.text }]} numberOfLines={1}>{ev.name}</Text>
-                          <Text style={[styles.evidenceMeta, { color: colors.textSubtle }]}>by {ev.by} · {fmtDateTime(ev.dt)}</Text>
-                        </View>
-                        <View style={[styles.evidenceTypeBadge, { backgroundColor: icColor + '18' }]}>
-                          <Text style={[styles.evidenceTypeText, { color: icColor }]}>{label}</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            );
-          })}
           <View style={{ height: 16 }} />
         </ScrollView>
       )}
