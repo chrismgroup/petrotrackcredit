@@ -1467,7 +1467,7 @@ interface AppContextType {
   updateLpgTank: (id: string, updates: Partial<Pick<LPGTank, 'name' | 'cap' | 'branchId'>>) => void;
   updatePump: (id: string, updates: Partial<Pick<Pump, 'name' | 'prod' | 'active' | 'branchId' | 'lpgCategory'>>) => void;
   updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId' | 'accountId'>>) => void;
-  addExpense: (exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => void;
+  addExpense: (exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => Promise<{ ok: boolean; error?: string }>;
   updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => void;
   deleteExpense: (id: number) => void;
   forwardExpenseToMD: (id: number, note?: string) => void;
@@ -1816,6 +1816,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Prevents the 3-second poll from overwriting data whose PUT hasn't landed yet.
   const pendingWritesRef = useRef<Set<string>>(new Set());
   const inventoryPurgeRequestedRef = useRef(false);
+  const SUBMISSION_STATE_KEYS = new Set([
+    'pumpDailyReports',
+    'sales',
+    'deliveryEvidences',
+    'stockLogs',
+  ]);
 
   /* ── Initial-sync gate: block all server PUTs until the first syncFromServer completes ──
      On startup React fires every syncSlice effect the moment `loaded` becomes true.
@@ -2358,23 +2364,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // stale AsyncStorage snapshots can't overwrite data written by other users.
     if (!initialSyncDoneRef.current) return;
     pendingWritesRef.current.add(key);
-    void stateApi.put<{ ok?: boolean; reports?: PumpDailyReport[] }>(key, value)
+    const checkedWrite = typeof stateApi.putChecked === 'function'
+      ? stateApi.putChecked<{ ok?: boolean; reports?: PumpDailyReport[] }>(key, value)
+      : stateApi.put<{ ok?: boolean; reports?: PumpDailyReport[] }>(key, value)
+        .then(data => data === null
+          ? { ok: false as const, error: 'The submission could not be confirmed by the server.' }
+          : { ok: true as const, data });
+    void checkedWrite
       .then(result => {
-        if (result === null) {
-          // Never leave an optimistic local approval or edit visible after a
-          // rejected/network-failed write. Reconcile every shared workflow
-          // slice, not just pump reports.
+        if (!result.ok) {
+          // Never leave an optimistic local submission visible after a
+          // rejected/network-failed write. Report-like slices must also tell
+          // the user exactly why they need to retry.
+          if (SUBMISSION_STATE_KEYS.has(key)) {
+            Alert.alert('Submission not saved', `${result.error}\n\nYour entries were not accepted by the server. Please review and resubmit.`);
+          }
           void syncFromServer();
           return;
         }
+        const payload = result.data;
         // Some local test/runtime adapters intentionally do not return the
         // response body. They still represent a completed fire-and-forget
         // write, so there is no canonical payload to merge.
-        if (!result) return;
         if (key !== 'pumpDailyReports') return;
-        if (Array.isArray(result.reports)) {
+        if (Array.isArray(payload?.reports)) {
           setPumpDailyReports(current => {
-            const merged = mergePumpDailyReports(current, result.reports!);
+            const merged = mergePumpDailyReports(current, payload.reports!);
             return JSON.stringify(merged) === JSON.stringify(current) ? current : merged;
           });
           return;
@@ -2450,7 +2465,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
      if (loaded && stateSyncReadyTick === 1) {
        syncSlice('pumpDailyReports', pumpDailyReports.filter(report => report.deliveryStatus !== 'queued'));
      }
-   }, [loaded, stateSyncReadyTick, pumpDailyReports]);
+  }, [loaded, stateSyncReadyTick, pumpDailyReports]);
   // Preserve and flush assets registered locally before authenticated startup
   // sync. The server accepts only IDs it has never seen, so this cannot alter
   // or delete an existing canonical asset.
@@ -3557,10 +3572,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'KPI removed', user: userName, detail: `KPI #${id} deleted`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const addExpense = useCallback((exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => {
-    void workflowApi.expenses.create(exp, workflowMeta(0))
-      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense submission'));
-  }, [userName, branchId]);
+  const addExpense = useCallback(async (exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => {
+    const result = await workflowApi.expenses.create(exp, workflowMeta(0));
+    if (result?.record) {
+      applyExpense(result.record as Expense);
+      return { ok: true };
+    }
+    const error = result?.error ?? 'The server could not save this expense. Check the connection and try again.';
+    workflowFailure('Expense submission', error);
+    return { ok: false, error };
+  }, [applyExpense, workflowFailure]);
 
   const updateExpense = useCallback((id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => {
     const expense = expenses.find(item => item.id === id); if (!expense) return;
