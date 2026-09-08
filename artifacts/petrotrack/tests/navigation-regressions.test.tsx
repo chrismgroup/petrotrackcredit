@@ -299,7 +299,7 @@ afterEach(() => {
 
 describe('dashboard and workspace navigation', () => {
   it.each([
-    ['Tank Dipping', '/(app)/operations'],
+    ['Tank Dipping', '/(app)/tanks'],
     ['Sales', '/(app)/sales'],
     ['Expenses', '/(app)/expenses'],
     ['Reports', '/(app)/reports'],

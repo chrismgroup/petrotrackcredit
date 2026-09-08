@@ -1351,7 +1351,7 @@ export default function HomeScreen() {
         {/* ── Quick Actions ────────────────────────────────────────── */}
         <View style={s.quickActions}>
           {[
-            { icon: 'water-outline' as const, label: 'Tank Dipping', route: SCREEN_ROUTES.ops, accent: colors.teal },
+            { icon: 'water-outline' as const, label: 'Tank Dipping', route: SCREEN_ROUTES.tanks, accent: colors.teal },
             { icon: 'bar-chart-outline' as const, label: 'Sales', route: SCREEN_ROUTES.sales, accent: colors.primary },
             { icon: 'receipt-outline' as const, label: 'Expenses', route: SCREEN_ROUTES.exp, accent: colors.amber },
             { icon: 'analytics-outline' as const, label: 'Reports', route: SCREEN_ROUTES.exprpt, accent: colors.purple },

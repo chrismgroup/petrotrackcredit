@@ -24,7 +24,7 @@ const operations: JobItem[] = [
   { id: 'stock-log', label: 'Daily stock log', description: 'Trace opening stock, deliveries, sales and tank-dip variance', icon: 'analytics-outline', route: SCREEN_ROUTES.ops, accent: '#0D6E56' },
   { id: 'stock-snapshot', label: 'Stock snapshot', description: 'Compare book stock, tank dips and variance', icon: 'analytics-outline', route: SCREEN_ROUTES.stockSnapshot, accent: '#0F6E56' },
   { id: 'maint', label: 'Maintenance', description: 'Log and follow up on station issues', icon: 'construct-outline', route: SCREEN_ROUTES.maint, accent: '#B45309' },
-  { id: 'dips', label: 'Tank dipping approvals', description: 'Review physical tank readings and approvals', icon: 'water-outline', route: SCREEN_ROUTES.ops, accent: '#28698B' },
+  { id: 'dips', label: 'Tank dipping', description: 'Record physical tank readings and follow approval', icon: 'water-outline', route: SCREEN_ROUTES.tanks, accent: '#28698B' },
   { id: 'receiving', label: 'Products receiving', description: 'Track deliveries, costs and variances', icon: 'car-outline', route: SCREEN_ROUTES.recv, accent: '#7C3AED' },
   { id: 'inventory', label: 'Product inventory', description: 'View live stock by dip reading and branch balances', icon: 'layers-outline', route: SCREEN_ROUTES.inventory, accent: '#0F6E56' },
 ];
@@ -111,7 +111,6 @@ export default function JobsScreen() {
   const allowed = new Set(navItems.map(item => item.id));
   const canSee = (item: JobItem) => {
     if (!workspaceRouteAccess(item.route)) return false;
-    if (item.id === 'dips') return role === 'md' && (allowed.has('ops') || allowed.has('tanks'));
     return canAccessWorkspaceRoute(item.route, role, navItems);
   };
   const visibleOperations = operations.filter(canSee);
@@ -136,7 +135,7 @@ export default function JobsScreen() {
     // Open the most directly actionable queue first; if there are no pending
     // dips, take the user straight to the maintenance action list.
     if (canReviewDips && pending > 0) {
-      router.push(`${SCREEN_ROUTES.ops}?tab=dip-approvals` as never);
+      router.push(SCREEN_ROUTES.tanks as never);
       return;
     }
     if (canOpenMaintenance) router.push(SCREEN_ROUTES.maint as never);
@@ -145,10 +144,6 @@ export default function JobsScreen() {
   function openJob(item: JobItem) {
     if (item.id === 'stock-log') {
       router.push(`${SCREEN_ROUTES.ops}?tab=stock` as never);
-      return;
-    }
-    if (item.id === 'dips') {
-      router.push(`${SCREEN_ROUTES.ops}?tab=dip-approvals` as never);
       return;
     }
     router.push(item.route as never);
