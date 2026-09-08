@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -91,6 +91,7 @@ function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
 export default function ExpensesScreen() {
   const {
     role, userName, branchId, expenses, sales, budgets,
+    refreshFinanceState: refreshFinanceStateFromContext,
     addExpense, updateExpenseConfirmed, deleteExpense,
     approveExpenseConfirmed, rejectExpenseConfirmed,
   } = useApp();
@@ -167,11 +168,32 @@ export default function ExpensesScreen() {
 
   const pendingCount = isAcc ? pendingForAcc.length : isReadOnlyViewer ? pendingForViewer.length : 0;
 
-  function openCreate() {
+  const [refreshingBudgets, setRefreshingBudgets] = useState(false);
+
+  useEffect(() => {
+    if (!showForm || editTarget || form.budgetId || approvedBudgets.length === 0) return;
+    setForm(current => ({ ...current, budgetId: approvedBudgets[0].id }));
+  }, [approvedBudgets, editTarget, form.budgetId, showForm]);
+
+  function showCreateForm() {
     setEditTarget(null);
-    setForm({ ...blankForm(), budgetId: approvedBudgets[0]?.id ?? 0 });
+    setForm(blankForm());
     setFormError('');
     setShowForm(true);
+  }
+
+  function openCreate() {
+    if (refreshingBudgets) return;
+    // Keep lightweight screen test doubles and older embedded contexts
+    // functional while the production provider refreshes authoritative data.
+    if (typeof refreshFinanceStateFromContext !== 'function') {
+      showCreateForm();
+      return;
+    }
+    setRefreshingBudgets(true);
+    void refreshFinanceStateFromContext()
+      .finally(() => setRefreshingBudgets(false))
+      .then(showCreateForm);
   }
   function openEdit(e: Expense) { setEditTarget(e); setForm(expToForm(e)); setFormError(''); setShowForm(true); }
 
@@ -261,7 +283,7 @@ export default function ExpensesScreen() {
       title="Expenses"
       rightAction={
         (isMgr || isAcc) ? (
-          <TouchableOpacity onPress={openCreate} style={styles.headerBtn}>
+          <TouchableOpacity onPress={() => { void openCreate(); }} disabled={refreshingBudgets} style={[styles.headerBtn, { opacity: refreshingBudgets ? 0.55 : 1 }]}>
             <Ionicons name="add" size={20} color="#fff" />
           </TouchableOpacity>
         ) : undefined

@@ -1418,6 +1418,7 @@ interface AppContextType {
   companyInfo: CompanyInfo; updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
   role: Role | null; userName: string; branchId: string | null; staffId: number | null;
   isServerAuthenticated: boolean; isHydrated: boolean;
+  refreshFinanceState: () => Promise<boolean>;
   navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
   login: (role: Role, name: string, staffId?: number, branchId?: string) => Promise<boolean>; logout: () => Promise<void>;
   updateMgrPerms: (branchId: string, perms: Partial<MgrPermissions>) => void;
@@ -4987,6 +4988,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       companyInfo, updateCompanyInfo,
       role, userName, branchId, staffId, isServerAuthenticated, isHydrated: loaded, navItems, mgrPerms,
+      refreshFinanceState: syncFromServer,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
        maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts, callLog,

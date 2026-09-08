@@ -20,3 +20,9 @@ Manager expense forms must surface validation and server-command failures inline
 **Why:** On mobile and Expo web, a swallowed command error makes the submit button appear broken and hides the required budget approval step.
 
 **How to apply:** Preserve the fully approved budget guard, show the current blocker before submission, and keep the form open with the server's actionable error after a failed create command.
+
+The expense creation form should refresh server-authoritative finance state before opening, then preselect the first approved budget only after refreshed state has rendered.
+
+**Why:** A manager can retain a stale local budget snapshot after another reviewer approves it, making a valid budget appear unavailable or leaving a charge against a record the server no longer recognizes.
+
+**How to apply:** Keep the refresh as a read-only sync; never weaken the API's fully-approved and same-branch checks to compensate for stale client state.
