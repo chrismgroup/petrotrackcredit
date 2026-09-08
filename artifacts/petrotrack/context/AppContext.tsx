@@ -295,6 +295,7 @@ export interface StockLogEntry {
   sold: number;
   bookStock: number | null;
   tankDip: number | null;
+  dipBusinessDate?: string;
   discrepancy: number | null;
   unit: 'L' | 'kg';
   status: StockLogStatus;
@@ -303,6 +304,15 @@ export interface StockLogEntry {
   createdAt: string;
   updatedBy?: string;
   updatedAt?: string;
+}
+
+export function carryForwardApprovedDip(
+  approvedDip: number | null,
+  bookStockOnDipDate: number | null,
+  currentBookStock: number | null,
+): number | null {
+  if (approvedDip === null || bookStockOnDipDate === null || currentBookStock === null) return approvedDip;
+  return approvedDip + (currentBookStock - bookStockOnDipDate);
 }
 export interface CompanyInfo {
   name: string; rcNumber: string; tin: string; address: string;

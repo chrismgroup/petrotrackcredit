@@ -431,7 +431,12 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(dipCreated.status, 201);
     const dip = dipCreated.body.dip as JsonRecord;
     const dipId = String(dip.id);
-    for (const token of [md.token, ceo.token]) {
+    for (const [reviewer, token] of [
+      ["MD", md.token],
+      ["CEO", ceo.token],
+      ["Accountant", accountant.token],
+      ["CSM", csm.token],
+    ] as const) {
       const notifications = await request("/notifications", {}, token);
       assert.equal(notifications.status, 200);
       const rows = notifications.body as unknown as JsonRecord[];
@@ -439,8 +444,12 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
         notification.title === "Tank Dip Awaiting MD Approval" &&
         (notification.data as JsonRecord | undefined)?.dipId === dip.id,
       );
-      assert.ok(dipNotification, `expected a tank dip notification for ${token === md.token ? "MD" : "CEO"}`);
+      assert.ok(dipNotification, `expected a tank dip notification for ${reviewer}`);
       assert.equal(dipNotification?.read, false);
+      assert.equal(
+        (dipNotification?.data as JsonRecord | undefined)?.route,
+        "/(app)/operations?tab=dip-approvals",
+      );
     }
     const dipApproveBody = {
       expectedRevision: 0,
