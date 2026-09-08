@@ -220,6 +220,9 @@ importers:
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
+      '@workspace/asset-policy':
+        specifier: workspace:*
+        version: link:../../lib/asset-policy
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
@@ -552,6 +555,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/asset-policy':
+        specifier: workspace:*
+        version: link:../../lib/asset-policy
       babel-plugin-react-compiler:
         specifier: ^19.0.0-beta-e993439-20250117
         version: 19.0.0-beta-ebf51a3-20250411
@@ -672,6 +678,8 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+
+  lib/asset-policy: {}
 
   lib/db:
     dependencies:

@@ -7,6 +7,12 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import {
+  canManageAllCompanyAssetBranches,
+  canManageCompanyAssetBranch,
+  canManageCompanyAssets,
+  isCompanyAssetBranchScopedRole,
+} from '@workspace/asset-policy';
+import {
   ASSET_CATEGORIES,
   annualAssetDepreciation,
   assetQuantity,
@@ -48,11 +54,9 @@ export default function AssetManagementScreen() {
   const [form, setForm] = useState<AssetInput>(EMPTY_FORM);
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
-  const canManageAllBranches =
-    role === 'admin' || role === 'ceo' || role === 'md' ||
-    role === 'acc' || role === 'csm' || role === 'mktg';
-  const isBranchManager = role === 'mgr';
-  const canManage = canManageAllBranches || (isBranchManager && !!branchId);
+  const canManageAllBranches = canManageAllCompanyAssetBranches(role);
+  const isBranchManager = isCompanyAssetBranchScopedRole(role);
+  const canManage = canManageCompanyAssets(role) && (!isBranchManager || !!branchId);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const activeBranches = useMemo(() => branches.filter(branch => branch.st === 'Active'), [branches]);
   const effectiveBranchId = isBranchManager ? branchId ?? '' : selectedBranchId;
@@ -89,7 +93,7 @@ export default function AssetManagementScreen() {
   }
 
   function openEdit(asset: CompanyAsset) {
-    if (!canManageAllBranches && asset.branchId !== branchId) return;
+    if (!canManageCompanyAssetBranch(role, branchId, asset.branchId)) return;
     if (canManageAllBranches) setSelectedBranchId(asset.branchId);
     setEditingId(asset.id);
     setForm({
@@ -127,7 +131,7 @@ export default function AssetManagementScreen() {
     const savedBranchId = editingId
       ? companyAssets.find(asset => asset.id === editingId)?.branchId
       : effectiveBranchId;
-    if (!savedBranchId || (isBranchManager && savedBranchId !== branchId)) {
+    if (!savedBranchId || !canManageCompanyAssetBranch(role, branchId, savedBranchId)) {
       Alert.alert('Branch not permitted', 'This asset must be saved to your assigned branch.');
       return;
     }
@@ -148,7 +152,7 @@ export default function AssetManagementScreen() {
   }
 
   function remove(asset: CompanyAsset) {
-    if (!canManageAllBranches && asset.branchId !== branchId) return;
+    if (!canManageCompanyAssetBranch(role, branchId, asset.branchId)) return;
     Alert.alert('Delete asset?', `${asset.name} will be removed from the company asset register.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => deleteCompanyAsset(asset.id) },

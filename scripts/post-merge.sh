@@ -5,4 +5,5 @@ set -e
 # non-interactive modules-directory cleanup instead of waiting for a prompt.
 export CI=true
 pnpm install --frozen-lockfile
+pnpm run typecheck:libs
 pnpm --filter db push

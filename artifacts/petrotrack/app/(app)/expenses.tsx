@@ -142,9 +142,16 @@ export default function ExpensesScreen() {
     : isAcc
     ? (tab === 0 ? pendingForAcc : expenses)
     : (tab === 0 ? myExpenses : expenses);
-  const displayedExpenses = filterDate
+  const displayedExpenses = (filterDate
     ? displayedExpensesBase.filter(expense => expense.dt.slice(0, 10) === filterDate)
-    : displayedExpensesBase;
+    : displayedExpensesBase
+  ).slice().sort((a, b) => {
+    const businessDateOrder = b.dt.localeCompare(a.dt);
+    if (businessDateOrder !== 0) return businessDateOrder;
+    const submittedOrder = Date.parse(b.submittedAt ?? b.dt) - Date.parse(a.submittedAt ?? a.dt);
+    if (Number.isFinite(submittedOrder) && submittedOrder !== 0) return submittedOrder;
+    return b.id - a.id;
+  });
 
   const pendingCount = isCeo ? expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded').length
     : isAcc ? pendingForAcc.length : isMD ? pendingForMD.length : 0;
