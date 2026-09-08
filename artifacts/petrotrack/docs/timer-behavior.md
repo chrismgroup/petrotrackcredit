@@ -40,6 +40,19 @@ requires the `voip` background mode, which is declared in `app.json`. These
 settings only take effect in a native development, preview, or production
 build; Expo Go and the web preview cannot validate call continuity.
 
+Before an EAS release, run the static native configuration check from the
+Petrotrack package:
+
+```bash
+pnpm run test:native:daily
+```
+
+The check uses Expo config introspection, so it does not need a device or write
+an `ios` or `android` directory. It verifies the resolved iOS usage
+descriptions and VoIP mode, generated Android permissions and Daily foreground
+service types, exact Expo/React Native/Daily version pins, and the installed
+Daily timer compatibility patch.
+
 Run this check with two test accounts in an installed native build, with the
 second account acting as the remote participant:
 
