@@ -9,6 +9,7 @@ import {
   type ShiftReportOutboxItem,
   type MaintenanceWorkflowStatus,
 } from '@/lib/api';
+import { mergeWorkflowRecords } from '@/lib/workflow-record-merge';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { startForegroundTimer } from '@/lib/foreground-timer';
 import {
@@ -1909,11 +1910,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (arr.length === 0 && prev.length > 0) return prev; // protect against empty wipe
         return arr;
       };
-      if (Array.isArray(s.expenses) && !p.has('expenses'))    setExpenses(s.expenses as Expense[]);
+      if (Array.isArray(s.expenses) && !p.has('expenses')) {
+        setExpenses(prev => mergeWorkflowRecords(
+          prev,
+          s.expenses as Expense[],
+          'expenses',
+          Array.isArray(s.expenseDeletionTombstones) ? s.expenseDeletionTombstones : [],
+        ) as Expense[]);
+      }
       if (Array.isArray(s.budgets) && !p.has('budgets'))      setBudgets(s.budgets as Budget[]);
       if (!p.has('sales'))           setSales(safeArray<SalesEntry>(s.sales));
        if (Array.isArray(s.dips) && !p.has('dips'))           setDips(s.dips as DipRecord[]);
-      if (Array.isArray(s.deliveries) && !p.has('deliveries')) setDeliveries(s.deliveries as Delivery[]);
+      if (Array.isArray(s.deliveries) && !p.has('deliveries')) {
+        setDeliveries(prev => mergeWorkflowRecords(
+          prev,
+          s.deliveries as Delivery[],
+          'deliveries',
+          Array.isArray(s.deliveryDeletionTombstones) ? s.deliveryDeletionTombstones : [],
+        ) as Delivery[]);
+      }
       if (!p.has('maintenance'))     setMaintenance(Array.isArray(s.maintenance) ? s.maintenance as MaintenanceItem[] : []);
       if (Array.isArray(s.audit) && !p.has('audit'))          setAudit(s.audit as AuditEntry[]);
       if (Array.isArray(s.handoverNotes) && !p.has('handoverNotes')) setHandoverNotes(s.handoverNotes as ShiftHandoverNote[]);

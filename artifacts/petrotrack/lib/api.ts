@@ -223,6 +223,8 @@ export const stateApi = {
   getAll: () => get<Record<string, unknown>>('/state'),
   get: <T>(key: string) => get<T>(`/state/${key}`),
   put: <T = unknown>(key: string, data: unknown) => put<T>(`/state/${key}`, data),
+  putDeliveries: <T = unknown>(data: unknown) => put<T>('/state/deliveries', data),
+  putExpenses: <T = unknown>(data: unknown) => put<T>('/state/expenses', data),
   putChecked: <T = unknown>(key: string, data: unknown) => putChecked<T>(`/state/${key}`, data),
   upsertCompanyAsset: <T>(asset: T, baseRevision: number | null) =>
     post<{ ok: boolean; asset: T; assets: T[] }>('/state/company-assets/upsert', { asset, baseRevision }),

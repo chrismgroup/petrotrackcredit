@@ -5,11 +5,13 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { appStateTable, db } from "@workspace/db";
 import { broadcastRealtime } from "../lib/realtime";
 import { deliverNotification } from "./notifications.js";
+import { mergeWorkflowTombstones } from "./workflow-record-merge";
 
 const router: IRouter = Router();
 type JsonRecord = Record<string, unknown>;
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 const IDEMPOTENCY_KEY = "deliveryWorkflowIdempotency";
+const DELETION_KEY = "deliveryDeletionTombstones";
 const ORIGINATOR_ROLES = new Set(["mgr", "csm", "admin"]);
 const GLOBAL_REVIEW_ROLES = new Set(["acc", "md", "ceo", "admin"]);
 
@@ -97,9 +99,10 @@ async function execute(
   const requestHash = fingerprint({ operation, body: req.body, actor: req.auth!.username });
   return db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:delivery-workflow'))`);
-    const [idempotencyRow, deliveryRow] = await Promise.all([
+    const [idempotencyRow, deliveryRow, deletionRow] = await Promise.all([
       tx.select().from(appStateTable).where(eq(appStateTable.key, IDEMPOTENCY_KEY)),
       tx.select().from(appStateTable).where(eq(appStateTable.key, "deliveries")),
+      tx.select().from(appStateTable).where(eq(appStateTable.key, DELETION_KEY)),
     ]);
     const prior = (Array.isArray(idempotencyRow[0]?.data) ? idempotencyRow[0].data : [])
       .find(value => record(value) && value.key === meta.idempotencyKey) as JsonRecord | undefined;
@@ -107,9 +110,25 @@ async function execute(
       if (prior.hash !== requestHash) return { error: "Idempotency key was already used for a different request", code: 409 };
       return { item: prior.item as JsonRecord, replayed: true };
     }
-    const result = mutate(deliveries(deliveryRow[0]?.data), new Date().toISOString());
+    if (
+      operation === "create" &&
+      Array.isArray(deletionRow[0]?.data) &&
+      deletionRow[0].data.some(value => record(value) && idOf(value) === idOf((req.body as JsonRecord)?.delivery as JsonRecord))
+    ) {
+      return { error: "A deleted delivery ID cannot be reused", code: 409 };
+    }
+    const currentDeliveries = deliveries(deliveryRow[0]?.data);
+    const result = mutate(currentDeliveries, new Date().toISOString());
     if ("error" in result) return result;
     await save(tx, "deliveries", result.next);
+    if (operation === "delete") {
+      const tombstones = mergeWorkflowTombstones(deletionRow[0]?.data, [{
+        id: idOf(result.item),
+        workflowVersion: revision(result.item),
+        deletedAt: result.item.deletedAt,
+      }]);
+      await save(tx, DELETION_KEY, tombstones);
+    }
     if (result.sideEffects) await result.sideEffects(tx, result.item, new Date().toISOString());
     const entries = Array.isArray(idempotencyRow[0]?.data) ? idempotencyRow[0].data : [];
     await save(tx, IDEMPOTENCY_KEY, [{ key: meta.idempotencyKey, hash: requestHash, item: result.item }, ...entries].slice(0, 1000));

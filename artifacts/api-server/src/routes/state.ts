@@ -21,6 +21,11 @@ import {
   upsertCompanyAsset,
   validateCompanyAssetsPayload,
 } from "./company-assets-state";
+import {
+  mergeWorkflowRecords,
+  mergeWorkflowTombstones,
+  workflowTombstones,
+} from "./workflow-record-merge";
 
 const router: IRouter = Router();
 
@@ -38,10 +43,9 @@ const ALLOWED_KEYS = new Set([
   "myFolders", "myFolderFiles", "startupStocks", "stockSnapshotConfig",
   "stockLogs", "reportAccessPolicyVersion",
   "companyAssets",
+  "deliveryDeletionTombstones", "expenseDeletionTombstones",
 ]);
 const COMMAND_OWNED_WORKFLOW_KEYS = new Set([
-  "deliveries",
-  "expenses",
   "budgets",
   "dips",
   "priceProposals",
@@ -1406,6 +1410,37 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   let data = req.body;
   if (data === undefined || data === null) {
     res.status(400).json({ error: "Body required" });
+    return;
+  }
+  if ((key === "deliveries" || key === "expenses") && !Array.isArray(data)) {
+    res.status(400).json({ error: `${key} must be an array` });
+    return;
+  }
+  if (key === "deliveryDeletionTombstones" || key === "expenseDeletionTombstones") {
+    res.status(403).json({ error: "Deletion tombstones are managed by workflow commands" });
+    return;
+  }
+
+  if ((key === "deliveries" || key === "expenses") && Array.isArray(data)) {
+    const tombstoneKey = key === "deliveries"
+      ? "deliveryDeletionTombstones"
+      : "expenseDeletionTombstones";
+    const lockName = key === "deliveries" ? "petrotrack:delivery-workflow" : "petrotrack:finance-workflow";
+    const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockName}))`);
+      const [currentRow, tombstoneRow] = await Promise.all([
+        tx.select().from(appStateTable).where(eq(appStateTable.key, key)),
+        tx.select().from(appStateTable).where(eq(appStateTable.key, tombstoneKey)),
+      ]);
+      const tombstones = mergeWorkflowTombstones(tombstoneRow[0]?.data, []);
+      const merged = mergeWorkflowRecords(currentRow[0]?.data, data, key, tombstones);
+      await tx.insert(appStateTable).values({ key, data: merged }).onConflictDoUpdate({
+        target: appStateTable.key,
+        set: { data: merged, updatedAt: new Date() },
+      });
+      return merged;
+    });
+    res.json({ ok: true, [key]: result });
     return;
   }
   if (key === "dips") {
