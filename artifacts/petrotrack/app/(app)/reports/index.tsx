@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -266,15 +266,25 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   const requestedPeriod = firstRouteParam(params.period);
   const defaultPeriod: Period = requestedPeriod && PERIODS.includes(requestedPeriod as Period) ? requestedPeriod as Period : 'Monthly';
   const requestedBranch = firstRouteParam(params.branch);
-  const defaultBranch = requestedBranch && requestedBranch !== 'all' && safeBranches.some(b => b.id === requestedBranch)
-    ? requestedBranch
-    : null;
+  const defaultBranch = requestedBranch && requestedBranch !== 'all' ? requestedBranch : null;
   const defaultDate = validReportDate(params.date);
   // att and mgr are locked to their own branch; other roles can switch branches
   const [selBranch,  setSelBranch]  = useState<string | null>(isBranchLocked ? (branchId ?? null) : defaultBranch);
   const [reportType, setReportType] = useState<ReportType>(defaultType);
   const [period,     setPeriod]     = useState<Period>(defaultPeriod);
   const [anchorDate, setAnchorDate] = useState(defaultDate);
+
+  useEffect(() => {
+    if (
+      !isBranchLocked
+      && requestedBranch
+      && requestedBranch !== 'all'
+      && safeBranches.length > 0
+      && !safeBranches.some(branch => branch.id === requestedBranch)
+    ) {
+      setSelBranch(null);
+    }
+  }, [isBranchLocked, requestedBranch, safeBranches]);
 
   const { from, to } = useMemo(() => {
     return periodRange(period, anchorDate || undefined);

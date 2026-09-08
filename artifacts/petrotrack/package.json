@@ -7,10 +7,11 @@
     "dev": "sh -c 'if [ -n \"$REPLIT_EXPO_SESSION_SECRET\" ]; then pnpm exec create-launch login --session \"$REPLIT_EXPO_SESSION_SECRET\" || true; fi' && EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN EXPO_UNSTABLE_HEADLESS=1 pnpm exec expo start --localhost --port $PORT",
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
-    "test": "jest --config jest.config.js --runInBand && pnpm run test:build",
+    "test": "jest --config jest.config.js --runInBand && pnpm run test:build && pnpm run test:native:daily",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:build": "node --test scripts/build.test.js",
-    "test:device:outbox": "bash scripts/run-native-outbox-test.sh"
+    "test:device:outbox": "bash scripts/run-native-outbox-test.sh",
+    "test:native:daily": "node scripts/check-daily-native-config.js"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -66,7 +67,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
-    "@daily-co/react-native-daily-js": "^0.86.0",
+    "@daily-co/react-native-daily-js": "0.86.0",
     "@daily-co/react-native-webrtc": "124.0.6-daily.1",
     "expo-asset": "~57.0.16",
     "expo-audio": "~57.0.4",

@@ -103,10 +103,21 @@ export default function ExpensesScreen() {
   const isMD  = role === 'md';
   const isCeo = role === 'ceo';
   const isReadOnlyViewer = role === 'admin' || isMD || isCeo;
+  const normalizedUserName = userName.trim().toLowerCase();
 
   const approvedBudgets = budgets.filter(b =>
     b.status === 'fully_approved'
-    && (role !== 'mgr' || (!!branchId && b.branchId === branchId))
+    && (role !== 'mgr' || (
+      !!branchId
+      && (
+        b.branchId === branchId
+        || (
+          !b.branchId
+          && b.by === 'mgr'
+          && b.byName.trim().toLowerCase() === normalizedUserName
+        )
+      )
+    ))
   );
 
   const [tab, setTab]               = useState(0);

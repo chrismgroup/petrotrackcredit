@@ -616,6 +616,41 @@ describe('asset depreciation financial screens', () => {
     act(() => header.unmount());
   });
 
+  it('preserves a valid viewer branch while branches hydrate and keeps the report branch-scoped', () => {
+    mockRouteParams = {
+      type: 'pnl',
+      period: 'Weekly',
+      date: '2026-09-15',
+      branch: branchB.id,
+    };
+    mockPathname = '/reports/view';
+    const hydratingState = baseAppState({
+      role: 'md',
+      branches: [],
+      sales: [
+        { id: 1, pump: 'PMS', L: 1_000, price: 1_000, dt: '2026-09-15', branchId: branchA.id },
+        { id: 2, pump: 'PMS', L: 250, price: 1_000, dt: '2026-09-15', branchId: branchB.id },
+      ],
+    });
+    mockedUseApp.mockReturnValue(hydratingState as any);
+
+    const viewer = mount(<ReportViewScreen />);
+    expect(renderedText(viewer)).toContain(branchB.id);
+
+    mockedUseApp.mockReturnValue({
+      ...hydratingState,
+      branches: [branchA, branchB],
+    } as any);
+    act(() => viewer.update(<ReportViewScreen />));
+
+    const hydratedText = renderedText(viewer);
+    expect(hydratedText).toContain(branchB.name);
+    expect(hydratedText).not.toContain('All Branches');
+    expect(hydratedText).toContain('₦250,000');
+    expect(hydratedText).not.toContain('₦1,250,000');
+    act(() => viewer.unmount());
+  });
+
   it('falls back to safe report defaults for an invalid or missing deep-link value', () => {
     mockRouteParams = {
       type: 'not-a-report',

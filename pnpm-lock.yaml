@@ -471,7 +471,7 @@ importers:
   artifacts/petrotrack:
     dependencies:
       '@daily-co/react-native-daily-js':
-        specifier: ^0.86.0
+        specifier: 0.86.0
         version: 0.86.0(patch_hash=5ef4ff0155b208646eae39fe7f0472f7b5880447b6c6df5e646dce6c2aa7828b)(dc92bd135950bdeb8042b901d12c57f7)
       '@daily-co/react-native-webrtc':
         specifier: 124.0.6-daily.1
