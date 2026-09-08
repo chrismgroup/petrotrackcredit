@@ -639,6 +639,42 @@ describe('screens tolerate incomplete synced records', () => {
     act(() => mountedAdmin.unmount());
   });
 
+  it('shows MD pending dips even before tank metadata is hydrated', () => {
+    const pendingDip = {
+      id: 43,
+      dt: '2026-09-08',
+      by: 'Station Manager',
+      branchId: 'branch-1',
+      rd: { 'tank-not-loaded-yet': 1_125 },
+      lpg: {},
+      obs: 'Awaiting review',
+      status: 'pending',
+      workflowRevision: 0,
+    };
+
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role: 'md',
+      branchId: null,
+      tanks: [],
+      lpgTanks: [],
+      branches: [],
+      dips: [pendingDip],
+    } as any);
+
+    let renderer: ReactTestRenderer | null = null;
+    act(() => {
+      renderer = create(<TanksScreen />);
+    });
+    const mounted = renderer as unknown as ReactTestRenderer;
+    const text = renderedText(mounted);
+    expect(text).toContain('Pending Dip Reports for Review');
+    expect(text).toContain('Awaiting review');
+    expect(text).toContain('Approve');
+    expect(text).toContain('Reject');
+    act(() => mounted.unmount());
+  });
+
   it('renders HR with an employee whose string fields are missing', () => {
     mockedUseApp.mockReturnValue({
       ...baseAppState(),
