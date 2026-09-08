@@ -14,3 +14,9 @@ Only the Accountant can approve or reject an expense, including legacy records t
 **Why:** Expense decisions belong to the Accountant; executive visibility is needed for oversight but must not imply approval authority.
 
 **How to apply:** Enforce Accountant-only decisions in the API first, keep pending and legacy-forwarded records with the Accountant, label rejected records as with the Manager, and keep MD/CEO views read-only.
+
+Manager expense forms must surface validation and server-command failures inline instead of silently returning. A newly created or submitted budget is not chargeable until it reaches `fully_approved`.
+
+**Why:** On mobile and Expo web, a swallowed command error makes the submit button appear broken and hides the required budget approval step.
+
+**How to apply:** Preserve the fully approved budget guard, show the current blocker before submission, and keep the form open with the server's actionable error after a failed create command.
