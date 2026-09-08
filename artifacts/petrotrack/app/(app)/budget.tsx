@@ -180,6 +180,7 @@ export default function BudgetScreen() {
   const [formMonth, setFormMonth]   = useState(new Date().getMonth());
   const [formYear, setFormYear]     = useState(new Date().getFullYear());
   const [formDate, setFormDate]     = useState('');
+  const [formBranchId, setFormBranchId] = useState(branchId ?? '');
   const [formItems, setFormItems]   = useState<LineItem[]>([blankItem()]);
   const [filterDate, setFilterDate] = useState('');
   const [archiveThreshold, setArchiveThreshold] = useState<number>(3);
@@ -193,8 +194,10 @@ export default function BudgetScreen() {
   const pendingForAcc = activeBudgets.filter(b => b.status === 'submitted');
   const pendingForMD  = activeBudgets.filter(b => b.status === 'acc_forwarded');
   // mgr: only budgets they personally submitted (not all mgr-role budgets across branches)
-  const myBudgets     = activeBudgets.filter(b =>
-    role === 'mgr' ? b.byName === userName : (b.by === role || b.byName === userName)
+  const myBudgets = activeBudgets.filter(b =>
+    role === 'mgr'
+      ? !!branchId && b.branchId === branchId
+      : (b.by === role || b.byName === userName)
   );
 
   const displayListBase: Budget[] =
@@ -223,6 +226,7 @@ export default function BudgetScreen() {
     setFormMonth(new Date().getMonth());
     setFormYear(new Date().getFullYear());
     setFormDate('');
+    setFormBranchId(branchId ?? branches[0]?.id ?? '');
     setFormItems([blankItem()]);
     setShowForm(true);
   }
@@ -232,6 +236,7 @@ export default function BudgetScreen() {
     setFormMonth(b.month - 1);
     setFormYear(b.year);
     setFormDate(b.appliesOn?.slice(0, 10) ?? '');
+    setFormBranchId(b.branchId);
     setFormItems(b.items.map(i => ({ cat: i.cat, amt: String(i.amt) })));
     setShowForm(true);
   }
@@ -247,6 +252,7 @@ export default function BudgetScreen() {
 
   function handleSaveDraft() {
     if (!formDate) { Alert.alert('Date required', 'Select the date this budget applies to.'); return; }
+    if (!formBranchId) { Alert.alert('Branch required', 'Select the branch this budget belongs to.'); return; }
     const built = buildItems();
     if (!built) return;
     requestDateConfirmation('budget', formDate, () => {
@@ -254,7 +260,7 @@ export default function BudgetScreen() {
         updateBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
       } else {
         const status = isAcc ? 'submitted' : 'draft';
-        addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status });
+        addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status, branchId: formBranchId, branchName: branchMap[formBranchId] ?? formBranchId });
       }
       setShowForm(false);
     }, 'Confirm & save');
@@ -262,13 +268,14 @@ export default function BudgetScreen() {
 
   function handleSaveAndSubmit() {
     if (!formDate) { Alert.alert('Date required', 'Select the date this budget applies to.'); return; }
+    if (!formBranchId) { Alert.alert('Branch required', 'Select the branch this budget belongs to.'); return; }
     const built = buildItems();
     if (!built) return;
     requestDateConfirmation('budget', formDate, () => {
       if (editTarget) {
         updateAndSubmitBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
       } else {
-        addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted' });
+        addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted', branchId: formBranchId, branchName: branchMap[formBranchId] ?? formBranchId });
       }
       setShowForm(false);
     });
@@ -506,7 +513,7 @@ export default function BudgetScreen() {
               <View style={styles.cardTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>{b.label}{' Budget'}</Text>
-                  <Text style={[styles.cardSub, { color: colors.textMuted }]}>{'By '}{b.byName}{' · '}{b.items.length}{' items'}</Text>
+                  <Text style={[styles.cardSub, { color: colors.textMuted }]}>{b.branchName || branchMap[b.branchId] || 'Branch not assigned'}{' · By '}{b.byName}{' · '}{b.items.length}{' items'}</Text>
                 </View>
                  <View style={[styles.statusBadge, { backgroundColor: archived ? '#F0F0F0' : st.bg }]}>
                    <Text style={[styles.statusText, { color: archived ? '#555' : st.color }]}>{archived ? 'Archived' : st.label}</Text>
@@ -634,7 +641,7 @@ export default function BudgetScreen() {
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalTitle}>{selected.label}{' Budget'}</Text>
-                  <Text style={styles.modalSub}>{fmt(selected.total)}{' · '}{STATUS_MAP[selected.status]?.label}</Text>
+                  <Text style={styles.modalSub}>{selected.branchName || branchMap[selected.branchId] || 'Branch not assigned'}{' · '}{fmt(selected.total)}{' · '}{STATUS_MAP[selected.status]?.label}</Text>
                 </View>
               </View>
 
@@ -863,6 +870,23 @@ export default function BudgetScreen() {
               <Text style={styles.modalTitle}>{editTarget ? 'Edit Budget' : 'New Budget'}</Text>
             </View>
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+              <Text style={[styles.fieldLabel, { color: colors.text }]}>Branch *</Text>
+              <View style={styles.chipRow}>
+                {branches.map(branch => (
+                  <TouchableOpacity
+                    key={branch.id}
+                    disabled={role === 'mgr'}
+                    onPress={() => setFormBranchId(branch.id)}
+                    style={[styles.chip, {
+                      backgroundColor: branch.id === formBranchId ? roleColor : colors.surface,
+                      borderColor: branch.id === formBranchId ? roleColor : colors.border,
+                      opacity: role === 'mgr' && branch.id !== formBranchId ? 0.45 : 1,
+                    }]}
+                  >
+                    <Text style={[styles.chipText, { color: branch.id === formBranchId ? '#fff' : colors.text }]}>{branch.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
               <AppliedDateField
                 value={formDate}
                 onChange={setFormDate}

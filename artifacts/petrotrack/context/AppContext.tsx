@@ -136,6 +136,7 @@ export interface Budget {
   id: number; month: number; year: number; appliesOn?: string; submittedAt?: string;
   label: string; by: string; byName: string; items: { cat: string; amt: number }[];
   total: number; status: string; workflow: BudgetWorkflowStep[];
+  branchId: string; branchName: string;
   archivedAt?: string; archivedBy?: string; revision?: number;
 }
 export interface BankLoan { bank: string; amount: number; }

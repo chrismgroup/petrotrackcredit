@@ -91,6 +91,8 @@ describe('persistent chats stay separate from reports notifications', () => {
         items: [{ cat: 'Fuel', amt: 100000 }],
         total: 100000,
         status: 'submitted',
+        branchId: 'B1',
+        branchName: 'Test Branch',
       });
     });
 

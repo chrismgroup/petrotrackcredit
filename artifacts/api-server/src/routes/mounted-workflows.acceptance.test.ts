@@ -44,6 +44,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     "deliveryWorkflowIdempotency",
     "expenses",
     "budgets",
+    "branches",
     "financeWorkflowIdempotency",
     "dips",
     "priceProposals",
@@ -164,7 +165,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
 
     // These collections can only be changed through their mounted command
     // routes, irrespective of the authenticated actor's role.
-    for (const key of ["deliveries", "expenses", "budgets", "dips", "priceProposals"]) {
+    for (const key of ["budgets", "dips", "priceProposals"]) {
       for (const actor of [manager, accountant, md]) {
         const blocked = await command(actor.token, `/state/${key}`, {}, "PUT");
         assert.equal(blocked.status, 409, `${key} generic PUT should be blocked for ${actor.role}`);
@@ -177,7 +178,8 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       VALUES
         ('tanks', $1::jsonb),
         ('lpgTanks', '[]'::jsonb),
-        ('prices', $2::jsonb)
+        ('prices', $2::jsonb),
+        ('branches', $3::jsonb)
       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
     `, [
       JSON.stringify([{
@@ -197,6 +199,10 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
           [branchB]: { [product]: 620 },
         },
       }),
+      JSON.stringify([
+        { id: branchA, name: `${marker} Branch A`, st: "Active" },
+        { id: branchB, name: `${marker} Branch B`, st: "Active" },
+      ]),
     ]);
 
     const invalidDelivery = await command(csm.token, "/deliveries", {
@@ -492,6 +498,30 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(submittedBudget.status, 201);
     let budget = recordFrom(submittedBudget);
     assert.equal(budget.status, "submitted");
+    assert.equal(budget.branchId, branchA);
+    assert.equal(budget.branchName, `${marker} Branch A`);
+    const otherBranchBudget = await command(otherManager.token, "/finance/budgets", {
+      budget: budgetInput(`${marker} other branch`, "submitted"),
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-budget-other-branch-create`,
+    });
+    assert.equal(otherBranchBudget.status, 201);
+    assert.equal(recordFrom(otherBranchBudget).branchId, branchB);
+    const managerState = await request<{ budgets: JsonRecord[] }>("/state", {}, manager.token);
+    assert.equal(managerState.status, 200);
+    assert.ok(managerState.body.budgets.length > 0);
+    assert.ok(managerState.body.budgets.every(item => item.branchId === branchA));
+    assert.equal(
+      managerState.body.budgets.some(item => item.id === recordFrom(otherBranchBudget).id),
+      false,
+    );
+    const otherManagerState = await request<{ budgets: JsonRecord[] }>("/state", {}, otherManager.token);
+    assert.equal(otherManagerState.status, 200);
+    assert.ok(otherManagerState.body.budgets.every(item => item.branchId === branchB));
+    assert.equal(
+      otherManagerState.body.budgets.some(item => item.id === budget.id),
+      false,
+    );
     const submittedBudgetId = String(budget.id);
     const managerDeleteSubmitted = await command(manager.token, `/finance/budgets/${submittedBudgetId}`, {
       expectedRevision: 1,

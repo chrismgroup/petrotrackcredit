@@ -97,6 +97,12 @@ async function save(tx: Tx, key: string, value: unknown): Promise<void> {
   await tx.insert(appStateTable).values({ key, data: value })
     .onConflictDoUpdate({ target: appStateTable.key, set: { data: value, updatedAt: new Date() } });
 }
+async function budgetBranch(branchId: string): Promise<{ branchId: string; branchName: string } | null> {
+  const [row] = await db.select().from(appStateTable).where(eq(appStateTable.key, "branches"));
+  const branch = records(row?.data).find(item => String(item.id ?? "") === branchId);
+  const branchName = typeof branch?.name === "string" ? branch.name.trim() : "";
+  return branchName ? { branchId, branchName } : null;
+}
 async function idem(tx: Tx): Promise<JsonRecord[]> { return load(tx, IDEMPOTENCY_KEY); }
 async function remember(tx: Tx, entries: JsonRecord[], entry: JsonRecord): Promise<void> {
   await save(tx, IDEMPOTENCY_KEY, [entry, ...entries].slice(0, 1000));
@@ -229,17 +235,24 @@ router.post("/finance/budgets", async (req, res) => {
   const body = canonicalBudget(req.body?.budget);
   if (!body) { res.status(400).json({ error: "Invalid budget fields" }); return; }
   if (!BUDGET_CREATORS.has(req.auth!.role)) { res.status(403).json({ error: "Your role cannot create budgets" }); return; }
+  const requestedBranchId = typeof req.body?.budget?.branchId === "string"
+    ? req.body.budget.branchId.trim()
+    : "";
+  const assignedBranchId = req.auth!.branchId || requestedBranchId;
+  if (!assignedBranchId) { res.status(400).json({ error: "A branch is required for every budget" }); return; }
+  const assignedBranch = await budgetBranch(assignedBranchId);
+  if (!assignedBranch) { res.status(400).json({ error: "The selected budget branch does not exist" }); return; }
   const result = await command(req, "budgets", (items, auth, now) => {
     const maxId = items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0);
     const submitted = req.body?.budget?.status === "submitted"
       || auth.role === "acc"
       || auth.role === "admin";
     const lineItems = body.items as JsonRecord[];
-    return { item: { ...body, id: maxId + 1, status: submitted ? "submitted" : "draft", workflow: submitted ? [workflow("Submitted to Accountant", "submit", `${lineItems.length} line items`, auth, now)] : [], submittedAt: now, createdAt: now, createdBy: auth.username, by: auth.role, byName: auth.empName ?? auth.username, branchId: auth.branchId ?? null, revision: 1 } };
+    return { item: { ...body, ...assignedBranch, id: maxId + 1, status: submitted ? "submitted" : "draft", workflow: submitted ? [workflow("Submitted to Accountant", "submit", `${lineItems.length} line items`, auth, now)] : [], submittedAt: now, createdAt: now, createdBy: auth.username, by: auth.role, byName: auth.empName ?? auth.username, revision: 1 } };
   });
   if (!result.error && result.item?.status === "submitted") await notify(result, {
     target: "acc", type: "operational", title: "Budget Awaiting Accountant Review",
-    body: `${result.item.label} — ₦${result.item.total}`,
+    body: `${result.item.branchName} budget for ${result.item.label} — ₦${result.item.total}`,
     data: { route: "/(app)/budget", budgetId: result.item.id },
   });
   send(res, result, "budget.changed");
@@ -342,7 +355,7 @@ for (const action of ["submit", "forward", "approve", "reject"] as const) router
       title: action === "submit" ? "Budget Awaiting Accountant Review"
         : action === "forward" ? "Budget Awaiting MD Approval"
         : `Budget ${action === "approve" ? "Approved" : "Rejected"}`,
-      body: `${result.item?.label} — ₦${result.item?.total}`,
+      body: `${result.item?.branchName ?? "Branch"} budget for ${result.item?.label} — ₦${result.item?.total}`,
       data: { route: "/(app)/budget", budgetId: result.item?.id },
     });
   }
