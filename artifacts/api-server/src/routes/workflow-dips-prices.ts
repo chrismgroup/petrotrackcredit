@@ -107,7 +107,22 @@ async function run(req: Request, res: Response, action: (tx: Tx, now: string) =>
     broadcastRealtime({ type: "workflow.changed" });
     const dip = record(result.body.dip) ? result.body.dip : null;
     const proposal = record(result.body.proposal) ? result.body.proposal : null;
-    if (req.path.endsWith("/approve") && Array.isArray(result.body.inventoryLog)) {
+    if (req.path === "/workflows/dips" && dip) {
+      for (const target of ["md", "ceo"]) {
+        await safeNotify({
+          target,
+          type: "operational",
+          title: "Tank Dip Awaiting MD Approval",
+          body: `${dip.by ?? "A manager"} submitted tank dip readings for ${dip.dt ?? "the selected date"}.`,
+          data: {
+            route: "/(app)/operations",
+            tab: "dip-approvals",
+            dipId: dip.id,
+            branchId: dip.branchId ?? null,
+          },
+        });
+      }
+    } else if (req.path.endsWith("/approve") && Array.isArray(result.body.inventoryLog)) {
       for (const value of result.body.inventoryLog.filter(record)) {
         const discrepancy = Number(value.discrepancy);
         if (!Number.isFinite(discrepancy) || Math.abs(discrepancy) <= 50) continue;
