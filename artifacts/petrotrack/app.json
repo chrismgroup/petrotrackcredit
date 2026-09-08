@@ -56,7 +56,12 @@
       ],
       "expo-asset",
       "expo-audio",
-      "expo-secure-store"
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Petrotrack uses Face ID to let you sign in quickly and securely."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
