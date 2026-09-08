@@ -16,6 +16,7 @@ import {
   isFutureBusinessDate,
   mergePumpDailyReports,
   mergeDipRecords,
+  salesRevenueByBranch,
   useApp,
 } from './AppContext';
 import type { Delivery, DipRecord, PumpDailyReport, PumpReportStatus } from './AppContext';
@@ -1147,6 +1148,20 @@ describe('daily stock log balance', () => {
       bookStock: 1_100,
       variance: null,
     });
+  });
+});
+
+describe('branch performance revenue', () => {
+  it('counts only sales inside the selected business month', () => {
+    const result = salesRevenueByBranch([
+      { id: 1, pump: 'PMS 1', by: 'Attendant', L: 100, price: 1_000, dt: '2026-08-31', branchId: 'uyo' },
+      { id: 2, pump: 'PMS 1', by: 'Attendant', L: 200, price: 1_000, dt: '2026-09-01', branchId: 'uyo' },
+      { id: 3, pump: 'AGO 1', by: 'Attendant', L: 50, price: 1_200, dt: '2026-09-30', branchId: 'ikot' },
+      { id: 4, pump: 'PMS 1', by: 'Attendant', L: 300, price: 1_000, dt: '2026-10-01', branchId: 'uyo' },
+    ], { from: '2026-09-01', to: '2026-09-30' });
+
+    expect(result.total).toBe(260_000);
+    expect(result.byBranch).toEqual({ uyo: 200_000, ikot: 60_000 });
   });
 });
 

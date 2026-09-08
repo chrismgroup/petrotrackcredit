@@ -482,8 +482,11 @@ export default function HomeScreen() {
   });
 
   // ── KPIs ──────────────────────────────────────────────────────────────
-  const { byBranch: branchRev } = useMemo(() => salesRevenueByBranch(sales), [sales]);
   const currentMonthRange = calendarMonthBusinessDateRange();
+  const { byBranch: branchRev } = useMemo(
+    () => salesRevenueByBranch(sales, currentMonthRange),
+    [sales, currentMonthRange.from, currentMonthRange.to],
+  );
   const monthlyRevenue = useMemo(
     () => calculateBusinessMonthRevenue(pumpDailyReports, scopedBranchId, currentMonthRange),
     [pumpDailyReports, scopedBranchId, currentMonthRange.from, currentMonthRange.to],
@@ -1262,7 +1265,11 @@ export default function HomeScreen() {
         </Section>
 
         {/* ── Branch Performance ───────────────────────────────────── */}
-        <Section label="BRANCH PERFORMANCE" route={SCREEN_ROUTES.branches} colors={colors}>
+        <Section
+          label={`BRANCH PERFORMANCE · ${new Date(`${currentMonthRange.from}T12:00:00`).toLocaleDateString('en-NG', { month: 'short', year: 'numeric' }).toUpperCase()}`}
+          route={SCREEN_ROUTES.branches}
+          colors={colors}
+        >
           <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {branches.length === 0 ? (
               <View style={s.emptyState}>

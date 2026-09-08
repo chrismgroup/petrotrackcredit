@@ -13,6 +13,8 @@ Reporting periods are calendar periods, not rolling day counts: daily is one dat
 
 Revenue KPIs and revenue reports should use the same approved pump-report gross revenue source and the selected record business date.
 
+Home Branch Performance is a current-calendar-month comparison. Filter each branch’s sales by business date from the first through last day of the current month; never rank branches using lifetime revenue.
+
 Attendants may submit shift reports for today or any earlier business date, but never a future date; use the device’s local calendar date for this comparison rather than UTC.
 
 **Why:** A future-dated meter report can make a shift appear to have happened before its physical readings exist and can distort operational sequencing and audit review.
