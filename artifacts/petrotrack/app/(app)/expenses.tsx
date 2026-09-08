@@ -105,7 +105,11 @@ export default function ExpensesScreen() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
-  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
+  const {
+    requestDateConfirmation,
+    confirmationContent,
+    hasPendingConfirmation,
+  } = useBusinessDateConfirmation();
 
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const isAcc = role === 'acc';
@@ -123,6 +127,7 @@ export default function ExpensesScreen() {
   const [editTarget, setEditTarget] = useState<Expense | null>(null);
   const [form, setForm]             = useState<FormState>(blankForm());
   const [formError, setFormError]   = useState('');
+  const [formBusy, setFormBusy]     = useState(false);
 
   const [filterDate, setFilterDate] = useState('');
   const [reviewingExpenseIds, setReviewingExpenseIds] = useState<Set<number>>(() => new Set());
@@ -195,6 +200,7 @@ export default function ExpensesScreen() {
   function openEdit(e: Expense) { setEditTarget(e); setForm(expToForm(e)); setFormError(''); setShowForm(true); }
 
   function handleSave() {
+    if (formBusy) return;
     const amount = parseFloat(form.amt.replace(/,/g, ''));
     setFormError('');
     if (!form.desc.trim()) { setFormError('Please enter a description.'); return; }
@@ -205,30 +211,36 @@ export default function ExpensesScreen() {
       return;
     }
     requestDateConfirmation('expense', form.dt, async () => {
-      if (editTarget) {
-        const result = await updateExpenseConfirmed(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, dt: form.dt });
-        if (!result.ok) {
-          Alert.alert('Expense not updated', result.error ?? 'The server could not update this expense. Your entries remain available so you can retry.');
-          return;
+      if (formBusy) return;
+      setFormBusy(true);
+      try {
+        if (editTarget) {
+          const result = await updateExpenseConfirmed(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, dt: form.dt });
+          if (!result.ok) {
+            Alert.alert('Expense not updated', result.error ?? 'The server could not update this expense. Your entries remain available so you can retry.');
+            return;
+          }
+        } else {
+          const result = await addExpense({
+            dt: form.dt,
+            cat: form.cat,
+            desc: form.desc.trim(),
+            amt: amount,
+            by: role || 'mgr',
+            byName: userName,
+            ref: form.ref.trim() || undefined,
+            budgetId: form.budgetId,
+          });
+          if (!result.ok) {
+            setFormError(result.error ?? 'The server could not save this expense. Check the selected budget and try again.');
+            return;
+          }
         }
-      } else {
-        const result = await addExpense({
-          dt: form.dt,
-          cat: form.cat,
-          desc: form.desc.trim(),
-          amt: amount,
-          by: role || 'mgr',
-          byName: userName,
-          ref: form.ref.trim() || undefined,
-          budgetId: form.budgetId,
-        });
-        if (!result.ok) {
-          setFormError(result.error ?? 'The server could not save this expense. Check the selected budget and try again.');
-          return;
-        }
+        setShowForm(false);
+        setFormError('');
+      } finally {
+        setFormBusy(false);
       }
-      setShowForm(false);
-      setFormError('');
     }, 'Confirm & save');
   }
 
@@ -471,6 +483,7 @@ export default function ExpensesScreen() {
 
       {/* Add / Edit Modal */}
       <ModalSheet visible={showForm} onClose={() => { setShowForm(false); setFormError(''); }}>
+        {hasPendingConfirmation ? confirmationContent : (
           <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
             <Text style={[styles.sheetTitle, { color: colors.text }]}>
@@ -492,18 +505,27 @@ export default function ExpensesScreen() {
               </View>
             ) : null}
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
-              <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, { flex: 2, backgroundColor: roleColor }]}>
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={formBusy}
+                style={[styles.saveBtn, { flex: 2, backgroundColor: roleColor, opacity: formBusy ? 0.6 : 1 }]}
+              >
                 <Ionicons name={editTarget ? 'checkmark' : 'send'} size={16} color="#fff" />
-                <Text style={styles.saveBtnText}>{editTarget ? 'Save Changes' : 'Submit Expense'}</Text>
+                <Text style={styles.saveBtnText}>
+                  {formBusy ? 'Submitting…' : editTarget ? 'Save Changes' : 'Submit Expense'}
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setShowForm(false); setFormError(''); }} style={[styles.cancelBtn, { flex: 1 }]}>
+              <TouchableOpacity
+                onPress={() => { setShowForm(false); setFormError(''); }}
+                disabled={formBusy}
+                style={[styles.cancelBtn, { flex: 1, opacity: formBusy ? 0.5 : 1 }]}
+              >
                 <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
+        )}
       </ModalSheet>
-
-      {confirmationModal}
     </ScreenLayout>
   );
 }
