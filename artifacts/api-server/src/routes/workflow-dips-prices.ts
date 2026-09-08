@@ -108,15 +108,14 @@ async function run(req: Request, res: Response, action: (tx: Tx, now: string) =>
     const dip = record(result.body.dip) ? result.body.dip : null;
     const proposal = record(result.body.proposal) ? result.body.proposal : null;
     if (req.path === "/workflows/dips" && dip) {
-      for (const target of ["md", "ceo"]) {
+      for (const target of ["md", "ceo", "acc", "csm"]) {
         await safeNotify({
           target,
           type: "operational",
           title: "Tank Dip Awaiting MD Approval",
           body: `${dip.by ?? "A manager"} submitted tank dip readings for ${dip.dt ?? "the selected date"}.`,
           data: {
-            route: "/(app)/operations",
-            tab: "dip-approvals",
+            route: "/(app)/operations?tab=dip-approvals",
             dipId: dip.id,
             branchId: dip.branchId ?? null,
           },

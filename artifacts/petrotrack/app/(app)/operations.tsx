@@ -9,7 +9,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import {
-  DEFAULT_MGR_PERMS, businessDateKey, calculateDailyOperationalStock, calculateDailyStockLogBalance, currentBusinessDateKey, dipReadingToLiters,
+  DEFAULT_MGR_PERMS, businessDateKey, calculateDailyOperationalStock, calculateDailyStockLogBalance, carryForwardApprovedDip, currentBusinessDateKey, dipReadingToLiters,
   getCurrentTankStock, startupStockSeedDate,
   ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
@@ -75,7 +75,7 @@ function makeStockLogStatus(
   return 'balanced';
 }
 
-function stockLogValueSignature(entry: Pick<StockLogEntry, 'branchId' | 'product' | 'businessDate' | 'openingQuantity' | 'delivered' | 'sold' | 'bookStock' | 'tankDip' | 'discrepancy' | 'unit' | 'status' | 'openingSource'>): string {
+function stockLogValueSignature(entry: Pick<StockLogEntry, 'branchId' | 'product' | 'businessDate' | 'openingQuantity' | 'delivered' | 'sold' | 'bookStock' | 'tankDip' | 'dipBusinessDate' | 'discrepancy' | 'unit' | 'status' | 'openingSource'>): string {
   return [
     entry.branchId,
     entry.product,
@@ -85,6 +85,7 @@ function stockLogValueSignature(entry: Pick<StockLogEntry, 'branchId' | 'product
     entry.sold,
     entry.bookStock,
     entry.tankDip,
+    entry.dipBusinessDate ?? '',
     entry.discrepancy,
     entry.unit,
     entry.status,
@@ -149,6 +150,7 @@ function StockLogPanel() {
 
         const todayDip = findLatestDipForProduct(
           dips, businessDate, branch.id, product, branchTanks, branchLpgTanks,
+          { onOrBeforeDate: true },
         );
         const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
         const stockBook = calculateDailyOperationalStock(
@@ -166,7 +168,14 @@ function StockLogPanel() {
           : startupRecord && businessDate === startupStockSeedDate(startupRecord)
             ? 'startup_seed'
             : 'previous_log';
-        const tankDip = stockDipForProduct(todayDip, product, branchTanks, branchLpgTanks);
+        const dipBusinessDate = businessDateKey(todayDip?.dt);
+        const approvedDip = stockDipForProduct(todayDip, product, branchTanks, branchLpgTanks);
+        const dipDateBookStock = dipBusinessDate && dipBusinessDate !== businessDate
+          ? calculateDailyOperationalStock(
+              startupRecord, product, branch.id, deliveries, pumpDailyReports, dipBusinessDate, branchPumps,
+            ).bookStock
+          : stockBook.bookStock;
+        const tankDip = carryForwardApprovedDip(approvedDip, dipDateBookStock, stockBook.bookStock);
         const balance = calculateDailyStockLogBalance(
           stockBook.startupStock,
           stockBook.delivered,
@@ -185,6 +194,7 @@ function StockLogPanel() {
           sold: stockBook.sold,
           bookStock: balance.bookStock,
           tankDip,
+          dipBusinessDate: dipBusinessDate || undefined,
           discrepancy: balance.variance,
           unit: unitForProd(product) as 'L' | 'kg',
           status: makeStockLogStatus(openingQuantity, tankDip, balance.variance, dipRequired),
@@ -250,8 +260,13 @@ function StockLogPanel() {
           <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Expected stock</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.bookStock === null ? '—' : entry.bookStock.toLocaleString()}</Text></View>
         </View>
         <View style={[styles.stockCompare, { borderTopColor: colors.border }]}>
-          <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Tank dip</Text>
+          <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>
+            {entry.dipBusinessDate && entry.dipBusinessDate !== entry.businessDate ? 'Physical stock estimate' : 'Tank dip'}
+          </Text>
           <Text style={[styles.stockCompareValue, { color: colors.text }]}>{entry.tankDip === null ? 'Not recorded' : `${entry.tankDip.toLocaleString()} ${entry.unit}`}</Text>
+          {entry.dipBusinessDate && entry.dipBusinessDate !== entry.businessDate ? (
+            <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Carried forward from approved dip on {fmtDate(entry.dipBusinessDate)}</Text>
+          ) : null}
           <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Variance</Text>
           <Text style={[styles.stockCompareValue, { color: statusColor }]}>{entry.discrepancy === null ? '—' : `${entry.discrepancy > 0 ? '+' : ''}${entry.discrepancy.toLocaleString()} ${entry.unit}`}</Text>
         </View>
@@ -265,7 +280,7 @@ function StockLogPanel() {
         <View style={styles.stockHeroOrb} />
         <Text style={styles.stockEyebrow}>OPERATIONS · INVENTORY CONTROL</Text>
         <Text style={styles.stockHeroTitle}>Daily stock log</Text>
-        <Text style={styles.stockHeroSubtitle}>Yesterday&apos;s expected book stock rolls forward as opening + today&apos;s deliveries − today&apos;s approved sales, compared with today&apos;s approved dip.</Text>
+        <Text style={styles.stockHeroSubtitle}>The latest approved dip is carried forward with later deliveries and approved sales, preserving the approved reconciliation variance until the next dip.</Text>
         <View style={styles.stockMarquee}>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{summaryEntries.length}</Text><Text style={styles.stockMarqueeLabel}>Products</Text></View>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{balancedCount}</Text><Text style={styles.stockMarqueeLabel}>Balanced</Text></View>
