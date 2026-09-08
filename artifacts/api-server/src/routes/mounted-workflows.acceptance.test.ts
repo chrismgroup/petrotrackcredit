@@ -431,6 +431,17 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(dipCreated.status, 201);
     const dip = dipCreated.body.dip as JsonRecord;
     const dipId = String(dip.id);
+    for (const token of [md.token, ceo.token]) {
+      const notifications = await request("/notifications", {}, token);
+      assert.equal(notifications.status, 200);
+      const rows = notifications.body as unknown as JsonRecord[];
+      const dipNotification = rows.find(notification =>
+        notification.title === "Tank Dip Awaiting MD Approval" &&
+        (notification.data as JsonRecord | undefined)?.dipId === dip.id,
+      );
+      assert.ok(dipNotification, `expected a tank dip notification for ${token === md.token ? "MD" : "CEO"}`);
+      assert.equal(dipNotification?.read, false);
+    }
     const dipApproveBody = {
       expectedRevision: 0,
       idempotencyKey: `${marker}-dip-approve`,
@@ -486,6 +497,9 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
           await pool.query("DELETE FROM app_state WHERE key = $1", [key]);
         }
       }
+      await pool.query("DELETE FROM notifications WHERE username = ANY($1::text[])", [
+        Object.values(users),
+      ]);
       await pool.query("DELETE FROM staff_users WHERE created_by = $1", [marker]);
       await pool.query("COMMIT");
     } catch (error) {
