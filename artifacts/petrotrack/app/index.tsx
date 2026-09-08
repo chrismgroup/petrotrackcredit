@@ -64,19 +64,24 @@ export default function LoginScreen() {
   useEffect(() => {
     (async () => {
       if (Platform.OS === 'web') return;
-      const [hasHw, enrolled] = await Promise.all([
-        LocalAuthentication.hasHardwareAsync(),
-        LocalAuthentication.isEnrolledAsync(),
-      ]);
-      if (!hasHw || !enrolled) return;
-      const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-      if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-        setBioType('face');
-      } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
-        setBioType('fingerprint');
+      try {
+        const [hasHw, enrolled] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+        ]);
+        if (!hasHw || !enrolled) return;
+        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+        if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+          setBioType('face');
+        } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+          setBioType('fingerprint');
+        }
+        const creds = await loadCredentials();
+        if (creds) { setBioCreds(creds); setBioAvailable(true); }
+      } catch {
+        setBioAvailable(false);
+        setBioCreds(null);
       }
-      const creds = await loadCredentials();
-      if (creds) { setBioCreds(creds); setBioAvailable(true); }
     })();
   }, []);
 
@@ -197,6 +202,7 @@ export default function LoginScreen() {
         {/* ── Biometric quick-sign-in ── */}
         {bioAvailable && bioCreds ? (
           <TouchableOpacity
+            testID="login-biometric"
             style={[styles.bioBtn, { borderColor: colors.primary + '40', backgroundColor: colors.primary + '0E' }]}
             onPress={handleBiometric}
             disabled={bioLoading}
