@@ -267,7 +267,8 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   const defaultPeriod: Period = requestedPeriod && PERIODS.includes(requestedPeriod as Period) ? requestedPeriod as Period : 'Monthly';
   const requestedBranch = firstRouteParam(params.branch);
   const defaultBranch = requestedBranch && requestedBranch !== 'all' ? requestedBranch : null;
-  const defaultDate = validReportDate(params.date);
+  const requestedDate = firstRouteParam(params.date);
+  const defaultDate = validReportDate(requestedDate);
   // att and mgr are locked to their own branch; other roles can switch branches
   const [selBranch,  setSelBranch]  = useState<string | null>(isBranchLocked ? (branchId ?? null) : defaultBranch);
   const [reportType, setReportType] = useState<ReportType>(defaultType);
@@ -296,6 +297,24 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   const generatedAt = new Date().toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' });
   const canExport   = perms.canGenerate.includes(reportType);
   const meta        = REPORT_META[reportType] ?? REPORT_META.summary;
+  const routeFallbacks = detail ? [
+    requestedType && requestedType !== defaultType
+      ? `Report type was replaced with ${REPORT_META[defaultType]?.label ?? 'Summary'}.`
+      : null,
+    requestedPeriod && requestedPeriod !== defaultPeriod
+      ? `Reporting period was replaced with ${defaultPeriod}.`
+      : null,
+    requestedDate && requestedDate !== defaultDate
+      ? 'Report date was replaced with today.'
+      : null,
+    requestedBranch && requestedBranch !== 'all' && (
+      isBranchLocked
+        ? requestedBranch !== branchId
+        : safeBranches.length > 0 && !safeBranches.some(branch => branch.id === requestedBranch)
+    )
+      ? `Branch scope was replaced with ${branchName}.`
+      : null,
+  ].filter((message): message is string => Boolean(message)) : [];
 
   /* Branch-filtered helpers */
   const fb = (arr: any[]) =>
@@ -748,6 +767,21 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
 
         {detail ? <>
         {/* ── On-screen report preview ── */}
+        {routeFallbacks.length > 0 ? (
+          <View
+            testID="report-route-fallback-notice"
+            accessibilityRole="alert"
+            style={[s.routeFallbackNotice, { backgroundColor: colors.surface, borderColor: colors.warning }]}
+          >
+            <Ionicons name="information-circle-outline" size={20} color={colors.warning} />
+            <View style={{ flex: 1 }}>
+              <Text style={[s.routeFallbackTitle, { color: colors.text }]}>Some link settings were unavailable</Text>
+              {routeFallbacks.map(message => (
+                <Text key={message} style={[s.routeFallbackText, { color: colors.textMuted }]}>• {message}</Text>
+              ))}
+            </View>
+          </View>
+        ) : null}
         <View style={s.previewHeading}>
           <View style={s.previewEyebrow}>
             <Ionicons name="eye-outline" size={14} color={rc} />
@@ -1305,6 +1339,9 @@ const s = StyleSheet.create({
   reportTileDesc: { fontSize: 11, lineHeight: 14, marginTop: 2 },
   reportTileEnd:  { alignItems: 'flex-end', justifyContent: 'center', gap: 7, minWidth: 55 },
   reportTileDept:  { fontSize: 8, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
+  routeFallbackNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 14 },
+  routeFallbackTitle: { fontSize: 13, fontWeight: '800', marginBottom: 3 },
+  routeFallbackText: { fontSize: 12, lineHeight: 17 },
   listHint:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingTop: 2 },
   listHintText:   { fontSize: 11 },
   previewHeading:  { marginBottom: 12, paddingHorizontal: 2 },

@@ -599,6 +599,7 @@ describe('asset depreciation financial screens', () => {
     expect(viewerText).toContain('2026-09-15');
     expect(viewerText).toContain(branchB.name);
     expect(viewerText).not.toContain('Choose a report');
+    expect(viewerText).not.toContain('Some link settings were unavailable');
     act(() => viewer.unmount());
 
     const header = mount(<Header title="Report viewer" />);
@@ -670,6 +671,11 @@ describe('asset depreciation financial screens', () => {
     expect(viewerText).toContain('Summary');
     expect(viewerText).toContain('Monthly report');
     expect(viewerText).toContain('All Branches');
+    expect(viewerText).toContain('Some link settings were unavailable');
+    expect(viewerText).toContain('Report type was replaced with Summary.');
+    expect(viewerText).toContain('Reporting period was replaced with Monthly.');
+    expect(viewerText).toContain('Report date was replaced with today.');
+    expect(viewerText).toContain('Branch scope was replaced with All Branches.');
     expect(viewerText).not.toContain('not-a-report');
     expect(viewerText).not.toContain('not-a-period');
     expect(viewerText).not.toContain('missing-branch');
