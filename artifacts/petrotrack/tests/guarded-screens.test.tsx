@@ -637,7 +637,7 @@ describe('screens tolerate incomplete synced records', () => {
     const mountedAdmin = adminRenderer as unknown as ReactTestRenderer;
     expect(renderedText(mountedAdmin)).toContain('Edit');
     expect(renderedText(mountedAdmin)).toContain('Delete');
-    expect(renderedText(mountedAdmin)).not.toContain('Inventory');
+    expect(renderedText(mountedAdmin)).toContain('Inventory');
     act(() => mountedAdmin.unmount());
   });
 
