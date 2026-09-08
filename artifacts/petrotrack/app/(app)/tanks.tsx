@@ -276,7 +276,7 @@ export default function TanksScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             {canEdit ? 'Returned Dip Reports' : 'Pending Dip Reports for Review'}
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyBranchRail}>
+          <View style={styles.historyBranchRail}>
             {canSeeAllTanks && (
               <TouchableOpacity
                 style={[
@@ -310,7 +310,7 @@ export default function TanksScreen() {
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
           {!hasDisplayedHistory ? (
             <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="time-outline" size={16} color={colors.textMuted} />
@@ -536,9 +536,9 @@ const styles = StyleSheet.create({
   dipStatusText: { fontSize: 10, fontWeight: '700' },
   approvedByText: { fontSize: 11, marginTop: 4 },
   historyBranchRail: { gap: 8, paddingBottom: 4 },
-  historyBranchTile: { width: 132, minHeight: 92, padding: 11, borderRadius: 13, borderWidth: 1, justifyContent: 'space-between' },
-  historyBranchTileName: { fontSize: 12, fontWeight: '800', marginTop: 8 },
-  historyBranchTileCount: { fontSize: 10, fontWeight: '600', marginTop: 4 },
+  historyBranchTile: { width: '100%', minHeight: 64, padding: 12, borderRadius: 13, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  historyBranchTileName: { flex: 1, fontSize: 12, fontWeight: '800' },
+  historyBranchTileCount: { fontSize: 10, fontWeight: '600' },
   mdActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   approveBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10 },
   rejectBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, borderWidth: 1.5 },
