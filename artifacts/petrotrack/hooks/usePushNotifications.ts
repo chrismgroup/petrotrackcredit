@@ -34,7 +34,10 @@ export function usePushNotifications() {
       try {
         const permissions = await Notifications.getPermissionsAsync();
         let status = permissions.status;
-        if (status !== Notifications.PermissionStatus.GRANTED) {
+        if (
+          status !== Notifications.PermissionStatus.GRANTED &&
+          permissions.canAskAgain !== false
+        ) {
           const requested = await Notifications.requestPermissionsAsync();
           status = requested.status;
         }

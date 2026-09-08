@@ -22,9 +22,9 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
   rejected:       { label: 'Rejected',             color: '#791F1F', bg: '#FCEBEB' },
 };
 
-const STEP_ICON:  Record<string, string> = { submit: 'send', forward: 'share-social', approve: 'checkmark-circle', reject: 'close-circle' };
-const STEP_COLOR: Record<string, string> = { submit: '#185FA5', forward: '#0C447C', approve: '#27500A', reject: '#791F1F' };
-const STEP_BG:    Record<string, string> = { submit: '#E6F1FB', forward: '#E8F0FB', approve: '#EAF3DE', reject: '#FCEBEB' };
+const STEP_ICON:  Record<string, string> = { submit: 'send', forward: 'share-social', approve: 'checkmark-circle', reject: 'close-circle', classify_branch: 'business' };
+const STEP_COLOR: Record<string, string> = { submit: '#185FA5', forward: '#0C447C', approve: '#27500A', reject: '#791F1F', classify_branch: '#6B4F1D' };
+const STEP_BG:    Record<string, string> = { submit: '#E6F1FB', forward: '#E8F0FB', approve: '#EAF3DE', reject: '#FCEBEB', classify_branch: '#FFF4D6' };
 
 const OVER_COLOR  = '#791F1F';
 const OVER_BG     = '#FCEBEB';
@@ -156,7 +156,7 @@ function PerfBar({ pct, isOver, isWarning }: { pct: number; isOver: boolean; isW
 export default function BudgetScreen() {
   const {
     role, userName, branchId, budgets, expenses, branches,
-    addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, submitBudgetToAcc,
+    addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, classifyBudgetBranch, submitBudgetToAcc,
     forwardBudget, approveBudget, rejectBudget,
   } = useApp();
 
@@ -168,12 +168,15 @@ export default function BudgetScreen() {
   const isAcc = role === 'acc' || role === 'admin';
   const isMD  = role === 'md'  || role === 'ceo' || role === 'admin';
   const isCeo = role === 'ceo';
+  const canClassifyHistoricalBudget = role === 'acc' || role === 'md' || role === 'ceo' || role === 'admin';
 
   const [tab, setTab] = useState<string>(isMgr ? 'mine' : 'pending');
 
   const [selected, setSelected]     = useState<Budget | null>(null);
   const [actionType, setActionType] = useState<'forward' | 'approve' | 'reject' | null>(null);
   const [actionNote, setActionNote] = useState('');
+  const [classificationBranchId, setClassificationBranchId] = useState('');
+  const [classificationBusy, setClassificationBusy] = useState(false);
 
   const [showForm, setShowForm]     = useState(false);
   const [editTarget, setEditTarget] = useState<Budget | null>(null);
@@ -330,6 +333,19 @@ export default function BudgetScreen() {
     if (actionType === 'approve')  approveBudget(selected.id, actionNote.trim());
     if (actionType === 'reject')   rejectBudget(selected.id, actionNote.trim());
     setActionType(null); setActionNote(''); setSelected(null);
+  }
+
+  async function handleClassifyBranch() {
+    if (!selected || !classificationBranchId || classificationBusy) return;
+    setClassificationBusy(true);
+    const result = await classifyBudgetBranch(selected.id, classificationBranchId);
+    setClassificationBusy(false);
+    if (!result.ok) {
+      Alert.alert('Branch classification failed', result.error ?? 'Please try again.');
+      return;
+    }
+    setClassificationBranchId('');
+    setSelected(null);
   }
 
   const mgrCanEdit   = (b: Budget) =>
@@ -770,6 +786,42 @@ export default function BudgetScreen() {
                       </View>
                     ))}
                   </>
+                ) : null}
+
+                {canClassifyHistoricalBudget && !selected.branchId ? (
+                  <View style={[styles.actionBox, { backgroundColor: '#FFF8E8', borderColor: '#E2C46D' }]}>
+                    <Ionicons name="business" size={18} color="#6B4F1D" />
+                    <Text style={[styles.actionTitle, { color: '#6B4F1D' }]}>Classify Historical Budget</Text>
+                    <Text style={[styles.actionSub, { color: colors.textMuted }]}>
+                      Select the station this historical budget belongs to. This is audited and cannot be changed after confirmation.
+                    </Text>
+                    <View style={styles.chipRow}>
+                      {branches.map(branch => (
+                        <TouchableOpacity
+                          key={branch.id}
+                          onPress={() => setClassificationBranchId(branch.id)}
+                          style={[styles.chip, {
+                            backgroundColor: classificationBranchId === branch.id ? '#6B4F1D' : colors.surface,
+                            borderColor: classificationBranchId === branch.id ? '#6B4F1D' : colors.border,
+                          }]}
+                        >
+                          <Text style={[styles.chipText, { color: classificationBranchId === branch.id ? '#fff' : colors.text }]}>
+                            {branch.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <TouchableOpacity
+                      disabled={!classificationBranchId || classificationBusy}
+                      onPress={handleClassifyBranch}
+                      style={[styles.primaryBtn, {
+                        backgroundColor: '#6B4F1D',
+                        opacity: !classificationBranchId || classificationBusy ? 0.5 : 1,
+                      }]}
+                    >
+                      <Text style={styles.primaryBtnText}>{classificationBusy ? 'Assigning…' : 'Confirm Branch Assignment'}</Text>
+                    </TouchableOpacity>
+                  </View>
                 ) : null}
 
                 {/* Mgr: submit from detail */}

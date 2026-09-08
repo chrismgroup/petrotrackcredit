@@ -285,6 +285,7 @@ export const workflowApi = {
     updateAndSubmit: <T>(id: number, budget: Partial<T>, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/update-submit`, { budget, ...command }),
     remove: <T>(id: number, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('DELETE', `/finance/budgets/${workflowPath(id)}`, command),
     archive: <T>(id: number, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/archive`, command),
+    classifyBranch: <T>(id: number, branchId: string, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/classify-branch`, { branchId, ...command }),
     transition: <T>(id: number, action: 'submit' | 'forward' | 'approve' | 'reject', note: string, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/${action}`, { note, ...command }),
   },
   dips: {

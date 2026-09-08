@@ -179,7 +179,8 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
         ('tanks', $1::jsonb),
         ('lpgTanks', '[]'::jsonb),
         ('prices', $2::jsonb),
-        ('branches', $3::jsonb)
+        ('branches', $3::jsonb),
+        ('budgets', $4::jsonb)
       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
     `, [
       JSON.stringify([{
@@ -202,6 +203,22 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       JSON.stringify([
         { id: branchA, name: `${marker} Branch A`, st: "Active" },
         { id: branchB, name: `${marker} Branch B`, st: "Active" },
+      ]),
+      JSON.stringify([
+        {
+          id: 1, month: 10, year: 2026, appliesOn: "2026-10-01",
+          label: "October 2026", by: "mgr", byName: "Manager",
+          items: [{ cat: "Operations", amt: 50_000 }], total: 50_000,
+          status: "fully_approved", workflow: [], branchId: branchA,
+          branchName: `${marker} Branch A`, revision: 1,
+        },
+        {
+          id: 2, month: 10, year: 2026, appliesOn: "2026-10-01",
+          label: "October 2026", by: "mgr", byName: "Other Manager",
+          items: [{ cat: "Operations", amt: 50_000 }], total: 50_000,
+          status: "fully_approved", workflow: [], branchId: branchB,
+          branchName: `${marker} Branch B`, revision: 1,
+        },
       ]),
     ]);
 
@@ -374,6 +391,20 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(expenseCreated.status, 201);
     const expense = recordFrom(expenseCreated);
     const expenseId = String(expense.id);
+    assert.equal(expense.branchId, branchA);
+    assert.equal(expense.branchName, `${marker} Branch A`);
+    const crossBranchExpense = await command(manager.token, "/finance/expenses", {
+      expense: {
+        cat: "Operations",
+        desc: `${marker} cross-branch expense`,
+        amt: 250,
+        dt: "2026-10-02",
+        budgetId: 2,
+      },
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-expense-cross-branch-rejected`,
+    });
+    assert.equal(crossBranchExpense.status, 403);
     const expenseRoleDenied = await command(attendant.token, `/finance/expenses/${expenseId}/forward`, {
       expectedRevision: 1,
       idempotencyKey: `${marker}-expense-role-denied`,
@@ -385,6 +416,15 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     });
     assert.equal(expenseForwarded.status, 201);
     assert.equal(recordFrom(expenseForwarded).status, "acc_forwarded");
+    const ceoExpenseState = await request("/state/expenses", {}, ceo.token);
+    assert.equal(ceoExpenseState.status, 200);
+    assert.deepEqual(ceoExpenseState.body, []);
+    const ceoExpenseNotifications = await request("/notifications", {}, ceo.token);
+    assert.equal(ceoExpenseNotifications.status, 200);
+    assert.ok((ceoExpenseNotifications.body as unknown as JsonRecord[]).some(notification =>
+      notification.title === "Expense Sent to MD for Review"
+      && (notification.data as JsonRecord | undefined)?.route === "/(app)/home"
+    ));
     const staleExpense = await command(manager.token, `/finance/expenses/${expenseId}`, {
       expense: {
         cat: "Operations",
@@ -475,12 +515,64 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       idempotencyKey: `${marker}-ceo-expense-forward`,
     });
     assert.equal(ceoExpenseForwarded.status, 201);
-    const ceoExpenseApproved = await command(ceo.token, `/finance/expenses/${ceoExpenseId}/approve`, {
+    const ceoExpenseApprovalBlocked = await command(ceo.token, `/finance/expenses/${ceoExpenseId}/approve`, {
       expectedRevision: 2,
       idempotencyKey: `${marker}-ceo-expense-approve`,
     });
-    assert.equal(ceoExpenseApproved.status, 201);
-    assert.equal(recordFrom(ceoExpenseApproved).status, "approved");
+    assert.equal(ceoExpenseApprovalBlocked.status, 403);
+    const mdExpenseApproved = await command(md.token, `/finance/expenses/${ceoExpenseId}/approve`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-md-expense-approve`,
+    });
+    assert.equal(mdExpenseApproved.status, 201);
+    assert.equal(recordFrom(mdExpenseApproved).status, "approved");
+
+    const legacyBudgetId = `${marker}-legacy-budget`;
+    await pool.query(`
+      INSERT INTO app_state (key, data)
+      VALUES ('budgets', $1::jsonb)
+      ON CONFLICT (key) DO UPDATE
+      SET data = COALESCE(app_state.data, '[]'::jsonb) || EXCLUDED.data,
+          updated_at = NOW()
+    `, [JSON.stringify([{
+      id: legacyBudgetId,
+      month: 9,
+      year: 2026,
+      appliesOn: "2026-09-01",
+      label: "September 2026",
+      by: "acc",
+      byName: "Legacy Finance User",
+      items: [{ cat: "Operations", amt: 1_000 }],
+      total: 1_000,
+      status: "fully_approved",
+      workflow: [],
+      revision: 0,
+    }])]);
+    const managerCannotClassify = await command(manager.token, `/finance/budgets/${legacyBudgetId}/classify-branch`, {
+      branchId: branchA,
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-budget-classify-manager-forbidden`,
+    });
+    assert.equal(managerCannotClassify.status, 403);
+    const classifiedBudget = await command(accountant.token, `/finance/budgets/${legacyBudgetId}/classify-branch`, {
+      branchId: branchB,
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-budget-classify-accountant`,
+    });
+    assert.equal(classifiedBudget.status, 201);
+    assert.equal(recordFrom(classifiedBudget).branchId, branchB);
+    assert.equal(recordFrom(classifiedBudget).branchName, `${marker} Branch B`);
+    assert.equal(recordFrom(classifiedBudget).revision, 1);
+    assert.equal(
+      (recordFrom(classifiedBudget).workflow as JsonRecord[]).at(-1)?.action,
+      "classify_branch",
+    );
+    const cannotReclassify = await command(md.token, `/finance/budgets/${legacyBudgetId}/classify-branch`, {
+      branchId: branchA,
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-budget-reclassify-blocked`,
+    });
+    assert.equal(cannotReclassify.status, 409);
 
     const budgetInput = (label: string, status?: string) => ({
       month: 10,

@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { eq, sql } from "drizzle-orm";
 import { Router, type IRouter, type Request, type Response } from "express";
 
-import { appStateTable, db } from "@workspace/db";
+import { appStateTable, db, staffUsersTable } from "@workspace/db";
 import { broadcastRealtime } from "../lib/realtime";
 import { deliverNotification } from "./notifications.js";
 import { mergeWorkflowTombstones } from "./workflow-record-merge";
@@ -20,9 +20,11 @@ const EXPENSE_CREATORS = new Set(["mgr", "csm", "mktg", "acc", "admin"]);
 const BUDGET_CREATORS = new Set(["mgr", "csm", "mktg", "acc", "admin"]);
 const ACCOUNTANTS = new Set(["acc", "admin"]);
 const MD = new Set(["md", "ceo", "admin"]);
+const EXPENSE_DECIDERS = new Set(["acc"]);
 const MANAGERS = new Set(["mgr", "csm", "mktg"]);
 const FINAL_BUDGETS = new Set(["draft", "fully_approved", "rejected"]);
 const GLOBAL_FINANCE_REVIEWERS = new Set(["acc", "md", "ceo", "admin"]);
+const BUDGET_BRANCH_CLASSIFIERS = new Set(["acc", "md", "ceo", "admin"]);
 
 function record(value: unknown): value is JsonRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -103,6 +105,37 @@ async function budgetBranch(branchId: string): Promise<{ branchId: string; branc
   const branchName = typeof branch?.name === "string" ? branch.name.trim() : "";
   return branchName ? { branchId, branchName } : null;
 }
+async function approvedExpenseBudget(budgetId: number): Promise<{ branchId: string; branchName: string } | Failure> {
+  const [budgetRow, branchRow, staff] = await Promise.all([
+    db.select().from(appStateTable).where(eq(appStateTable.key, "budgets")),
+    db.select().from(appStateTable).where(eq(appStateTable.key, "branches")),
+    db.select({
+      username: staffUsersTable.username,
+      empName: staffUsersTable.empName,
+      branchId: staffUsersTable.branchId,
+    }).from(staffUsersTable),
+  ]);
+  const budget = records(budgetRow[0]?.data).find(item => Number(item.id) === budgetId);
+  if (!budget) return conflict("The selected budget does not exist");
+  if (budget.status !== "fully_approved") return conflict("Expenses can only be logged against a fully approved budget");
+
+  let branchId = String(budget.branchId ?? "").trim();
+  if (!branchId) {
+    const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+    const createdBy = normalize(budget.createdBy);
+    const byName = normalize(budget.byName);
+    const owner = staff.find(candidate =>
+      (createdBy && normalize(candidate.username) === createdBy)
+      || (byName && (normalize(candidate.empName) === byName || normalize(candidate.username) === byName))
+    );
+    branchId = owner?.branchId?.trim() ?? "";
+  }
+  if (!branchId) return conflict("Classify the selected budget's branch before logging expenses against it");
+  const branch = records(branchRow[0]?.data).find(item => String(item.id ?? "") === branchId);
+  const branchName = typeof branch?.name === "string" ? branch.name.trim() : "";
+  if (!branchName) return conflict("The selected budget is not linked to a valid branch");
+  return { branchId, branchName };
+}
 async function idem(tx: Tx): Promise<JsonRecord[]> { return load(tx, IDEMPOTENCY_KEY); }
 async function remember(tx: Tx, entries: JsonRecord[], entry: JsonRecord): Promise<void> {
   await save(tx, IDEMPOTENCY_KEY, [entry, ...entries].slice(0, 1000));
@@ -170,10 +203,22 @@ router.post("/finance/expenses", async (req, res) => {
   const body = canonicalExpense(req.body?.expense);
   if (!body) { res.status(400).json({ error: "Invalid expense fields" }); return; }
   if (!EXPENSE_CREATORS.has(req.auth!.role)) { res.status(403).json({ error: "Your role cannot create expenses" }); return; }
+  const assignedBranch = await approvedExpenseBudget(Number(body.budgetId));
+  if ("kind" in assignedBranch) { res.status(409).json({ error: assignedBranch.error }); return; }
+  if (req.auth!.branchId && String(req.auth!.branchId) !== assignedBranch.branchId) {
+    res.status(403).json({ error: "You cannot log an expense against another branch's budget" });
+    return;
+  }
   const result = await command(req, "expenses", (items, auth, now) => {
     const maxId = items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0);
     const budget = body.budgetId;
-    return { item: { ...body, id: maxId + 1, status: "pending", submittedAt: now, createdAt: now, createdBy: auth.username, by: auth.role, byName: auth.empName ?? auth.username, branchId: auth.branchId ?? null, revision: 1, budgetId: budget } };
+    return { item: { ...body, ...assignedBranch, id: maxId + 1, status: "pending", submittedAt: now, createdAt: now, createdBy: auth.username, by: auth.role, byName: auth.empName ?? auth.username, revision: 1, budgetId: budget } };
+  });
+  if (!result.error) await notify(result, {
+    target: "acc", type: "operational",
+    title: "Expense Awaiting Accountant Approval",
+    body: `${result.item?.branchName ?? "Branch"} · ${result.item?.desc ?? "Expense"} — ₦${result.item?.amt ?? 0}`,
+    data: { route: "/(app)/expenses", expenseId: result.item?.id },
   });
   send(res, result, "expense.changed");
 });
@@ -181,13 +226,17 @@ router.post("/finance/expenses", async (req, res) => {
 router.patch("/finance/expenses/:id", async (req, res) => {
   const body = canonicalExpense(req.body?.expense);
   if (!body) { res.status(400).json({ error: "Invalid expense fields" }); return; }
+  const assignedBranch = await approvedExpenseBudget(Number(body.budgetId));
+  if ("kind" in assignedBranch) { res.status(409).json({ error: assignedBranch.error }); return; }
   const result = await command(req, "expenses", (items, auth, now) => {
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
     if (!sameBranch(current, auth)) return forbidden("You cannot modify an expense from another branch");
+    if (auth.branchId && String(auth.branchId) !== assignedBranch.branchId) return forbidden("You cannot use another branch's budget");
+    if (current.branchId && String(current.branchId) !== assignedBranch.branchId) return conflict("An expense cannot be moved to another branch's budget");
     const editable = (MANAGERS.has(auth.role) && canEditOwned(current, auth)) || (ACCOUNTANTS.has(auth.role) && ["pending", "rejected"].includes(String(current.status)));
     if (!editable) return forbidden("Your role cannot edit this expense");
     if (!["pending", "rejected"].includes(String(current.status))) return conflict("This expense is locked in its current workflow state");
-    const item = { ...current, ...body, updatedAt: now, updatedBy: auth.username, revision: revision(current) + 1 };
+    const item = { ...current, ...body, ...assignedBranch, updatedAt: now, updatedBy: auth.username, revision: revision(current) + 1 };
     items[items.indexOf(current)] = item; return { item };
   }); send(res, result, "expense.changed");
 });
@@ -204,14 +253,15 @@ router.delete("/finance/expenses/:id", async (req, res) => {
 });
 
 function expenseTransition(action: "forward" | "approve" | "reject", from: string, role: string): string | null {
-  if (action === "forward" && ACCOUNTANTS.has(role) && (from === "pending" || from === "rejected")) return "acc_forwarded";
-  if ((action === "approve" || action === "reject") && MD.has(role) && from === "acc_forwarded") return action === "approve" ? "approved" : "rejected";
+  if ((action === "approve" || action === "reject") && EXPENSE_DECIDERS.has(role) && (from === "pending" || from === "acc_forwarded")) {
+    return action === "approve" ? "approved" : "rejected";
+  }
   return null;
 }
 for (const action of ["forward", "approve", "reject"] as const) router.post(`/finance/expenses/:id/${action}`, async (req, res) => {
   const result = await command(req, "expenses", (items, auth, now) => {
-    if (action === "forward" && !ACCOUNTANTS.has(auth.role)) return forbidden("Only an accountant or admin can forward expenses");
-    if ((action === "approve" || action === "reject") && !MD.has(auth.role)) return forbidden("Only the MD or admin can approve or reject expenses");
+    if (action === "forward") return forbidden("Expenses are approved directly by the Accountant; forwarding is not used");
+    if ((action === "approve" || action === "reject") && !EXPENSE_DECIDERS.has(auth.role)) return forbidden("Only the Accountant can approve or reject expenses");
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
     if (!sameBranch(current, auth)) return forbidden("You cannot act on an expense from another branch");
     const status = expenseTransition(action, String(current.status), auth.role);
@@ -322,6 +372,41 @@ router.post("/finance/budgets/:id/archive", async (req, res) => {
     const item = { ...current, archivedAt: now, archivedBy: auth.username, updatedAt: now, revision: revision(current) + 1 };
     items[items.indexOf(current)] = item; return { item };
   }); send(res, result, "budget.changed");
+});
+
+router.post("/finance/budgets/:id/classify-branch", async (req, res) => {
+  if (!BUDGET_BRANCH_CLASSIFIERS.has(req.auth!.role)) {
+    res.status(403).json({ error: "Only an accountant, MD, CEO, or admin can classify historical budgets" });
+    return;
+  }
+  const requestedBranchId = typeof req.body?.branchId === "string" ? req.body.branchId.trim() : "";
+  if (!requestedBranchId) { res.status(400).json({ error: "A branch is required" }); return; }
+  const assignedBranch = await budgetBranch(requestedBranchId);
+  if (!assignedBranch) { res.status(400).json({ error: "The selected branch does not exist" }); return; }
+  const result = await command(req, "budgets", (items, auth, now) => {
+    const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
+    if (String(current.branchId ?? "").trim()) return conflict("This budget already has a branch");
+    const history = Array.isArray(current.workflow) ? current.workflow.filter(record) : [];
+    const item = {
+      ...current,
+      ...assignedBranch,
+      workflow: [...history, workflow(
+        "Historical branch classified",
+        "classify_branch",
+        `Assigned to ${assignedBranch.branchName}`,
+        auth,
+        now,
+      )],
+      branchClassifiedAt: now,
+      branchClassifiedBy: auth.username,
+      updatedAt: now,
+      updatedBy: auth.username,
+      revision: revision(current) + 1,
+    };
+    items[items.indexOf(current)] = item;
+    return { item };
+  });
+  send(res, result, "budget.changed");
 });
 
 function budgetTransition(action: "submit" | "forward" | "approve" | "reject", status: string, role: string): { status: string; stage: string } | null {

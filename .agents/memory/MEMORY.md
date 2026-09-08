@@ -48,6 +48,7 @@
 - [Expo screen test harness](expo-screen-test-harness.md) — lightweight RN mocks need native-module coverage; query host nodes to avoid wrapper duplicates
 - [Budget history archives](budget-history-archives.md) — budgets display newest-first; only finance roles archive terminal historical records, never pending workflow items
 - [Budget branch ownership](budget-branch-ownership.md) — every new budget carries branch ID/name; managers receive only their authenticated branch’s budgets
+- [Expense branch authority](expense-branch-authority.md) — expenses inherit branch identity from an approved same-branch budget; only MD decides, while CEO gets Home notices
 - [Post-merge setup](post-merge-setup.md) — closed-stdin merges require CI-mode pnpm and enough timeout for install plus database schema verification
 - [Command-owned workflows](command-owned-workflows.md) — deliveries, expenses, budgets, dips, and price proposals mutate only through revisioned server commands
 - [Expo monorepo root](expo-monorepo-root.md) — Expo must resolve from artifacts/petrotrack, not the workspace root, which has no app entry
