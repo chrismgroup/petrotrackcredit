@@ -38,14 +38,18 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
   const marker = `pump-report-acceptance-${randomUUID()}`;
   const password = `Test-${randomUUID()}`;
   const branchId = `branch-${randomUUID()}`;
+  const otherBranchId = `branch-${randomUUID()}`;
   const usernames = {
     attendantA: `${marker}-att-a`,
     attendantB: `${marker}-att-b`,
     manager: `${marker}-manager`,
+    otherAttendant: `${marker}-other-att`,
+    otherManager: `${marker}-other-manager`,
     accountant: `${marker}-accountant`,
     admin: `${marker}-admin`,
   };
   const reportIds = [`${marker}-approved`, `${marker}-returned`];
+  const otherBranchReportId = `${marker}-other-branch`;
   const deletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
   const attendantDeletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
   const attendantResubmittedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
@@ -56,6 +60,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     attendantResubmittedReportId,
     `${marker}-fixture`,
     `${marker}-unrelated`,
+    otherBranchReportId,
   ];
   const server = app.listen(0);
   await once(server, "listening");
@@ -167,17 +172,29 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       branchId,
       marker,
     ]);
+    await pool.query(`
+      INSERT INTO staff_users (
+        emp_name, username, password, role, branch_id, status,
+        created_by, approved_by, approved_at
+      )
+      VALUES
+        ('Other Branch Attendant', $1, $3, 'att', $4, 'active', $5, $5, NOW()),
+        ('Other Branch Manager', $2, $3, 'mgr', $4, 'active', $5, $5, NOW())
+    `, [usernames.otherAttendant, usernames.otherManager, password, otherBranchId, marker]);
 
-    const [attendantA, attendantB, manager, accountant, admin] = await Promise.all([
+    const [attendantA, attendantB, manager, otherAttendant, otherManager, accountant, admin] = await Promise.all([
       login(usernames.attendantA),
       login(usernames.attendantB),
       login(usernames.manager),
+      login(usernames.otherAttendant),
+      login(usernames.otherManager),
       login(usernames.accountant),
       login(usernames.admin),
     ]);
     assert.equal(attendantA.role, "att");
     assert.equal(attendantB.role, "att");
     assert.equal(manager.role, "mgr");
+    assert.equal(otherManager.role, "mgr");
     assert.equal(accountant.role, "acc");
     assert.equal(admin.role, "admin");
 
@@ -205,6 +222,36 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       attendantA.token,
     );
     assert.equal(seedWrite.status, 201);
+    const otherBranchPending = report(otherBranchReportId, usernames.otherAttendant, {
+      branchId: otherBranchId,
+      pumpId: `${marker}-other-pump`,
+    });
+    const otherBranchSeed = await request<{ ok: boolean; report: PumpReport }>(
+      "/pump-reports",
+      {
+        method: "POST",
+        body: JSON.stringify({ report: otherBranchPending, idempotencyKey: otherBranchReportId }),
+      },
+      otherAttendant.token,
+    );
+    assert.equal(otherBranchSeed.status, 201);
+    const managerFullState = await request<{ pumpDailyReports: PumpReport[] }>("/state", {}, manager.token);
+    assert.equal(managerFullState.status, 200);
+    assert.equal(managerFullState.body.pumpDailyReports.some(item => item.id === otherBranchReportId), false);
+    assert.ok(managerFullState.body.pumpDailyReports.every(item => item.branchId === branchId));
+    const managerReportState = await request<PumpReport[]>("/state/pumpDailyReports", {}, manager.token);
+    assert.equal(managerReportState.status, 200);
+    assert.equal(managerReportState.body.some(item => item.id === otherBranchReportId), false);
+    assert.ok(managerReportState.body.every(item => item.branchId === branchId));
+    const otherManagerReportState = await request<PumpReport[]>("/state/pumpDailyReports", {}, otherManager.token);
+    assert.equal(otherManagerReportState.status, 200);
+    assert.equal(otherManagerReportState.body.some(item => item.id === otherBranchReportId), true);
+    assert.ok(otherManagerReportState.body.every(item => item.branchId === otherBranchId));
+    const managerCrossBranchWrite = await putReports(manager.token, [otherBranchPending]);
+    assert.equal(managerCrossBranchWrite.status, 200);
+    assert.equal(managerCrossBranchWrite.body.ok, false);
+    assert.deepEqual(managerCrossBranchWrite.body.rejectedReportIds, [otherBranchReportId]);
+    assert.equal(managerCrossBranchWrite.body.reports.some(item => item.id === otherBranchReportId), false);
     const [firstWrite, secondWrite] = await Promise.all([
       putReports(attendantA.token, [approvedPending]),
       putReports(attendantB.token, [approvedPending, returnedPending]),
@@ -219,7 +266,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     assert.equal(afterConcurrentWrites.status, 200);
     assert.deepEqual(
       afterConcurrentWrites.body.map(candidate => candidate.id).sort(),
-      reportIds.slice().sort(),
+      [...reportIds, otherBranchReportId].sort(),
     );
 
     // A stale full-array write omits the other device's newer report. The
@@ -228,7 +275,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     assert.equal(staleArrayWrite.status, 200);
     assert.deepEqual(
       staleArrayWrite.body.reports.map(candidate => candidate.id).sort(),
-      reportIds.slice().sort(),
+      [...reportIds, otherBranchReportId].sort(),
     );
 
     const approvedForwarded = {
