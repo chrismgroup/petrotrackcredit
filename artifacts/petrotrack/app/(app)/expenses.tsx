@@ -27,7 +27,15 @@ const ST_MAP: Record<string, { label: string; color: string; bg: string; icon: s
 };
 
 type FormState = { cat: string; desc: string; amt: string; ref: string; budgetId: number; dt: string };
-function blankForm(): FormState { return { cat: EXPENSE_CATS[0], desc: '', amt: '', ref: '', budgetId: 0, dt: '' }; }
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+function blankForm(): FormState {
+  return { cat: EXPENSE_CATS[0], desc: '', amt: '', ref: '', budgetId: 0, dt: localDateKey() };
+}
 function expToForm(e: Expense): FormState { return { cat: e.cat, desc: e.desc, amt: String(e.amt), ref: e.ref ?? '', budgetId: e.budgetId, dt: e.dt.slice(0, 10) }; }
 
 type FormSheetProps = { f: FormState; setF: React.Dispatch<React.SetStateAction<FormState>>; roleColor: string; approvedBudgets: Budget[] };
@@ -90,7 +98,7 @@ function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
 
 export default function ExpensesScreen() {
   const {
-    role, userName, branchId, expenses, sales, budgets,
+    role, userName, expenses, sales, budgets,
     refreshFinanceState: refreshFinanceStateFromContext,
     addExpense, updateExpenseConfirmed, deleteExpense,
     approveExpenseConfirmed, rejectExpenseConfirmed,
@@ -104,22 +112,11 @@ export default function ExpensesScreen() {
   const isMD  = role === 'md';
   const isCeo = role === 'ceo';
   const isReadOnlyViewer = role === 'admin' || isMD || isCeo;
-  const normalizedUserName = userName.trim().toLowerCase();
-
-  const approvedBudgets = budgets.filter(b =>
-    b.status === 'fully_approved'
-    && (role !== 'mgr' || (
-      !!branchId
-      && (
-        b.branchId === branchId
-        || (
-          !b.branchId
-          && b.by === 'mgr'
-          && b.byName.trim().toLowerCase() === normalizedUserName
-        )
-      )
-    ))
-  );
+  // Manager state is already branch-scoped by the authenticated API response.
+  // Do not apply a second client-session branch check: a stale local branch ID
+  // can otherwise hide a valid approved budget before the request reaches the
+  // server. Expense creation still validates status and branch authoritatively.
+  const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
 
   const [tab, setTab]               = useState(0);
   const [showForm, setShowForm]     = useState(false);

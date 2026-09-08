@@ -26,3 +26,9 @@ The expense creation form should refresh server-authoritative finance state befo
 **Why:** A manager can retain a stale local budget snapshot after another reviewer approves it, making a valid budget appear unavailable or leaving a charge against a record the server no longer recognizes.
 
 **How to apply:** Keep the refresh as a read-only sync; never weaken the API's fully-approved and same-branch checks to compensate for stale client state.
+
+Manager budget visibility in the expense form must trust the authenticated, branch-scoped state response rather than applying a second local-session branch-ID filter.
+
+**Why:** Local session branch metadata can lag canonical server identity and hide a valid approved budget before expense creation reaches the API.
+
+**How to apply:** Filter client options by approval status; enforce same-branch authority in the state response and expense command endpoint.
