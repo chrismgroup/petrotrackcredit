@@ -1430,7 +1430,7 @@ interface AppContextType {
   pumpLockedMeters: Record<string, number>;
   inventoryLog: InventoryLogEntry[];
   stockLogs: StockLogEntry[];
-  upsertStockLogs: (entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[]) => void;
+  upsertStockLogs: (entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[]) => Promise<{ ok: boolean; error?: string }>;
   startupStocks: StartupStock[];
   addStartupStock: (stock: { product: StockProduct; quantity: number; branchId: string }) => void;
   updateStartupStock: (id: string, quantity: number) => void;
@@ -1455,10 +1455,14 @@ interface AppContextType {
   updatePumpReport: (id: number, updates: Partial<Omit<PumpDailyReport, 'id' | 'status' | 'submittedAt' | 'submittedBy' | 'submittedByName'>>) => void;
   correctApprovedPumpReportDate: (id: number, date: string) => boolean;
   updatePrice: (prod: string, price: number, by?: string, reason?: string, targetBranchId?: string) => PriceValidationResult;
+  updatePriceConfirmed: (prod: string, price: number, reason?: string, targetBranchId?: string) => Promise<{ ok: boolean; error?: string }>;
   priceProposals: PriceProposal[];
   addPriceProposal: (prod: string, proposedPrice: number) => PriceValidationResult;
+  addPriceProposalConfirmed: (prod: string, proposedPrice: number) => Promise<{ ok: boolean; error?: string }>;
   approvePriceProposal: (id: number) => PriceValidationResult;
+  approvePriceProposalConfirmed: (id: number) => Promise<{ ok: boolean; error?: string }>;
   updateAndApprovePriceProposal: (id: number, updatedPrice: number) => PriceValidationResult;
+  updateAndApprovePriceProposalConfirmed: (id: number, updatedPrice: number) => Promise<{ ok: boolean; error?: string }>;
   rejectPriceProposal: (id: number, note?: string) => void;
   addTank: (t: Omit<Tank, 'id' | 'dip' | 'op' | 'rv' | 'sl'>) => void;
   addLpgTank: (t: Omit<LPGTank, 'id' | 'op' | 'rv' | 'sl'>) => void;
@@ -1469,23 +1473,31 @@ interface AppContextType {
   updateStaff: (id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId' | 'accountId'>>) => void;
   addExpense: (exp: Omit<Expense, 'id' | 'status' | 'submittedAt'>) => Promise<{ ok: boolean; error?: string }>;
   updateExpense: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => void;
+  updateExpenseConfirmed: (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => Promise<{ ok: boolean; error?: string }>;
   deleteExpense: (id: number) => void;
   forwardExpenseToMD: (id: number, note?: string) => void;
+  forwardExpenseToMDConfirmed: (id: number, note?: string) => Promise<{ ok: boolean; error?: string }>;
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
-  addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
+  addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => Promise<{ ok: boolean; error?: string }>;
   addDip: (dip: Omit<DipRecord, 'id'>) => Promise<{ ok: boolean; error?: string }>;
   updateDip: (id: number, updates: Partial<Omit<DipRecord, 'id'>>) => void;
   deleteDip: (id: number) => void;
   approveDip: (id: number) => void;
   rejectDip: (id: number) => void;
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
+  addDeliveryConfirmed: (rec: Omit<Delivery, 'id'>) => Promise<{ ok: boolean; error?: string }>;
   updateDelivery: (id: number, updates: Partial<Omit<Delivery, 'id'>>) => boolean;
+  updateDeliveryConfirmed: (id: number, updates: Partial<Omit<Delivery, 'id'>>) => Promise<{ ok: boolean; error?: string }>;
   accRecallDelivery: (id: number) => void;
   deleteDelivery: (id: number) => boolean;
   submitDeliveryForApproval: (id: number) => void;
+  submitDeliveryForApprovalConfirmed: (id: number) => Promise<{ ok: boolean; error?: string }>;
   accForwardToMd: (id: number, costPrice: number, accNote: string) => void;
+  accForwardToMdConfirmed: (id: number, costPrice: number, accNote: string) => Promise<{ ok: boolean; error?: string }>;
   approveDelivery: (id: number, sellingPrice: number, mdNote?: string) => void;
+  approveDeliveryConfirmed: (id: number, sellingPrice: number, mdNote?: string) => Promise<{ ok: boolean; error?: string }>;
   rejectDelivery: (id: number, note?: string) => void;
+  rejectDeliveryConfirmed: (id: number, note?: string) => Promise<{ ok: boolean; error?: string }>;
   addMaintenance: (item: { title: string; pri: MaintenanceItem['pri']; date: string }) => Promise<MaintenanceItem | null>;
   acknowledgeMaintenance: (taskId: string) => Promise<boolean>;
   assignMaintenance: (taskId: string, username: string) => Promise<boolean>;
@@ -1500,6 +1512,8 @@ interface AppContextType {
   unarchiveConversation: (peerName: string) => void;
   approveExpense: (id: number) => void;
   rejectExpense: (id: number) => void;
+  approveExpenseConfirmed: (id: number) => Promise<{ ok: boolean; error?: string }>;
+  rejectExpenseConfirmed: (id: number) => Promise<{ ok: boolean; error?: string }>;
   addStaff: (s: Omit<Staff, 'id'>) => number;
   toggleStaff: (id: number) => void;
   deleteStaff: (id: number) => Promise<boolean>;
@@ -1815,6 +1829,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   /* ── Pending-writes tracker: keys with in-flight PUTs are skipped by syncFromServer ── */
   // Prevents the 3-second poll from overwriting data whose PUT hasn't landed yet.
   const pendingWritesRef = useRef<Set<string>>(new Set());
+  const confirmedSliceSignaturesRef = useRef<Map<string, string>>(new Map());
   const inventoryPurgeRequestedRef = useRef(false);
   const SUBMISSION_STATE_KEYS = new Set([
     'pumpDailyReports',
@@ -2358,8 +2373,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   /* ── persistence: save each state slice to AsyncStorage + API when it changes ── */
   function syncSlice(key: string, value: unknown) {
-    AsyncStorage.setItem(key, JSON.stringify(value));
+    const serialized = JSON.stringify(value);
+    AsyncStorage.setItem(key, serialized);
      if (serverHydrationRef.current) return;
+    if (confirmedSliceSignaturesRef.current.get(key) === serialized) {
+      confirmedSliceSignaturesRef.current.delete(key);
+      return;
+    }
     // Block server writes until the initial syncFromServer has completed so that
     // stale AsyncStorage snapshots can't overwrite data written by other users.
     if (!initialSyncDoneRef.current) return;
@@ -2396,6 +2416,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .finally(() => pendingWritesRef.current.delete(key));
+  }
+
+  async function persistConfirmedSlice<T>(
+    key: string,
+    value: T,
+    apply: (value: T) => void,
+  ): Promise<{ ok: boolean; error?: string }> {
+    pendingWritesRef.current.add(key);
+    try {
+      const result = typeof stateApi.putChecked === 'function'
+        ? await stateApi.putChecked<{ ok?: boolean }>(key, value)
+        : await stateApi.put<{ ok?: boolean }>(key, value)
+          .then(data => data === null
+            ? { ok: false as const, error: 'The submission could not be confirmed by the server.' }
+            : { ok: true as const, data });
+      if (!result.ok) return { ok: false, error: result.error };
+      confirmedSliceSignaturesRef.current.set(key, JSON.stringify(value));
+      apply(value);
+      return { ok: true };
+    } finally {
+      pendingWritesRef.current.delete(key);
+    }
   }
   useEffect(() => { if (loaded) syncSlice('companyInfo',       companyInfo); },       [companyInfo, loaded]);
   useEffect(() => { if (loaded) syncSlice('tanks',             tanks); },             [tanks, loaded]);
@@ -2700,7 +2742,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   }, [userName, prices, role, branchId]);
 
-  const addPriceProposal = useCallback((prod: string, proposedPrice: number): PriceValidationResult => {
+  const updatePriceConfirmed = useCallback(async (prod: string, price: number, reason?: string, targetBranchId?: string) => {
+    if (!['admin', 'ceo', 'md', 'mgr'].includes(role ?? '')) {
+      return { ok: false, error: 'You are not authorized to update selling prices.' };
+    }
+    const scopedBranchId = targetBranchId ?? (role === 'mgr' ? branchId ?? undefined : undefined);
+    if (role === 'mgr' && !scopedBranchId) {
+      return { ok: false, error: 'A branch assignment is required to update a selling price.' };
+    }
+    const validation = validatePriceChange({
+      prod,
+      oldPrice: getPriceForProduct(prices, prod, scopedBranchId),
+      newPrice: price,
+      by: userName,
+    });
+    if (!validation.ok) return { ok: false, error: 'Enter a valid product and positive selling price.' };
+    const result = await workflowApi.prices.update(prod, price, reason, scopedBranchId, workflowMeta(0));
+    if (!result?.prices) {
+      return { ok: false, error: result?.error ?? 'The server could not update this selling price.' };
+    }
+    setPrices(result.prices as Prices);
+    if (result.priceHistory) setPriceHistory(history => [result.priceHistory as PriceChange, ...history]);
+    return { ok: true };
+  }, [branchId, prices, role, userName]);
+
+  const addPriceProposalConfirmed = useCallback(async (prod: string, proposedPrice: number) => {
     const proposalBranchId = branchId ?? undefined;
     const currentPrice = getPriceForProduct(prices, prod, proposalBranchId);
     const validation = validatePriceProposal({
@@ -2709,42 +2775,79 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       proposedPrice,
       proposedBy: userName,
     });
-    if (!validation.ok) return validation;
-    void workflowApi.priceProposals.create({ prod, proposedPrice }, workflowMeta(0))
-      .then(result => result?.proposal ? applyProposal(result.proposal as PriceProposal) : workflowFailure('Price proposal'));
+    if (!validation.ok) return { ok: false, error: 'The price proposal is incomplete or invalid.' };
+    const result = await workflowApi.priceProposals.create({ prod, proposedPrice }, workflowMeta(0));
+    if (!result?.proposal) {
+      return { ok: false, error: result?.error ?? 'The server could not save this price proposal.' };
+    }
+    applyProposal(result.proposal as PriceProposal);
     return { ok: true };
   }, [userName, prices, branchId]);
+
+  const addPriceProposal = useCallback((prod: string, proposedPrice: number): PriceValidationResult => {
+    const validation = validatePriceProposal({
+      prod,
+      currentPrice: getPriceForProduct(prices, prod, branchId ?? undefined),
+      proposedPrice,
+      proposedBy: userName,
+    });
+    if (!validation.ok) return validation;
+    void addPriceProposalConfirmed(prod, proposedPrice)
+      .then(result => { if (!result.ok) workflowFailure('Price proposal', result.error); });
+    return { ok: true };
+  }, [addPriceProposalConfirmed, branchId, prices, userName]);
+
+  const approvePriceProposalConfirmed = useCallback(async (id: number) => {
+    const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
+    if (!proposal) return { ok: false, error: 'This proposal is no longer pending.' };
+    const proposalValidation = validatePriceProposal(proposal);
+    if (!proposalValidation.ok) return { ok: false, error: 'This proposal contains an invalid price.' };
+    const result = await workflowApi.priceProposals.decide(id, 'approve', workflowMeta(proposal.workflowRevision ?? 0));
+    if (!result?.proposal) {
+      return { ok: false, error: result?.error ?? 'The server could not approve this price proposal.' };
+    }
+    applyProposal(result.proposal as PriceProposal);
+    if (result.prices) setPrices(result.prices as Prices);
+    if (result.priceHistory) setPriceHistory(history => [result.priceHistory as PriceChange, ...history]);
+    return { ok: true };
+  }, [priceProposals]);
 
   const approvePriceProposal = useCallback((id: number): PriceValidationResult => {
     const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
     if (!proposal) return { ok: false, reason: 'invalid_proposed_price' };
-    const proposalValidation = validatePriceProposal(proposal);
-    if (!proposalValidation.ok) return proposalValidation;
-    void workflowApi.priceProposals.decide(id, 'approve', workflowMeta(proposal.workflowRevision ?? 0))
-      .then(result => {
-        if (!result?.proposal) return workflowFailure('Price proposal approval');
-        applyProposal(result.proposal as PriceProposal);
-        if (result.prices) setPrices(result.prices as Prices);
-        if (result.priceHistory) setPriceHistory(history => [result.priceHistory as PriceChange, ...history]);
-      });
+    const validation = validatePriceProposal(proposal);
+    if (!validation.ok) return validation;
+    void approvePriceProposalConfirmed(id)
+      .then(result => { if (!result.ok) workflowFailure('Price proposal approval', result.error); });
+    return { ok: true };
+  }, [approvePriceProposalConfirmed, priceProposals]);
+
+  const updateAndApprovePriceProposalConfirmed = useCallback(async (id: number, updatedPrice: number) => {
+    const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
+    if (!proposal) return { ok: false, error: 'This proposal is no longer pending.' };
+    const proposalValidation = validatePriceProposal({ ...proposal, proposedPrice: updatedPrice });
+    if (!proposalValidation.ok) return { ok: false, error: 'Enter a valid updated price.' };
+    const result = await workflowApi.priceProposals.decide(id, 'approve', {
+      ...workflowMeta(proposal.workflowRevision ?? 0), editedPrice: updatedPrice,
+    });
+    if (!result?.proposal) {
+      return { ok: false, error: result?.error ?? 'The server could not approve this updated price.' };
+    }
+    applyProposal(result.proposal as PriceProposal);
+    if (result.prices) setPrices(result.prices as Prices);
+    if (result.priceHistory) setPriceHistory(history => [result.priceHistory as PriceChange, ...history]);
     return { ok: true };
   }, [priceProposals]);
 
   const updateAndApprovePriceProposal = useCallback((id: number, updatedPrice: number): PriceValidationResult => {
     const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
     if (!proposal) return { ok: false, reason: 'invalid_proposed_price' };
-    const proposalValidation = validatePriceProposal(proposal);
-    if (!proposalValidation.ok) return proposalValidation;
-    void workflowApi.priceProposals.decide(id, 'approve', {
-      ...workflowMeta(proposal.workflowRevision ?? 0), editedPrice: updatedPrice,
-    }).then(result => {
-      if (!result?.proposal) return workflowFailure('Price proposal approval');
-      applyProposal(result.proposal as PriceProposal);
-      if (result.prices) setPrices(result.prices as Prices);
-      if (result.priceHistory) setPriceHistory(history => [result.priceHistory as PriceChange, ...history]);
-    });
+    const validation = validatePriceProposal({ ...proposal, proposedPrice: updatedPrice });
+    if (!validation.ok) return validation;
+    void updateAndApprovePriceProposalConfirmed(id, updatedPrice)
+      .then(result => { if (!result.ok) workflowFailure('Price proposal approval', result.error); });
     return { ok: true };
-  }, [priceProposals]);
+  }, [priceProposals, updateAndApprovePriceProposalConfirmed]);
 
   const rejectPriceProposal = useCallback((id: number, note?: string) => {
     const proposal = priceProposals.find(p => p.id === id && p.status === 'pending');
@@ -2838,10 +2941,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(result => result?.dip ? applyDip(result.dip as DipRecord, true) : workflowFailure('Dip deletion'));
   }, [dips]);
 
-  const addDelivery = useCallback((rec: Omit<Delivery, 'id'>) => {
-    void workflowApi.deliveries.create({ ...rec, id: genId() }, workflowMeta(0))
-      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery submission'));
+  const addDeliveryConfirmed = useCallback(async (rec: Omit<Delivery, 'id'>) => {
+    const result = await workflowApi.deliveries.create({ ...rec, id: genId() }, workflowMeta(0));
+    if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not save this delivery.' };
+    applyDelivery(result.delivery as Delivery);
+    return { ok: true };
   }, [userName, branchId]);
+
+  const addDelivery = useCallback((rec: Omit<Delivery, 'id'>) => {
+    void addDeliveryConfirmed(rec)
+      .then(result => { if (!result.ok) workflowFailure('Delivery submission', result.error); });
+  }, [addDeliveryConfirmed]);
+
+  const updateDeliveryConfirmed = useCallback(async (id: number, updates: Partial<Omit<Delivery, 'id'>>) => {
+    const existing = deliveries.find(d => d.id === id);
+    if (!existing) return { ok: false, error: 'This delivery no longer exists.' };
+    const isApproved = existing.approvalStatus === 'md_approved' || existing.approvalStatus === 'approved';
+    const isReturnedToOriginator = existing.approvalStatus === 'returned';
+    if (isApproved || (isReturnedToOriginator && role !== 'admin' && (role !== 'mgr' || existing.receivedBy !== userName))) {
+      return { ok: false, error: 'Only the original delivery manager can edit a returned delivery, and approved deliveries are locked.' };
+    }
+    const result = await workflowApi.deliveries.update(id, updates, workflowMeta(existing.workflowVersion ?? 0));
+    if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not update this delivery.' };
+    applyDelivery(result.delivery as Delivery);
+    return { ok: true };
+  }, [deliveries, role, userName]);
 
   const updateDelivery = useCallback((id: number, updates: Partial<Omit<Delivery, 'id'>>) => {
     const existing = deliveries.find(d => d.id === id);
@@ -2851,10 +2975,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (isApproved || (isReturnedToOriginator && role !== 'admin' && (role !== 'mgr' || existing.receivedBy !== userName))) {
       return false;
     }
-    void workflowApi.deliveries.update(id, updates, workflowMeta(existing.workflowVersion ?? 0))
-      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery update'));
+    void updateDeliveryConfirmed(id, updates)
+      .then(result => { if (!result.ok) workflowFailure('Delivery update', result.error); });
     return true;
-  }, [deliveries, role, userName]);
+  }, [deliveries, role, updateDeliveryConfirmed, userName]);
 
   const deleteDelivery = useCallback((id: number) => {
     const delivery = deliveries.find(d => d.id === id);
@@ -2870,19 +2994,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [deliveries, role, userName]);
 
-  const submitDeliveryForApproval = useCallback((id: number) => {
+  const submitDeliveryForApprovalConfirmed = useCallback(async (id: number) => {
     const d = deliveries.find(d => d.id === id);
-    if (!d) return;
-    void workflowApi.deliveries.submit(id, workflowMeta(d.workflowVersion ?? 0))
-      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery submission'));
-  }, [userName, deliveries]);
+    if (!d) return { ok: false, error: 'This delivery no longer exists.' };
+    const result = await workflowApi.deliveries.submit(id, workflowMeta(d.workflowVersion ?? 0));
+    if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not submit this delivery.' };
+    applyDelivery(result.delivery as Delivery);
+    return { ok: true };
+  }, [deliveries]);
+
+  const submitDeliveryForApproval = useCallback((id: number) => {
+    void submitDeliveryForApprovalConfirmed(id)
+      .then(result => { if (!result.ok) workflowFailure('Delivery submission', result.error); });
+  }, [submitDeliveryForApprovalConfirmed]);
+
+  const accForwardToMdConfirmed = useCallback(async (id: number, costPrice: number, accNote: string) => {
+    const d = deliveries.find(d => d.id === id);
+    if (!d) return { ok: false, error: 'This delivery no longer exists.' };
+    const result = await workflowApi.deliveries.forward(id, costPrice, accNote, workflowMeta(d.workflowVersion ?? 0));
+    if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not forward this delivery.' };
+    applyDelivery(result.delivery as Delivery);
+    return { ok: true };
+  }, [deliveries]);
 
   const accForwardToMd = useCallback((id: number, costPrice: number, accNote: string) => {
-    const d = deliveries.find(d => d.id === id);
-    if (!d) return;
-    void workflowApi.deliveries.forward(id, costPrice, accNote, workflowMeta(d.workflowVersion ?? 0))
-      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery forwarding'));
-  }, [userName, deliveries]);
+    void accForwardToMdConfirmed(id, costPrice, accNote)
+      .then(result => { if (!result.ok) workflowFailure('Delivery forwarding', result.error); });
+  }, [accForwardToMdConfirmed]);
 
   const accRecallDelivery = useCallback((id: number) => {
     const d = deliveries.find(d => d.id === id);
@@ -2891,20 +3029,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery recall'));
   }, [userName, deliveries]);
 
-  const approveDelivery = useCallback((id: number, sellingPrice: number, mdNote?: string) => {
+  const approveDeliveryConfirmed = useCallback(async (id: number, sellingPrice: number, mdNote?: string) => {
     const d = deliveries.find(d => d.id === id);
-    if (!d) return;
-    void workflowApi.deliveries.approve(id, sellingPrice, mdNote ?? '', workflowMeta(d.workflowVersion ?? 0))
-      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery approval'));
+    if (!d) return { ok: false, error: 'This delivery no longer exists.' };
+    const result = await workflowApi.deliveries.approve(id, sellingPrice, mdNote ?? '', workflowMeta(d.workflowVersion ?? 0));
+    if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not approve this delivery.' };
+    applyDelivery(result.delivery as Delivery);
     return { ok: true };
   }, [deliveries]);
 
-  const rejectDelivery = useCallback((id: number, note?: string) => {
+  const approveDelivery = useCallback((id: number, sellingPrice: number, mdNote?: string) => {
+    void approveDeliveryConfirmed(id, sellingPrice, mdNote)
+      .then(result => { if (!result.ok) workflowFailure('Delivery approval', result.error); });
+  }, [approveDeliveryConfirmed]);
+
+  const rejectDeliveryConfirmed = useCallback(async (id: number, note?: string) => {
     const d = deliveries.find(d => d.id === id);
-    if (!d || (role !== 'md' && role !== 'admin') || d.approvalStatus !== 'pending_md') return;
-    void workflowApi.deliveries.reject(id, note ?? '', workflowMeta(d.workflowVersion ?? 0))
-      .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery) : workflowFailure('Delivery rejection'));
+    if (!d) return { ok: false, error: 'This delivery no longer exists.' };
+    if ((role !== 'md' && role !== 'admin') || d.approvalStatus !== 'pending_md') {
+      return { ok: false, error: 'This delivery is no longer awaiting MD review.' };
+    }
+    const result = await workflowApi.deliveries.reject(id, note ?? '', workflowMeta(d.workflowVersion ?? 0));
+    if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not return this delivery.' };
+    applyDelivery(result.delivery as Delivery);
+    return { ok: true };
   }, [role, deliveries]);
+
+  const rejectDelivery = useCallback((id: number, note?: string) => {
+    void rejectDeliveryConfirmed(id, note)
+      .then(result => { if (!result.ok) workflowFailure('Delivery rejection', result.error); });
+  }, [rejectDeliveryConfirmed]);
 
   const applyMaintenanceRecord = useCallback((record: MaintenanceItem) => {
     setMaintenance(previous => {
@@ -3047,21 +3201,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setConversationArchived(peerName, false);
   }, [setConversationArchived]);
 
+  const approveExpenseConfirmed = useCallback(async (id: number) => {
+    const expense = expenses.find(item => item.id === id);
+    if (!expense) return { ok: false, error: 'This expense no longer exists.' };
+    const result = await workflowApi.expenses.transition(id, 'approve', workflowMeta(expense.revision ?? 0));
+    if (!result?.record) return { ok: false, error: result?.error ?? 'The server could not approve this expense.' };
+    applyExpense(result.record as Expense);
+    return { ok: true };
+  }, [expenses]);
+
   const approveExpense = useCallback((id: number) => {
-    const expense = expenses.find(item => item.id === id); if (!expense) return;
-    void workflowApi.expenses.transition(id, 'approve', workflowMeta(expense.revision ?? 0))
-      .then(result => result?.record
-        ? applyExpense(result.record as Expense)
-        : workflowFailure('Expense approval', result?.error));
+    void approveExpenseConfirmed(id)
+      .then(result => { if (result && !result.ok) workflowFailure('Expense approval', result.error); });
+  }, [approveExpenseConfirmed]);
+
+  const rejectExpenseConfirmed = useCallback(async (id: number) => {
+    const expense = expenses.find(item => item.id === id);
+    if (!expense) return { ok: false, error: 'This expense no longer exists.' };
+    const result = await workflowApi.expenses.transition(id, 'reject', workflowMeta(expense.revision ?? 0));
+    if (!result?.record) return { ok: false, error: result?.error ?? 'The server could not reject this expense.' };
+    applyExpense(result.record as Expense);
+    return { ok: true };
   }, [expenses]);
 
   const rejectExpense = useCallback((id: number) => {
-    const expense = expenses.find(item => item.id === id); if (!expense) return;
-    void workflowApi.expenses.transition(id, 'reject', workflowMeta(expense.revision ?? 0))
-      .then(result => result?.record
-        ? applyExpense(result.record as Expense)
-        : workflowFailure('Expense rejection', result?.error));
-  }, [expenses]);
+    void rejectExpenseConfirmed(id)
+      .then(result => { if (result && !result.ok) workflowFailure('Expense rejection', result.error); });
+  }, [rejectExpenseConfirmed]);
 
   const addBudget = useCallback((b: Omit<Budget, 'id' | 'workflow'>) => {
     void workflowApi.budgets.create(b, workflowMeta(0))
@@ -3583,11 +3749,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return { ok: false, error };
   }, [applyExpense, workflowFailure]);
 
-  const updateExpense = useCallback((id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => {
-    const expense = expenses.find(item => item.id === id); if (!expense) return;
-    void workflowApi.expenses.update(id, { ...expense, ...updates }, workflowMeta(expense.revision ?? 0))
-      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense update'));
+  const updateExpenseConfirmed = useCallback(async (id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => {
+    const expense = expenses.find(item => item.id === id);
+    if (!expense) return { ok: false, error: 'This expense no longer exists.' };
+    const result = await workflowApi.expenses.update(id, { ...expense, ...updates }, workflowMeta(expense.revision ?? 0));
+    if (!result?.record) return { ok: false, error: result?.error ?? 'The server could not update this expense.' };
+    applyExpense(result.record as Expense);
+    return { ok: true };
   }, [expenses]);
+
+  const updateExpense = useCallback((id: number, updates: Partial<Pick<Expense, 'cat' | 'desc' | 'amt' | 'ref' | 'dt'>>) => {
+    void updateExpenseConfirmed(id, updates)
+      .then(result => { if (!result.ok) workflowFailure('Expense update', result.error); });
+  }, [updateExpenseConfirmed]);
 
   const deleteExpense = useCallback((id: number) => {
     const expense = expenses.find(item => item.id === id); if (!expense) return;
@@ -3595,12 +3769,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(result => result?.record ? applyExpense(result.record as Expense, result.deleted === true) : workflowFailure('Expense deletion'));
   }, [expenses]);
 
-  const forwardExpenseToMD = useCallback((id: number, note?: string) => {
+  const forwardExpenseToMDConfirmed = useCallback(async (id: number, note?: string) => {
     const exp = expenses.find(e => e.id === id);
-    if (!exp) return;
-    void workflowApi.expenses.transition(id, 'forward', workflowMeta(exp.revision ?? 0))
-      .then(result => result?.record ? applyExpense(result.record as Expense) : workflowFailure('Expense forwarding'));
+    if (!exp) return { ok: false, error: 'This expense no longer exists.' };
+    const result = await workflowApi.expenses.transition(id, 'forward', workflowMeta(exp.revision ?? 0));
+    if (!result?.record) return { ok: false, error: result?.error ?? 'The server could not forward this expense.' };
+    applyExpense(result.record as Expense);
+    return { ok: true };
   }, [expenses]);
+
+  const forwardExpenseToMD = useCallback((id: number, note?: string) => {
+    void forwardExpenseToMDConfirmed(id, note)
+      .then(result => { if (!result.ok) workflowFailure('Expense forwarding', result.error); });
+  }, [forwardExpenseToMDConfirmed]);
 
   const addCompanyFile = useCallback((file: Omit<CompanyFile, 'id' | 'dt'>) => {
     setCompanyFiles(f => [...f, { ...file, id: genId(), dt: nowTs() }]);
@@ -3694,29 +3875,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Start-up stock deleted', user: userName, detail: `Start-up stock #${id} removed`, ts: nowTs() }, ...a]);
   }, [role, userName]);
 
-  const upsertStockLogs = useCallback((entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[]) => {
-    if (entries.length === 0) return;
+  const upsertStockLogs = useCallback(async (entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[]) => {
+    if (entries.length === 0) return { ok: false, error: 'There are no stock calculations to save.' };
     const createdAt = nowTs();
-    setStockLogs(prev => {
-      const next = new Map<string, StockLogEntry>(
-        prev.map(entry => [`${entry.branchId}|${entry.product}|${entry.businessDate}`, entry]),
-      );
-      entries.forEach(entry => {
-        const key = `${entry.branchId}|${entry.product}|${entry.businessDate}`;
-        const existing = next.get(key);
-        next.set(key, {
-          ...entry,
-          id: existing?.id ?? `stock-log-${genId()}`,
-          createdBy: existing?.createdBy ?? userName,
-          createdAt: existing?.createdAt ?? createdAt,
-          updatedBy: userName,
-          updatedAt: createdAt,
-        });
+    const nextByKey = new Map<string, StockLogEntry>(
+      stockLogs.map(entry => [`${entry.branchId}|${entry.product}|${entry.businessDate}`, entry]),
+    );
+    entries.forEach(entry => {
+      const key = `${entry.branchId}|${entry.product}|${entry.businessDate}`;
+      const existing = nextByKey.get(key);
+      nextByKey.set(key, {
+        ...entry,
+        id: existing?.id ?? `stock-log-${genId()}`,
+        createdBy: existing?.createdBy ?? userName,
+        createdAt: existing?.createdAt ?? createdAt,
+        updatedBy: userName,
+        updatedAt: createdAt,
       });
-      return Array.from(next.values()).sort((a, b) =>
-        b.businessDate.localeCompare(a.businessDate) || a.branchId.localeCompare(b.branchId) || a.product.localeCompare(b.product),
-      );
     });
+    const next = Array.from(nextByKey.values()).sort((a, b) =>
+      b.businessDate.localeCompare(a.businessDate) || a.branchId.localeCompare(b.branchId) || a.product.localeCompare(b.product),
+    );
+    const result = await persistConfirmedSlice('stockLogs', next, setStockLogs);
+    if (!result.ok) return result;
     setAudit(a => [{
       id: genId(),
       action: 'Stock log created',
@@ -3724,12 +3905,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       detail: `${entries.length} branch/product stock calculation${entries.length === 1 ? '' : 's'} recorded.`,
       ts: createdAt,
     }, ...a]);
-  }, [userName]);
+    return { ok: true };
+  }, [stockLogs, userName]);
 
-  const addDeliveryEvidence = useCallback((ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => {
-    setDeliveryEvidences(e => [...e, { ...ev, id: genId(), dt: nowTs() }]);
+  const addDeliveryEvidence = useCallback(async (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => {
+    const evidence = { ...ev, id: genId(), dt: nowTs() };
+    const result = await persistConfirmedSlice('deliveryEvidences', [...deliveryEvidences, evidence], setDeliveryEvidences);
+    if (!result.ok) return result;
     setAudit(a => [{ id: genId(), action: 'Delivery evidence added', user: userName, detail: `${ev.name} for delivery #${ev.delivId}`, ts: nowTs() }, ...a]);
-  }, [userName]);
+    return { ok: true };
+  }, [deliveryEvidences, userName]);
 
   const setPumpInitialMeter = useCallback((pumpId: string, meter: number) => {
     setPumpInitialMeters(m => ({ ...m, [pumpId]: meter }));
@@ -4695,17 +4880,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        marketCompetitors, addMarketCompetitor, updateMarketCompetitor, deleteMarketCompetitor,
        addBroadcast, addCallRecord,
       audit, departments, companyFiles, deliveryEvidences, myFolders, myFolderFiles,
-      priceProposals, addPriceProposal, approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
-      updatePrice, addTank, addLpgTank, addPump,
+      priceProposals, addPriceProposal, addPriceProposalConfirmed, approvePriceProposal, approvePriceProposalConfirmed, updateAndApprovePriceProposal, updateAndApprovePriceProposalConfirmed, rejectPriceProposal,
+      updatePrice, updatePriceConfirmed, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
-       addExpense, updateExpense, deleteExpense, forwardExpenseToMD, addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
-       addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, updateDelivery, deleteDelivery, submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery, addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, deleteMaintenance, addSales, updateSales, deleteSales,
+       addExpense, updateExpense, updateExpenseConfirmed, deleteExpense, forwardExpenseToMD, forwardExpenseToMDConfirmed, addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
+       addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, addDeliveryConfirmed, updateDelivery, updateDeliveryConfirmed, deleteDelivery, submitDeliveryForApproval, submitDeliveryForApprovalConfirmed, accForwardToMd, accForwardToMdConfirmed, accRecallDelivery, approveDelivery, approveDeliveryConfirmed, rejectDelivery, rejectDeliveryConfirmed, addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
         stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
         setPumpInitialMeter, lockPumpMeter, unlockPumpMeter, resetOperationalData,
       submitPumpReport, submitPumpReportConfirmed, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, adminReturnApprovedPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
-         sendMessage, markRead, archiveConversation, unarchiveConversation, approveExpense, rejectExpense,
+          sendMessage, markRead, archiveConversation, unarchiveConversation, approveExpense, approveExpenseConfirmed, rejectExpense, rejectExpenseConfirmed,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
       addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,

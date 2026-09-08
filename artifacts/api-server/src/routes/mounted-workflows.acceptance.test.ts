@@ -498,6 +498,22 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(proposalApproved.status, 200);
     const proposalReplay = await command(ceo.token, `/workflows/price-proposals/${proposalId}/approve`, proposalApproveBody);
     assert.equal(proposalReplay.status, 200);
+
+    const directPriceBody = {
+      price: 915,
+      reason: "Depot price change",
+      branchId: branchA,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    };
+    const directPrice = await command(manager.token, "/workflows/prices/PMS", directPriceBody);
+    assert.equal(directPrice.status, 200);
+    assert.equal(
+      Number((directPrice.body.prices as { branchPrices?: Record<string, Record<string, number>> }).branchPrices?.[branchA]?.PMS),
+      915,
+    );
+    const directPriceReplay = await command(manager.token, "/workflows/prices/PMS", directPriceBody);
+    assert.equal(directPriceReplay.status, 200);
     assert.equal(proposalReplay.body.replayed, true);
     const prices = await readState("prices") as JsonRecord;
     const branchPrices = prices.branchPrices as Record<string, Record<string, number>>;

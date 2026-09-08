@@ -91,8 +91,8 @@ function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
 export default function ExpensesScreen() {
   const {
     role, userName, expenses, sales, budgets,
-    addExpense, updateExpense, deleteExpense,
-    forwardExpenseToMD, approveExpense, rejectExpense,
+    addExpense, updateExpenseConfirmed, deleteExpense,
+    forwardExpenseToMDConfirmed, approveExpenseConfirmed, rejectExpenseConfirmed,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
@@ -167,7 +167,11 @@ export default function ExpensesScreen() {
     }
     requestDateConfirmation('expense', form.dt, async () => {
       if (editTarget) {
-        updateExpense(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, dt: form.dt });
+        const result = await updateExpenseConfirmed(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, dt: form.dt });
+        if (!result.ok) {
+          Alert.alert('Expense not updated', result.error ?? 'The server could not update this expense. Your entries remain available so you can retry.');
+          return;
+        }
       } else {
         const result = await addExpense({
           dt: form.dt,
@@ -192,9 +196,13 @@ export default function ExpensesScreen() {
     ]);
   }
 
-  function handleForwardConfirm() {
+  async function handleForwardConfirm() {
     if (!fwdTarget) return;
-    forwardExpenseToMD(fwdTarget.id, fwdNote || undefined);
+    const result = await forwardExpenseToMDConfirmed(fwdTarget.id, fwdNote || undefined);
+    if (!result.ok) {
+      Alert.alert('Expense not forwarded', result.error ?? 'The server could not forward this expense. Your note remains available so you can retry.');
+      return;
+    }
     setFwdTarget(null); setFwdNote('');
   }
 
@@ -360,12 +368,18 @@ export default function ExpensesScreen() {
               {/* MD: approve/reject */}
               {mdCanAct(exp) ? (
                 <View style={styles.actionRow}>
-                  <TouchableOpacity onPress={() => rejectExpense(exp.id)}
+                  <TouchableOpacity onPress={async () => {
+                    const result = await rejectExpenseConfirmed(exp.id);
+                    if (!result?.ok) Alert.alert('Expense not rejected', result?.error ?? 'The server could not reject this expense.');
+                  }}
                     style={[styles.actionBtn, { borderColor: '#791F1F', flex: 1 }]}>
                     <Ionicons name="close" size={13} color="#791F1F" />
                     <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Reject</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => approveExpense(exp.id)} style={styles.approveBtn}>
+                  <TouchableOpacity onPress={async () => {
+                    const result = await approveExpenseConfirmed(exp.id);
+                    if (!result?.ok) Alert.alert('Expense not approved', result?.error ?? 'The server could not approve this expense.');
+                  }} style={styles.approveBtn}>
                     <Ionicons name="checkmark" size={13} color="#fff" />
                     <Text style={styles.approveBtnText}>Approve</Text>
                   </TouchableOpacity>

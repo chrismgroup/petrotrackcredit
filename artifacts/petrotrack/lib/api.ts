@@ -247,6 +247,9 @@ export type DipWorkflowResponse<T> = { dip: T; inventoryLog?: unknown[]; replaye
 export type PriceProposalWorkflowResponse<T> = {
   proposal: T; prices?: unknown; priceHistory?: unknown; replayed?: boolean;
 };
+export type PriceWorkflowResponse = {
+  prices: unknown; priceHistory: unknown; replayed?: boolean;
+};
 
 const workflowPath = (id: string | number) => encodeURIComponent(String(id));
 export const workflowApi = {
@@ -291,6 +294,14 @@ export const workflowApi = {
   priceProposals: {
     create: <T>(proposal: T, command: WorkflowCommand) => authenticatedJsonCommand<PriceProposalWorkflowResponse<T>>('POST', '/workflows/price-proposals', { proposal, ...command }),
     decide: <T>(id: number, decision: 'approve' | 'reject', command: WorkflowCommand & { editedPrice?: number; note?: string }) => authenticatedJsonCommand<PriceProposalWorkflowResponse<T>>('POST', `/workflows/price-proposals/${workflowPath(id)}/${decision}`, command),
+  },
+  prices: {
+    update: (product: string, price: number, reason: string | undefined, branchId: string | undefined, command: WorkflowCommand) =>
+      authenticatedJsonCommand<PriceWorkflowResponse>(
+        'POST',
+        `/workflows/prices/${workflowPath(product)}`,
+        { price, reason, branchId, ...command },
+      ),
   },
 };
 
