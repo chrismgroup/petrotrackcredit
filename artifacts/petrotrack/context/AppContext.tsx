@@ -3292,17 +3292,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const forwardBudget = useCallback((id: number, note: string) => {
     const budget = budgets.find(item => item.id === id); if (!budget) return;
-    void workflowApi.budgets.transition(id, 'forward', note, workflowMeta(budget.revision ?? 0)).then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget forwarding'));
+    void workflowApi.budgets.transition(id, 'forward', note, workflowMeta(budget.revision ?? 0))
+      .then(result => result?.record
+        ? applyBudget(result.record as Budget)
+        : workflowFailure('Budget forwarding', result?.error));
   }, [budgets]);
 
   const approveBudget = useCallback((id: number, note: string) => {
     const budget = budgets.find(item => item.id === id); if (!budget) return;
-    void workflowApi.budgets.transition(id, 'approve', note, workflowMeta(budget.revision ?? 0)).then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget approval'));
+    void workflowApi.budgets.transition(id, 'approve', note, workflowMeta(budget.revision ?? 0))
+      .then(result => result?.record
+        ? applyBudget(result.record as Budget)
+        : workflowFailure('Budget approval', result?.error));
   }, [budgets]);
 
   const rejectBudget = useCallback((id: number, note: string) => {
     const budget = budgets.find(item => item.id === id); if (!budget) return;
-    void workflowApi.budgets.transition(id, 'reject', note, workflowMeta(budget.revision ?? 0)).then(result => result?.record ? applyBudget(result.record as Budget) : workflowFailure('Budget rejection'));
+    void workflowApi.budgets.transition(id, 'reject', note, workflowMeta(budget.revision ?? 0))
+      .then(result => result?.record
+        ? applyBudget(result.record as Budget)
+        : workflowFailure('Budget rejection', result?.error));
   }, [budgets]);
 
   const addStaff = useCallback((s: Omit<Staff, 'id'>) => {
