@@ -32,8 +32,8 @@ function stockLogStatusLabel(status: StockLogStatus): string {
     shortage: 'Shortage',
     excess: 'Excess',
     awaiting_opening: 'Awaiting opening',
-    awaiting_dip: 'Awaiting tank dip',
-    not_applicable: 'No tank dip required',
+    awaiting_dip: 'Awaiting reconciliation',
+    not_applicable: 'No reconciliation required',
   }[status];
 }
 
@@ -253,12 +253,6 @@ function StockLogPanel() {
           <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Sold</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.sold.toLocaleString()}</Text></View>
           <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Expected stock</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.bookStock === null ? '—' : entry.bookStock.toLocaleString()}</Text></View>
         </View>
-        <View style={[styles.stockCompare, { borderTopColor: colors.border }]}>
-          <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Tank dip</Text>
-          <Text style={[styles.stockCompareValue, { color: colors.text }]}>{entry.tankDip === null ? 'Not recorded' : `${entry.tankDip.toLocaleString()} ${entry.unit}`}</Text>
-          <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Variance</Text>
-          <Text style={[styles.stockCompareValue, { color: statusColor }]}>{entry.discrepancy === null ? '—' : `${entry.discrepancy > 0 ? '+' : ''}${entry.discrepancy.toLocaleString()} ${entry.unit}`}</Text>
-        </View>
       </View>
     );
   }
@@ -269,7 +263,7 @@ function StockLogPanel() {
         <View style={styles.stockHeroOrb} />
         <Text style={styles.stockEyebrow}>OPERATIONS · INVENTORY CONTROL</Text>
         <Text style={styles.stockHeroTitle}>Daily stock log</Text>
-        <Text style={styles.stockHeroSubtitle}>Today&apos;s expected book stock is compared only with today&apos;s approved tank dip. Older dips are never carried into a new business day.</Text>
+        <Text style={styles.stockHeroSubtitle}>Track opening stock, deliveries, pump sales and the expected balance for each business day.</Text>
         <View style={styles.stockMarquee}>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{summaryEntries.length}</Text><Text style={styles.stockMarqueeLabel}>Products</Text></View>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{balancedCount}</Text><Text style={styles.stockMarqueeLabel}>Balanced</Text></View>
@@ -298,7 +292,7 @@ function StockLogPanel() {
         <View style={[styles.stockEmpty, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="file-tray-outline" size={28} color={colors.textMuted} />
           <Text style={[styles.stockEmptyTitle, { color: colors.text }]}>No stock log inputs yet</Text>
-          <Text style={[styles.stockEmptyText, { color: colors.textMuted }]}>Configure a product in Stock Snapshot, then record deliveries, pump sales, or tank dips. The Stock Log will extract the live history automatically.</Text>
+          <Text style={[styles.stockEmptyText, { color: colors.textMuted }]}>Configure a product in Stock Snapshot, then record deliveries or pump sales. The Stock Log will extract the live history automatically.</Text>
         </View>
       ) : null}
       <View style={styles.stockHistoryHeading}>
@@ -355,7 +349,7 @@ export default function OperationsScreen() {
   const isMD       = role === 'md';
   const isAdmin    = role === 'admin';
   const canApprove = isMD || isAdmin;
-  const canSeeDips = isMgr || canApprove;
+  const canSeeDips = false;
   const normalizedRequestedTab = Array.isArray(requestedTab) ? requestedTab[0] : requestedTab;
   const hasDipApprovalRoute = normalizedRequestedTab === 'dip' || normalizedRequestedTab === 'dip-approvals';
   const [departmentTab, setDepartmentTab] = useState(
