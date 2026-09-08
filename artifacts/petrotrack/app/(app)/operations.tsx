@@ -9,7 +9,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import {
-  DEFAULT_MGR_PERMS, businessDateKey, calculateDailyOperationalStock, calculateDailyStockLogBalance, carryForwardApprovedDip, currentBusinessDateKey, dipReadingToLiters,
+  DEFAULT_MGR_PERMS, businessDateKey, calculateDailyOperationalStock, calculateDailyStockLogBalance, currentBusinessDateKey, dipReadingToLiters,
   getCurrentTankStock, startupStockSeedDate,
   ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
@@ -75,7 +75,7 @@ function makeStockLogStatus(
   return 'balanced';
 }
 
-function stockLogValueSignature(entry: Pick<StockLogEntry, 'branchId' | 'product' | 'businessDate' | 'openingQuantity' | 'delivered' | 'sold' | 'bookStock' | 'tankDip' | 'dipBusinessDate' | 'discrepancy' | 'unit' | 'status' | 'openingSource'>): string {
+function stockLogValueSignature(entry: Pick<StockLogEntry, 'branchId' | 'product' | 'businessDate' | 'openingQuantity' | 'delivered' | 'sold' | 'bookStock' | 'tankDip' | 'discrepancy' | 'unit' | 'status' | 'openingSource'>): string {
   return [
     entry.branchId,
     entry.product,
@@ -85,7 +85,6 @@ function stockLogValueSignature(entry: Pick<StockLogEntry, 'branchId' | 'product
     entry.sold,
     entry.bookStock,
     entry.tankDip,
-    entry.dipBusinessDate ?? '',
     entry.discrepancy,
     entry.unit,
     entry.status,
@@ -150,7 +149,6 @@ function StockLogPanel() {
 
         const todayDip = findLatestDipForProduct(
           dips, businessDate, branch.id, product, branchTanks, branchLpgTanks,
-          { onOrBeforeDate: true },
         );
         const startupRecord = startupStocks.find(stock => stock.branchId === branch.id && stock.product === product);
         const stockBook = calculateDailyOperationalStock(
@@ -168,14 +166,7 @@ function StockLogPanel() {
           : startupRecord && businessDate === startupStockSeedDate(startupRecord)
             ? 'startup_seed'
             : 'previous_log';
-        const dipBusinessDate = businessDateKey(todayDip?.dt);
-        const approvedDip = stockDipForProduct(todayDip, product, branchTanks, branchLpgTanks);
-        const dipDateBookStock = dipBusinessDate && dipBusinessDate !== businessDate
-          ? calculateDailyOperationalStock(
-              startupRecord, product, branch.id, deliveries, pumpDailyReports, dipBusinessDate, branchPumps,
-            ).bookStock
-          : stockBook.bookStock;
-        const tankDip = carryForwardApprovedDip(approvedDip, dipDateBookStock, stockBook.bookStock);
+        const tankDip = stockDipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const balance = calculateDailyStockLogBalance(
           stockBook.startupStock,
           stockBook.delivered,
@@ -194,7 +185,6 @@ function StockLogPanel() {
           sold: stockBook.sold,
           bookStock: balance.bookStock,
           tankDip,
-          dipBusinessDate: dipBusinessDate || undefined,
           discrepancy: balance.variance,
           unit: unitForProd(product) as 'L' | 'kg',
           status: makeStockLogStatus(openingQuantity, tankDip, balance.variance, dipRequired),
@@ -260,13 +250,8 @@ function StockLogPanel() {
           <View style={styles.stockMetric}><Text style={[styles.stockMetricLabel, { color: colors.textSubtle }]}>Expected stock</Text><Text style={[styles.stockMetricValue, { color: colors.text }]}>{entry.bookStock === null ? '—' : entry.bookStock.toLocaleString()}</Text></View>
         </View>
         <View style={[styles.stockCompare, { borderTopColor: colors.border }]}>
-          <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>
-            {entry.dipBusinessDate && entry.dipBusinessDate !== entry.businessDate ? 'Physical stock estimate' : 'Tank dip'}
-          </Text>
+          <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Tank dip</Text>
           <Text style={[styles.stockCompareValue, { color: colors.text }]}>{entry.tankDip === null ? 'Not recorded' : `${entry.tankDip.toLocaleString()} ${entry.unit}`}</Text>
-          {entry.dipBusinessDate && entry.dipBusinessDate !== entry.businessDate ? (
-            <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Carried forward from approved dip on {fmtDate(entry.dipBusinessDate)}</Text>
-          ) : null}
           <Text style={[styles.stockCompareLabel, { color: colors.textMuted }]}>Variance</Text>
           <Text style={[styles.stockCompareValue, { color: statusColor }]}>{entry.discrepancy === null ? '—' : `${entry.discrepancy > 0 ? '+' : ''}${entry.discrepancy.toLocaleString()} ${entry.unit}`}</Text>
         </View>
@@ -280,7 +265,7 @@ function StockLogPanel() {
         <View style={styles.stockHeroOrb} />
         <Text style={styles.stockEyebrow}>OPERATIONS · INVENTORY CONTROL</Text>
         <Text style={styles.stockHeroTitle}>Daily stock log</Text>
-        <Text style={styles.stockHeroSubtitle}>The latest approved dip is carried forward with later deliveries and approved sales, preserving the approved reconciliation variance until the next dip.</Text>
+        <Text style={styles.stockHeroSubtitle}>Today&apos;s expected book stock is compared only with today&apos;s approved tank dip. Older dips are never carried into a new business day.</Text>
         <View style={styles.stockMarquee}>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{summaryEntries.length}</Text><Text style={styles.stockMarqueeLabel}>Products</Text></View>
           <View style={styles.stockMarqueeItem}><Text style={styles.stockMarqueeValue}>{balancedCount}</Text><Text style={styles.stockMarqueeLabel}>Balanced</Text></View>
@@ -380,6 +365,7 @@ export default function OperationsScreen() {
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs]                 = useState('');
   const [appliesOn, setAppliesOn]     = useState('');
+  const [isSubmittingDip, setIsSubmittingDip] = useState(false);
   const [approvalSearch, setApprovalSearch] = useState('');
 
   useEffect(() => {
@@ -399,7 +385,11 @@ export default function OperationsScreen() {
   const visibleTanks    = isMgr && !perms.canPetrolTanks ? [] : canSeeAllTanks ? tanks : tanks.filter(inMyBranch);
   const visibleLpgTanks = isMgr && !perms.canLpgTanks   ? [] : canSeeAllTanks ? lpgTanks : lpgTanks.filter(inMyBranch);
   const canDip          = isMgr;
-  const hasPendingDip   = canDip && dips.some(d => d.by === userName && d.status === 'pending');
+  const hasPendingDipForDate = canDip && Boolean(appliesOn) && dips.some(d =>
+    d.by === userName &&
+    d.status === 'pending' &&
+    businessDateKey(d.dt) === businessDateKey(appliesOn),
+  );
   const visiblePetrolTankIds = new Set(visibleTanks.map(tank => tank.id));
   const visibleLpgTankIds = new Set(visibleLpgTanks.map(tank => tank.id));
   const dipHasVisibleReading = (dip: (typeof dips)[number]) =>
@@ -407,6 +397,7 @@ export default function OperationsScreen() {
     Object.keys(dip.rd ?? {}).some(tankId => visiblePetrolTankIds.has(tankId)) ||
     Object.keys(dip.lpg ?? {}).some(tankId => visibleLpgTankIds.has(tankId));
   function handleDipSubmit() {
+    if (isSubmittingDip) return;
     if (!appliesOn) {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
       return;
@@ -431,10 +422,16 @@ export default function OperationsScreen() {
     const lpg: Record<string, number> = {};
     for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
-    requestDateConfirmation('tank dip', appliesOn, () => {
-      addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
+    requestDateConfirmation('tank dip', appliesOn, async () => {
+      setIsSubmittingDip(true);
+      const result = await addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
+      setIsSubmittingDip(false);
+      if (!result.ok) {
+        Alert.alert('Dip not submitted', result.error ?? 'The server could not save this tank dip. Please try again.');
+        return;
+      }
       setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
-      Alert.alert('Dip Submitted', 'Tank readings recorded successfully.');
+      Alert.alert('Dip Submitted', 'Tank readings were saved and sent to MD for approval.');
     });
   }
 
@@ -602,16 +599,21 @@ export default function OperationsScreen() {
                 helper="Select the business date for this reading. Approval time is stored separately."
               />
 
-              {canDip && hasPendingDip && (
+              {canDip && hasPendingDipForDate && (
                 <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517' }]}>
                   <Ionicons name="time" size={16} color="#BA7517" />
-                  <Text style={[styles.pendingText, { color: '#BA7517' }]}>You have a dip record awaiting MD approval.</Text>
+                  <Text style={[styles.pendingText, { color: '#BA7517' }]}>This date already has a dip record awaiting MD approval.</Text>
                 </View>
               )}
-              {canDip && !hasPendingDip && (
-                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor }]} onPress={handleDipSubmit} activeOpacity={0.85}>
+              {canDip && !hasPendingDipForDate && (
+                <TouchableOpacity
+                  style={[styles.submitBtn, { backgroundColor: roleColor, opacity: isSubmittingDip ? 0.65 : 1 }]}
+                  onPress={handleDipSubmit}
+                  disabled={isSubmittingDip}
+                  activeOpacity={0.85}
+                >
                   <Ionicons name="save" size={18} color="#fff" />
-                  <Text style={styles.submitBtnText}>Submit Dip Record</Text>
+                  <Text style={styles.submitBtnText}>{isSubmittingDip ? 'Submitting…' : 'Submit Dip Record'}</Text>
                 </TouchableOpacity>
               )}
 

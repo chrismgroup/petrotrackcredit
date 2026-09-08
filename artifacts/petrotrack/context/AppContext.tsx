@@ -295,7 +295,6 @@ export interface StockLogEntry {
   sold: number;
   bookStock: number | null;
   tankDip: number | null;
-  dipBusinessDate?: string;
   discrepancy: number | null;
   unit: 'L' | 'kg';
   status: StockLogStatus;
@@ -304,15 +303,6 @@ export interface StockLogEntry {
   createdAt: string;
   updatedBy?: string;
   updatedAt?: string;
-}
-
-export function carryForwardApprovedDip(
-  approvedDip: number | null,
-  bookStockOnDipDate: number | null,
-  currentBookStock: number | null,
-): number | null {
-  if (approvedDip === null || bookStockOnDipDate === null || currentBookStock === null) return approvedDip;
-  return approvedDip + (currentBookStock - bookStockOnDipDate);
 }
 export interface CompanyInfo {
   name: string; rcNumber: string; tin: string; address: string;
@@ -1478,7 +1468,7 @@ interface AppContextType {
   forwardExpenseToMD: (id: number, note?: string) => void;
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
   addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => void;
-  addDip: (dip: Omit<DipRecord, 'id'>) => void;
+  addDip: (dip: Omit<DipRecord, 'id'>) => Promise<{ ok: boolean; error?: string }>;
   updateDip: (id: number, updates: Partial<Omit<DipRecord, 'id'>>) => void;
   deleteDip: (id: number) => void;
   approveDip: (id: number) => void;
@@ -2789,10 +2779,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Staff record updated', user: userName, detail: `Staff ID ${id} updated`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const addDip = useCallback((dip: Omit<DipRecord, 'id'>) => {
-    void workflowApi.dips.create({ dt: dip.dt, rd: dip.rd, lpg: dip.lpg, obs: dip.obs }, workflowMeta(0))
-      .then(result => result?.dip ? applyDip(result.dip as DipRecord) : workflowFailure('Dip submission'));
-  }, [userName, branchId]);
+  const addDip = useCallback(async (dip: Omit<DipRecord, 'id'>) => {
+    const result = await workflowApi.dips.create(
+      { dt: dip.dt, rd: dip.rd, lpg: dip.lpg, obs: dip.obs },
+      workflowMeta(0),
+    );
+    if (!result?.dip) {
+      const error = result?.error || 'The server could not save this tank dip. Check your connection and try again.';
+      void syncFromServer();
+      return { ok: false, error };
+    }
+    applyDip(result.dip as DipRecord);
+    return { ok: true };
+  }, [applyDip]);
 
   const approveDip = useCallback((id: number) => {
     const rec = dips.find(r => r.id === id);

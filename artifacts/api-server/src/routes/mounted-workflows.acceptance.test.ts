@@ -431,6 +431,18 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(dipCreated.status, 201);
     const dip = dipCreated.body.dip as JsonRecord;
     const dipId = String(dip.id);
+    const duplicateDailyDip = await command(manager.token, "/workflows/dips", {
+      dip: {
+        dt: "2026-10-03",
+        rd: { [tankId]: 1_130 },
+        lpg: {},
+        obs: `${marker}-duplicate`,
+      },
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-dip-duplicate-date`,
+    });
+    assert.equal(duplicateDailyDip.status, 409);
+    assert.match(String(duplicateDailyDip.body.error), /awaiting MD approval/i);
     for (const [reviewer, token] of [
       ["MD", md.token],
       ["CEO", ceo.token],

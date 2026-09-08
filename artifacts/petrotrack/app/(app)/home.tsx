@@ -25,7 +25,6 @@ import {
   SCREEN_ROUTES,
   calculateDailyOperationalStock,
   calculateDailyStockLogBalance,
-  carryForwardApprovedDip,
   dipReadingToLiters,
   unitForProd,
   useBusinessDateKey,
@@ -79,7 +78,6 @@ interface ProductStockSnapshot {
   sales: number;
   bookStock: number | null;
   submittedTankDip: number | null;
-  dipBusinessDate?: string;
   variance: number | null;
   unit: string;
 }
@@ -556,7 +554,6 @@ export default function HomeScreen() {
           );
           const todayDip = findLatestDipForProduct(
              dips, todayKey, scope.branchId, product, branchTanks, branchLpgTanks,
-             { onOrBeforeDate: true },
           );
           const stockBook = calculateDailyOperationalStock(
              startupRecord,
@@ -567,14 +564,7 @@ export default function HomeScreen() {
             todayKey,
             pumps,
           );
-        const dipBusinessDate = businessDateKey(todayDip?.dt);
-        const approvedDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
-        const dipDateBookStock = dipBusinessDate && dipBusinessDate !== todayKey
-          ? calculateDailyOperationalStock(
-              startupRecord, product, scope.branchId, deliveries, pumpDailyReports, dipBusinessDate, pumps,
-            ).bookStock
-          : stockBook.bookStock;
-        const submittedTankDip = carryForwardApprovedDip(approvedDip, dipDateBookStock, stockBook.bookStock);
+        const submittedTankDip = dipForProduct(todayDip, product, branchTanks, branchLpgTanks);
         const variance = calculateDailyStockLogBalance(
            stockBook.startupStock,
           stockBook.delivered,
@@ -589,7 +579,6 @@ export default function HomeScreen() {
           sales: stockBook.sold,
           bookStock: stockBook.bookStock,
           submittedTankDip,
-           dipBusinessDate: dipBusinessDate || undefined,
           variance,
           unit: unitForProd(product),
         };
@@ -946,7 +935,7 @@ export default function HomeScreen() {
               <View style={[s.snapshotIntro, { backgroundColor: colors.infoBg, borderColor: colors.info + '30' }]}>
                 <Ionicons name="analytics-outline" size={16} color={colors.info} />
                     <Text style={[s.snapshotIntroText, { color: colors.textMuted }]}>
-                   Latest approved tank dips are carried forward with subsequent deliveries and approved shift sales, keeping current physical stock and variance aligned
+                   Today&apos;s expected book stock is compared only with today&apos;s approved tank dip after today&apos;s approved shift sales
                 </Text>
               </View>
               {branchStockSnapshots.filter(branchSnapshot => branchSnapshot.products.length > 0).map(branchSnapshot => (
@@ -971,9 +960,6 @@ export default function HomeScreen() {
                     <View style={s.snapshotRowHead}>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[s.snapshotProduct, { color: colors.text }]}>{snapshot.product}</Text>
-                        {snapshot.dipBusinessDate ? (
-                          <Text style={[s.snapshotValueLabel, { color: colors.textMuted }]}>Approved dip: {snapshot.dipBusinessDate}</Text>
-                        ) : null}
                       </View>
                       {stockSnapshotConfig.metrics.variance ? (
                         <View style={[s.snapshotStatus, { backgroundColor: statusColor + '18' }]}>

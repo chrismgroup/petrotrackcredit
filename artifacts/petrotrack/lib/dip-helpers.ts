@@ -12,9 +12,9 @@ export function findLatestDipForProduct(
   product: StockProduct,
   petrolTanks: Pick<Tank, 'id' | 'prod'>[],
   branchLpgTanks: Pick<LPGTank, 'id'>[],
-  options: { beforeDate?: boolean; onOrBeforeDate?: boolean } = {},
+  options: { beforeDate?: boolean } = {},
 ): DipRecord | undefined {
-  const { beforeDate = false, onOrBeforeDate = false } = options;
+  const { beforeDate = false } = options;
   const hasProductReading = (dip: DipRecord) => product === 'LPG'
     ? branchLpgTanks.some(tank => dip.lpg?.[tank.id] !== undefined)
     : petrolTanks.some(tank =>
@@ -25,7 +25,7 @@ export function findLatestDipForProduct(
     .filter(dip => {
       const dipDate = dip.dt?.slice(0, 10) ?? '';
       return dipDate !== '' &&
-        (beforeDate ? dipDate < dateKey : onOrBeforeDate ? dipDate <= dateKey : dipDate === dateKey) &&
+        (beforeDate ? dipDate < dateKey : dipDate === dateKey) &&
         dip.status === 'approved' &&
         (branchId === null || dip.branchId === branchId) &&
         hasProductReading(dip);

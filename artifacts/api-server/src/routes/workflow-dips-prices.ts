@@ -167,6 +167,21 @@ router.post("/workflows/dips", async (req, res) => run(req, res, async (tx, now)
   const readingError = await validateReadings(tx, input.rd, input.lpg, req.auth!.branchId);
   if (readingError) return { status: 400, body: { error: readingError } };
   const dips = await state(tx, "dips");
+  const existingDailyDip = dips.find(dip =>
+    dip.branchId === (req.auth!.branchId ?? null) &&
+    String(dip.dt ?? "").slice(0, 10) === input.dt.slice(0, 10) &&
+    dip.status !== "rejected",
+  );
+  if (existingDailyDip) {
+    return {
+      status: 409,
+      body: {
+        error: existingDailyDip.status === "approved"
+          ? "This branch already has an approved tank dip for that business date"
+          : "This branch already has a tank dip awaiting MD approval for that business date",
+      },
+    };
+  }
   const dip = { id: idFor(dips), dt: input.dt, rd: input.rd, lpg: input.lpg, obs: typeof input.obs === "string" ? input.obs : "", by: req.auth!.username, branchId: req.auth!.branchId ?? null, submittedAt: now, status: "pending", workflowRevision: 0 };
   dips.unshift(dip); await save(tx, "dips", dips); await audit(tx, "Dip submitted", req.auth!.username, `Dip ${dip.id} submitted`, now);
   return { status: 201, body: { dip } };
