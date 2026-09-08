@@ -269,7 +269,22 @@ function baseAppState(overrides: Record<string, unknown> = {}) {
       { id: 'B1', name: 'Maitama Branch', st: 'Active' },
       { id: 'B2', name: 'Wuse Branch', st: 'Active' },
     ],
-    navItems: [],
+    navItems: [
+      { id: 'corp' },
+      { id: 'stockSnapshot' },
+      { id: 'tanks' },
+      { id: 'recv' },
+      { id: 'exp' },
+      { id: 'prices' },
+      { id: 'shift' },
+      { id: 'budget' },
+      { id: 'users' },
+      { id: 'hr' },
+      { id: 'actionItems' },
+      { id: 'notifications' },
+      { id: 'exprpt' },
+      { id: 'maint' },
+    ],
     tanks: [],
     lpgTanks: [],
     pumps: [],
@@ -681,6 +696,37 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     const text = renderedText(renderer);
     expect(text).toContain('OUTSTANDING ACTION ITEMS');
     expect(text).toContain('No outstanding action items');
+    act(() => renderer.unmount());
+  });
+
+  it('surfaces the HR queues owned by CSM/HR on Home', () => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'csm',
+      hrRecommendations: [{ id: 1, empName: 'Ada Staff', type: 'promotion', status: 'pending' }],
+      hrHandbooks: [{ id: 2, name: 'Staff Handbook', approved: false }],
+    }) as any);
+
+    const renderer = render(<HomeScreen />);
+    const text = renderedText(renderer);
+    expect(text).toContain('HR Recommendations');
+    expect(text).toContain('2 HR items needing your attention');
+    expect(text).toContain('items needing attention');
+    act(() => renderer.unmount());
+  });
+
+  it.each([
+    ['md', 'forwarded'],
+    ['ceo', 'md_approved'],
+  ] as const)('surfaces %s onboarding approvals on Home', (role, status) => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      role,
+      hrEmployees: [{ id: 3, name: 'New Starter', onboarding: { status } }],
+    }) as any);
+
+    const renderer = render(<HomeScreen />);
+    const text = renderedText(renderer);
+    expect(text).toContain('HR Onboarding');
+    expect(text).toContain('1 HR item needing your attention');
     act(() => renderer.unmount());
   });
 

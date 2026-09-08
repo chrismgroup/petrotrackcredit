@@ -457,6 +457,7 @@ export default function HomeScreen() {
     approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
     sales, startupStocks, stockSnapshotConfig, myFolderFiles, actionItems,
+    hrEmployees = [], hrRecommendations = [], hrHandbooks = [],
   } = useApp();
 
   const colors = useColors();
@@ -468,8 +469,8 @@ export default function HomeScreen() {
   const [approvalDetail, setApprovalDetail] = useState<'dips' | 'deliveries' | 'expenses' | 'prices' | 'pumpReports' | 'budgets' | 'accounts' | null>(null);
 
   if (!role) return null;
-  const canOpen = (route: string) =>
-    canAccessWorkspaceRoute(route, role, navItems, roleAccess, userAccess, staffId);
+  const canOpen = (route: string | undefined) =>
+    route ? canAccessWorkspaceRoute(route, role, navItems, roleAccess, userAccess, staffId) : false;
 
   const isApprover = role === 'md' || role === 'admin' || role === 'ceo';
   const canViewRevenue = role === 'admin' || navItems.some(item => item.id === 'revenue');
@@ -651,25 +652,6 @@ export default function HomeScreen() {
     (isAdmin && (a.status === 'pending' || a.status === 'pending_admin')) ||
     (role === 'csm' && a.status === 'pending_md'),
   );
-  const shiftApprovalRoute = getDashboardApprovalRoute(
-    { shiftReports: pendingPumpReports.length, deliveries: 0 },
-    { shift: SCREEN_ROUTES.shift, receiving: SCREEN_ROUTES.recv, reports: SCREEN_ROUTES.exprpt },
-    role,
-  );
-  const pendingReviewRoute = getDashboardApprovalRoute(
-    { shiftReports: pendingPumpReports.length, deliveries: pendingDeliveries.length },
-    { shift: SCREEN_ROUTES.shift, receiving: SCREEN_ROUTES.recv, reports: SCREEN_ROUTES.exprpt },
-    role,
-  );
-  const primaryApprovalRoute =
-    pendingDips.length > 0 ? SCREEN_ROUTES.tanks
-      : pendingDeliveries.length > 0 ? SCREEN_ROUTES.recv
-        : pendingExpenses.length > 0 ? SCREEN_ROUTES.exp
-          : pendingPriceProps.length > 0 ? SCREEN_ROUTES.prices
-            : pendingPumpReports.length > 0 ? shiftApprovalRoute
-              : pendingBudgets.length > 0 ? SCREEN_ROUTES.budget
-                : pendingAccounts.length > 0 ? SCREEN_ROUTES.users
-                  : SCREEN_ROUTES.exprpt;
 
   const canViewOutstandingActionItems =
     canOpen(SCREEN_ROUTES.actionItems)
@@ -689,10 +671,58 @@ export default function HomeScreen() {
       });
   }, [actionItems, canViewOutstandingActionItems, isGlobalOverview, scopedBranchId]);
 
+  // HR has three separate approval/action queues that previously never
+  // reached the Home inbox: HR recommendations, handbook approvals, and
+  // onboarding stages owned by MD/CEO/Admin.
+  const pendingHrActions = canOpen(SCREEN_ROUTES.hr) ? [
+    ...(role === 'csm'
+      ? hrRecommendations
+          .filter(item => item.status === 'pending')
+          .map(item => ({ key: `recommendation-${item.id}`, label: 'HR Recommendations', detail: `${item.empName} · ${item.type}` }))
+      : []),
+    ...(role === 'csm'
+      ? hrHandbooks
+          .filter(item => !item.approved)
+          .map(item => ({ key: `handbook-${item.id}`, label: 'HR Handbook Approvals', detail: item.name }))
+      : []),
+    ...((role === 'md' || role === 'admin')
+      ? hrEmployees
+          .filter(employee => employee.onboarding?.status === 'forwarded')
+          .map(employee => ({ key: `onboarding-md-${employee.id}`, label: 'HR Onboarding', detail: `${employee.name} · MD approval` }))
+      : []),
+    ...((role === 'ceo' || role === 'admin')
+      ? hrEmployees
+          .filter(employee => employee.onboarding?.status === 'md_approved')
+          .map(employee => ({ key: `onboarding-ceo-${employee.id}`, label: 'HR Onboarding', detail: `${employee.name} · CEO approval` }))
+      : []),
+  ] : [];
+
+  const shiftApprovalRoute = getDashboardApprovalRoute(
+    { shiftReports: pendingPumpReports.length, deliveries: 0 },
+    { shift: SCREEN_ROUTES.shift, receiving: SCREEN_ROUTES.recv, reports: SCREEN_ROUTES.exprpt },
+    role,
+  );
+  const pendingReviewRoute = getDashboardApprovalRoute(
+    { shiftReports: pendingPumpReports.length, deliveries: pendingDeliveries.length },
+    { shift: SCREEN_ROUTES.shift, receiving: SCREEN_ROUTES.recv, reports: SCREEN_ROUTES.exprpt },
+    role,
+  );
   const totalApprovals =
     pendingDips.length + pendingDeliveries.length + pendingExpenses.length +
     pendingPriceProps.length + pendingPumpReports.length + pendingBudgets.length +
     pendingAccounts.length;
+  const totalAttention = totalApprovals + pendingHrActions.length + outstandingActionItems.length;
+  const primaryApprovalRoute =
+    pendingDips.length > 0 ? SCREEN_ROUTES.tanks
+      : pendingDeliveries.length > 0 ? SCREEN_ROUTES.recv
+        : pendingExpenses.length > 0 ? SCREEN_ROUTES.exp
+          : pendingPriceProps.length > 0 ? SCREEN_ROUTES.prices
+            : pendingPumpReports.length > 0 ? shiftApprovalRoute
+              : pendingBudgets.length > 0 ? SCREEN_ROUTES.budget
+                : pendingAccounts.length > 0 ? SCREEN_ROUTES.users
+                  : pendingHrActions.length > 0 ? SCREEN_ROUTES.hr
+                    : outstandingActionItems.length > 0 ? SCREEN_ROUTES.actionItems
+                      : SCREEN_ROUTES.exprpt;
 
   const approvalDetailRecords: Record<Exclude<typeof approvalDetail, null>, ApprovalDetailRecord[]> = {
     dips: pendingDips.map(dip => {
@@ -905,16 +935,16 @@ export default function HomeScreen() {
                 <Text style={[s.heroPillText, { color: '#FFD4D4' }]}>{urgentMaintenance.length} urgent alert{urgentMaintenance.length > 1 ? 's' : ''}</Text>
               </TouchableOpacity>
             ) : null}
-            {totalApprovals > 0 ? (
+            {totalAttention > 0 ? (
               <TouchableOpacity
                 onPress={() => router.push(primaryApprovalRoute as never)}
                 style={[s.heroPill, { backgroundColor: colors.amber + '28', borderColor: colors.amber + '55' }]}
                 activeOpacity={0.78}
                 accessibilityRole="button"
-                accessibilityLabel={`${totalApprovals} items awaiting approval`}
+                accessibilityLabel={`${totalAttention} items needing attention`}
               >
                 <View style={[s.heroPillDot, { backgroundColor: colors.amber }]} />
-                <Text style={[s.heroPillText, { color: '#FFE5A0' }]}>{totalApprovals} awaiting approval</Text>
+                <Text style={[s.heroPillText, { color: '#FFE5A0' }]}>{totalAttention} item{totalAttention === 1 ? '' : 's'} needing attention</Text>
               </TouchableOpacity>
             ) : (
               <View style={[s.heroPill, { backgroundColor: colors.success + '22', borderColor: colors.success + '44' }]}>
@@ -1039,10 +1069,10 @@ export default function HomeScreen() {
         {/* ── Approvals Inbox ─────────────────────────────────────── */}
         <Section label="APPROVALS & ACTIONS" colors={colors}>
           <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            {totalApprovals === 0 ? (
+            {totalApprovals === 0 && pendingHrActions.length === 0 && outstandingActionItems.length === 0 ? (
               <View style={s.emptyState}>
                 <Ionicons name="checkmark-circle-outline" size={32} color={colors.success} />
-                <Text style={[s.emptyText, { color: colors.textMuted }]}>No pending approvals</Text>
+                <Text style={[s.emptyText, { color: colors.textMuted }]}>No pending approvals or actions</Text>
               </View>
             ) : null}
 
@@ -1126,6 +1156,30 @@ export default function HomeScreen() {
                 meta={`${pendingAccounts.length} new account${pendingAccounts.length > 1 ? 's' : ''} awaiting activation`}
                 count={pendingAccounts.length}
                 onPress={() => router.push(SCREEN_ROUTES.users as never)}
+                colors={colors}
+              />
+            ) : null}
+
+            {pendingHrActions.length > 0 ? (
+              <ApprovalRow
+                icon="people-circle-outline"
+                accent={colors.purple}
+                title={pendingHrActions[0].label}
+                meta={`${pendingHrActions.length} HR item${pendingHrActions.length > 1 ? 's' : ''} needing your attention`}
+                count={pendingHrActions.length}
+                onPress={() => router.push(SCREEN_ROUTES.hr as never)}
+                colors={colors}
+              />
+            ) : null}
+
+            {outstandingActionItems.length > 0 ? (
+              <ApprovalRow
+                icon="flash-outline"
+                accent={colors.info}
+                title="Action Items"
+                meta={`${outstandingActionItems.length} open action${outstandingActionItems.length > 1 ? 's' : ''} needing follow-through`}
+                count={outstandingActionItems.length}
+                onPress={() => router.push(SCREEN_ROUTES.actionItems as never)}
                 colors={colors}
               />
             ) : null}
