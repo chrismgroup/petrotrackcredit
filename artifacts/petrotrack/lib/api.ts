@@ -64,6 +64,40 @@ async function put<T = unknown>(path: string, data: unknown): Promise<T | null> 
   }
 }
 
+export type CheckedApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; status?: number };
+
+/** PUT variant for shared slices that must surface persistence failures. */
+async function putChecked<T = unknown>(path: string, data: unknown): Promise<CheckedApiResult<T>> {
+  if (!BASE) return { ok: false, error: 'The API is not configured.' };
+  try {
+    const headers = await authHeaders();
+    const response = await fetch(`${BASE}${path}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(data),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = body && typeof body === 'object' && 'error' in body
+        ? String((body as { error?: unknown }).error ?? '')
+        : '';
+      return {
+        ok: false,
+        error: error || `The server rejected this submission (${response.status}).`,
+        status: response.status,
+      };
+    }
+    return { ok: true, data: body as T };
+  } catch {
+    return {
+      ok: false,
+      error: 'The submission could not reach the server. Check the connection and try again.',
+    };
+  }
+}
+
 async function post<T>(path: string, data: unknown): Promise<T | null> {
   if (!BASE) return null;
   try {
@@ -189,6 +223,7 @@ export const stateApi = {
   getAll: () => get<Record<string, unknown>>('/state'),
   get: <T>(key: string) => get<T>(`/state/${key}`),
   put: <T = unknown>(key: string, data: unknown) => put<T>(`/state/${key}`, data),
+  putChecked: <T = unknown>(key: string, data: unknown) => putChecked<T>(`/state/${key}`, data),
   upsertCompanyAsset: <T>(asset: T, baseRevision: number | null) =>
     post<{ ok: boolean; asset: T; assets: T[] }>('/state/company-assets/upsert', { asset, baseRevision }),
   deleteCompanyAsset: (id: string) =>

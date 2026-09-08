@@ -165,11 +165,21 @@ export default function ExpensesScreen() {
       Alert.alert('No Budget Selected', 'Please select an approved budget to charge this expense to.');
       return;
     }
-    requestDateConfirmation('expense', form.dt, () => {
+    requestDateConfirmation('expense', form.dt, async () => {
       if (editTarget) {
         updateExpense(editTarget.id, { cat: form.cat, desc: form.desc.trim(), amt: amount, dt: form.dt });
       } else {
-        addExpense({ dt: form.dt, cat: form.cat, desc: form.desc.trim(), amt: amount, by: role || 'mgr', byName: userName, ref: form.ref.trim() || undefined, budgetId: form.budgetId });
+        const result = await addExpense({
+          dt: form.dt,
+          cat: form.cat,
+          desc: form.desc.trim(),
+          amt: amount,
+          by: role || 'mgr',
+          byName: userName,
+          ref: form.ref.trim() || undefined,
+          budgetId: form.budgetId,
+        });
+        if (!result.ok) return;
       }
       setShowForm(false);
     }, 'Confirm & save');

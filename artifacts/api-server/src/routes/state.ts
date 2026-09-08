@@ -104,6 +104,43 @@ function mergeActionItems(existing: unknown, incoming: unknown): JsonRecord[] {
   return Array.from(merged.values());
 }
 
+function recordActivityMs(value: JsonRecord): number {
+  return [
+    value.updatedAt,
+    value.submittedAt,
+    value.approvedAt,
+    value.approvedDt,
+    value.createdAt,
+    value.dt,
+  ]
+    .map(timestamp => Date.parse(String(timestamp ?? "")))
+    .filter(Number.isFinite)
+    .reduce((latest, timestamp) => Math.max(latest, timestamp), 0);
+}
+
+/**
+ * Shared submission records are append-only from the generic client-sync
+ * perspective. A stale device may update an existing record, but it must not
+ * erase a record created by another device by sending its older full array.
+ * Explicit workflow delete/command endpoints remain the only deletion path.
+ */
+function mergeSharedRecords(existing: unknown, incoming: unknown): JsonRecord[] {
+  const merged = new Map<string, JsonRecord>();
+  const add = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const candidate = value as JsonRecord;
+    const id = String(candidate.id ?? "");
+    if (!id) return;
+    const previous = merged.get(id);
+    if (!previous || recordActivityMs(candidate) >= recordActivityMs(previous)) {
+      merged.set(id, candidate);
+    }
+  };
+  if (Array.isArray(existing)) existing.forEach(add);
+  if (Array.isArray(incoming)) incoming.forEach(add);
+  return Array.from(merged.values());
+}
+
 const BUDGET_STATUS_RANK: Record<string, number> = {
   draft: 1,
   submitted: 2,
@@ -1705,6 +1742,29 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       .from(appStateTable)
       .where(eq(appStateTable.key, "myFolders"));
     data = mergeMyFolders(existingRow?.data, data);
+  }
+
+  if ([
+    "sales",
+    "deliveryEvidences",
+    "stockLogs",
+    "tasks",
+    "kpis",
+    "broadcasts",
+    "callLog",
+    "companyFiles",
+    "hrEmployees",
+    "hrHandbooks",
+    "hrRecommendations",
+    "legalMatters",
+    "corpProjects",
+    "meetingMinutes",
+  ].includes(key) && Array.isArray(data)) {
+    const [existingRow] = await db
+      .select()
+      .from(appStateTable)
+      .where(eq(appStateTable.key, key));
+    data = mergeSharedRecords(existingRow?.data, data);
   }
 
   // Server-side cap: keep only the newest audit entries (entries are prepended),
