@@ -182,10 +182,15 @@ export function getCurrentTankStock(
 /** Live revenue derived from actual sales records (auto-created when pump
  *  reports are approved, plus any manual entries). Replaces the static
  *  `branch.rev` field which is never updated by operations. */
-export function salesRevenueByBranch(sales: SalesEntry[]): { total: number; byBranch: Record<string, number> } {
+export function salesRevenueByBranch(
+  sales: SalesEntry[],
+  range?: { from: string; to: string },
+): { total: number; byBranch: Record<string, number> } {
   const byBranch: Record<string, number> = {};
   let total = 0;
   for (const e of sales) {
+    const businessDate = businessDateKey(e.dt);
+    if (range && (businessDate < range.from || businessDate > range.to)) continue;
     const amt = safeNum(e.L) * safeNum(e.price);
     if (!Number.isFinite(amt)) continue;
     total += amt;
