@@ -43,6 +43,7 @@
 - [Daily timer compatibility](daily-timer-compatibility.md) — Daily RN 0.86 still imports the legacy timer; a reproducible patch keeps standard timers and native call services
 - [Action Items workflow](action-items.md) — separate Tasks collection with person assignment, terminal close/lock, urgency colors, and branch archives
 - [Asset register durability](asset-depreciation.md) — depreciation is branch-scoped; server revisions and deletion tombstones protect registered assets across app updates
+- [Asset access policy](asset-access-policy.md) — company asset role scope is shared between API enforcement and mobile controls
 - [Net-profit finance costs](net-profit-finance-costs.md) — deduct accountant-entered bank charges and loan interest before CITA in every P&L path
 - [Expo screen test harness](expo-screen-test-harness.md) — lightweight RN mocks need native-module coverage; query host nodes to avoid wrapper duplicates
 - [Budget history archives](budget-history-archives.md) — budgets display newest-first; only finance roles archive terminal historical records, never pending workflow items

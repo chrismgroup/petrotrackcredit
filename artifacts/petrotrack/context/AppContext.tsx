@@ -23,6 +23,10 @@ import {
   type AssetInput,
   type CompanyAsset,
 } from '@/lib/asset-depreciation';
+import {
+  canManageCompanyAssetBranch as canManageCompanyAssetBranchForRole,
+  canManageCompanyAssets as canManageCompanyAssetsForRole,
+} from '@workspace/asset-policy';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
@@ -4673,11 +4677,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setFinancialEntry(prev => ({ ...prev, ...updates, updatedBy: userName, updatedAt: nowTs() }));
   }, [userName]);
 
-  const canManageCompanyAssets =
-    role === 'admin' || role === 'ceo' || role === 'md' ||
-    role === 'acc' || role === 'csm' || role === 'mktg' || role === 'mgr';
+  const canManageCompanyAssets = canManageCompanyAssetsForRole(role);
   const canManageCompanyAssetBranch = useCallback((assetBranchId: string) =>
-    role !== 'mgr' || (!!branchId && assetBranchId === branchId),
+    canManageCompanyAssetBranchForRole(role, branchId, assetBranchId),
   [role, branchId]);
   const reportCompanyAssetSaveFailure = useCallback((
     operation: 'add' | 'edit',

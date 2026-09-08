@@ -2,6 +2,11 @@ import { Router, type IRouter } from "express";
 import { isDeepStrictEqual } from "node:util";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db, appStateTable, pumpReportsTable, staffUsersTable } from "@workspace/db";
+import {
+  canManageCompanyAssetBranch,
+  canManageCompanyAssets,
+  isCompanyAssetBranchScopedRole,
+} from "@workspace/asset-policy";
 import { broadcastRealtime } from "../lib/realtime";
 import { normalizeMaintenanceRecord } from "./maintenance-workflow-rules";
 import { createBackup, listBackups, restoreBackup } from "../lib/backup";
@@ -42,8 +47,6 @@ const COMMAND_OWNED_WORKFLOW_KEYS = new Set([
   "priceProposals",
 ]);
 const MY_FOLDER_WRITE_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
-const COMPANY_ASSET_WRITE_ROLES = new Set(["admin", "acc", "md", "ceo", "csm", "mktg", "mgr"]);
-
 function visibleMyFolderState(key: string, data: unknown, role?: string): unknown {
   if ((key !== "myFolders" && key !== "myFolderFiles") || MY_FOLDER_WRITE_ROLES.has(role ?? "")) {
     return data;
@@ -1210,7 +1213,7 @@ router.post("/state/restore", async (req, res): Promise<void> => {
 /* ── Generic per-key state routes (must come AFTER the specific /state/* routes) ── */
 
 router.post("/state/company-assets/upsert", async (req, res): Promise<void> => {
-  if (!COMPANY_ASSET_WRITE_ROLES.has(req.auth?.role ?? "")) {
+  if (!canManageCompanyAssets(req.auth?.role)) {
     res.status(403).json({ error: "This role is not authorized to manage company assets" });
     return;
   }
@@ -1234,10 +1237,15 @@ router.post("/state/company-assets/upsert", async (req, res): Promise<void> => {
   }
   const assetInput = candidate as JsonRecord;
   const id = String(assetInput.id).trim();
-  const managerBranchId = req.auth?.role === "mgr" ? String(req.auth.branchId ?? "").trim() : "";
+  const managerBranchId = isCompanyAssetBranchScopedRole(req.auth?.role)
+    ? String(req.auth?.branchId ?? "").trim()
+    : "";
   if (
-    req.auth?.role === "mgr"
-    && (!managerBranchId || String(assetInput.branchId ?? "").trim() !== managerBranchId)
+    !canManageCompanyAssetBranch(
+      req.auth?.role,
+      managerBranchId,
+      String(assetInput.branchId ?? ""),
+    )
   ) {
     res.status(403).json({ error: "A branch manager can only manage assets in the assigned branch" });
     return;
@@ -1288,7 +1296,7 @@ router.post("/state/company-assets/upsert", async (req, res): Promise<void> => {
 });
 
 router.post("/state/company-assets/:id/delete", async (req, res): Promise<void> => {
-  if (!COMPANY_ASSET_WRITE_ROLES.has(req.auth?.role ?? "")) {
+  if (!canManageCompanyAssets(req.auth?.role)) {
     res.status(403).json({ error: "Only approved finance leaders may delete company assets" });
     return;
   }
@@ -1307,8 +1315,12 @@ router.post("/state/company-assets/:id/delete", async (req, res): Promise<void> 
       ? (existingRow.data as JsonRecord[]).find(asset => String(asset.id ?? "").trim() === id.trim())
       : undefined;
     if (
-      req.auth?.role === "mgr"
-      && (!existingAsset || String(existingAsset.branchId ?? "").trim() !== String(req.auth.branchId ?? "").trim())
+      isCompanyAssetBranchScopedRole(req.auth?.role)
+      && !canManageCompanyAssetBranch(
+        req.auth?.role,
+        req.auth?.branchId,
+        String(existingAsset?.branchId ?? ""),
+      )
     ) {
       return { forbidden: true as const, assets: removeCompanyAsset(existingRow?.data, id.trim()) };
     }
@@ -1370,7 +1382,7 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   }
 
   // Sensitive keys require admin role
-  if (key === "companyAssets" && !COMPANY_ASSET_WRITE_ROLES.has(req.auth?.role ?? "")) {
+  if (key === "companyAssets" && !canManageCompanyAssets(req.auth?.role)) {
     res.status(403).json({ error: "Only approved finance leaders may manage company assets" });
     return;
   }
@@ -1628,8 +1640,8 @@ router.put("/state/:key", async (req, res): Promise<void> => {
         tx.select().from(appStateTable).where(eq(appStateTable.key, "companyAssets")).then(rows => rows[0]),
         tx.select().from(appStateTable).where(eq(appStateTable.key, COMPANY_ASSET_DELETIONS_KEY)).then(rows => rows[0]),
       ]);
-      if (req.auth?.role === "mgr") {
-        const managerBranchId = String(req.auth.branchId ?? "").trim();
+      if (isCompanyAssetBranchScopedRole(req.auth?.role)) {
+        const managerBranchId = String(req.auth?.branchId ?? "").trim();
         if (!managerBranchId) {
           return { error: "A branch assignment is required to update company assets" as const };
         }
@@ -1648,10 +1660,14 @@ router.put("/state/:key", async (req, res): Promise<void> => {
           // record must still be rejected.
           return previous
             ? (
-                String(previous.branchId ?? "").trim() !== managerBranchId
+                !canManageCompanyAssetBranch(
+                  req.auth?.role,
+                  managerBranchId,
+                  String(previous.branchId ?? ""),
+                )
                 && !isDeepStrictEqual(previous, candidate)
               )
-            : candidateBranchId !== managerBranchId;
+            : !canManageCompanyAssetBranch(req.auth?.role, managerBranchId, candidateBranchId);
         });
         if (unauthorized) {
           return { error: "A branch manager can only manage assets in the assigned branch" as const };
