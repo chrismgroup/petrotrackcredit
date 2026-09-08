@@ -287,6 +287,8 @@ export const workflowApi = {
     archive: <T>(id: number, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/archive`, command),
     classifyBranch: <T>(id: number, branchId: string, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/classify-branch`, { branchId, ...command }),
     transition: <T>(id: number, action: 'submit' | 'forward' | 'approve' | 'reject', note: string, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/budgets/${workflowPath(id)}/${action}`, { note, ...command }),
+    consolidateMonth: <T>(year: number, month: number, headOfficeBranchId: string, command: WorkflowCommand) =>
+      authenticatedJsonCommand<T>('POST', '/finance/budgets/consolidate-month', { year, month, headOfficeBranchId, ...command }),
   },
   dips: {
     create: <T>(dip: T, command: WorkflowCommand) => authenticatedJsonCommand<DipWorkflowResponse<T>>('POST', '/workflows/dips', { dip, ...command }),

@@ -32,6 +32,7 @@ const SAFE_COLOR  = '#27500A';
 const SAFE_BG     = '#EAF3DE';
 const WARN_COLOR  = '#BA7517';
 const WARN_BG     = '#FAEEDA';
+const PERFORMANCE_WARNING_RATIO = 0.85;
 
 type LineItem = { cat: string; amt: string };
 function blankItem(): LineItem { return { cat: '', amt: '' }; }
@@ -124,7 +125,7 @@ function calcPerf(b: Budget, expenses: Expense[], branchMap: Record<string, stri
   const totalSpent = linked.reduce((s, e) => s + e.amt, 0);
   const pct = b.total > 0 ? totalSpent / b.total : 0;
   const isOver    = totalSpent > b.total;
-  const isWarning = !isOver && pct >= 0.8;
+  const isWarning = !isOver && pct >= PERFORMANCE_WARNING_RATIO;
 
   const grouped: Record<string, number> = {};
   for (const e of linked) {
@@ -157,7 +158,7 @@ export default function BudgetScreen() {
   const {
     role, userName, branchId, budgets, expenses, branches,
     addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, classifyBudgetBranch, submitBudgetToAcc,
-    forwardBudget, approveBudget, rejectBudget,
+    forwardBudget, approveBudget, rejectBudget, consolidateBudgetMonth,
   } = useApp();
 
   const colors    = useColors();
@@ -187,6 +188,10 @@ export default function BudgetScreen() {
   const [formItems, setFormItems]   = useState<LineItem[]>([blankItem()]);
   const [filterDate, setFilterDate] = useState('');
   const [archiveThreshold, setArchiveThreshold] = useState<number>(3);
+  const [showConsolidate, setShowConsolidate] = useState(false);
+  const [consolidateYear, setConsolidateYear] = useState(String(new Date().getFullYear()));
+  const [consolidateMonth, setConsolidateMonth] = useState(String(new Date().getMonth() + 1));
+  const [consolidateBusy, setConsolidateBusy] = useState(false);
 
   /* Branch name lookup */
   const branchMap: Record<string, string> = {};
@@ -313,6 +318,32 @@ export default function BudgetScreen() {
           },
         },
       ],
+    );
+  }
+
+  async function handleConsolidateMonth() {
+    const year = Number(consolidateYear);
+    const month = Number(consolidateMonth);
+    const headOffice = branches.find(branch => branch.name.trim().toLowerCase() === 'head office');
+    if (!Number.isSafeInteger(year) || year < 2000 || !Number.isSafeInteger(month) || month < 1 || month > 12) {
+      Alert.alert('Invalid month', 'Enter a valid year and a month from 1 to 12.');
+      return;
+    }
+    if (!headOffice) {
+      Alert.alert('Head office branch missing', 'Create or restore the Head office branch before consolidating budgets.');
+      return;
+    }
+    setConsolidateBusy(true);
+    const result = await consolidateBudgetMonth(year, month, headOffice.id);
+    setConsolidateBusy(false);
+    if (!result.ok) {
+      Alert.alert('Consolidation failed', result.error ?? 'Please try again.');
+      return;
+    }
+    setShowConsolidate(false);
+    Alert.alert(
+      'Budgets consolidated',
+      `${result.result?.canonicalBudgets.length ?? 0} branch budgets are now active. ${result.result?.archivedBudgetIds.length ?? 0} duplicate budgets were archived.`,
     );
   }
 
@@ -451,6 +482,15 @@ export default function BudgetScreen() {
           <Text style={[styles.archiveCount, { color: colors.textMuted }]}>
             {eligibleToArchive.length} eligible budget{eligibleToArchive.length === 1 ? '' : 's'} at this threshold
           </Text>
+          <TouchableOpacity
+            onPress={() => setShowConsolidate(true)}
+            style={[styles.consolidateButton, { borderColor: roleColor }]}
+            accessibilityRole="button"
+            accessibilityLabel="Consolidate budgets for a month"
+          >
+            <Ionicons name="git-merge-outline" size={15} color={roleColor} />
+            <Text style={[styles.consolidateButtonText, { color: roleColor }]}>Consolidate a month</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 
@@ -476,14 +516,14 @@ export default function BudgetScreen() {
               <View style={styles.summaryHalf}>
                 <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total Spent</Text>
                 <Text style={[styles.summaryAmt, {
-                  color: totalSpentAll > totalApproved ? OVER_COLOR : totalSpentAll >= totalApproved * 0.8 ? WARN_COLOR : SAFE_COLOR,
+                   color: totalSpentAll > totalApproved ? OVER_COLOR : totalSpentAll >= totalApproved * PERFORMANCE_WARNING_RATIO ? WARN_COLOR : SAFE_COLOR,
                 }]}>{fmt(totalSpentAll)}</Text>
               </View>
             </View>
             <PerfBar
               pct={totalApproved > 0 ? totalSpentAll / totalApproved : 0}
               isOver={totalSpentAll > totalApproved}
-              isWarning={!( totalSpentAll > totalApproved) && totalSpentAll >= totalApproved * 0.8}
+               isWarning={!( totalSpentAll > totalApproved) && totalSpentAll >= totalApproved * PERFORMANCE_WARNING_RATIO}
             />
             <Text style={[styles.summaryNote, { color: colors.textMuted }]}>
               {approvedBudgets.length} approved budget{approvedBudgets.length !== 1 ? 's' : ''}
@@ -722,8 +762,8 @@ export default function BudgetScreen() {
                       <>
                         <Text style={[styles.section, { color: colors.text }]}>Spending by Branch</Text>
                         {selPerf.byBranch.map(br => {
-                          const brColor = br.isOver ? OVER_COLOR : br.pct >= 0.8 ? WARN_COLOR : SAFE_COLOR;
-                          const brBg    = br.isOver ? OVER_BG    : br.pct >= 0.8 ? WARN_BG    : SAFE_BG;
+                           const brColor = br.isOver ? OVER_COLOR : br.pct >= PERFORMANCE_WARNING_RATIO ? WARN_COLOR : SAFE_COLOR;
+                           const brBg    = br.isOver ? OVER_BG    : br.pct >= PERFORMANCE_WARNING_RATIO ? WARN_BG    : SAFE_BG;
                           return (
                             <View key={br.id} style={[styles.branchRow, { backgroundColor: colors.surface, borderColor: brColor + '44' }]}>
                               <View style={styles.branchRowTop}>
@@ -731,7 +771,7 @@ export default function BudgetScreen() {
                                 <Text style={[styles.branchName, { color: colors.text }]}>{br.name}</Text>
                                 <View style={[styles.branchPill, { backgroundColor: brBg }]}>
                                   <Text style={[styles.branchPillText, { color: brColor }]}>
-                                    {br.isOver ? '⬆ Over' : br.pct >= 0.8 ? '⚠ Near' : '✓ OK'}
+                                     {br.isOver ? '⬆ Over' : br.pct >= PERFORMANCE_WARNING_RATIO ? '⚠ Near' : '✓ OK'}
                                   </Text>
                                 </View>
                               </View>
@@ -739,7 +779,7 @@ export default function BudgetScreen() {
                                 <Text style={[styles.branchAmt, { color: brColor }]}>{fmt(br.spent)}</Text>
                                 <Text style={[styles.branchPct, { color: colors.textMuted }]}>{Math.round(br.pct * 100)}% of budget</Text>
                               </View>
-                              <PerfBar pct={br.pct} isOver={br.isOver} isWarning={br.pct >= 0.8 && !br.isOver} />
+                               <PerfBar pct={br.pct} isOver={br.isOver} isWarning={br.pct >= PERFORMANCE_WARNING_RATIO && !br.isOver} />
                             </View>
                           );
                         })}
@@ -912,6 +952,65 @@ export default function BudgetScreen() {
         })() : null}
       </Modal>
 
+      {/* ═══ MONTH CONSOLIDATION MODAL ═══ */}
+      <Modal visible={showConsolidate} animationType="fade" transparent onRequestClose={() => setShowConsolidate(false)}>
+        <View style={styles.consolidateOverlay}>
+          <View style={[styles.consolidateCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.consolidateHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.consolidateTitle, { color: colors.text }]}>Consolidate a month</Text>
+                <Text style={[styles.consolidateHelp, { color: colors.textMuted }]}>
+                  Merges duplicate branch budgets, assigns Accountant-created items to Head office, relinks expenses, and archives the source records.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowConsolidate(false)} disabled={consolidateBusy}>
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.consolidateFields}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Year</Text>
+                <TextInput
+                  value={consolidateYear}
+                  onChangeText={setConsolidateYear}
+                  keyboardType="number-pad"
+                  style={[styles.consolidateInput, { color: colors.text, borderColor: colors.border }]}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Month</Text>
+                <TextInput
+                  value={consolidateMonth}
+                  onChangeText={setConsolidateMonth}
+                  keyboardType="number-pad"
+                  style={[styles.consolidateInput, { color: colors.text, borderColor: colors.border }]}
+                />
+              </View>
+            </View>
+            <View style={[styles.headOfficeHint, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Ionicons name="business-outline" size={18} color={roleColor} />
+              <Text style={[styles.consolidateHelp, { color: colors.text }]}>
+                Accountant-created records will be assigned to: {branches.find(branch => branch.name.trim().toLowerCase() === 'head office')?.name ?? 'Head office'}
+              </Text>
+            </View>
+            <View style={styles.actionBtns}>
+              <TouchableOpacity
+                onPress={handleConsolidateMonth}
+                disabled={consolidateBusy}
+                style={[styles.primaryBtn, { backgroundColor: roleColor, opacity: consolidateBusy ? 0.6 : 1 }]}
+              >
+                <Ionicons name="git-merge-outline" size={15} color="#fff" />
+                <Text style={styles.primaryBtnText}>{consolidateBusy ? 'Consolidating…' : 'Consolidate budgets'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowConsolidate(false)} disabled={consolidateBusy}
+                style={[styles.outlineBtn, { borderColor: colors.border }]}>
+                <Text style={[styles.outlineBtnText, { color: colors.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* ═══ CREATE / EDIT MODAL ═══ */}
       <Modal visible={showForm} animationType="slide" onRequestClose={() => setShowForm(false)}>
           <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -1005,6 +1104,16 @@ const styles = StyleSheet.create({
   archiveAction:     { paddingHorizontal: 13, paddingVertical: 8, borderRadius: 8, marginLeft: 'auto' },
   archiveActionText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   archiveCount:      { fontSize: 10 },
+  consolidateButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, borderWidth: 1, borderRadius: 8 },
+  consolidateButtonText: { fontSize: 12, fontWeight: '800' },
+  consolidateOverlay: { flex: 1, justifyContent: 'center', padding: 18, backgroundColor: 'rgba(0,0,0,0.42)' },
+  consolidateCard: { borderWidth: 1, borderRadius: 16, padding: 18, gap: 16 },
+  consolidateHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  consolidateTitle: { fontSize: 18, fontWeight: '800', flex: 1 },
+  consolidateHelp: { fontSize: 12, lineHeight: 17, marginTop: 4 },
+  consolidateFields: { flexDirection: 'row', gap: 10 },
+  consolidateInput: { height: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, fontSize: 15 },
+  headOfficeHint: { flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderRadius: 10, padding: 11 },
 
   /* Summary banner */
   summaryCard:       { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 16, backgroundColor: '#F3FAF0', gap: 8 },

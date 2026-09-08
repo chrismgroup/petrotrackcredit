@@ -23,6 +23,7 @@ const MD = new Set(["md", "ceo", "admin"]);
 const EXPENSE_DECIDERS = new Set(["acc"]);
 const MANAGERS = new Set(["mgr", "csm", "mktg"]);
 const FINAL_BUDGETS = new Set(["draft", "fully_approved", "rejected"]);
+const SUBMITTED_BUDGETS = new Set(["submitted", "acc_forwarded", "fully_approved"]);
 const GLOBAL_FINANCE_REVIEWERS = new Set(["acc", "md", "ceo", "admin"]);
 const BUDGET_BRANCH_CLASSIFIERS = new Set(["acc", "md", "ceo", "admin"]);
 
@@ -82,6 +83,45 @@ function canonicalBudget(input: unknown): JsonRecord | null {
   });
   if (!Number.isSafeInteger(month) || month < 1 || month > 12 || !Number.isSafeInteger(year) || year < 2000 || !appliesOn || !label || !items.length || items.length !== input.items.length) return null;
   return { month, year, appliesOn, label, items, total: items.reduce((sum, item) => sum + item.amt, 0) };
+}
+function budgetPeriodKey(item: JsonRecord): string | null {
+  const branchId = String(item.branchId ?? "").trim();
+  const month = Number(item.month);
+  const year = Number(item.year);
+  if (!branchId || !Number.isSafeInteger(month) || month < 1 || month > 12 || !Number.isSafeInteger(year)) return null;
+  return `${branchId}|${year}-${month}`;
+}
+function hasSubmittedBudget(
+  items: JsonRecord[],
+  candidate: JsonRecord,
+  excludeId?: unknown,
+): boolean {
+  const key = budgetPeriodKey(candidate);
+  if (!key) return false;
+  return items.some(item =>
+    String(item.id) !== String(excludeId ?? "")
+    && !item.archivedAt
+    && SUBMITTED_BUDGETS.has(String(item.status))
+    && budgetPeriodKey(item) === key,
+  );
+}
+function budgetOwnerBranchId(
+  budget: JsonRecord,
+  staff: Array<{ username: string | null; empName: string; branchId: string | null }>,
+): string {
+  const explicit = String(budget.branchId ?? "").trim();
+  if (explicit) return explicit;
+  const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+  const createdBy = normalize(budget.createdBy);
+  const byName = normalize(budget.byName);
+  const owner = staff.find(candidate =>
+    (createdBy && normalize(candidate.username) === createdBy)
+    || (byName && (
+      normalize(candidate.empName) === byName
+      || normalize(candidate.username) === byName
+    )),
+  );
+  return owner?.branchId?.trim() ?? "";
 }
 function workflow(stage: string, action: string, note: string, auth: Auth, now: string): JsonRecord {
   return { stage, action, note, by: auth.username, role: auth.role, dt: now };
@@ -189,6 +229,51 @@ async function notify(result: Awaited<ReturnType<typeof command>>, input: Parame
     try { await deliverNotification(input); } catch { /* The committed workflow remains authoritative. */ }
   }
 }
+async function notifyBudgetPerformanceAlert(expense: JsonRecord): Promise<void> {
+  if (String(expense.status) !== "approved") return;
+  const budgetId = Number(expense.budgetId);
+  if (!Number.isSafeInteger(budgetId)) return;
+  const [budgetRow, expenseRow] = await Promise.all([
+    db.select().from(appStateTable).where(eq(appStateTable.key, "budgets")),
+    db.select().from(appStateTable).where(eq(appStateTable.key, "expenses")),
+  ]);
+  const budget = records(budgetRow[0]?.data).find(item => Number(item.id) === budgetId);
+  if (!budget) return;
+  const total = Number(budget.total);
+  if (!Number.isFinite(total) || total <= 0) return;
+  const approvedSpend = records(expenseRow[0]?.data)
+    .filter(item => Number(item.budgetId) === budgetId && String(item.status) === "approved")
+    .reduce((sum, item) => sum + (Number(item.amt) || 0), 0);
+  const currentRatio = approvedSpend / total;
+  const beforeRatio = Math.max(0, approvedSpend - (Number(expense.amt) || 0)) / total;
+  const isOver = approvedSpend > total;
+  const crossedOver = isOver && beforeRatio <= 1;
+  const crossedWarning = !isOver && currentRatio >= 0.85 && beforeRatio < 0.85;
+  if (!crossedOver && !crossedWarning) return;
+
+  const branchId = String(budget.branchId ?? expense.branchId ?? "");
+  const percent = Math.round(currentRatio * 100);
+  const title = crossedOver ? "Budget Overspent" : "Budget nearing exhaustion";
+  const body = crossedOver
+    ? `${budget.branchName ?? "Branch"} ${budget.label} budget is ${percent}% spent — ₦${approvedSpend.toLocaleString()} used against ₦${total.toLocaleString()}.`
+    : `${budget.branchName ?? "Branch"} ${budget.label} budget is ${percent}% spent. Review remaining funds before approving more expenses.`;
+  const data = { route: "/(app)/budget", budgetId, branchId, performancePercent: percent };
+  const recipients: Array<{ target: string; branchId?: string }> = [
+    { target: "acc" },
+    { target: "md" },
+    { target: "ceo" },
+    { target: "admin" },
+    ...(branchId ? [{ target: "mgr", branchId }] : []),
+  ];
+  await Promise.all(recipients.map(recipient => deliverNotification({
+    target: recipient.target,
+    branchId: recipient.branchId,
+    type: "operational",
+    title,
+    body,
+    data,
+  })));
+}
 function target(items: JsonRecord[], id: string, expected: number): JsonRecord | Failure {
   const item = items.find(value => String(value.id) === id);
   if (!item) return conflict("Record not found");
@@ -293,6 +378,9 @@ for (const action of ["forward", "approve", "reject"] as const) router.post(`/fi
       body: `${result.item?.desc ?? "Expense"} — ₦${result.item?.amt ?? 0}`,
       data: { route: "/(app)/expenses", expenseId: result.item?.id },
     });
+    if (action === "approve" && result.item) {
+      try { await notifyBudgetPerformanceAlert(result.item); } catch { /* Alert delivery must not undo the approval. */ }
+    }
   }
   send(res, result, "expense.changed");
 });
@@ -314,7 +402,23 @@ router.post("/finance/budgets", async (req, res) => {
       || auth.role === "acc"
       || auth.role === "admin";
     const lineItems = body.items as JsonRecord[];
-    return { item: { ...body, ...assignedBranch, id: maxId + 1, status: submitted ? "submitted" : "draft", workflow: submitted ? [workflow("Submitted to Accountant", "submit", `${lineItems.length} line items`, auth, now)] : [], submittedAt: now, createdAt: now, createdBy: auth.username, by: auth.role, byName: auth.empName ?? auth.username, revision: 1 } };
+    const candidate = {
+      ...body,
+      ...assignedBranch,
+      id: maxId + 1,
+      status: submitted ? "submitted" : "draft",
+      workflow: submitted ? [workflow("Submitted to Accountant", "submit", `${lineItems.length} line items`, auth, now)] : [],
+      submittedAt: now,
+      createdAt: now,
+      createdBy: auth.username,
+      by: auth.role,
+      byName: auth.empName ?? auth.username,
+      revision: 1,
+    };
+    if (submitted && hasSubmittedBudget(items, candidate)) {
+      return conflict(`This branch already has a budget submitted for ${body.label}`);
+    }
+    return { item: candidate };
   });
   if (!result.error && result.item?.status === "submitted") await notify(result, {
     target: "acc", type: "operational", title: "Budget Awaiting Accountant Review",
@@ -322,6 +426,217 @@ router.post("/finance/budgets", async (req, res) => {
     data: { route: "/(app)/budget", budgetId: result.item.id },
   });
   send(res, result, "budget.changed");
+});
+
+router.post("/finance/budgets/consolidate-month", async (req, res) => {
+  if (!ACCOUNTANTS.has(req.auth!.role)) {
+    res.status(403).json({ error: "Only an accountant or admin can consolidate monthly budgets" });
+    return;
+  }
+  const year = Number(req.body?.year);
+  const month = Number(req.body?.month);
+  const headOfficeBranchId = typeof req.body?.headOfficeBranchId === "string"
+    ? req.body.headOfficeBranchId.trim()
+    : "";
+  const idempotencyKey = typeof req.body?.idempotencyKey === "string"
+    ? req.body.idempotencyKey.trim()
+    : "";
+  if (!Number.isSafeInteger(year) || year < 2000 || !Number.isSafeInteger(month) || month < 1 || month > 12 || !headOfficeBranchId || !idempotencyKey) {
+    res.status(400).json({ error: "year, month, headOfficeBranchId, and idempotencyKey are required" });
+    return;
+  }
+  const headOffice = await budgetBranch(headOfficeBranchId);
+  if (!headOffice) {
+    res.status(400).json({ error: "The selected Head office branch does not exist" });
+    return;
+  }
+
+  const fingerprintValue = fingerprint(req);
+  const result = await db.transaction(async tx => {
+    await tx.execute(LOCK);
+    const idempotency = await idem(tx);
+    const prior = idempotency.find(entry => entry.key === idempotencyKey);
+    if (prior) {
+      if (prior.fingerprint !== fingerprintValue) {
+        return { status: 409, error: "Idempotency key was already used for a different command" };
+      }
+      return { summary: prior.item as JsonRecord, replay: true };
+    }
+
+    const [budgetRow, expenseRow, staff] = await Promise.all([
+      tx.select().from(appStateTable).where(eq(appStateTable.key, "budgets")),
+      tx.select().from(appStateTable).where(eq(appStateTable.key, "expenses")),
+      tx.select({
+        username: staffUsersTable.username,
+        empName: staffUsersTable.empName,
+        branchId: staffUsersTable.branchId,
+      }).from(staffUsersTable),
+    ]);
+    const budgets = records(budgetRow[0]?.data);
+    const expenses = records(expenseRow[0]?.data);
+    const monthBudgets = budgets.filter(item => Number(item.year) === year && Number(item.month) === month);
+    if (monthBudgets.length === 0) {
+      return { status: 409, error: `No budgets exist for ${year}-${String(month).padStart(2, "0")}` };
+    }
+
+    const groups = new Map<string, JsonRecord[]>();
+    for (const budget of monthBudgets) {
+      let branchId = budgetOwnerBranchId(budget, staff);
+      if (!branchId) {
+        if (["acc", "admin"].includes(String(budget.by))) branchId = headOfficeBranchId;
+        else return { status: 409, error: `Cannot determine a branch for budget ${String(budget.id)}` };
+      }
+      const group = groups.get(branchId) ?? [];
+      group.push(budget);
+      groups.set(branchId, group);
+    }
+
+    const monthLabel = `${[
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ][month - 1]} ${year}`;
+    const now = new Date().toISOString();
+    const canonicalBySourceId = new Map<string, { id: number; branchId: string; branchName: string }>();
+    const canonicalBudgets: JsonRecord[] = [];
+    const archivedBudgets: JsonRecord[] = [];
+
+    for (const [branchId, group] of groups) {
+      const branch = branchId === headOfficeBranchId ? headOffice : await (async () => {
+        const [row] = await tx.select().from(appStateTable).where(eq(appStateTable.key, "branches"));
+        const match = records(row?.data).find(item => String(item.id ?? "") === branchId);
+        const branchName = typeof match?.name === "string" ? match.name.trim() : "";
+        return branchName ? { branchId, branchName } : null;
+      })();
+      if (!branch) return { status: 409, error: `Branch ${branchId} does not exist` };
+
+      const ordered = [...group].sort((a, b) => Number(a.id) - Number(b.id));
+      const primary = ordered[0];
+      const sourceIds = ordered.map(item => Number(item.id)).filter(Number.isSafeInteger);
+      const mergedItems = ordered.flatMap(item => Array.isArray(item.items)
+        ? item.items.filter(record).map(line => ({ cat: String(line.cat ?? "").trim(), amt: Number(line.amt) }))
+          .filter(line => line.cat && Number.isFinite(line.amt) && line.amt > 0)
+        : []);
+      if (mergedItems.length === 0) return { status: 409, error: `Budget ${String(primary.id)} has no valid line items` };
+
+      const allFullyApproved = ordered.every(item => String(item.status) === "fully_approved");
+      const history = ordered
+        .flatMap(item => Array.isArray(item.workflow) ? item.workflow.filter(record) : [])
+        .sort((a, b) => Date.parse(String(a.dt ?? "")) - Date.parse(String(b.dt ?? "")));
+      const mergedStatus = allFullyApproved ? "fully_approved" : "submitted";
+      const mergedHistory = [
+        ...history,
+        workflow(
+          "Budgets consolidated",
+          "merge",
+          `${sourceIds.length} ${monthLabel} budget${sourceIds.length === 1 ? "" : "s"} merged for ${branch.branchName}`,
+          req.auth!,
+          now,
+        ),
+        ...(mergedStatus === "submitted"
+          ? [workflow("Submitted to Accountant", "submit", "Consolidated budget requires Accountant review", req.auth!, now)]
+          : []),
+      ];
+      const canonical = {
+        ...primary,
+        ...branch,
+        label: monthLabel,
+        items: mergedItems,
+        total: mergedItems.reduce((sum, item) => sum + item.amt, 0),
+        status: mergedStatus,
+        workflow: mergedHistory,
+        submittedAt: primary.submittedAt ?? now,
+        mergedFromBudgetIds: sourceIds,
+        consolidatedAt: now,
+        consolidatedBy: req.auth!.username,
+        updatedAt: now,
+        updatedBy: req.auth!.username,
+        revision: revision(primary) + 1,
+      };
+      canonicalBudgets.push(canonical);
+      for (const source of ordered) {
+        canonicalBySourceId.set(String(source.id), {
+          id: Number(primary.id),
+          branchId: branch.branchId,
+          branchName: branch.branchName,
+        });
+        if (source !== primary) {
+          archivedBudgets.push({
+            ...source,
+            archivedAt: now,
+            archivedBy: req.auth!.username,
+            archivedReason: `Merged into budget ${String(primary.id)}`,
+            mergedIntoBudgetId: Number(primary.id),
+            updatedAt: now,
+            updatedBy: req.auth!.username,
+            revision: revision(source) + 1,
+          });
+        }
+      }
+    }
+
+    const canonicalIds = new Set(canonicalBudgets.map(item => String(item.id)));
+    const archivedIds = new Set(archivedBudgets.map(item => String(item.id)));
+    const nextBudgets = [
+      ...canonicalBudgets,
+      ...archivedBudgets,
+      ...budgets.filter(item =>
+        !monthBudgets.includes(item)
+        && !canonicalIds.has(String(item.id))
+        && !archivedIds.has(String(item.id)),
+      ),
+    ];
+    const nextExpenses = expenses.map(expense => {
+      const target = canonicalBySourceId.get(String(expense.budgetId ?? ""));
+      if (!target) return expense;
+      return {
+        ...expense,
+        budgetId: target.id,
+        branchId: target.branchId,
+        branchName: target.branchName,
+        updatedAt: now,
+        revision: revision(expense) + 1,
+      };
+    });
+    await save(tx, "budgets", nextBudgets);
+    await save(tx, "expenses", nextExpenses);
+
+    const summary = {
+      year,
+      month,
+      headOfficeBranchId,
+      canonicalBudgets,
+      archivedBudgetIds: archivedBudgets.map(item => Number(item.id)),
+      relinkedExpenseIds: expenses
+        .filter(expense => canonicalBySourceId.has(String(expense.budgetId ?? "")))
+        .map(expense => Number(expense.id)),
+    };
+    await remember(tx, idempotency, { key: idempotencyKey, fingerprint: fingerprintValue, item: summary });
+    return { summary };
+  });
+
+  if ("error" in result) {
+    res.status(result.status ?? 409).json({ error: result.error });
+    return;
+  }
+  if (!result.replay) {
+    for (const budget of result.summary.canonicalBudgets as JsonRecord[]) {
+      broadcastRealtime({ type: "budget.changed", recordId: budget.id, branchId: budget.branchId ?? null });
+      if (budget.status === "submitted") {
+        await notify(result as Awaited<ReturnType<typeof command>>, {
+          target: "acc",
+          branchId: String(budget.branchId ?? ""),
+          type: "operational",
+          title: "Consolidated Budget Awaiting Accountant Review",
+          body: `${budget.branchName} budget for ${budget.label} — ₦${budget.total}`,
+          data: { route: "/(app)/budget", budgetId: budget.id },
+        });
+      }
+    }
+    for (const expenseId of result.summary.relinkedExpenseIds as number[]) {
+      broadcastRealtime({ type: "expense.changed", recordId: expenseId });
+    }
+  }
+  res.status(result.replay ? 200 : 201).json({ ...result.summary, replay: result.replay === true });
 });
 
 router.patch("/finance/budgets/:id", async (req, res) => {
@@ -333,7 +648,10 @@ router.patch("/finance/budgets/:id", async (req, res) => {
     const allowed = (MANAGERS.has(auth.role) && canEditOwned(current, auth)) || (ACCOUNTANTS.has(auth.role) && ["submitted", "rejected"].includes(String(current.status)));
     if (!allowed) return forbidden("Your role cannot edit this budget");
     if (current.archivedAt || !["draft", "submitted", "rejected"].includes(String(current.status))) return conflict("This budget is locked in its current workflow state");
-    const item = { ...current, ...body, updatedAt: now, updatedBy: auth.username, revision: revision(current) + 1 };
+    const item: JsonRecord = { ...current, ...body, updatedAt: now, updatedBy: auth.username, revision: revision(current) + 1 };
+    if (item.status === "submitted" && hasSubmittedBudget(items, item, current.id)) {
+      return conflict(`This branch already has a budget submitted for ${body.label}`);
+    }
     items[items.indexOf(current)] = item; return { item };
   }); send(res, result, "budget.changed");
 });
@@ -355,6 +673,9 @@ router.post("/finance/budgets/:id/update-submit", async (req, res) => {
       updatedBy: auth.username,
       revision: revision(current) + 1,
     };
+    if (hasSubmittedBudget(items, item, current.id)) {
+      return conflict(`This branch already has a budget submitted for ${body.label}`);
+    }
     items[items.indexOf(current)] = item;
     return { item };
   });
@@ -443,6 +764,9 @@ for (const action of ["submit", "forward", "approve", "reject"] as const) router
     if (current.archivedAt) return conflict("Archived budgets cannot transition");
     const next = budgetTransition(action, String(current.status), auth.role);
     if (!next) return conflict("Illegal budget workflow transition for your role");
+    if (action === "submit" && hasSubmittedBudget(items, current, current.id)) {
+      return conflict(`This branch already has a budget submitted for ${current.label}`);
+    }
     const history = Array.isArray(current.workflow) ? current.workflow.filter(record) : [];
     const item = { ...current, status: next.status, workflow: [...history, workflow(next.stage, action, note, auth, now)], updatedAt: now, updatedBy: auth.username, revision: revision(current) + 1 };
     items[items.indexOf(current)] = item; return { item };

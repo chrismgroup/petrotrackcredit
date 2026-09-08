@@ -139,6 +139,15 @@ export interface Budget {
   branchId: string; branchName: string;
   archivedAt?: string; archivedBy?: string; revision?: number;
 }
+export interface BudgetConsolidationResult {
+  year: number;
+  month: number;
+  headOfficeBranchId: string;
+  canonicalBudgets: Budget[];
+  archivedBudgetIds: number[];
+  relinkedExpenseIds: number[];
+  replay?: boolean;
+}
 export interface BankLoan { bank: string; amount: number; }
 export interface FinancialEntry {
   cashInBank: number; posValue: number; goodsOnTransit: number;
@@ -1412,6 +1421,7 @@ interface AppContextType {
   deleteBudget: (id: number) => void;
   archiveBudgets: (ids: number[]) => void;
   classifyBudgetBranch: (id: number, branchId: string) => Promise<{ ok: boolean; error?: string }>;
+  consolidateBudgetMonth: (year: number, month: number, headOfficeBranchId: string) => Promise<{ ok: boolean; error?: string; result?: BudgetConsolidationResult }>;
   submitBudgetToAcc: (id: number) => void;
   forwardBudget: (id: number, note: string) => void;
   approveBudget: (id: number, note: string) => void;
@@ -3298,6 +3308,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   }, [budgets]);
 
+  const consolidateBudgetMonth = useCallback(async (year: number, month: number, headOfficeBranchId: string) => {
+    if (role !== 'acc' && role !== 'admin') return { ok: false, error: 'Only the Accountant or Admin can consolidate budgets.' };
+    const result = await workflowApi.budgets.consolidateMonth<BudgetConsolidationResult>(
+      year,
+      month,
+      headOfficeBranchId,
+      workflowMeta(0),
+    );
+    if (!result?.canonicalBudgets) {
+      return { ok: false, error: result?.error ?? 'The server could not consolidate these budgets.' };
+    }
+    await syncFromServer();
+    return { ok: true, result };
+  }, [role, syncFromServer]);
+
   const submitBudgetToAcc = useCallback((id: number) => {
     const b = budgets.find(b => b.id === id);
     if (!b) return;
@@ -4924,7 +4949,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       priceProposals, addPriceProposal, addPriceProposalConfirmed, approvePriceProposal, approvePriceProposalConfirmed, updateAndApprovePriceProposal, updateAndApprovePriceProposalConfirmed, rejectPriceProposal,
       updatePrice, updatePriceConfirmed, addTank, addLpgTank, addPump,
       updateTank, updateLpgTank, updatePump, updateStaff,
-       addExpense, updateExpense, updateExpenseConfirmed, deleteExpense, forwardExpenseToMD, forwardExpenseToMDConfirmed, addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, classifyBudgetBranch, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
+       addExpense, updateExpense, updateExpenseConfirmed, deleteExpense, forwardExpenseToMD, forwardExpenseToMDConfirmed, addBudget, updateBudget, updateAndSubmitBudget, deleteBudget, archiveBudgets, classifyBudgetBranch, consolidateBudgetMonth, submitBudgetToAcc, forwardBudget, approveBudget, rejectBudget,
        addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, addDeliveryConfirmed, updateDelivery, updateDeliveryConfirmed, deleteDelivery, submitDeliveryForApproval, submitDeliveryForApprovalConfirmed, accForwardToMd, accForwardToMdConfirmed, accRecallDelivery, approveDelivery, approveDeliveryConfirmed, rejectDelivery, rejectDeliveryConfirmed, addMaintenance, acknowledgeMaintenance, assignMaintenance, updateMaintenanceStatus, deleteMaintenance, addSales, updateSales, deleteSales,
       addCompanyFile, addDeliveryEvidence, addMyFolder, addMyFolderFile, removeMyFolderFile, replaceMyFolderFile,
         pumpDailyReports, pumpInitialMeters, pumpLockedMeters, inventoryLog, stockLogs, upsertStockLogs, startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
