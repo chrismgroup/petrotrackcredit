@@ -67,7 +67,24 @@ export function mergeWorkflowTombstones(existing: unknown, incoming: unknown): W
   for (const candidate of [...workflowTombstones(existing), ...workflowTombstones(incoming)]) {
     const id = idOf(candidate);
     const previous = merged.get(id);
-    if (!previous || revisionOf(candidate, "deliveries") >= revisionOf(previous, "deliveries")) {
+    const candidateRevision = Math.max(
+      revisionOf(candidate, "deliveries"),
+      revisionOf(candidate, "expenses"),
+    );
+    const previousRevision = previous
+      ? Math.max(revisionOf(previous, "deliveries"), revisionOf(previous, "expenses"))
+      : -1;
+    const candidateDeletedAt = Date.parse(String(candidate.deletedAt ?? ""));
+    const previousDeletedAt = Date.parse(String(previous?.deletedAt ?? ""));
+    if (
+      !previous
+      || candidateRevision > previousRevision
+      || (
+        candidateRevision === previousRevision
+        && Number.isFinite(candidateDeletedAt)
+        && (!Number.isFinite(previousDeletedAt) || candidateDeletedAt > previousDeletedAt)
+      )
+    ) {
       merged.set(id, candidate);
     }
   }

@@ -8,6 +8,10 @@
 import { db, appStateTable } from "@workspace/db";
 import { objectStorageClient } from "./objectStorage";
 import { logger } from "./logger";
+import {
+  mergeWorkflowRecords,
+  mergeWorkflowTombstones,
+} from "../routes/workflow-record-merge";
 
 const BACKUP_DIR = "backups";
 const BACKUP_PREFIX = "app-state";
@@ -17,6 +21,17 @@ interface BackupRow {
   key: string;
   data: unknown;
 }
+
+const WORKFLOW_BACKUP_PAIRS = [
+  {
+    collection: "deliveries" as const,
+    tombstones: "deliveryDeletionTombstones",
+  },
+  {
+    collection: "expenses" as const,
+    tombstones: "expenseDeletionTombstones",
+  },
+] as const;
 
 export interface BackupMetadata {
   objectName: string;
@@ -117,7 +132,36 @@ export async function restoreBackup(objectName: string): Promise<{ keysRestored:
   }
 
   await db.transaction(async (tx) => {
-    for (const row of payload) {
+    const currentRows = await tx.select().from(appStateTable);
+    const currentByKey = new Map(currentRows.map(row => [row.key, row]));
+    const restoredByKey = new Map(payload.map(row => [row.key, row]));
+
+    for (const pair of WORKFLOW_BACKUP_PAIRS) {
+      const currentTombstoneRow = currentByKey.get(pair.tombstones);
+      const restoredTombstoneRow = restoredByKey.get(pair.tombstones);
+      if (currentTombstoneRow || restoredTombstoneRow) {
+        const tombstones = mergeWorkflowTombstones(
+          currentTombstoneRow?.data,
+          restoredTombstoneRow?.data,
+        );
+        restoredByKey.set(pair.tombstones, { key: pair.tombstones, data: tombstones });
+      }
+
+      const restoredWorkflowRow = restoredByKey.get(pair.collection);
+      if (restoredWorkflowRow) {
+        restoredByKey.set(pair.collection, {
+          key: pair.collection,
+          data: mergeWorkflowRecords(
+            [],
+            restoredWorkflowRow.data,
+            pair.collection,
+            restoredByKey.get(pair.tombstones)?.data,
+          ),
+        });
+      }
+    }
+
+    for (const row of restoredByKey.values()) {
       await tx
         .insert(appStateTable)
         .values({ key: row.key, data: row.data })

@@ -16,6 +16,239 @@ type ApiResult<T extends JsonRecord = JsonRecord> = {
   body: T;
 };
 
+test("restoring a stale backup cannot resurrect deleted deliveries or expenses", {
+  skip: !process.env.DATABASE_URL || !process.env.JWT_SECRET || !process.env.PRIVATE_OBJECT_DIR,
+  timeout: 30_000,
+}, async () => {
+  const [{ default: app }, { pool }, { objectStorageClient }] = await Promise.all([
+    import("../app"),
+    import("@workspace/db"),
+    import("../lib/objectStorage"),
+  ]);
+  const marker = `backup-restore-${randomUUID()}`;
+  const password = `Test-${randomUUID()}`;
+  const username = `${marker}-admin`;
+  const deliveryId = `${marker}-delivery`;
+  const expenseId = `${marker}-expense`;
+  const stateKeys = [
+    "deliveries",
+    "deliveryDeletionTombstones",
+    "expenses",
+    "expenseDeletionTombstones",
+  ];
+  const priorRows = await pool.query(
+    "SELECT key, data FROM app_state WHERE key = ANY($1::text[])",
+    [stateKeys],
+  );
+  const priorState = new Map<string, unknown>(
+    priorRows.rows.map((row: { key: string; data: unknown }) => [row.key, row.data]),
+  );
+  const backupObjects = new Map<string, Buffer>();
+  const originalBucket = objectStorageClient.bucket;
+  Object.defineProperty(objectStorageClient, "bucket", {
+    configurable: true,
+    value: () => ({
+      file: (name: string) => ({
+        save: async (body: string) => {
+          backupObjects.set(name, Buffer.from(body));
+        },
+        exists: async () => [backupObjects.has(name)],
+        download: async () => [backupObjects.get(name) as Buffer],
+      }),
+      getFiles: async () => [[]],
+    }),
+  });
+  const server = app.listen(0);
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  const base = `http://127.0.0.1:${port}/api`;
+
+  async function request<T extends JsonRecord = JsonRecord>(
+    path: string,
+    options: RequestInit = {},
+    token?: string,
+  ): Promise<ApiResult<T>> {
+    const response = await fetch(`${base}${path}`, {
+      ...options,
+      headers: {
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+    const text = await response.text();
+    let body: T;
+    try {
+      body = JSON.parse(text) as T;
+    } catch {
+      body = { error: text } as unknown as T;
+    }
+    return { status: response.status, body };
+  }
+
+  async function readState(key: string): Promise<unknown> {
+    const result = await pool.query("SELECT data FROM app_state WHERE key = $1", [key]);
+    return result.rows[0]?.data;
+  }
+
+  try {
+    await pool.query(`
+      INSERT INTO staff_users (
+        emp_name, username, password, role, branch_id, status,
+        created_by, approved_by, approved_at
+      )
+      VALUES ('Backup Restore Admin', $1, $2, 'admin', NULL, 'active', $1, $1, NOW())
+    `, [username, password]);
+    const login = await request<LoginResult & JsonRecord>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    assert.equal(login.status, 200);
+    assert.equal(typeof login.body.token, "string");
+
+    const staleDelivery = {
+      id: deliveryId,
+      approvalStatus: "draft",
+      workflowVersion: 0,
+      sup: "Backup Supplier",
+      prod: "PMS",
+      wb: `${marker}-waybill`,
+      dt: "2026-10-03",
+      ord: 100,
+      rec: 50,
+    };
+    const staleExpense = {
+      id: expenseId,
+      status: "pending",
+      revision: 0,
+      desc: "Backup expense",
+    };
+    await pool.query(`
+      INSERT INTO app_state (key, data)
+      VALUES
+        ('deliveries', $1::jsonb),
+        ('expenses', $2::jsonb),
+        ('deliveryDeletionTombstones', '[]'::jsonb),
+        ('expenseDeletionTombstones', '[]'::jsonb)
+      ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+    `, [
+      JSON.stringify([staleDelivery]),
+      JSON.stringify([staleExpense]),
+    ]);
+
+    const staleBackup = await request<{ ok: boolean; backup: { objectName: string } }>(
+      "/state/backup",
+      { method: "POST" },
+      login.body.token,
+    );
+    assert.equal(staleBackup.status, 200);
+
+    const deliveryTombstone = {
+      id: deliveryId,
+      workflowVersion: 0,
+      deletedAt: new Date().toISOString(),
+    };
+    const expenseTombstone = {
+      id: expenseId,
+      revision: 0,
+      deletedAt: new Date().toISOString(),
+    };
+    await pool.query(`
+      INSERT INTO app_state (key, data)
+      VALUES
+        ('deliveries', '[]'::jsonb),
+        ('expenses', '[]'::jsonb),
+        ('deliveryDeletionTombstones', $1::jsonb),
+        ('expenseDeletionTombstones', $2::jsonb)
+      ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+    `, [
+      JSON.stringify([deliveryTombstone]),
+      JSON.stringify([expenseTombstone]),
+    ]);
+
+    // This backup proves tombstones are part of the exported state.
+    const protectedBackup = await request<{ ok: boolean; backup: { objectName: string } }>(
+      "/state/backup",
+      { method: "POST" },
+      login.body.token,
+    );
+    assert.equal(protectedBackup.status, 200);
+
+    // Lose the tombstones before restoring the protected snapshot. The
+    // snapshot must restore them and keep both workflow records absent.
+    await pool.query(`
+      UPDATE app_state
+      SET data = CASE key
+        WHEN 'deliveries' THEN $1::jsonb
+        WHEN 'expenses' THEN $2::jsonb
+        WHEN 'deliveryDeletionTombstones' THEN '[]'::jsonb
+        WHEN 'expenseDeletionTombstones' THEN '[]'::jsonb
+      END,
+      updated_at = NOW()
+      WHERE key = ANY($3::text[])
+    `, [
+      JSON.stringify([staleDelivery]),
+      JSON.stringify([staleExpense]),
+      stateKeys,
+    ]);
+    const protectedRestore = await request<{ ok: boolean; keysRestored: number }>(
+      "/state/restore",
+      {
+        method: "POST",
+        body: JSON.stringify({ objectName: protectedBackup.body.backup.objectName }),
+      },
+      login.body.token,
+    );
+    assert.equal(protectedRestore.status, 200);
+    assert.equal((await readState("deliveries") as JsonRecord[]).some(item => item.id === deliveryId), false);
+    assert.equal((await readState("expenses") as JsonRecord[]).some(item => item.id === expenseId), false);
+    assert.ok((await readState("deliveryDeletionTombstones") as JsonRecord[]).some(item => item.id === deliveryId));
+    assert.ok((await readState("expenseDeletionTombstones") as JsonRecord[]).some(item => item.id === expenseId));
+
+    // Restoring the older snapshot must also retain the newer live tombstones.
+    const staleRestore = await request<{ ok: boolean; keysRestored: number }>(
+      "/state/restore",
+      {
+        method: "POST",
+        body: JSON.stringify({ objectName: staleBackup.body.backup.objectName }),
+      },
+      login.body.token,
+    );
+    assert.equal(staleRestore.status, 200);
+    assert.equal((await readState("deliveries") as JsonRecord[]).some(item => item.id === deliveryId), false);
+    assert.equal((await readState("expenses") as JsonRecord[]).some(item => item.id === expenseId), false);
+  } finally {
+    await pool.query("BEGIN");
+    try {
+      for (const key of stateKeys) {
+        if (priorState.has(key)) {
+          await pool.query(
+            "UPDATE app_state SET data = $2::jsonb, updated_at = NOW() WHERE key = $1",
+            [key, JSON.stringify(priorState.get(key))],
+          );
+        } else {
+          await pool.query("DELETE FROM app_state WHERE key = $1", [key]);
+        }
+      }
+      await pool.query("DELETE FROM staff_users WHERE username = $1", [username]);
+      await pool.query("COMMIT");
+    } catch (error) {
+      await pool.query("ROLLBACK");
+      throw error;
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close(error => error ? reject(error) : resolve());
+      });
+      Object.defineProperty(objectStorageClient, "bucket", {
+        configurable: true,
+        value: originalBucket,
+      });
+      await pool.end();
+    }
+  }
+});
+
 test("mounted workflow commands are server-authoritative, revision-safe, and idempotent", {
   skip: !process.env.DATABASE_URL || !process.env.JWT_SECRET,
   timeout: 30_000,
@@ -42,8 +275,10 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
   };
   const stateKeys = [
     "deliveries",
+    "deliveryDeletionTombstones",
     "deliveryWorkflowIdempotency",
     "expenses",
+    "expenseDeletionTombstones",
     "budgets",
     "branches",
     "financeWorkflowIdempotency",
