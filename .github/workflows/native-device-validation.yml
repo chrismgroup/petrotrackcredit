@@ -63,6 +63,7 @@ jobs:
           test -n "$EXPO_PUBLIC_DOMAIN"
           test "$EXPO_PUBLIC_DOMAIN" != "petrotrack.replit.app"
           mkdir -p "$RUNNER_TEMP/eas"
+          cd artifacts/petrotrack
           eas build \
             --platform android \
             --profile preview \
