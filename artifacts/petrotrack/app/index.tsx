@@ -14,24 +14,87 @@ import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { type LoginError, apiLogin } from '@/lib/api';
 
-const BIOMETRIC_KEY = 'petrotrack_biometric_creds';
+const BIOMETRIC_KEY = 'petrotrack_biometric_creds_v2';
+const LEGACY_BIOMETRIC_KEY = 'petrotrack_biometric_creds';
+const BIOMETRIC_STORE_OPTIONS: SecureStore.SecureStoreOptions = {
+  requireAuthentication: true,
+  authenticationPrompt: 'Authenticate to sign in to Petrotrack',
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
 
 async function saveCredentials(username: string, password: string) {
   if (Platform.OS === 'web') return;
-  await SecureStore.setItemAsync(BIOMETRIC_KEY, JSON.stringify({ username, password }));
+  await SecureStore.setItemAsync(
+    BIOMETRIC_KEY,
+    JSON.stringify({ username, password }),
+    BIOMETRIC_STORE_OPTIONS,
+  );
+}
+
+function parseCredentials(raw: string | null): { username: string; password: string } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed.username === 'string' &&
+      parsed.username.trim() &&
+      typeof parsed.password === 'string' &&
+      parsed.password
+    ) {
+      return { username: parsed.username, password: parsed.password };
+    }
+  } catch {
+    // Treat malformed stored data like expired credentials.
+  }
+  return null;
 }
 
 async function loadCredentials(): Promise<{ username: string; password: string } | null> {
   if (Platform.OS === 'web') return null;
+
+  // Reading the protected item is the device-lock gate. Do not call
+  // LocalAuthentication.authenticateAsync as well, or users get two prompts.
   try {
-    const raw = await SecureStore.getItemAsync(BIOMETRIC_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+    const protectedCreds = parseCredentials(
+      await SecureStore.getItemAsync(BIOMETRIC_KEY, BIOMETRIC_STORE_OPTIONS),
+    );
+    if (protectedCreds) return protectedCreds;
+  } catch {
+    // Cancellation and invalidated biometric enrollment both land here.
+    // Remove the unusable secret and leave the password form available.
+    await clearCredentials();
+    return null;
+  }
+
+  // Migrate the previous unprotected entry only after the protected read
+  // completed without an authentication error. If protection cannot be
+  // established, expire the legacy secret instead of leaving it reusable.
+  try {
+    const legacyCreds = parseCredentials(await SecureStore.getItemAsync(LEGACY_BIOMETRIC_KEY));
+    if (!legacyCreds) {
+      await SecureStore.deleteItemAsync(LEGACY_BIOMETRIC_KEY).catch(() => {});
+      return null;
+    }
+    try {
+      await saveCredentials(legacyCreds.username, legacyCreds.password);
+      await SecureStore.deleteItemAsync(LEGACY_BIOMETRIC_KEY).catch(() => {});
+      return legacyCreds;
+    } catch {
+      await clearCredentials();
+      return null;
+    }
+  } catch {
+    return null;
+  }
 }
 
 async function clearCredentials() {
   if (Platform.OS === 'web') return;
-  await SecureStore.deleteItemAsync(BIOMETRIC_KEY).catch(() => {});
+  await Promise.all([
+    SecureStore.deleteItemAsync(BIOMETRIC_KEY, BIOMETRIC_STORE_OPTIONS).catch(() => {}),
+    SecureStore.deleteItemAsync(LEGACY_BIOMETRIC_KEY).catch(() => {}),
+  ]);
 }
 
 const BG_DARK = '#071910';
@@ -96,12 +159,6 @@ export default function LoginScreen() {
     if (!bioCreds || bioLoading) return;
     setBioLoading(true);
     try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Sign in to Petrotrack',
-        cancelLabel: 'Use password',
-        disableDeviceFallback: false,
-      });
-      if (!result.success) { setBioLoading(false); return; }
       const serverResult = await apiLogin(bioCreds.username, bioCreds.password);
       if (typeof serverResult === 'string') {
         setBioLoading(false);
@@ -139,7 +196,9 @@ export default function LoginScreen() {
       }
       return;
     }
-    await saveCredentials(u, p);
+    // A device may cancel or reject the protection prompt. That should not
+    // turn a successful password sign-in into a failed sign-in.
+    await saveCredentials(u, p).catch(() => {});
     const synced = await login(serverResult.role as Parameters<typeof login>[0], serverResult.empName, serverResult.staffId, serverResult.branchId ?? undefined);
     setLoading(false);
     if (!synced) {

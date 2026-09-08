@@ -11,6 +11,8 @@ const mockIsEnrolled = jest.fn();
 const mockSupportedTypes = jest.fn();
 const mockAuthenticate = jest.fn();
 const mockGetItem = jest.fn();
+const mockSetItem = jest.fn();
+const mockDeleteItem = jest.fn();
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -49,9 +51,10 @@ jest.mock('expo-local-authentication', () => ({
 }));
 
 jest.mock('expo-secure-store', () => ({
-  getItemAsync: () => mockGetItem(),
-  setItemAsync: jest.fn(),
-  deleteItemAsync: jest.fn(),
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
+  getItemAsync: (...args: unknown[]) => mockGetItem(...args),
+  setItemAsync: (...args: unknown[]) => mockSetItem(...args),
+  deleteItemAsync: (...args: unknown[]) => mockDeleteItem(...args),
 }));
 
 jest.mock('@/context/AppContext', () => ({
@@ -121,6 +124,8 @@ beforeEach(() => {
   mockHasHardware.mockResolvedValue(true);
   mockIsEnrolled.mockResolvedValue(true);
   mockGetItem.mockResolvedValue(credentials);
+  mockSetItem.mockResolvedValue(undefined);
+  mockDeleteItem.mockResolvedValue(undefined);
   mockLogin.mockResolvedValue(true);
 });
 
@@ -150,29 +155,48 @@ it.each([
     await button.props.onPress();
   });
 
-  expect(mockAuthenticate).toHaveBeenCalledWith(expect.objectContaining({
-    cancelLabel: 'Use password',
-    disableDeviceFallback: false,
-  }));
+  expect(mockGetItem).toHaveBeenCalledWith(
+    'petrotrack_biometric_creds_v2',
+    expect.objectContaining({
+      requireAuthentication: true,
+      authenticationPrompt: 'Authenticate to sign in to Petrotrack',
+    }),
+  );
+  expect(mockAuthenticate).not.toHaveBeenCalled();
   expect(mockApiLogin).toHaveBeenCalledWith('operator', 'secret');
   expect(mockLogin).toHaveBeenCalledWith('mgr', 'Operator', 'staff-1', 'branch-1');
   act(() => renderer.unmount());
 });
 
-it.each(['ios', 'android'] as const)('returns to the usable password form after biometric cancellation on %s', async os => {
+it.each(['ios', 'android'] as const)('returns to the usable password form after device-lock cancellation on %s', async os => {
   mockSupportedTypes.mockResolvedValue([os === 'ios' ? 2 : 1]);
-  mockAuthenticate.mockResolvedValue({ success: false, error: 'user_cancel' });
+  mockGetItem.mockRejectedValue(new Error('User canceled authentication'));
   const renderer = await renderScreen(os);
 
-  const button = renderer.root.findByProps({ testID: 'login-biometric' });
-  await act(async () => {
-    await button.props.onPress();
-  });
-
+  expect(renderer.root.findAllByProps({ testID: 'login-biometric' })).toHaveLength(0);
   expect(renderer.root.findByProps({ testID: 'login-username' })).toBeTruthy();
   expect(renderer.root.findByProps({ testID: 'login-password' })).toBeTruthy();
   expect(renderer.root.findByProps({ testID: 'login-submit' }).props.disabled).toBe(false);
   expect(mockApiLogin).not.toHaveBeenCalled();
+  expect(mockAuthenticate).not.toHaveBeenCalled();
+  expect(mockDeleteItem).toHaveBeenCalled();
+  act(() => renderer.unmount());
+});
+
+it.each(['ios', 'android'] as const)('migrates legacy saved credentials into the protected store on %s', async os => {
+  mockSupportedTypes.mockResolvedValue([os === 'ios' ? 2 : 1]);
+  mockGetItem.mockImplementation((key: string) =>
+    key === 'petrotrack_biometric_creds_v2' ? null : credentials,
+  );
+  const renderer = await renderScreen(os);
+
+  expect(mockSetItem).toHaveBeenCalledWith(
+    'petrotrack_biometric_creds_v2',
+    credentials,
+    expect.objectContaining({ requireAuthentication: true }),
+  );
+  expect(mockDeleteItem).toHaveBeenCalledWith('petrotrack_biometric_creds');
+  expect(renderer.root.findByProps({ testID: 'login-biometric' })).toBeTruthy();
   act(() => renderer.unmount());
 });
 
