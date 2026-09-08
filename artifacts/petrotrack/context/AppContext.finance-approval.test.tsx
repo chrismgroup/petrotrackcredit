@@ -4,7 +4,7 @@ import { act, create } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
 
 import { workflowApi, stateApi } from '@/lib/api';
-import { AppProvider, useApp } from './AppContext';
+import { AppProvider, useApp, type Budget, type Expense } from './AppContext';
 
 type AppState = ReturnType<typeof useApp>;
 
@@ -33,6 +33,7 @@ const expense = {
   status: 'acc_forwarded' as const,
   budgetId: 7,
   branchId: 'branch-b',
+  branchName: 'Branch B',
   revision: 3,
 };
 
@@ -49,20 +50,27 @@ const budget = {
   total: 250_000,
   status: 'acc_forwarded',
   workflow: [],
+  branchId: 'branch-b',
+  branchName: 'Branch B',
   revision: 2,
 };
+
+let currentServerExpenses: Expense[] = [expense];
+let currentServerBudgets: Budget[] = [budget];
 
 function serverState() {
   return {
     userAccounts: [],
     branches: [],
-    expenses: [expense],
-    budgets: [budget],
+    expenses: currentServerExpenses,
+    budgets: currentServerBudgets,
   };
 }
 
 beforeEach(() => {
-  jest.mocked(stateApi.getAll).mockResolvedValue(serverState());
+  currentServerExpenses = [expense];
+  currentServerBudgets = [budget];
+  jest.mocked(stateApi.getAll).mockImplementation(async () => serverState());
   jest.mocked(workflowApi.expenses.transition).mockResolvedValue({
     error: 'This expense was already approved by another reviewer.',
     status: 409,
@@ -125,4 +133,121 @@ it('surfaces a budget rejection reason and refreshes from the server', async () 
   );
   expect(jest.mocked(stateApi.getAll).mock.calls.length).toBeGreaterThan(syncCallsAfterLogin);
   expect(app().budgets).toEqual([budget]);
+});
+
+it('applies a successful accountant forward and keeps the expense forwarded after a fresh sync', async () => {
+  const pendingExpense: Expense = { ...expense, status: 'pending' };
+  const forwardedExpense: Expense = { ...pendingExpense, status: 'acc_forwarded', revision: 4 };
+  currentServerExpenses = [pendingExpense];
+  jest.mocked(workflowApi.expenses.transition).mockImplementationOnce(async () => {
+    currentServerExpenses = [forwardedExpense];
+    return { record: forwardedExpense };
+  });
+
+  await act(async () => {
+    renderer = create(
+      <AppProvider>
+        <ContextCapture />
+      </AppProvider>,
+    );
+  });
+  await act(async () => {
+    expect(await app().login('acc', 'Accountant', 13, 'branch-a')).toBe(true);
+  });
+
+  await act(async () => {
+    expect(await app().forwardExpenseToMDConfirmed(41, 'Reviewed')).toEqual({ ok: true });
+  });
+  expect(app().expenses).toEqual([forwardedExpense]);
+
+  await act(async () => {
+    expect(await app().login('acc', 'Accountant', 13, 'branch-a')).toBe(true);
+  });
+  expect(app().expenses).toEqual([forwardedExpense]);
+});
+
+it('applies a successful branch-assigned executive approval and keeps the expense approved after a fresh sync', async () => {
+  const forwardedExpense: Expense = { ...expense, status: 'acc_forwarded' };
+  const approvedExpense: Expense = {
+    ...forwardedExpense,
+    status: 'approved' as const,
+    approvedBy: 'Managing Director',
+    approvedDt: '2026-09-08T12:00:00.000Z',
+    revision: 4,
+  };
+  currentServerExpenses = [forwardedExpense];
+  jest.mocked(workflowApi.expenses.transition).mockImplementationOnce(async () => {
+    currentServerExpenses = [approvedExpense];
+    return { record: approvedExpense };
+  });
+
+  await mountAndLogin();
+  await act(async () => {
+    expect(await app().approveExpenseConfirmed(41)).toEqual({ ok: true });
+  });
+  expect(app().expenses).toEqual([approvedExpense]);
+
+  await act(async () => {
+    expect(await app().login('md', 'Managing Director', 12, 'branch-a')).toBe(true);
+  });
+  expect(app().expenses).toEqual([approvedExpense]);
+});
+
+it('applies a successful accountant budget forward and keeps it forwarded after a fresh sync', async () => {
+  const submittedBudget: Budget = { ...budget, status: 'submitted' };
+  const forwardedBudget: Budget = { ...submittedBudget, status: 'acc_forwarded', revision: 3 };
+  currentServerBudgets = [submittedBudget];
+  jest.mocked(workflowApi.budgets.transition).mockImplementationOnce(async () => {
+    currentServerBudgets = [forwardedBudget];
+    return { record: forwardedBudget };
+  });
+
+  await act(async () => {
+    renderer = create(
+      <AppProvider>
+        <ContextCapture />
+      </AppProvider>,
+    );
+  });
+  await act(async () => {
+    expect(await app().login('acc', 'Accountant', 13, 'branch-a')).toBe(true);
+  });
+
+  await act(async () => {
+    app().forwardBudget(7, 'Reviewed');
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(app().budgets).toEqual([forwardedBudget]);
+
+  await act(async () => {
+    expect(await app().login('acc', 'Accountant', 13, 'branch-a')).toBe(true);
+  });
+  expect(app().budgets).toEqual([forwardedBudget]);
+});
+
+it('applies a successful branch-assigned executive budget approval and keeps it approved after a fresh sync', async () => {
+  const forwardedBudget: Budget = { ...budget, status: 'acc_forwarded' };
+  const approvedBudget: Budget = {
+    ...forwardedBudget,
+    status: 'fully_approved',
+    workflow: [{ stage: 'md', by: 'Managing Director', role: 'md', dt: '2026-09-08T12:00:00.000Z', action: 'approve', note: 'Approved' }],
+    revision: 3,
+  };
+  currentServerBudgets = [forwardedBudget];
+  jest.mocked(workflowApi.budgets.transition).mockImplementationOnce(async () => {
+    currentServerBudgets = [approvedBudget];
+    return { record: approvedBudget };
+  });
+
+  await mountAndLogin();
+  await act(async () => {
+    app().approveBudget(7, 'Approved');
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(app().budgets).toEqual([approvedBudget]);
+
+  await act(async () => {
+    expect(await app().login('md', 'Managing Director', 12, 'branch-a')).toBe(true);
+  });
+  expect(app().budgets).toEqual([approvedBudget]);
 });
