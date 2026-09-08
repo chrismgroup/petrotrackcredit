@@ -9,8 +9,8 @@ Every expense must be logged against a fully approved budget and inherit that bu
 
 **How to apply:** Validate the budget and branch on every expense create or edit command. If a historical budget’s branch is ambiguous, require finance classification before accepting expenses against it.
 
-Only the MD can approve or reject a forwarded expense. The CEO receives an informational Home notification but has no expense records, Expenses workspace entry, approval queue, or expense decision controls.
+Only the Accountant can approve or reject an expense, including legacy records that still use the forwarded status. Rejected expenses return to the originating manager for correction and resubmission. MD and CEO can inspect the workflow on Home and in Expenses, but have no decision controls.
 
-**Why:** Expense decisions are an MD-only responsibility; CEO awareness must not imply decision authority.
+**Why:** Expense decisions belong to the Accountant; executive visibility is needed for oversight but must not imply approval authority.
 
-**How to apply:** Enforce MD-only decisions in the API first, mirror that restriction in screens and navigation, and keep CEO notifications non-actionable with a Home route.
+**How to apply:** Enforce Accountant-only decisions in the API first, keep pending and legacy-forwarded records with the Accountant, label rejected records as with the Manager, and keep MD/CEO views read-only.

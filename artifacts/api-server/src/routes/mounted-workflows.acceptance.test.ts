@@ -410,21 +410,19 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       idempotencyKey: `${marker}-expense-role-denied`,
     });
     assert.equal(expenseRoleDenied.status, 403);
-    const expenseForwarded = await command(accountant.token, `/finance/expenses/${expenseId}/forward`, {
+    const expenseForwardDenied = await command(accountant.token, `/finance/expenses/${expenseId}/forward`, {
       expectedRevision: 1,
-      idempotencyKey: `${marker}-expense-forward`,
+      idempotencyKey: `${marker}-expense-forward-disabled`,
     });
-    assert.equal(expenseForwarded.status, 201);
-    assert.equal(recordFrom(expenseForwarded).status, "acc_forwarded");
+    assert.equal(expenseForwardDenied.status, 403);
     const ceoExpenseState = await request("/state/expenses", {}, ceo.token);
     assert.equal(ceoExpenseState.status, 200);
-    assert.deepEqual(ceoExpenseState.body, []);
-    const ceoExpenseNotifications = await request("/notifications", {}, ceo.token);
-    assert.equal(ceoExpenseNotifications.status, 200);
-    assert.ok((ceoExpenseNotifications.body as unknown as JsonRecord[]).some(notification =>
-      notification.title === "Expense Sent to MD for Review"
-      && (notification.data as JsonRecord | undefined)?.route === "/(app)/home"
-    ));
+    assert.ok((ceoExpenseState.body as unknown as JsonRecord[]).some(item => String(item.id) === expenseId));
+    const mdExpenseApprovalBlocked = await command(md.token, `/finance/expenses/${expenseId}/approve`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-md-expense-approve-blocked`,
+    });
+    assert.equal(mdExpenseApprovalBlocked.status, 403);
     const staleExpense = await command(manager.token, `/finance/expenses/${expenseId}`, {
       expense: {
         cat: "Operations",
@@ -433,15 +431,41 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
         dt: "2026-10-02",
         budgetId: 1,
       },
-      expectedRevision: 1,
+      expectedRevision: 0,
       idempotencyKey: `${marker}-expense-stale`,
     }, "PATCH");
     assert.equal(staleExpense.status, 409);
-    const expenseApproveBody = {
+    const expenseRejected = await command(accountant.token, `/finance/expenses/${expenseId}/reject`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-expense-reject`,
+    });
+    assert.equal(expenseRejected.status, 201);
+    assert.equal(recordFrom(expenseRejected).status, "rejected");
+    const managerExpenseState = await request("/state/expenses", {}, manager.token);
+    assert.equal(managerExpenseState.status, 200);
+    assert.equal(
+      (managerExpenseState.body as unknown as JsonRecord[]).find(item => String(item.id) === expenseId)?.status,
+      "rejected",
+    );
+    const resubmittedExpense = await command(manager.token, `/finance/expenses/${expenseId}`, {
+      expense: {
+        cat: "Operations",
+        desc: `${marker} corrected expense`,
+        amt: 1300,
+        dt: "2026-10-02",
+        budgetId: 1,
+      },
       expectedRevision: 2,
+      idempotencyKey: `${marker}-expense-resubmit`,
+    }, "PATCH");
+    assert.equal(resubmittedExpense.status, 201);
+    assert.equal(recordFrom(resubmittedExpense).status, "pending");
+    assert.equal(recordFrom(resubmittedExpense).revision, 3);
+    const expenseApproveBody = {
+      expectedRevision: 3,
       idempotencyKey: `${marker}-expense-approve`,
     };
-    const expenseApproved = await command(md.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
+    const expenseApproved = await command(accountant.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
     assert.equal(expenseApproved.status, 201);
     assert.equal(recordFrom(expenseApproved).status, "approved");
     const staleExpenseWrite = await request<{ ok: boolean; expenses: JsonRecord[] }>(
@@ -493,7 +517,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       staleDeletedExpenseWrite.body.expenses.some(item => String(item.id) === deletableExpenseId),
       false,
     );
-    const expenseReplay = await command(md.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
+    const expenseReplay = await command(accountant.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
     assert.equal(expenseReplay.status, 200);
     assert.equal(expenseReplay.body.replay, true);
 
@@ -510,22 +534,22 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     });
     assert.equal(ceoExpense.status, 201);
     const ceoExpenseId = String(recordFrom(ceoExpense).id);
-    const ceoExpenseForwarded = await command(accountant.token, `/finance/expenses/${ceoExpenseId}/forward`, {
-      expectedRevision: 1,
-      idempotencyKey: `${marker}-ceo-expense-forward`,
-    });
-    assert.equal(ceoExpenseForwarded.status, 201);
     const ceoExpenseApprovalBlocked = await command(ceo.token, `/finance/expenses/${ceoExpenseId}/approve`, {
-      expectedRevision: 2,
+      expectedRevision: 1,
       idempotencyKey: `${marker}-ceo-expense-approve`,
     });
     assert.equal(ceoExpenseApprovalBlocked.status, 403);
-    const mdExpenseApproved = await command(md.token, `/finance/expenses/${ceoExpenseId}/approve`, {
-      expectedRevision: 2,
+    const mdExpenseApprovalAlsoBlocked = await command(md.token, `/finance/expenses/${ceoExpenseId}/approve`, {
+      expectedRevision: 1,
       idempotencyKey: `${marker}-md-expense-approve`,
     });
-    assert.equal(mdExpenseApproved.status, 201);
-    assert.equal(recordFrom(mdExpenseApproved).status, "approved");
+    assert.equal(mdExpenseApprovalAlsoBlocked.status, 403);
+    const accountantExpenseApproved = await command(accountant.token, `/finance/expenses/${ceoExpenseId}/approve`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-accountant-expense-approve`,
+    });
+    assert.equal(accountantExpenseApproved.status, 201);
+    assert.equal(recordFrom(accountantExpenseApproved).status, "approved");
 
     const legacyBudgetId = `${marker}-legacy-budget`;
     await pool.query(`

@@ -314,7 +314,7 @@ describe('dashboard and workspace navigation', () => {
     act(() => renderer.unmount());
   });
 
-  it('opens MD expense claims from Approvals & Actions in the actionable Expenses screen', () => {
+  it('opens MD expense claims from Approvals & Actions in the read-only Expenses screen', () => {
     mockUseApp.mockReturnValue(baseAppState({
       role: 'md',
       expenses: [{
@@ -338,9 +338,10 @@ describe('dashboard and workspace navigation', () => {
     act(() => renderer.unmount());
   });
 
-  it('keeps CEO expense notices informational on Home and hides the Expenses workspace', () => {
+  it('lets CEO inspect expense workflow status on Home and in My Jobs', () => {
     mockUseApp.mockReturnValue(baseAppState({
       role: 'ceo',
+      navItems: [{ id: 'exp', label: 'Expenses', icon: 'receipt-outline' }],
       expenses: [{
         id: 102,
         dt: '2026-09-05',
@@ -358,12 +359,12 @@ describe('dashboard and workspace navigation', () => {
 
     let homeRenderer!: ReactTestRenderer;
     act(() => { homeRenderer = create(<HomeScreen />); });
-    expect(homeRenderer.root.findAll(node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Expense Claims'))).toHaveLength(0);
+    expect(homeRenderer.root.findAll(node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Expense Claims'))).toHaveLength(1);
     act(() => homeRenderer.unmount());
 
     let jobsRenderer!: ReactTestRenderer;
     act(() => { jobsRenderer = create(<JobsScreen />); });
-    expect(jobsRenderer.root.findAll(node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Expenses'))).toHaveLength(0);
+    expect(jobsRenderer.root.findAll(node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Expenses'))).toHaveLength(1);
     act(() => jobsRenderer.unmount());
   });
 

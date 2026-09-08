@@ -208,64 +208,49 @@ afterEach(() => {
 });
 
 describe('expense approval controls', () => {
-  it('lets the accountant forward a pending expense from another branch to the MD', async () => {
-    const forwardExpenseToMDConfirmed = jest.fn(async () => ({ ok: true }));
+  it('lets only the accountant approve or reject a pending expense', async () => {
+    const approveExpenseConfirmed = jest.fn(async () => ({ ok: true }));
+    const rejectExpenseConfirmed = jest.fn(async () => ({ ok: true }));
     mockedUseApp.mockReturnValue(appState({
       expenses: [expense()],
-      forwardExpenseToMDConfirmed,
+      approveExpenseConfirmed,
+      rejectExpenseConfirmed,
     }) as any);
 
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<ExpensesScreen />); });
 
-    expect(touchable(renderer, 'Forward to MD')).toBeTruthy();
-    press(renderer, 'Forward to MD');
-
-    const forwardButtons = touchables(renderer, 'Forward to MD');
     await act(async () => {
-      await forwardButtons.at(-1)?.props.onPress();
+      await touchable(renderer, 'Approve').props.onPress();
     });
-    expect(forwardExpenseToMDConfirmed).toHaveBeenCalledWith(41, undefined);
+    expect(approveExpenseConfirmed).toHaveBeenCalledWith(41);
+
+    await act(async () => {
+      await touchable(renderer, 'Reject').props.onPress();
+    });
+    expect(rejectExpenseConfirmed).toHaveBeenCalledWith(41);
 
     act(() => renderer.unmount());
   });
 
   it(
-    'shows MD approve and reject controls for an expense assigned to another branch',
-    async () => {
-      const role = 'md';
-      const approveExpenseConfirmed = jest.fn(async () => ({ ok: true }));
-      const rejectExpenseConfirmed = jest.fn(async () => ({ ok: true }));
+    'shows no expense decision controls to MD, CEO, or admin',
+    () => {
       mockedUseApp.mockReturnValue(appState({
-        role,
-        userName: role === 'md' ? 'Managing Director' : role === 'ceo' ? 'Chief Executive Officer' : 'Admin',
+        role: 'md',
         expenses: [expense({ status: 'acc_forwarded' })],
-        approveExpenseConfirmed,
-        rejectExpenseConfirmed,
       }) as any);
 
       let renderer!: ReactTestRenderer;
       act(() => { renderer = create(<ExpensesScreen />); });
-
-      expect(touchable(renderer, 'Approve')).toBeTruthy();
-      expect(touchable(renderer, 'Reject')).toBeTruthy();
-
-      await act(async () => {
-        await touchable(renderer, 'Approve').props.onPress();
-      });
-      expect(approveExpenseConfirmed).toHaveBeenCalledWith(41);
-
-      await act(async () => {
-        await touchable(renderer, 'Reject').props.onPress();
-      });
-      expect(rejectExpenseConfirmed).toHaveBeenCalledWith(41);
-
+      expect(touchables(renderer, 'Approve')).toHaveLength(0);
+      expect(touchables(renderer, 'Reject')).toHaveLength(0);
       act(() => renderer.unmount());
     },
   );
 
   it.each(['ceo', 'admin'] as const)(
-    'does not show expense approval controls to %s',
+    'does not show expense decision controls to %s',
     role => {
       mockedUseApp.mockReturnValue(appState({
         role,
@@ -280,15 +265,14 @@ describe('expense approval controls', () => {
     },
   );
 
-  it('shows the server reason when an executive rejection is refused', async () => {
+  it('shows the server reason when the accountant rejection is refused', async () => {
     const rejectExpenseConfirmed = jest.fn(async () => ({
       ok: false,
       error: 'This record has already been approved by another reviewer.',
     }));
     mockedUseApp.mockReturnValue(appState({
-      role: 'md',
-      userName: 'Managing Director',
-      expenses: [expense({ status: 'acc_forwarded' })],
+      role: 'acc',
+      expenses: [expense()],
       rejectExpenseConfirmed,
     }) as any);
 

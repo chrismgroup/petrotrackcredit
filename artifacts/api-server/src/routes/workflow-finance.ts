@@ -236,9 +236,25 @@ router.patch("/finance/expenses/:id", async (req, res) => {
     const editable = (MANAGERS.has(auth.role) && canEditOwned(current, auth)) || (ACCOUNTANTS.has(auth.role) && ["pending", "rejected"].includes(String(current.status)));
     if (!editable) return forbidden("Your role cannot edit this expense");
     if (!["pending", "rejected"].includes(String(current.status))) return conflict("This expense is locked in its current workflow state");
-    const item = { ...current, ...body, ...assignedBranch, updatedAt: now, updatedBy: auth.username, revision: revision(current) + 1 };
+    const resubmitting = MANAGERS.has(auth.role) && current.status === "rejected";
+    const item = {
+      ...current,
+      ...body,
+      ...assignedBranch,
+      ...(resubmitting ? { status: "pending", submittedAt: now } : {}),
+      updatedAt: now,
+      updatedBy: auth.username,
+      revision: revision(current) + 1,
+    };
     items[items.indexOf(current)] = item; return { item };
-  }); send(res, result, "expense.changed");
+  });
+  if (!result.error && result.item?.status === "pending") await notify(result, {
+    target: "acc", type: "operational",
+    title: "Expense Resubmitted for Accountant Approval",
+    body: `${result.item?.branchName ?? "Branch"} · ${result.item?.desc ?? "Expense"} — ₦${result.item?.amt ?? 0}`,
+    data: { route: "/(app)/expenses", expenseId: result.item?.id },
+  });
+  send(res, result, "expense.changed");
 });
 
 router.delete("/finance/expenses/:id", async (req, res) => {
@@ -270,10 +286,10 @@ for (const action of ["forward", "approve", "reject"] as const) router.post(`/fi
     items[items.indexOf(current)] = item; return { item };
   });
   if (!result.error) {
-    const target = action === "forward" ? "md" : String(result.item?.createdBy ?? result.item?.byName ?? "");
+    const target = String(result.item?.createdBy ?? result.item?.byName ?? "");
     await notify(result, {
       target, type: "operational",
-      title: action === "forward" ? "Expense Awaiting MD Approval" : `Expense ${action === "approve" ? "Approved" : "Rejected"}`,
+      title: `Expense ${action === "approve" ? "Approved" : "Rejected"}`,
       body: `${result.item?.desc ?? "Expense"} — ₦${result.item?.amt ?? 0}`,
       data: { route: "/(app)/expenses", expenseId: result.item?.id },
     });
