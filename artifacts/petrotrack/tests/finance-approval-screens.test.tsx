@@ -235,6 +235,48 @@ describe('expense approval controls', () => {
     act(() => renderer.unmount());
   });
 
+  it('submits an expense against the manager fully approved branch budget', async () => {
+    const addExpense = jest.fn(async () => ({ ok: true }));
+    mockedUseApp.mockReturnValue(appState({
+      role: 'mgr',
+      userName: 'Iniobong Inyang Edward',
+      branchId: 'B1784296845861',
+      budgets: [budget({
+        id: 1,
+        status: 'fully_approved',
+        branchId: 'B1784296845861',
+        branchName: 'Ikot Ekpene Gas Plant',
+      })],
+      addExpense,
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const addButton = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === '',
+    )[0];
+    act(() => { addButton.props.onPress(); });
+
+    const inputs = renderer.root.findAll(node => String(node.type) === 'TextInput');
+    act(() => {
+      inputs[0].props.onChangeText('Station generator fuel');
+      inputs[1].props.onChangeText('25000');
+    });
+    await act(async () => {
+      await touchable(renderer, 'Submit Expense').props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(addExpense).toHaveBeenCalledWith(expect.objectContaining({
+      budgetId: 1,
+      by: 'mgr',
+      byName: 'Iniobong Inyang Edward',
+      desc: 'Station generator fuel',
+      amt: 25000,
+    }));
+    act(() => renderer.unmount());
+  });
+
   it('explains why a manager cannot submit until the new budget is fully approved', () => {
     mockedUseApp.mockReturnValue(appState({
       role: 'mgr',
