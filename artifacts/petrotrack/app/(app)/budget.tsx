@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert, Modal,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -178,6 +178,8 @@ export default function BudgetScreen() {
   const [actionNote, setActionNote] = useState('');
   const [classificationBranchId, setClassificationBranchId] = useState('');
   const [classificationBusy, setClassificationBusy] = useState(false);
+  const [reviewingBudgetIds, setReviewingBudgetIds] = useState<Set<number>>(() => new Set());
+  const reviewingBudgetIdsRef = useRef<Set<number>>(new Set());
 
   const [showForm, setShowForm]     = useState(false);
   const [editTarget, setEditTarget] = useState<Budget | null>(null);
@@ -192,6 +194,9 @@ export default function BudgetScreen() {
   const [consolidateYear, setConsolidateYear] = useState(String(new Date().getFullYear()));
   const [consolidateMonth, setConsolidateMonth] = useState(String(new Date().getMonth() + 1));
   const [consolidateBusy, setConsolidateBusy] = useState(false);
+  const [formBusy, setFormBusy] = useState(false);
+  const [submittingBudgetIds, setSubmittingBudgetIds] = useState<Set<number>>(() => new Set());
+  const submittingBudgetIdsRef = useRef<Set<number>>(new Set());
 
   /* Branch name lookup */
   const branchMap: Record<string, string> = {};
@@ -275,17 +280,23 @@ export default function BudgetScreen() {
   }
 
   function handleSaveAndSubmit() {
+    if (formBusy) return;
     if (!formDate) { Alert.alert('Date required', 'Select the date this budget applies to.'); return; }
     if (!formBranchId) { Alert.alert('Branch required', 'Select the branch this budget belongs to.'); return; }
     const built = buildItems();
     if (!built) return;
     requestDateConfirmation('budget', formDate, () => {
-      if (editTarget) {
-        updateAndSubmitBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate });
-      } else {
-        addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted', branchId: formBranchId, branchName: branchMap[formBranchId] ?? formBranchId });
-      }
-      setShowForm(false);
+      if (formBusy) return;
+      setFormBusy(true);
+      void (async () => {
+        const result = editTarget
+          ? await updateAndSubmitBudget(editTarget.id, { ...built, month: formMonth + 1, year: formYear, appliesOn: formDate })
+          : await addBudget({ month: formMonth + 1, year: formYear, appliesOn: formDate, label: built.label, by: role!, byName: userName, items: built.items, total: built.total, status: 'submitted', branchId: formBranchId, branchName: branchMap[formBranchId] ?? formBranchId });
+        if (!result.ok) return;
+        setShowForm(false);
+      })().finally(() => {
+        setFormBusy(false);
+      });
     });
   }
 
@@ -348,22 +359,66 @@ export default function BudgetScreen() {
   }
 
   function handleSubmitToAcc(b: Budget) {
+    if (submittingBudgetIdsRef.current.has(b.id)) return;
     Alert.alert('Submit to Accountant?',
       `${b.label} — ${fmt(b.total)}\nOnce submitted you cannot edit or delete until the accountant acts.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Submit', onPress: () => { submitBudgetToAcc(b.id); setSelected(null); } },
+        {
+          text: 'Submit',
+          onPress: () => {
+            if (submittingBudgetIdsRef.current.has(b.id)) return;
+            submittingBudgetIdsRef.current.add(b.id);
+            setSubmittingBudgetIds(current => new Set(current).add(b.id));
+            void submitBudgetToAcc(b.id).then(result => {
+              if (result.ok) setSelected(null);
+            }).finally(() => {
+              submittingBudgetIdsRef.current.delete(b.id);
+              setSubmittingBudgetIds(current => {
+                const next = new Set(current);
+                next.delete(b.id);
+                return next;
+              });
+            });
+          },
+        },
       ]
     );
   }
 
-  function handleAction() {
+  function setBudgetReviewBusy(id: number, busy: boolean) {
+    setReviewingBudgetIds(current => {
+      const next = new Set(current);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  async function handleAction() {
     if (!selected || !actionType) return;
     if (!actionNote.trim()) { Alert.alert('Please add a note before confirming'); return; }
-    if (actionType === 'forward')  forwardBudget(selected.id, actionNote.trim());
-    if (actionType === 'approve')  approveBudget(selected.id, actionNote.trim());
-    if (actionType === 'reject')   rejectBudget(selected.id, actionNote.trim());
-    setActionType(null); setActionNote(''); setSelected(null);
+    const budgetId = selected.id;
+    if (reviewingBudgetIdsRef.current.has(budgetId)) return;
+
+    reviewingBudgetIdsRef.current.add(budgetId);
+    setBudgetReviewBusy(budgetId, true);
+    try {
+      const note = actionNote.trim();
+      const result = actionType === 'forward'
+        ? await forwardBudget(budgetId, note)
+        : actionType === 'approve'
+          ? await approveBudget(budgetId, note)
+          : await rejectBudget(budgetId, note);
+
+      setActionType(null);
+      setActionNote('');
+      if (result?.ok === false) return;
+      setSelected(null);
+    } finally {
+      reviewingBudgetIdsRef.current.delete(budgetId);
+      setBudgetReviewBusy(budgetId, false);
+    }
   }
 
   async function handleClassifyBranch() {
@@ -635,10 +690,13 @@ export default function BudgetScreen() {
                     <Ionicons name="trash-outline" size={13} color="#791F1F" />
                     <Text style={[styles.cardActionText, { color: '#791F1F' }]}>Delete</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={e => { e.stopPropagation?.(); handleSubmitToAcc(b); }}
-                    style={[styles.cardSubmitBtn, { backgroundColor: roleColor }]}>
+                  <TouchableOpacity
+                    disabled={submittingBudgetIds.has(b.id)}
+                    onPress={e => { e.stopPropagation?.(); handleSubmitToAcc(b); }}
+                    style={[styles.cardSubmitBtn, { backgroundColor: roleColor, opacity: submittingBudgetIds.has(b.id) ? 0.55 : 1 }]}
+                  >
                     <Ionicons name="send" size={13} color="#fff" />
-                    <Text style={styles.cardSubmitText}>Submit to Accountant</Text>
+                    <Text style={styles.cardSubmitText}>{submittingBudgetIds.has(b.id) ? 'Submitting…' : 'Submit to Accountant'}</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
@@ -870,10 +928,13 @@ export default function BudgetScreen() {
                     <Ionicons name="send" size={18} color={roleColor} />
                     <Text style={[styles.actionTitle, { color: roleColor }]}>Submit to Accountant</Text>
                     <Text style={[styles.actionSub, { color: colors.textMuted }]}>The accountant will review, verify amounts, then forward to the MD for final approval.</Text>
-                    <TouchableOpacity onPress={() => handleSubmitToAcc(selected)}
-                      style={[styles.primaryBtn, { backgroundColor: roleColor }]}>
+                    <TouchableOpacity
+                      disabled={submittingBudgetIds.has(selected.id)}
+                      onPress={() => handleSubmitToAcc(selected)}
+                      style={[styles.primaryBtn, { backgroundColor: roleColor, opacity: submittingBudgetIds.has(selected.id) ? 0.55 : 1 }]}
+                    >
                       <Ionicons name="send" size={15} color="#fff" />
-                      <Text style={styles.primaryBtnText}>Submit to Accountant</Text>
+                      <Text style={styles.primaryBtnText}>{submittingBudgetIds.has(selected.id) ? 'Submitting…' : 'Submit to Accountant'}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : null}
@@ -931,13 +992,22 @@ export default function BudgetScreen() {
                       style={[styles.noteInput, { color: colors.text, borderColor: colors.border }]}
                     />
                     <View style={styles.actionBtns}>
-                      <TouchableOpacity onPress={handleAction}
-                        style={[styles.primaryBtn, { backgroundColor: actionType === 'reject' ? '#791F1F' : actionType === 'forward' ? '#0C447C' : '#1a6e3c' }]}>
+                      <TouchableOpacity
+                        disabled={reviewingBudgetIds.has(selected.id)}
+                        onPress={handleAction}
+                        style={[styles.primaryBtn, {
+                          backgroundColor: actionType === 'reject' ? '#791F1F' : actionType === 'forward' ? '#0C447C' : '#1a6e3c',
+                          opacity: reviewingBudgetIds.has(selected.id) ? 0.5 : 1,
+                        }]}>
                         <Text style={styles.primaryBtnText}>
-                          {actionType === 'forward' ? 'Forward to MD' : actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+                          {reviewingBudgetIds.has(selected.id)
+                            ? 'Saving…'
+                            : actionType === 'forward' ? 'Forward to MD' : actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
                         </Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => { setActionType(null); setActionNote(''); }}
+                      <TouchableOpacity
+                        disabled={reviewingBudgetIds.has(selected.id)}
+                        onPress={() => { setActionType(null); setActionNote(''); }}
                         style={[styles.outlineBtn, { borderColor: colors.border }]}>
                         <Text style={[styles.outlineBtnText, { color: colors.textMuted }]}>Cancel</Text>
                       </TouchableOpacity>
@@ -1064,16 +1134,16 @@ export default function BudgetScreen() {
               </View>
               <ItemEditor items={formItems} setItems={setFormItems} roleColor={roleColor} />
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                <TouchableOpacity onPress={handleSaveDraft}
+                 <TouchableOpacity onPress={handleSaveDraft} disabled={formBusy}
                   style={[styles.submitBtn, { flex: 1, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: roleColor }]}>
                   <Ionicons name="save-outline" size={16} color={roleColor} />
                   <Text style={[styles.submitBtnText, { color: roleColor }]}>Save Draft</Text>
                 </TouchableOpacity>
                 {(!editTarget || editTarget.status === 'draft' || editTarget.status === 'rejected') ? (
-                  <TouchableOpacity onPress={handleSaveAndSubmit}
-                    style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]}>
+                   <TouchableOpacity onPress={handleSaveAndSubmit} disabled={formBusy}
+                     style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor, opacity: formBusy ? 0.6 : 1 }]}>
                     <Ionicons name="send" size={16} color="#fff" />
-                    <Text style={styles.submitBtnText}>Save & Submit</Text>
+                     <Text style={styles.submitBtnText}>{formBusy ? 'Submitting…' : 'Save & Submit'}</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
