@@ -18,6 +18,7 @@ type BusinessDateConfirmationProps = {
   actionLabel: string;
   onCancel: () => void;
   onConfirm: () => void;
+  embedded?: boolean;
 };
 
 export function BusinessDateConfirmation({
@@ -27,13 +28,13 @@ export function BusinessDateConfirmation({
   actionLabel,
   onCancel,
   onConfirm,
+  embedded = false,
 }: BusinessDateConfirmationProps) {
   const colors = useColors();
   const copy = getBusinessDateConfirmationCopy(recordType, date);
 
-  return (
-    <ModalSheet visible={visible} onClose={onCancel}>
-      <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
+  const content = (
+    <View style={[styles.sheet, embedded && styles.embeddedSheet, { backgroundColor: colors.surface }]}>
         <View style={[styles.iconBox, { backgroundColor: colors.warningBg }]}>
           <Ionicons name="calendar-outline" size={22} color={colors.warning} />
         </View>
@@ -63,7 +64,14 @@ export function BusinessDateConfirmation({
             <Text style={styles.confirmText}>{actionLabel}</Text>
           </TouchableOpacity>
         </View>
-      </View>
+    </View>
+  );
+
+  if (embedded) return visible ? content : null;
+
+  return (
+    <ModalSheet visible={visible} onClose={onCancel}>
+      {content}
     </ModalSheet>
   );
 }
@@ -105,7 +113,24 @@ export function useBusinessDateConfirmation() {
     />
   );
 
-  return { requestDateConfirmation, confirmationModal };
+  const confirmationContent = (
+    <BusinessDateConfirmation
+      visible={pending !== null}
+      recordType={pending?.recordType ?? 'record'}
+      date={pending?.date ?? ''}
+      actionLabel={pending?.actionLabel ?? 'Confirm & submit'}
+      onCancel={cancelDateConfirmation}
+      onConfirm={confirmDate}
+      embedded
+    />
+  );
+
+  return {
+    requestDateConfirmation,
+    confirmationModal,
+    confirmationContent,
+    hasPendingConfirmation: pending !== null,
+  };
 }
 
 const styles = StyleSheet.create({
@@ -114,6 +139,11 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 24,
     gap: 12,
+  },
+  embeddedSheet: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
   },
   iconBox: {
     width: 46,

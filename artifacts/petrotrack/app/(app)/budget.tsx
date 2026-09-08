@@ -163,7 +163,11 @@ export default function BudgetScreen() {
 
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
-  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
+  const {
+    requestDateConfirmation,
+    confirmationContent,
+    hasPendingConfirmation,
+  } = useBusinessDateConfirmation();
 
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
   const isAcc = role === 'acc' || role === 'admin';
@@ -1084,13 +1088,15 @@ export default function BudgetScreen() {
       {/* ═══ CREATE / EDIT MODAL ═══ */}
       <Modal visible={showForm} animationType="slide" onRequestClose={() => setShowForm(false)}>
           <View style={{ flex: 1, backgroundColor: colors.background }}>
-            <View style={[styles.modalHeader, { backgroundColor: roleColor, paddingTop: 52 }]}>
-              <TouchableOpacity onPress={() => setShowForm(false)} style={styles.headerBack}>
-                <Ionicons name="close" size={22} color="#fff" />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>{editTarget ? 'Edit Budget' : 'New Budget'}</Text>
-            </View>
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            {hasPendingConfirmation ? confirmationContent : (
+              <>
+                <View style={[styles.modalHeader, { backgroundColor: roleColor, paddingTop: 52 }]}>
+                  <TouchableOpacity onPress={() => setShowForm(false)} style={styles.headerBack}>
+                    <Ionicons name="close" size={22} color="#fff" />
+                  </TouchableOpacity>
+                  <Text style={styles.modalTitle}>{editTarget ? 'Edit Budget' : 'New Budget'}</Text>
+                </View>
+                <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Branch *</Text>
               <View style={styles.chipRow}>
                 {branches.map(branch => (
@@ -1148,10 +1154,11 @@ export default function BudgetScreen() {
                 ) : null}
               </View>
               <View style={{ height: 32 }} />
-            </ScrollView>
+                </ScrollView>
+              </>
+            )}
           </View>
       </Modal>
-      {confirmationModal}
     </ScreenLayout>
   );
 }
