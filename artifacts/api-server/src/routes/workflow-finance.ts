@@ -347,10 +347,14 @@ router.patch("/finance/expenses/:id", async (req, res) => {
 router.delete("/finance/expenses/:id", async (req, res) => {
   const result = await command(req, "expenses", (items, auth) => {
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
-    if (!sameBranch(current, auth)) return forbidden("You cannot delete an expense from another branch");
-    const allowed = (MANAGERS.has(auth.role) && canEditOwned(current, auth)) || (ACCOUNTANTS.has(auth.role) && ["pending", "rejected"].includes(String(current.status)));
+    if (auth.role !== "admin" && !sameBranch(current, auth)) return forbidden("You cannot delete an expense from another branch");
+    const allowed = auth.role === "admin"
+      || (MANAGERS.has(auth.role) && canEditOwned(current, auth))
+      || (ACCOUNTANTS.has(auth.role) && ["pending", "rejected"].includes(String(current.status)));
     if (!allowed) return forbidden("Your role cannot delete this expense");
-    if (!["pending", "rejected"].includes(String(current.status))) return conflict("This expense cannot be deleted after forwarding");
+    if (auth.role !== "admin" && !["pending", "rejected"].includes(String(current.status))) {
+      return conflict("This expense cannot be deleted after forwarding");
+    }
     return { item: current, deleted: true };
   }); send(res, result, "expense.changed");
 });
@@ -692,7 +696,8 @@ router.post("/finance/budgets/:id/update-submit", async (req, res) => {
 router.delete("/finance/budgets/:id", async (req, res) => {
   const result = await command(req, "budgets", (items, auth) => {
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
-    if (!sameBranch(current, auth)) return forbidden("You cannot delete a budget from another branch");
+    if (auth.role !== "admin" && !sameBranch(current, auth)) return forbidden("You cannot delete a budget from another branch");
+    if (auth.role === "admin") return { item: current, deleted: true };
     const originator = MANAGERS.has(auth.role) && canEditOwned(current, auth)
       && ["draft", "rejected"].includes(String(current.status));
     const accountant = ACCOUNTANTS.has(auth.role)

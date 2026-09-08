@@ -4390,7 +4390,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // it. Editing or deleting only the visible copy could make a later retry
     // resurrect stale data.
     if (report.deliveryStatus === 'queued') return Promise.resolve(false);
-    if (report.status === 'approved' && role !== 'admin') return Promise.resolve(false);
+    if (role !== 'admin' && report.status === 'approved') return Promise.resolve(false);
     if (
       (report.status === 'returned' || report.status === 'returned_attendant') &&
       role !== 'admin' &&
@@ -4399,7 +4399,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ) {
       return Promise.resolve(false);
     }
-    if (report.status === 'approved' || report.status === 'returned' || report.status === 'returned_attendant') {
+    if (role === 'admin' || report.status === 'approved' || report.status === 'returned' || report.status === 'returned_attendant') {
       return stateApi.deletePumpReport(id).then(result => {
         if (!result?.ok) return false;
         if (report.status === 'approved') appliedPumpReportApprovals.current.delete(id);

@@ -9,7 +9,7 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import { ACTION_ITEMS_DASHBOARD_ACCESS_ID, ACTION_ITEMS_DASHBOARD_DEFAULT_ROLES, BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, STOCK_SNAPSHOT_METRICS, StockProduct, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab = 'company' | 'tanks' | 'startup' | 'pumps' | 'staff' | 'access' | 'snapshot' | 'system';
+type Tab = 'company' | 'tanks' | 'startup' | 'pumps' | 'staff' | 'access' | 'snapshot' | 'system' | 'cleanup';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'company', label: 'Company', icon: 'business' },
   { id: 'tanks',   label: 'Tanks',   icon: 'water' },
@@ -19,6 +19,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'access',  label: 'Access',  icon: 'lock-closed' },
   { id: 'snapshot', label: 'Stock Snapshot', icon: 'analytics' },
   { id: 'system',  label: 'System',  icon: 'settings' },
+  { id: 'cleanup', label: 'Data Cleanup', icon: 'trash' },
 ];
 
 const MGR_PERM_LABELS: { key: keyof MgrPermissions; label: string; icon: string; sub?: string }[] = [
@@ -55,6 +56,15 @@ const BLANK_TANK  = { name: '', cap: '', dip: '', prod: 'PMS' as Tank['prod'], b
 const BLANK_LPG   = { name: '', cap: '', branchId: '' };
 const BLANK_PUMP  = { name: '', prod: 'PMS' as Pump['prod'], active: true, branchId: '', openingMeter: '', lpgCategory: '' as 'single' | 'distributor' | '' };
 const BLANK_STAFF = { name: '', email: '', role: 'att' as typeof ROLE_OPTS[number], sal: '', username: '', password: '', branchId: '' };
+
+function hasExplicitRecordError(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const status = String(record.status ?? record.approvalStatus ?? '').trim().toLowerCase();
+  return ['error', 'failed', 'invalid'].includes(status)
+    || ['error', 'errorMessage', 'validationError', 'syncError', 'failureReason']
+      .some(key => Boolean(String(record[key] ?? '').trim()));
+}
 
 function autoUsername(name: string): string {
   const parts = name.trim().toLowerCase().split(/\s+/);
@@ -200,6 +210,8 @@ export default function SystemSettingsScreen() {
     departments, assignStaffDept, setPumpInitialMeter, resetOperationalData, pumpInitialMeters,
     startupStocks, addStartupStock, updateStartupStock, deleteStartupStock,
     stockSnapshotConfig, updateStockSnapshotMetric, updateStockSnapshotProduct,
+    budgets, deleteBudget, pumpDailyReports, deletePumpReport,
+    deliveries, deleteDelivery, expenses, deleteExpense, dips, deleteDip,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
@@ -229,6 +241,24 @@ export default function SystemSettingsScreen() {
 
   const [activeTab, setActiveTab] = useState<Tab>('company');
   const [expandedUsers, setExpandedUsers] = useState<Record<number, boolean>>({});
+  const errorReports = [
+    ...pumpDailyReports.filter(hasExplicitRecordError).map(report => ({
+      id: String(report.id), title: `Shift report #${report.id}`, detail: `${report.pumpName} · ${report.date}`,
+      remove: () => void deletePumpReport(report.id),
+    })),
+    ...deliveries.filter(hasExplicitRecordError).map(delivery => ({
+      id: String(delivery.id), title: `Delivery #${delivery.id}`, detail: `${delivery.prod} · ${delivery.dt}`,
+      remove: () => { deleteDelivery(delivery.id); },
+    })),
+    ...expenses.filter(hasExplicitRecordError).map(expense => ({
+      id: String(expense.id), title: `Expense #${expense.id}`, detail: `${expense.cat} · ${expense.dt}`,
+      remove: () => deleteExpense(expense.id),
+    })),
+    ...dips.filter(hasExplicitRecordError).map(dip => ({
+      id: String(dip.id), title: `Tank dip #${dip.id}`, detail: dip.dt,
+      remove: () => deleteDip(dip.id),
+    })),
+  ];
 
   /* ── company draft (local edits before save) ── */
   const [cDraft, setCDraft] = useState(companyInfo);
@@ -1616,6 +1646,105 @@ export default function SystemSettingsScreen() {
                   </View>
                 ))
               )}
+            </>
+          )}
+
+          {/* ── DATA CLEANUP ── */}
+          {activeTab === 'cleanup' && (
+            <>
+              <View style={[styles.banner, { backgroundColor: '#4a1515' }]}>
+                <Ionicons name="trash" size={22} color="#fecaca" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bannerTitle}>Admin Data Cleanup</Text>
+                  <Text style={styles.bannerSub}>Remove budgets or records explicitly marked as errors</Text>
+                </View>
+              </View>
+
+              <View style={[styles.card, { backgroundColor: '#fff7ed', borderColor: '#f9731644' }]}>
+                <Text style={{ color: '#9a3412', fontSize: 13, lineHeight: 19 }}>
+                  Deletions are permanent and audited. Budget deletion is available for every workflow state and branch.
+                  Other records appear here only when the server or sync process marked them with an explicit error.
+                  Approved records without an error marker are not shown.
+                </Text>
+              </View>
+
+              <View style={styles.sectionRow}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Budgets</Text>
+                <Text style={[styles.sectionCount, { color: colors.textMuted }]}>{budgets.length} total</Text>
+              </View>
+              {budgets.length === 0 ? (
+                <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Text style={[styles.subLabel, { color: colors.textMuted }]}>No budgets found.</Text>
+                </View>
+              ) : budgets
+                .slice()
+                .sort((a, b) => (b.year - a.year) || (b.month - a.month) || (b.id - a.id))
+                .map(budget => (
+                  <View key={budget.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.itemHeader}>
+                      <View style={[styles.idBadge, { backgroundColor: roleColor + '18' }]}>
+                        <Ionicons name="wallet" size={18} color={roleColor} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.itemCurrent, { color: colors.text }]}>{budget.label}</Text>
+                        <Text style={[styles.itemSub, { color: colors.textMuted }]}>
+                          {budget.branchName || 'Unassigned branch'} · {budget.status}{budget.archivedAt ? ' · Archived' : ''}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        accessibilityLabel={`Delete ${budget.label} budget`}
+                        style={[styles.deleteIconBtn, { borderRadius: 8, backgroundColor: colors.errorBg }]}
+                        onPress={() => Alert.alert(
+                          'Delete budget?',
+                          `${budget.label} for ${budget.branchName || 'unassigned branch'} will be permanently removed.`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => deleteBudget(budget.id) },
+                          ],
+                        )}
+                      >
+                        <Ionicons name="trash-outline" size={17} color={colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+
+              <View style={[styles.sectionRow, { marginTop: 12 }]}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Reports marked with errors</Text>
+                <Text style={[styles.sectionCount, { color: colors.textMuted }]}>{errorReports.length} found</Text>
+              </View>
+              {errorReports.length === 0 ? (
+                <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Ionicons name="checkmark-circle-outline" size={22} color={colors.success} />
+                  <Text style={[styles.subLabel, { color: colors.textMuted }]}>No explicitly errored reports found.</Text>
+                </View>
+              ) : errorReports.map(report => (
+                <View key={`${report.title}-${report.id}`} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.errorBorder }]}>
+                  <View style={styles.itemHeader}>
+                    <View style={[styles.idBadge, { backgroundColor: colors.errorBg }]}>
+                      <Ionicons name="warning-outline" size={18} color={colors.error} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.itemCurrent, { color: colors.text }]}>{report.title}</Text>
+                      <Text style={[styles.itemSub, { color: colors.textMuted }]}>{report.detail}</Text>
+                    </View>
+                    <TouchableOpacity
+                      accessibilityLabel={`Delete ${report.title}`}
+                      style={[styles.deleteIconBtn, { borderRadius: 8, backgroundColor: colors.errorBg }]}
+                      onPress={() => Alert.alert(
+                        'Delete errored report?',
+                        `${report.title} is marked with an error and will be permanently removed.`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Delete', style: 'destructive', onPress: report.remove },
+                        ],
+                      )}
+                    >
+                      <Ionicons name="trash-outline" size={17} color={colors.error} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
             </>
           )}
 

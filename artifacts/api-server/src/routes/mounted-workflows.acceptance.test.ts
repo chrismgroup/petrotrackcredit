@@ -668,6 +668,12 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     });
     assert.equal(budgetApproved.status, 201);
     assert.equal(recordFrom(budgetApproved).status, "fully_approved");
+    const adminDeleteApprovedBudget = await command(admin.token, `/finance/budgets/${submittedBudgetId}`, {
+      expectedRevision: 3,
+      idempotencyKey: `${marker}-budget-admin-delete-approved`,
+    }, "DELETE");
+    assert.equal(adminDeleteApprovedBudget.status, 200);
+    assert.equal(adminDeleteApprovedBudget.body.deleted, true);
 
     const duplicateSubmit = await command(manager.token, "/finance/budgets", {
       budget: budgetInput(`${marker} duplicate`, "submitted"),

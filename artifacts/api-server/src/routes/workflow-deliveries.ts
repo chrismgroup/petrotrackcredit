@@ -253,10 +253,15 @@ router.delete("/deliveries/:id", async (req, res) => {
   const result = await execute(req, "delete", (items, now) => {
     const item = items.find(value => idOf(value) === req.params.id);
     if (!item) return { error: "Delivery not found", code: 404 };
-    if (!ORIGINATOR_ROLES.has(req.auth!.role) || !isBranchAllowed(item, req.auth!) ||
-      (req.auth!.role !== "admin" && !isOriginator(item, req.auth!))) return { error: "Not permitted for this delivery", code: 403 };
+    if (req.auth!.role !== "admin" && (
+      !ORIGINATOR_ROLES.has(req.auth!.role)
+      || !isBranchAllowed(item, req.auth!)
+      || !isOriginator(item, req.auth!)
+    )) return { error: "Not permitted for this delivery", code: 403 };
     const stale = requireExpected(item, supplied(req.body)!.expectedRevision); if (stale) return stale;
-    if (!["draft", "returned"].includes(status(item))) return { error: "Only draft or returned deliveries can be deleted", code: 409 };
+    if (req.auth!.role !== "admin" && !["draft", "returned"].includes(status(item))) {
+      return { error: "Only draft or returned deliveries can be deleted", code: 409 };
+    }
     return { item: { ...item, deletedAt: now }, next: items.filter(value => value !== item), sideEffects: (tx, canonical, at) => audit(tx, "Delivery deleted", req.auth!.username, `Delivery #${idOf(canonical)} deleted`, at) };
   });
   if (!("error" in result)) broadcastRealtime({ type: "delivery.changed", deliveryId: req.params.id, deleted: true });
