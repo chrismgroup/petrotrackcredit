@@ -1416,11 +1416,11 @@ function normaliseFinancialEntry(value: unknown): FinancialEntry {
 
 interface AppContextType {
   companyInfo: CompanyInfo; updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
-  role: Role | null; userName: string; branchId: string | null; staffId: number | null;
+  role: Role | null; userName: string; accountUsername: string; branchId: string | null; staffId: number | null;
   isServerAuthenticated: boolean; isHydrated: boolean;
   refreshFinanceState: () => Promise<boolean>;
   navItems: NavItem[]; mgrPerms: Record<string, MgrPermissions>;
-  login: (role: Role, name: string, staffId?: number, branchId?: string) => Promise<boolean>; logout: () => Promise<void>;
+  login: (role: Role, name: string, staffId?: number, branchId?: string, username?: string) => Promise<boolean>; logout: () => Promise<void>;
   updateMgrPerms: (branchId: string, perms: Partial<MgrPermissions>) => void;
   prices: Prices; priceHistory: PriceChange[]; tanks: Tank[]; lpgTanks: LPGTank[]; pumps: Pump[];
   dips: DipRecord[]; deliveries: Delivery[]; maintenance: MaintenanceItem[];
@@ -1664,6 +1664,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [role, setRole] = useState<Role | null>(null);
   const [userName, setUserName] = useState('');
+  const [accountUsername, setAccountUsername] = useState('');
   const [branchId, setBranchId] = useState<string | null>(null);
   const [staffId, setStaffId] = useState<number | null>(null);
   const [isServerAuthenticated, setIsServerAuthenticated] = useState(false);
@@ -1777,7 +1778,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const s: Record<string, any> = {};
       for (const [k, v] of pairs) if (v) s[k] = JSON.parse(v);
       if (s.auth) {
-        const { r, n, sid, bid } = s.auth;
+        const { r, n, sid, bid, username } = s.auth;
         // Clear legacy auto-admin session (solomon.okon) — require explicit login
         if (n === 'Solomon Okon' && !sid) {
           await AsyncStorage.removeItem('auth');
@@ -1785,7 +1786,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           // Only restore session if a server-issued JWT token is also present
           const token = await AsyncStorage.getItem('pt_auth_token');
           if (token) {
-            setRole(r); setUserName(n); setStaffId(sid ?? null); setBranchId(bid ?? null);
+            setRole(r); setUserName(n); setAccountUsername(username ?? ''); setStaffId(sid ?? null); setBranchId(bid ?? null);
             setIsServerAuthenticated(true);
           } else {
             // No token means no valid server session; discard the stale auth record
@@ -2725,7 +2726,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (type === 'minutes') setMeetingMinutes(prev => prev.map(m => m.id === id ? { ...m, approval: { ...m.approval, ...approval } } : m));
   }, [userName]);
 
-  const login = useCallback(async (r: Role, n: string, sid?: number, bid?: string): Promise<boolean> => {
+  const login = useCallback(async (r: Role, n: string, sid?: number, bid?: string, username?: string): Promise<boolean> => {
     // apiLogin saves the JWT before this callback runs. Complete the full
     // authenticated state refresh before exposing the role to the router, so
     // new and returning users never see a dashboard built from empty defaults.
@@ -2735,10 +2736,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const synced = await syncFromServer();
     if (!synced) return false;
 
-    setRole(r); setUserName(n);
+    setRole(r); setUserName(n); setAccountUsername(username ?? '');
     setBranchId(bid ?? null); setStaffId(sid ?? null);
     setIsServerAuthenticated(true);
-    await AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null }));
+    await AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null, username: username ?? null }));
     return true;
   }, [syncFromServer]);
 
@@ -2752,7 +2753,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.removeItem('auth'),
       AsyncStorage.removeItem('messages'),
     ]);
-    setRole(null); setUserName(''); setBranchId(null); setStaffId(null);
+    setRole(null); setUserName(''); setAccountUsername(''); setBranchId(null); setStaffId(null);
     setIsServerAuthenticated(false);
     setNotifications([]);
     // Chats are account-scoped. Do not leave the previous user's local
@@ -4987,7 +4988,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       companyInfo, updateCompanyInfo,
-      role, userName, branchId, staffId, isServerAuthenticated, isHydrated: loaded, navItems, mgrPerms,
+      role, userName, accountUsername, branchId, staffId, isServerAuthenticated, isHydrated: loaded, navItems, mgrPerms,
       refreshFinanceState: syncFromServer,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
