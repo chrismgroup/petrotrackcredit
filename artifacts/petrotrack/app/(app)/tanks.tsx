@@ -7,9 +7,8 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
-import { DEFAULT_MGR_PERMS, ROLE_COLORS, SCREEN_ROUTES, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
+ import { DEFAULT_MGR_PERMS, ROLE_COLORS, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { sendOperationalNotification } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
 
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
@@ -17,7 +16,7 @@ const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', 
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, sales, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, prices, userName, branchId, mgrPerms } = useApp();
+  const { role, tanks, lpgTanks, dips, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, userName, branchId, mgrPerms } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
@@ -107,43 +106,6 @@ export default function TanksScreen() {
   const hasDisplayedHistory = displayedDipHistoryGroups.some(group => group.dips.length > 0);
   const pendingDips = dips.filter(d => d.status === 'pending' && dipHasVisibleReading(d));
 
-  function computeDipAnalysis(rdMap: Record<string, number>) {
-    const expectedByProd: Record<string, number> = {};
-    for (const t of visibleTanks) {
-      const approvedDipsForTank = dips
-        .filter(d => d.status === 'approved' && (d.rd ?? {})[t.id] !== undefined)
-        .sort((a, b) =>
-          new Date(b.approvedDt ?? b.submittedAt ?? b.dt).getTime() -
-          new Date(a.approvedDt ?? a.submittedAt ?? a.dt).getTime()
-        );
-      const lastDip = approvedDipsForTank[0];
-      const dipReading = lastDip ? ((lastDip.rd ?? {})[t.id] ?? 0) : 0;
-      const dipDt = lastDip?.dt;
-      const recvdSinceDip = deliveries
-        .filter(d => d.prod === t.prod &&
-          d.branchId === t.branchId &&
-          isPhysicalDeliveryReceipt(d) &&
-          (!dipDt || d.dt > dipDt))
-        .reduce((s, d) => s + safeNum(d.rec), 0);
-      const soldSinceDip = sales
-        .filter(e => e.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
-          (!dipDt || e.dt > dipDt))
-        .reduce((s, e) => s + safeNum(e.L), 0);
-      expectedByProd[t.prod] = (expectedByProd[t.prod] ?? 0) + dipReading + recvdSinceDip - soldSinceDip;
-    }
-    const actualByProd: Record<string, number> = {};
-    for (const t of visibleTanks) {
-      const L = rdMap[t.id] ?? 0;
-      actualByProd[t.prod] = (actualByProd[t.prod] ?? 0) + L;
-    }
-    return Object.keys(actualByProd).map(prod => {
-      const actual = actualByProd[prod] ?? 0;
-      const expected = expectedByProd[prod] ?? 0;
-      const diff = actual - expected;
-      return { prod, actual, expected, diff, complete: diff >= 0 };
-    });
-  }
-
   function handleDipSubmit() {
     if (!appliesOn) {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
@@ -154,38 +116,12 @@ export default function TanksScreen() {
     for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
 
-    const analysis = computeDipAnalysis(rd);
     requestDateConfirmation('tank dip', appliesOn, () => {
       addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
       setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
 
-      if (analysis.length > 0) {
-        const lines = analysis.map(a => {
-          const diffAbs = Math.abs(a.diff).toLocaleString(undefined, { maximumFractionDigits: 0 });
-          return a.complete
-            ? `${a.prod}: ${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded — ✅ Complete (surplus ${diffAbs}L)`
-            : `${a.prod}: ${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded vs ${a.expected.toLocaleString(undefined, { maximumFractionDigits: 0 })}L expected — ⚠ SHORT by ${diffAbs}L`;
-        }).join('\n');
-        const alertBody = `Dip submitted by ${userName}:\n\n${lines}`;
-        (['md', 'ceo'] as const).forEach(to => {
-          void sendOperationalNotification({
-            target: to,
-            title: `Tank Dip Report — ${analysis.some(a => !a.complete) ? 'SHORTAGE DETECTED' : 'All Complete'}`,
-            body: alertBody,
-            route: SCREEN_ROUTES.tanks,
-          }).catch(() => {
-            // The dip remains saved locally and will sync independently.
-          });
-        });
-      }
-
-      Alert.alert('Dip Submitted', 'Tank readings recorded. MD and CEO have been notified.');
+      Alert.alert('Dip Submitted', 'Tank readings recorded and sent to MD for approval.');
     });
-  }
-
-  function stockPct(t: { id: string; op: number; sl: number; rv: number; cap: number }) {
-    const stock = getCurrentTankStock(t, dips);
-    return Math.round((stock / t.cap) * 100);
   }
 
   function startEditDip(dip: typeof dips[0]) {
@@ -224,6 +160,7 @@ export default function TanksScreen() {
       {canEdit && (
         <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Form</Text>
           {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
           {!perms.canPetrolTanks && role === 'mgr' && (
             <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -315,36 +252,6 @@ export default function TanksScreen() {
             helper="Select the business date for this reading."
           />
 
-          {canEdit && (() => {
-            const rdMap: Record<string, number> = {};
-            for (const t of visibleTanks) { rdMap[t.id] = parseFloat(readings[t.id] || '0') || 0; }
-            const hasAnyReading = Object.values(rdMap).some(v => v > 0);
-            const analysis = hasAnyReading ? computeDipAnalysis(rdMap) : [];
-            return analysis.length > 0 ? (
-              <View style={[styles.dipCard, { backgroundColor: colors.surface, borderColor: colors.border, gap: 6 }]}>
-                <Text style={[styles.formSection, { color: colors.text, marginBottom: 0 }]}>Stock Analysis</Text>
-                {analysis.map(a => {
-                  const diffAbs = Math.abs(a.diff).toLocaleString(undefined, { maximumFractionDigits: 0 });
-                  const bc = a.complete ? '#27500A' : '#791F1F';
-                  const bg = a.complete ? '#EAF3DE' : '#FCEBEB';
-                  return (
-                    <View key={a.prod} style={[styles.analysisRow, { backgroundColor: bg, borderColor: bc + '40' }]}>
-                      <Ionicons name={a.complete ? 'checkmark-circle' : 'alert-circle'} size={16} color={bc} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.analysisProd, { color: bc }]}>{a.prod}</Text>
-                        <Text style={[styles.analysisDetail, { color: bc }]}>
-                          {a.complete
-                            ? `${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L recorded — surplus ${diffAbs}L`
-                            : `SHORT by ${diffAbs}L (${a.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}L found vs ${a.expected.toLocaleString(undefined, { maximumFractionDigits: 0 })}L expected)`}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            ) : null;
-          })()}
-
           <View style={{ height: 8 }} />
         </ScrollView>
 
@@ -359,7 +266,7 @@ export default function TanksScreen() {
         </View>
       )}
 
-      {(canEdit || isMD || isAdmin) && (
+      {((canEdit && visibleDipRecords.length > 0) || isMD || isAdmin) && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {isMD && dips.some(d => d.status === 'pending') && (
             <View style={[styles.mdBanner, { backgroundColor: '#4527a018', borderColor: '#4527a0' }]}>
@@ -467,7 +374,7 @@ export default function TanksScreen() {
                     {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
                   </Text>
                 )}
-                {(isAdmin || (canEdit && isPending)) && (
+                {(isAdmin && isPending || canEdit && dip.status === 'rejected') && (
                   <View style={[styles.mdActions, { marginTop: 8 }]}>
                     <TouchableOpacity
                       style={[styles.rejectBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]}
@@ -584,153 +491,6 @@ export default function TanksScreen() {
             </View>
           ))}
 
-          <View style={{ height: 16 }} />
-        </ScrollView>
-      )}
-
-      {activeTab === 2 && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-          {visibleTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text }]}>Petroleum Tanks</Text>}
-          {!perms.canPetrolTanks && role === 'mgr' && (
-            <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
-              <Text style={[styles.noBannerText, { color: colors.textMuted }]}>Petroleum tank access not granted</Text>
-            </View>
-          )}
-          {visibleTanks.map(t => {
-            const approvedDips = dips
-              .filter(d => d.status === 'approved' && (d.rd ?? {})[t.id] !== undefined)
-              .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
-            const lastDipRecord = approvedDips[0];
-            const dipReading = lastDipRecord ? ((lastDipRecord.rd ?? {})[t.id] ?? 0) : 0;
-            const dipDt = lastDipRecord?.dt;
-            const deliveriesSinceDip = deliveries
-              .filter(d => d.prod === t.prod &&
-                d.branchId === t.branchId &&
-                isPhysicalDeliveryReceipt(d) &&
-                (!dipDt || new Date(d.dt) > new Date(dipDt)))
-              .reduce((s, d) => s + safeNum(d.rec), 0);
-            const salesSinceDip = sales
-              .filter(s => s.pump.toLowerCase().includes(t.prod.toLowerCase()) &&
-                (!dipDt || new Date(s.dt) > new Date(dipDt)))
-              .reduce((s, e) => s + safeNum(e.L), 0);
-            const currentStock = Math.max(0, dipReading + deliveriesSinceDip - salesSinceDip);
-            const pct = t.cap > 0 ? Math.min(100, Math.round((currentStock / t.cap) * 100)) : 0;
-            const barColor = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.primary;
-            return (
-              <View key={t.id} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.invHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.invName, { color: colors.text }]}>{t.name}</Text>
-                    <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {safeNum(t.cap).toLocaleString()}L</Text>
-                  </View>
-                  <View style={[styles.prodBadge, { backgroundColor: roleColor + '18' }]}>
-                    <Text style={[styles.prodText, { color: roleColor }]}>{t.prod}</Text>
-                  </View>
-                </View>
-                <View style={[styles.progressBg, { backgroundColor: colors.border, marginVertical: 10 }]}>
-                  <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: barColor }]} />
-                </View>
-                <View style={styles.invStats}>
-                  <View style={styles.invStat}>
-                    <Text style={[styles.invStatVal, { color: colors.text }]}>{currentStock.toLocaleString()}L</Text>
-                    <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Current Stock</Text>
-                  </View>
-                  <View style={styles.invStat}>
-                    <Text style={[styles.invStatVal, { color: barColor }]}>{pct}%</Text>
-                    <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Fill Level</Text>
-                  </View>
-                </View>
-                <View style={[styles.invBreakdown, { borderTopColor: colors.border }]}>
-                  <View style={styles.invBreakdownRow}>
-                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>
-                      Last dip{lastDipRecord ? ` applies on ${fmtDate(lastDipRecord.dt)}` : ''}
-                    </Text>
-                    <Text style={[styles.invBreakdownVal, { color: colors.text }]}>{dipReading.toLocaleString()}L</Text>
-                  </View>
-                  <View style={styles.invBreakdownRow}>
-                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>+ Deliveries received</Text>
-                    <Text style={[styles.invBreakdownVal, { color: '#27500A' }]}>+{deliveriesSinceDip.toLocaleString()}L</Text>
-                  </View>
-                  <View style={styles.invBreakdownRow}>
-                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>− Sales volume</Text>
-                    <Text style={[styles.invBreakdownVal, { color: colors.error }]}>−{salesSinceDip.toLocaleString()}L</Text>
-                  </View>
-                  <View style={[styles.invBreakdownRow, styles.invBreakdownTotal, { borderTopColor: colors.border }]}>
-                    <Text style={[styles.invBreakdownLabel, { color: colors.text, fontWeight: '700' }]}>= Current Inventory</Text>
-                    <Text style={[styles.invBreakdownVal, { color: barColor, fontWeight: '700' }]}>{currentStock.toLocaleString()}L</Text>
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-
-          {visibleLpgTanks.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 8 }]}>LPG Tanks</Text>}
-          {!perms.canLpgTanks && role === 'mgr' && (
-            <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
-              <Text style={[styles.noBannerText, { color: colors.textMuted }]}>LPG tank access not granted</Text>
-            </View>
-          )}
-          {visibleLpgTanks.map(l => {
-            const approvedDips = dips
-              .filter(d => d.status === 'approved' && (d.lpg ?? {})[l.id] !== undefined)
-              .sort((a, b) => new Date(b.dt).getTime() - new Date(a.dt).getTime());
-            const lastDipRecord = approvedDips[0];
-            const dipReading = lastDipRecord ? ((lastDipRecord.lpg ?? {})[l.id] ?? 0) : 0;
-            const dipDt = lastDipRecord?.dt;
-            const deliveriesSinceDip = deliveries
-              .filter(d => d.prod === 'LPG' &&
-                d.branchId === l.branchId &&
-                isPhysicalDeliveryReceipt(d) &&
-                (!dipDt || new Date(d.dt) > new Date(dipDt)))
-              .reduce((s, d) => s + safeNum(d.rec), 0);
-            const currentStock = Math.max(0, dipReading + deliveriesSinceDip);
-            const pct = l.cap > 0 ? Math.min(100, Math.round((currentStock / l.cap) * 100)) : 0;
-            const barColor = pct < 30 ? colors.error : pct < 60 ? colors.amber : colors.teal;
-            return (
-              <View key={l.id} style={[styles.invCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.invHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.invName, { color: colors.text }]}>{l.name}</Text>
-                    <Text style={[styles.invProd, { color: colors.textMuted }]}>Capacity: {safeNum(l.cap).toLocaleString()} kg</Text>
-                  </View>
-                  <View style={[styles.prodBadge, { backgroundColor: colors.teal + '18' }]}>
-                    <Text style={[styles.prodText, { color: colors.teal }]}>LPG</Text>
-                  </View>
-                </View>
-                <View style={[styles.progressBg, { backgroundColor: colors.border, marginVertical: 10 }]}>
-                  <View style={[styles.progressBar, { width: `${pct}%` as any, backgroundColor: barColor }]} />
-                </View>
-                <View style={styles.invStats}>
-                  <View style={styles.invStat}>
-                    <Text style={[styles.invStatVal, { color: colors.text }]}>{currentStock.toLocaleString()} kg</Text>
-                    <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Current Stock</Text>
-                  </View>
-                  <View style={styles.invStat}>
-                    <Text style={[styles.invStatVal, { color: barColor }]}>{pct}%</Text>
-                    <Text style={[styles.invStatLabel, { color: colors.textMuted }]}>Fill Level</Text>
-                  </View>
-                </View>
-                <View style={[styles.invBreakdown, { borderTopColor: colors.border }]}>
-                  <View style={styles.invBreakdownRow}>
-                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>
-                      Last dip{lastDipRecord ? ` applies on ${fmtDate(lastDipRecord.dt)}` : ''}
-                    </Text>
-                    <Text style={[styles.invBreakdownVal, { color: colors.text }]}>{dipReading.toLocaleString()} kg</Text>
-                  </View>
-                  <View style={styles.invBreakdownRow}>
-                    <Text style={[styles.invBreakdownLabel, { color: colors.textMuted }]}>+ Deliveries received</Text>
-                    <Text style={[styles.invBreakdownVal, { color: '#27500A' }]}>+{deliveriesSinceDip.toLocaleString()} kg</Text>
-                  </View>
-                  <View style={[styles.invBreakdownRow, styles.invBreakdownTotal, { borderTopColor: colors.border }]}>
-                    <Text style={[styles.invBreakdownLabel, { color: colors.text, fontWeight: '700' }]}>= Current Inventory</Text>
-                    <Text style={[styles.invBreakdownVal, { color: barColor, fontWeight: '700' }]}>{currentStock.toLocaleString()} kg</Text>
-                  </View>
-                </View>
-              </View>
-            );
-          })}
           <View style={{ height: 16 }} />
         </ScrollView>
       )}

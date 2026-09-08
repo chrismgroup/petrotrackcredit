@@ -9,8 +9,8 @@ An approved tank dip is the current physical stock snapshot for that tank. Histo
 
 **How to apply:** For a daily reconciliation, use only the approved reading whose business date exactly matches the selected day; pending, rejected, or older dips must never be used. Match the dip to the exact branch and product tank IDs. If today has no approved dip, show that today is awaiting a dip rather than carrying forward an older physical reading.
 
-Approved dip records are locked for every role except Admin. An Admin correction must preserve the approved status and reconcile the linked inventory snapshot and discrepancy alert; an Admin deletion must remove those linked records so stock history does not retain an orphaned dip.
+Approved dip records are permanently locked for every role. Rejected dips remain editable and deletable only by the submitting branch manager; a manager correction resubmits the dip to MD as pending.
 
-**Why:** Approved readings drive physical stock and discrepancy history, so changing only the workflow record would leave contradictory operational data.
+**Why:** Approved readings drive physical stock and discrepancy history, so allowing any post-approval mutation would create contradictory operational data. A rejected reading has not become an authoritative stock snapshot and can safely return through the approval workflow.
 
-**How to apply:** Enforce the exception in server commands rather than UI visibility alone, require the current workflow revision, and record the Admin correction or deletion in the audit trail.
+**How to apply:** Enforce the lock and rejected-record ownership in server commands rather than UI visibility alone, require the current workflow revision, and clear approval metadata when a rejected correction is resubmitted.

@@ -37,7 +37,7 @@
 - [Operating capital formula](operating-capital-formula.md) — operating capital is monthly opening start-up capital plus that month’s net profit, with admin seed and rollover
 - [Session sign-out ordering](session-sign-out-ordering.md) — await token removal before routing to login, and do not rely on native Alert confirmations in the Expo web preview
 - [Dashboard approval routing](dashboard-approval-routing.md) — approval summaries must open actionable workflow queues, never analytics-only report views
-- [Returned record permissions](returned-record-permissions.md) — returned records go to their originator for correction; approved records are locked except for admin deletion
+- [Returned record permissions](returned-record-permissions.md) — returned records go to their originator for correction; approved records are locked for every role
 - [Durable report delivery](durable-report-delivery.md) — database acknowledgements are authoritative; sockets only invalidate caches and must retain polling catch-up
 - [JSONB state comparisons](jsonb-state-comparisons.md) — compare synced records structurally because PostgreSQL JSONB can reorder object keys
 - [Daily timer compatibility](daily-timer-compatibility.md) — Daily RN 0.86 still imports the legacy timer; a reproducible patch keeps standard timers and native call services
