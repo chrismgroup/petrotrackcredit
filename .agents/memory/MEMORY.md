@@ -52,6 +52,7 @@
 - [Expense branch authority](expense-branch-authority.md) — expenses inherit branch identity from an approved same-branch budget; only MD decides, while CEO gets Home notices
 - [Post-merge setup](post-merge-setup.md) — closed-stdin merges require CI-mode pnpm and enough timeout for install plus database schema verification
 - [Command-owned workflows](command-owned-workflows.md) — deliveries, expenses, budgets, dips, and price proposals mutate only through revisioned server commands
+- [Backup acceptance storage](backup-acceptance-storage.md) — bundled backup acceptance tests should use an in-memory object store to avoid SDK AbortSignal transport mismatches
 - [Expo monorepo root](expo-monorepo-root.md) — Expo must resolve from artifacts/petrotrack, not the workspace root, which has no app entry
 - [Expo DevTools headless mode](expo-devtools-headless.md) — Replit’s Linux preview should skip the optional standalone DevTools shell while keeping Metro and app debugging available
 - [Native biometric verification](native-biometric-verification.md) — mocked iOS/Android branches prove fallback logic, but only enrolled physical devices can prove Face ID/fingerprint acceptance
