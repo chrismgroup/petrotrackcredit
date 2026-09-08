@@ -269,6 +269,77 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     const deliveryApproved = await command(md.token, `/deliveries/${deliveryId}/approve`, deliveryApproveBody);
     assert.equal(deliveryApproved.status, 200);
     assert.equal((deliveryApproved.body.delivery as JsonRecord).approvalStatus, "md_approved");
+    // Older clients send a complete array through the generic state route.
+    // That snapshot is stale, but must not downgrade the approval or erase
+    // the delivery that another user approved.
+    const staleDeliveryWrite = await request<{ ok: boolean; deliveries: JsonRecord[] }>(
+      "/state/deliveries",
+      {
+        method: "PUT",
+        body: JSON.stringify([deliveryCreated.body.delivery]),
+      },
+      csm.token,
+    );
+    assert.equal(staleDeliveryWrite.status, 200);
+    assert.equal(
+      staleDeliveryWrite.body.deliveries.find(item => item.id === deliveryId)?.approvalStatus,
+      "md_approved",
+    );
+
+    const returnedDeliveryId = `${marker}-returned-delivery`;
+    const returnedCreated = await command(csm.token, "/deliveries", {
+      delivery: {
+        id: returnedDeliveryId,
+        sup: "Returned Supplier",
+        prod: product,
+        wb: `${marker}-returned-waybill`,
+        dt: "2026-10-01",
+        ord: 800,
+        rec: 400,
+      },
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-returned-delivery-create`,
+    });
+    assert.equal(returnedCreated.status, 200);
+    const returnedSubmitted = await command(csm.token, `/deliveries/${returnedDeliveryId}/submit`, {
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-returned-delivery-submit`,
+    });
+    assert.equal(returnedSubmitted.status, 200);
+    const returnedForwarded = await command(accountant.token, `/deliveries/${returnedDeliveryId}/forward`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-returned-delivery-forward`,
+      costPrice: 640,
+    });
+    assert.equal(returnedForwarded.status, 200);
+    const returned = await command(md.token, `/deliveries/${returnedDeliveryId}/reject`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-returned-delivery-reject`,
+      note: "Correct the received quantity",
+    });
+    assert.equal(returned.status, 200);
+    assert.equal((returned.body.delivery as JsonRecord).approvalStatus, "returned");
+    const returnedCorrection = await command(csm.token, `/deliveries/${returnedDeliveryId}`, {
+      delivery: { rec: 390, notes: "Corrected after MD return" },
+      expectedRevision: 3,
+      idempotencyKey: `${marker}-returned-delivery-correction`,
+    }, "PUT");
+    assert.equal(returnedCorrection.status, 200);
+    assert.equal((returnedCorrection.body.delivery as JsonRecord).workflowVersion, 4);
+    const staleReturnedWrite = await request<{ ok: boolean; deliveries: JsonRecord[] }>(
+      "/state/deliveries",
+      {
+        method: "PUT",
+        body: JSON.stringify([returned.body.delivery]),
+      },
+      manager.token,
+    );
+    assert.equal(staleReturnedWrite.status, 200);
+    assert.equal(
+      staleReturnedWrite.body.deliveries.find(item => item.id === returnedDeliveryId)?.notes,
+      "Corrected after MD return",
+    );
+
     const deliveryApprovalReplay = await command(md.token, `/deliveries/${deliveryId}/approve`, deliveryApproveBody);
     assert.equal(deliveryApprovalReplay.status, 200);
     assert.equal(deliveryApprovalReplay.body.replayed, true);
@@ -327,6 +398,55 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     const expenseApproved = await command(md.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
     assert.equal(expenseApproved.status, 201);
     assert.equal(recordFrom(expenseApproved).status, "approved");
+    const staleExpenseWrite = await request<{ ok: boolean; expenses: JsonRecord[] }>(
+      "/state/expenses",
+      {
+        method: "PUT",
+        body: JSON.stringify([{
+          ...recordFrom(expenseCreated),
+          status: "pending",
+          revision: 1,
+        }]),
+      },
+      manager.token,
+    );
+    assert.equal(staleExpenseWrite.status, 200);
+    assert.equal(
+      staleExpenseWrite.body.expenses.find(item => String(item.id) === expenseId)?.status,
+      "approved",
+    );
+    const deletableExpense = await command(manager.token, "/finance/expenses", {
+      expense: {
+        cat: "Operations",
+        desc: `${marker} deleted expense`,
+        amt: 300,
+        dt: "2026-10-02",
+        budgetId: 1,
+      },
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-deleted-expense-create`,
+    });
+    assert.equal(deletableExpense.status, 201);
+    const deletableExpenseId = String(recordFrom(deletableExpense).id);
+    const deletedExpense = await command(manager.token, `/finance/expenses/${deletableExpenseId}`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-deleted-expense-delete`,
+    }, "DELETE");
+    assert.equal(deletedExpense.status, 200);
+    assert.equal(deletedExpense.body.deleted, true);
+    const staleDeletedExpenseWrite = await request<{ ok: boolean; expenses: JsonRecord[] }>(
+      "/state/expenses",
+      {
+        method: "PUT",
+        body: JSON.stringify([recordFrom(deletableExpense)]),
+      },
+      manager.token,
+    );
+    assert.equal(staleDeletedExpenseWrite.status, 200);
+    assert.equal(
+      staleDeletedExpenseWrite.body.expenses.some(item => String(item.id) === deletableExpenseId),
+      false,
+    );
     const expenseReplay = await command(md.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
     assert.equal(expenseReplay.status, 200);
     assert.equal(expenseReplay.body.replay, true);

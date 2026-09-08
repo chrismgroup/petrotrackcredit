@@ -5,10 +5,12 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { appStateTable, db } from "@workspace/db";
 import { broadcastRealtime } from "../lib/realtime";
 import { deliverNotification } from "./notifications.js";
+import { mergeWorkflowTombstones } from "./workflow-record-merge";
 
 const router: IRouter = Router();
 const LOCK = sql`SELECT pg_advisory_xact_lock(hashtext('petrotrack:finance-workflow'))`;
 const IDEMPOTENCY_KEY = "financeWorkflowIdempotency";
+const EXPENSE_DELETION_KEY = "expenseDeletionTombstones";
 type JsonRecord = Record<string, unknown>;
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Auth = NonNullable<Request["auth"]>;
@@ -119,12 +121,21 @@ async function command(
       return { item: prior.item as JsonRecord, deleted: prior.deleted === true, replay: true };
     }
     const items = await load(tx, collection);
+    const deletionRows = collection === "expenses"
+      ? await tx.select().from(appStateTable).where(eq(appStateTable.key, EXPENSE_DELETION_KEY))
+      : [];
     const outcome = mutate(items, req.auth!, new Date().toISOString());
     if ("kind" in outcome) return { status: outcome.kind === "forbidden" ? 403 : 409, error: outcome.error };
     const nextItems = outcome.deleted
       ? items.filter(item => item !== outcome.item)
       : items.includes(outcome.item) ? items : [outcome.item, ...items];
     await save(tx, collection, nextItems);
+    if (collection === "expenses" && outcome.deleted) {
+      await save(tx, EXPENSE_DELETION_KEY, mergeWorkflowTombstones(
+        deletionRows[0]?.data,
+        [{ id: outcome.item.id, revision: revision(outcome.item) }],
+      ));
+    }
     await remember(tx, idempotency, { key: valid.idempotencyKey, fingerprint: fingerprintValue, item: outcome.item, deleted: outcome.deleted === true });
     return { item: outcome.item, deleted: outcome.deleted };
   });
