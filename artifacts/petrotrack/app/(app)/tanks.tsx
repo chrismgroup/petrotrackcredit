@@ -221,7 +221,7 @@ export default function TanksScreen() {
       <View style={styles.tabBar}>
         {TABS.map((t, i) => {
           if (i === 0 && !canEdit) return null;
-          if (i === 2 && role === 'mgr') return null;
+          if ((i === 1 || i === 2) && role === 'mgr') return null;
           const showBadge = i === 1 && (isMD || isAdmin) && pendingDips.length > 0;
           return (
             <TouchableOpacity key={t} onPress={() => setActiveTab(i)} style={[styles.tabBtn, { borderBottomColor: i === activeTab ? roleColor : 'transparent', borderBottomWidth: 2 }]}>

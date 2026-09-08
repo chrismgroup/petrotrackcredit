@@ -554,7 +554,7 @@ describe('screens tolerate incomplete synced records', () => {
     );
   });
 
-  it('keeps delivery and inventory work off the station manager Tank Dipping screen', () => {
+  it('shows only the dip form on the station manager Tank Dipping screen', () => {
     mockedUseApp.mockReturnValue({
       ...baseAppState(),
       role: 'mgr',
@@ -569,7 +569,7 @@ describe('screens tolerate incomplete synced records', () => {
     const mounted = renderer as unknown as ReactTestRenderer;
     const text = renderedText(mounted);
     expect(text).toContain('Dip Form');
-    expect(text).toContain('History');
+    expect(text).not.toContain('History');
     expect(text).not.toContain('Log & Delivery');
     expect(text).not.toContain('Record New Delivery');
     expect(text).not.toContain('Delivery Records');
@@ -614,11 +614,7 @@ describe('screens tolerate incomplete synced records', () => {
       managerRenderer = create(<TanksScreen />);
     });
     const mountedManager = managerRenderer as unknown as ReactTestRenderer;
-    const historyTab = mountedManager.root
-      .findAll(node => String(node.type) === 'TouchableOpacity')
-      .find(node => nodeText(node) === 'History');
-    expect(historyTab).toBeDefined();
-    act(() => historyTab?.props.onPress());
+    expect(renderedText(mountedManager)).not.toContain('History');
     expect(renderedText(mountedManager)).not.toContain('Edit');
     expect(renderedText(mountedManager)).not.toContain('Delete');
     act(() => mountedManager.unmount());
