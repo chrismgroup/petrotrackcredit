@@ -7,12 +7,11 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
-import { DEFAULT_MGR_PERMS, getCurrentTankStock, isPhysicalDeliveryReceipt, ROLE_COLORS, SCREEN_ROUTES, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, ROLE_COLORS, SCREEN_ROUTES, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { sendOperationalNotification } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
 
-const TABS = ['Dip Form', 'History', 'Inventory'];
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
 const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
@@ -23,7 +22,6 @@ export default function TanksScreen() {
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
   const canEdit = role === 'mgr';
-  const [activeTab, setActiveTab] = useState(canEdit ? 0 : 1);
   const [readings, setReadings] = useState<Record<string, string>>({});
   const [lpgReadings, setLpgReadings] = useState<Record<string, string>>({});
   const [obs, setObs] = useState('');
@@ -72,7 +70,12 @@ export default function TanksScreen() {
     if (branchIds.length > 1) return { id: 'multiple', name: 'Multiple branches' };
     return { id: 'unassigned', name: 'Unassigned branch' };
   };
-  const visibleDipRecords = dips.filter(dipHasVisibleReading);
+  const visibleDipRecords = dips.filter(dip =>
+    dipHasVisibleReading(dip)
+    && (canEdit
+      ? dip.status === 'rejected' && dip.by === userName
+      : (isMD || isAdmin) && dip.status === 'pending'),
+  );
   const dipHistoryGroups = visibleDipRecords.reduce<Array<{ id: string; name: string; dips: typeof visibleDipRecords }>>((groups, dip) => {
     const branch = getDipBranch(dip);
     const group = groups.find(item => item.id === branch.id);
@@ -169,7 +172,7 @@ export default function TanksScreen() {
             target: to,
             title: `Tank Dip Report — ${analysis.some(a => !a.complete) ? 'SHORTAGE DETECTED' : 'All Complete'}`,
             body: alertBody,
-            route: SCREEN_ROUTES.inventory,
+            route: SCREEN_ROUTES.tanks,
           }).catch(() => {
             // The dip remains saved locally and will sync independently.
           });
@@ -218,27 +221,7 @@ export default function TanksScreen() {
 
   return (
     <ScreenLayout title="Tank Dipping">
-      <View style={styles.tabBar}>
-        {TABS.map((t, i) => {
-          if (i === 0 && !canEdit) return null;
-          if ((i === 1 || i === 2) && role === 'mgr') return null;
-          const showBadge = i === 1 && (isMD || isAdmin) && pendingDips.length > 0;
-          return (
-            <TouchableOpacity key={t} onPress={() => setActiveTab(i)} style={[styles.tabBtn, { borderBottomColor: i === activeTab ? roleColor : 'transparent', borderBottomWidth: 2 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Text style={[styles.tabLabel, { color: i === activeTab ? roleColor : colors.textMuted, fontWeight: i === activeTab ? '700' : '400' }]}>{t}</Text>
-                {showBadge && (
-                  <View style={[styles.tabBadge, { backgroundColor: '#BA7517' }]}>
-                    <Text style={styles.tabBadgeText}>{pendingDips.length}</Text>
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {activeTab === 0 && canEdit && (
+      {canEdit && (
         <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
@@ -376,7 +359,7 @@ export default function TanksScreen() {
         </View>
       )}
 
-      {activeTab === 1 && (
+      {(canEdit || isMD || isAdmin) && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {isMD && dips.some(d => d.status === 'pending') && (
             <View style={[styles.mdBanner, { backgroundColor: '#4527a018', borderColor: '#4527a0' }]}>
@@ -386,7 +369,9 @@ export default function TanksScreen() {
               </Text>
             </View>
           )}
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Inventory history by branch</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            {canEdit ? 'Returned Dip Reports' : 'Pending Dip Reports for Review'}
+          </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyBranchRail}>
             {canSeeAllTanks && (
               <TouchableOpacity
@@ -426,7 +411,9 @@ export default function TanksScreen() {
             <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="time-outline" size={16} color={colors.textMuted} />
               <Text style={[styles.noBannerText, { color: colors.textMuted }]}>
-                {activeHistoryBranchId ? 'No dip reports for this branch yet.' : 'No dip reports yet. Submitted readings will appear here.'}
+                 {canEdit
+                   ? 'No rejected dip reports require your attention.'
+                   : 'No dip reports are awaiting MD approval.'}
               </Text>
             </View>
           ) : displayedDipHistoryGroups.map(group => (
