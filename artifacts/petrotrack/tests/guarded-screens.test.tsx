@@ -554,6 +554,92 @@ describe('screens tolerate incomplete synced records', () => {
     );
   });
 
+  it('keeps delivery and inventory work off the station manager Tank Dipping screen', () => {
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role: 'mgr',
+      userName: 'Station Manager',
+      branchId: 'branch-1',
+    } as any);
+
+    let renderer: ReactTestRenderer | null = null;
+    act(() => {
+      renderer = create(<TanksScreen />);
+    });
+    const mounted = renderer as unknown as ReactTestRenderer;
+    const text = renderedText(mounted);
+    expect(text).toContain('Dip Form');
+    expect(text).toContain('History');
+    expect(text).not.toContain('Log & Delivery');
+    expect(text).not.toContain('Record New Delivery');
+    expect(text).not.toContain('Delivery Records');
+    expect(text).not.toContain('Inventory');
+    act(() => mounted.unmount());
+  });
+
+  it('shows approved dip correction controls only to Admin', () => {
+    const tank = {
+      id: 'tank-1',
+      name: 'PMS Tank',
+      prod: 'PMS',
+      branchId: 'branch-1',
+      cap: 10_000,
+      op: 1_000,
+      rv: 0,
+      sl: 0,
+    };
+    const approvedDip = {
+      id: 42,
+      dt: '2026-09-08',
+      by: 'Station Manager',
+      branchId: 'branch-1',
+      branchName: 'Branch One',
+      rd: { 'tank-1': 1_125 },
+      lpg: {},
+      obs: 'Approved snapshot',
+      status: 'approved',
+      workflowRevision: 1,
+    };
+
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role: 'mgr',
+      userName: 'Station Manager',
+      branchId: 'branch-1',
+      tanks: [tank],
+      dips: [approvedDip],
+    } as any);
+    let managerRenderer: ReactTestRenderer | null = null;
+    act(() => {
+      managerRenderer = create(<TanksScreen />);
+    });
+    const mountedManager = managerRenderer as unknown as ReactTestRenderer;
+    const historyTab = mountedManager.root
+      .findAll(node => String(node.type) === 'TouchableOpacity')
+      .find(node => nodeText(node) === 'History');
+    expect(historyTab).toBeDefined();
+    act(() => historyTab?.props.onPress());
+    expect(renderedText(mountedManager)).not.toContain('Edit');
+    expect(renderedText(mountedManager)).not.toContain('Delete');
+    act(() => mountedManager.unmount());
+
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role: 'admin',
+      branchId: null,
+      tanks: [tank],
+      dips: [approvedDip],
+    } as any);
+    let adminRenderer: ReactTestRenderer | null = null;
+    act(() => {
+      adminRenderer = create(<TanksScreen />);
+    });
+    const mountedAdmin = adminRenderer as unknown as ReactTestRenderer;
+    expect(renderedText(mountedAdmin)).toContain('Edit');
+    expect(renderedText(mountedAdmin)).toContain('Delete');
+    act(() => mountedAdmin.unmount());
+  });
+
   it('renders HR with an employee whose string fields are missing', () => {
     mockedUseApp.mockReturnValue({
       ...baseAppState(),
