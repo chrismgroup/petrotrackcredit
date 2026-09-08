@@ -610,9 +610,8 @@ export default function HomeScreen() {
     return false;
   });
   const pendingExpenses = expenses.filter(expense => {
-    if (isAdmin) return expense.status === 'pending' || expense.status === 'acc_forwarded' || expense.status === 'rejected';
+    if (isAdmin || isExecutive) return expense.status === 'pending' || expense.status === 'acc_forwarded' || expense.status === 'rejected';
     if (role === 'acc') return expense.status === 'pending' || expense.status === 'rejected';
-    if (role === 'md') return expense.status === 'acc_forwarded';
     if (role === 'mgr' || role === 'csm' || role === 'mktg') {
       return expense.status === 'rejected' && (expense.by === role || expense.byName === userName);
     }
@@ -720,9 +719,11 @@ export default function HomeScreen() {
     expenses: pendingExpenses.map(expense => ({
       id: `expense-${expense.id}`,
       title: expense.cat,
-      meta: `${expense.dt} · ${expense.byName}`,
-      status: expense.status === 'acc_forwarded' ? 'With MD for approval' : 'With Accountant for review',
-      statusColor: expense.status === 'acc_forwarded' ? colors.amber : colors.blue,
+      meta: `${expense.dt} · ${expense.byName} · ${expense.branchName || 'Branch not recorded'}`,
+      status: expense.status === 'rejected'
+        ? 'With Manager for correction'
+        : 'With Accountant for approval',
+      statusColor: expense.status === 'rejected' ? colors.error : colors.blue,
       facts: [`Amount: ${fmt(expense.amt)}`, expense.desc || 'No description provided', expense.ref ? `Reference: ${expense.ref}` : 'Reference: None'],
     })),
     prices: pendingPriceProps.map(proposal => ({
@@ -1056,11 +1057,8 @@ export default function HomeScreen() {
                 icon="receipt-outline"
                 accent={colors.teal}
                 title="Expense Claims"
-                meta={`${pendingExpenses.length} claim${pendingExpenses.length > 1 ? 's' : ''} waiting for decision`}
+                meta={`${pendingExpenses.length} claim${pendingExpenses.length > 1 ? 's' : ''} in the expense workflow`}
                 count={pendingExpenses.length}
-                // Expense claims have role-specific actions on the Expenses
-                // screen. Open that screen directly so MD lands on the
-                // "For Approval" tab instead of a read-only details sheet.
                 onPress={() => router.push(SCREEN_ROUTES.exp as never)}
                 colors={colors}
               />

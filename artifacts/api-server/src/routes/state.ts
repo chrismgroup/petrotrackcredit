@@ -781,9 +781,7 @@ router.get("/state", async (req, res): Promise<void> => {
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
   for (const row of rows) {
     if (row.key === PUMP_REPORT_DELETIONS_KEY || row.key === COMPANY_ASSET_DELETIONS_KEY) continue;
-    result[row.key] = row.key === "expenses" && req.auth?.role === "ceo"
-      ? []
-      : row.key === "budgets"
+    result[row.key] = row.key === "budgets"
       ? budgetStateForIdentity(
           row.data,
           rows.find(candidate => candidate.key === "branches")?.data,
@@ -1444,10 +1442,6 @@ router.get("/state/:key", async (req, res): Promise<void> => {
       }).from(staffUsersTable),
     ]);
     res.json(budgetStateForIdentity(row.data, branchesRow[0]?.data, budgetStaff, req.auth));
-    return;
-  }
-  if (key === "expenses" && req.auth?.role === "ceo") {
-    res.json([]);
     return;
   }
   res.json(visibleMyFolderState(key, row.data, req.auth?.role));

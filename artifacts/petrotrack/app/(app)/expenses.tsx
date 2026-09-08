@@ -21,9 +21,9 @@ const EXPENSE_CATS = [
 
 const ST_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   pending:      { label: 'With Accountant', color: '#0C447C', bg: '#E6F1FB', icon: 'time-outline' },
-  acc_forwarded:{ label: 'With MD',         color: '#BA7517', bg: '#FAEEDA', icon: 'share-social' },
+  acc_forwarded:{ label: 'With Accountant', color: '#0C447C', bg: '#E6F1FB', icon: 'time-outline' },
   approved:     { label: 'Approved',        color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle' },
-  rejected:     { label: 'Rejected',        color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle' },
+  rejected:     { label: 'With Manager',    color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle' },
 };
 
 type FormState = { cat: string; desc: string; amt: string; ref: string; budgetId: number; dt: string };
@@ -92,16 +92,17 @@ export default function ExpensesScreen() {
   const {
     role, userName, branchId, expenses, sales, budgets,
     addExpense, updateExpenseConfirmed, deleteExpense,
-    forwardExpenseToMDConfirmed, approveExpenseConfirmed, rejectExpenseConfirmed,
+    approveExpenseConfirmed, rejectExpenseConfirmed,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
 
   const isMgr = role === 'mgr' || role === 'csm' || role === 'mktg';
-  const isAcc = role === 'acc' || role === 'admin';
+  const isAcc = role === 'acc';
   const isMD  = role === 'md';
   const isCeo = role === 'ceo';
+  const isReadOnlyViewer = role === 'admin' || isMD || isCeo;
 
   const approvedBudgets = budgets.filter(b =>
     b.status === 'fully_approved'
@@ -113,9 +114,6 @@ export default function ExpensesScreen() {
   const [editTarget, setEditTarget] = useState<Expense | null>(null);
   const [form, setForm]             = useState<FormState>(blankForm());
 
-  /* Acc forward modal */
-  const [fwdTarget, setFwdTarget]   = useState<Expense | null>(null);
-  const [fwdNote, setFwdNote]       = useState('');
   const [filterDate, setFilterDate] = useState('');
 
   const today = new Date().toISOString().slice(0, 10);
@@ -126,22 +124,19 @@ export default function ExpensesScreen() {
   const pendingAmt  = expenses.filter(e => e.status === 'pending').reduce((s, e) => s + e.amt, 0);
   const approvedAmt = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + e.amt, 0);
 
-  const pendingForAcc = expenses.filter(e => e.status === 'pending' || e.status === 'rejected');
-  const pendingForMD  = expenses.filter(e => e.status === 'acc_forwarded');
+  const pendingForAcc = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded');
+  const pendingForViewer = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded' || e.status === 'rejected');
   const myExpenses    = expenses.filter(e => e.by === role || e.byName === userName);
 
   /* Tab definitions per role */
   const TABS_MGR = ['My Expenses', 'All'];
   const TABS_ACC = ['For Review', 'All'];
-  const TABS_MD  = ['For Approval', 'Approved', 'All'];
-  const TABS_CEO = ['Pending', 'Approved', 'All'];
-  const currentTabs = isCeo ? TABS_CEO : isMD ? TABS_MD : isAcc ? TABS_ACC : TABS_MGR;
+  const TABS_VIEWER = ['Workflow', 'Approved', 'All'];
+  const currentTabs = isReadOnlyViewer ? TABS_VIEWER : isAcc ? TABS_ACC : TABS_MGR;
 
-  const displayedExpensesBase = isCeo
-    ? (tab === 0 ? expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded')
+  const displayedExpensesBase = isReadOnlyViewer
+    ? (tab === 0 ? pendingForViewer
       : tab === 1 ? expenses.filter(e => e.status === 'approved') : expenses)
-    : isMD
-    ? (tab === 0 ? pendingForMD : tab === 1 ? expenses.filter(e => e.status === 'approved') : expenses)
     : isAcc
     ? (tab === 0 ? pendingForAcc : expenses)
     : (tab === 0 ? myExpenses : expenses);
@@ -156,8 +151,7 @@ export default function ExpensesScreen() {
     return b.id - a.id;
   });
 
-  const pendingCount = isCeo ? expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded').length
-    : isAcc ? pendingForAcc.length : isMD ? pendingForMD.length : 0;
+  const pendingCount = isAcc ? pendingForAcc.length : isReadOnlyViewer ? pendingForViewer.length : 0;
 
   function openCreate() {
     setEditTarget(null);
@@ -206,23 +200,12 @@ export default function ExpensesScreen() {
     ]);
   }
 
-  async function handleForwardConfirm() {
-    if (!fwdTarget) return;
-    const result = await forwardExpenseToMDConfirmed(fwdTarget.id, fwdNote || undefined);
-    if (!result.ok) {
-      Alert.alert('Expense not forwarded', result.error ?? 'The server could not forward this expense. Your note remains available so you can retry.');
-      return;
-    }
-    setFwdTarget(null); setFwdNote('');
-  }
-
   /* Permission helpers */
   const mgrCanEdit = (e: Expense) =>
     isMgr && (e.status === 'pending' || e.status === 'rejected') && (e.by === role || e.byName === userName);
   const accCanEdit    = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
   const accCanDelete  = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
-  const accCanForward = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
-  const mdCanAct = (e: Expense) => isMD && e.status === 'acc_forwarded';
+  const accCanDecide = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'acc_forwarded');
 
   return (
     <ScreenLayout
@@ -262,12 +245,12 @@ export default function ExpensesScreen() {
       {/* Pending badge banner for acc/md */}
       {pendingCount > 0 ? (
         <View style={[styles.pendingBanner, {
-          backgroundColor: isAcc ? '#E6F1FB' : '#FAEEDA',
-          borderColor: isAcc ? '#0C447C' : '#BA7517',
+           backgroundColor: isAcc ? '#E6F1FB' : '#F1F5F9',
+           borderColor: isAcc ? '#0C447C' : '#64748B',
         }]}>
-          <Ionicons name="time" size={15} color={isAcc ? '#0C447C' : '#BA7517'} />
-          <Text style={[styles.pendingBannerText, { color: isAcc ? '#0C447C' : '#BA7517' }]}>
-            {pendingCount}{' expense'}{pendingCount > 1 ? 's' : ''}{isAcc ? ' awaiting your review' : ' awaiting your approval'}
+          <Ionicons name="time" size={15} color={isAcc ? '#0C447C' : '#64748B'} />
+          <Text style={[styles.pendingBannerText, { color: isAcc ? '#0C447C' : '#64748B' }]}>
+            {pendingCount}{' expense'}{pendingCount > 1 ? 's' : ''}{isAcc ? ' awaiting your review' : ' in the workflow'}
           </Text>
         </View>
       ) : null}
@@ -307,10 +290,9 @@ export default function ExpensesScreen() {
           return (
             <View key={exp.id} style={[styles.expCard, {
               backgroundColor: colors.surface,
-              borderColor: exp.status === 'pending' && isAcc ? '#0C447C'
-                : exp.status === 'acc_forwarded' && isMD ? '#BA7517'
+              borderColor: (exp.status === 'pending' || exp.status === 'acc_forwarded') && isAcc ? '#0C447C'
                 : colors.border,
-              borderWidth: (exp.status === 'pending' && isAcc) || (exp.status === 'acc_forwarded' && isMD) ? 1.5 : 1,
+              borderWidth: (exp.status === 'pending' || exp.status === 'acc_forwarded') && isAcc ? 1.5 : 1,
             }]}>
               <View style={styles.expHeader}>
                 <View style={{ flex: 1 }}>
@@ -352,7 +334,7 @@ export default function ExpensesScreen() {
                 </View>
               ) : null}
 
-              {/* Acc: add/edit/delete + forward to MD */}
+               {/* Accountant: edit/delete plus direct approval decision */}
               {accCanEdit(exp) ? (
                 <View style={styles.actionRow}>
                   <TouchableOpacity onPress={() => openEdit(exp)} style={[styles.actionBtn, { borderColor: '#0C447C' }]}>
@@ -365,18 +347,11 @@ export default function ExpensesScreen() {
                       <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Delete</Text>
                     </TouchableOpacity>
                   ) : null}
-                  {accCanForward(exp) ? (
-                    <TouchableOpacity onPress={() => { setFwdTarget(exp); setFwdNote(''); }}
-                      style={[styles.forwardBtn]}>
-                      <Ionicons name="share-social" size={13} color="#fff" />
-                      <Text style={styles.forwardBtnText}>Forward to MD</Text>
-                    </TouchableOpacity>
-                  ) : null}
                 </View>
               ) : null}
 
-              {/* MD: approve/reject */}
-              {mdCanAct(exp) ? (
+               {/* Only the Accountant can approve or reject */}
+               {accCanDecide(exp) ? (
                 <View style={styles.actionRow}>
                   <TouchableOpacity onPress={async () => {
                     const result = await rejectExpenseConfirmed(exp.id);
@@ -403,12 +378,18 @@ export default function ExpensesScreen() {
                   <Text style={[styles.lockText, { color: '#0C447C' }]}>Under accountant review</Text>
                 </View>
               ) : null}
-              {exp.status === 'acc_forwarded' && !isMD ? (
+               {exp.status === 'acc_forwarded' && !isAcc ? (
                 <View style={[styles.lockRow, { borderColor: '#BA7517' }]}>
                   <Ionicons name="lock-closed-outline" size={11} color="#BA7517" />
-                  <Text style={[styles.lockText, { color: '#BA7517' }]}>Forwarded — awaiting MD approval</Text>
+                   <Text style={[styles.lockText, { color: '#0C447C' }]}>With Accountant for approval</Text>
                 </View>
               ) : null}
+               {exp.status === 'rejected' ? (
+                 <View style={[styles.lockRow, { borderColor: '#791F1F' }]}>
+                   <Ionicons name="arrow-undo-outline" size={11} color="#791F1F" />
+                   <Text style={[styles.lockText, { color: '#791F1F' }]}>Returned to manager for correction</Text>
+                 </View>
+               ) : null}
               {locked ? (
                 <View style={[styles.lockRow, { borderColor: '#27500A' }]}>
                   <Ionicons name="lock-closed" size={11} color="#27500A" />
@@ -441,37 +422,6 @@ export default function ExpensesScreen() {
           </ScrollView>
       </ModalSheet>
 
-      {/* Acc Forward to MD Modal */}
-      <ModalSheet visible={fwdTarget !== null} onClose={() => setFwdTarget(null)}>
-          <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={[styles.fwdIconBox, { backgroundColor: '#E6F1FB' }]}>
-                <Ionicons name="share-social" size={18} color="#0C447C" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Forward to MD</Text>
-                <Text style={[styles.fwdSub, { color: colors.textMuted }]}>{fwdTarget?.cat}{' — '}{fwdTarget ? fmt(fwdTarget.amt) : ''}</Text>
-              </View>
-            </View>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted, marginTop: 12 }]}>Verification note (optional)</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              value={fwdNote} onChangeText={setFwdNote}
-              placeholder="e.g. Receipt verified — amount correct"
-              placeholderTextColor={colors.textSubtle}
-              autoFocus
-            />
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setFwdTarget(null)}>
-                <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#0C447C' }]} onPress={handleForwardConfirm}>
-                <Ionicons name="share-social" size={15} color="#fff" />
-                <Text style={styles.saveBtnText}>Forward to MD</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-      </ModalSheet>
       {confirmationModal}
     </ScreenLayout>
   );

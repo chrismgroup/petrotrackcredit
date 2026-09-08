@@ -111,7 +111,6 @@ export default function JobsScreen() {
   const allowed = new Set(navItems.map(item => item.id));
   const canSee = (item: JobItem) => {
     if (!workspaceRouteAccess(item.route)) return false;
-    if (item.id === 'expenses' && role === 'ceo') return false;
     if (item.id === 'dips') return role === 'md' && (allowed.has('ops') || allowed.has('tanks'));
     return canAccessWorkspaceRoute(item.route, role, navItems);
   };
