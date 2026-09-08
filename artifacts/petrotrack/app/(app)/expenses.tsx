@@ -90,7 +90,7 @@ function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
 
 export default function ExpensesScreen() {
   const {
-    role, userName, expenses, sales, budgets,
+    role, userName, branchId, expenses, sales, budgets,
     addExpense, updateExpenseConfirmed, deleteExpense,
     forwardExpenseToMDConfirmed, approveExpenseConfirmed, rejectExpenseConfirmed,
   } = useApp();
@@ -103,7 +103,10 @@ export default function ExpensesScreen() {
   const isMD  = role === 'md'  || role === 'ceo' || role === 'admin';
   const isCeo = role === 'ceo';
 
-  const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
+  const approvedBudgets = budgets.filter(b =>
+    b.status === 'fully_approved'
+    && (role !== 'mgr' || (!!branchId && b.branchId === branchId))
+  );
 
   const [tab, setTab]               = useState(0);
   const [showForm, setShowForm]     = useState(false);

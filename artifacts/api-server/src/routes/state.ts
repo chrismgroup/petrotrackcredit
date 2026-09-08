@@ -65,6 +65,57 @@ function visibleMyFolderState(key: string, data: unknown, role?: string): unknow
     : [];
 }
 
+type BudgetStaffIdentity = {
+  username: string | null;
+  empName: string;
+  branchId: string | null;
+};
+
+function budgetStateForIdentity(
+  data: unknown,
+  branchesData: unknown,
+  staff: BudgetStaffIdentity[],
+  auth?: { role?: string; branchId?: string | null },
+): JsonRecord[] {
+  const branchNames = new Map(
+    (Array.isArray(branchesData) ? branchesData : [])
+      .filter(value => value && typeof value === "object" && !Array.isArray(value))
+      .map(value => {
+        const branch = value as JsonRecord;
+        return [String(branch.id ?? ""), String(branch.name ?? "")] as const;
+      })
+      .filter(([id, name]) => id && name),
+  );
+  const normalizedIdentity = (value: unknown) => String(value ?? "").trim().toLowerCase();
+  const budgets = (Array.isArray(data) ? data : [])
+    .filter(value => value && typeof value === "object" && !Array.isArray(value))
+    .map(value => {
+      const budget = value as JsonRecord;
+      let branchId = String(budget.branchId ?? "").trim();
+      if (!branchId) {
+        const createdBy = normalizedIdentity(budget.createdBy);
+        const byName = normalizedIdentity(budget.byName);
+        const owner = staff.find(candidate =>
+          (createdBy && normalizedIdentity(candidate.username) === createdBy)
+          || (byName && (
+            normalizedIdentity(candidate.empName) === byName
+            || normalizedIdentity(candidate.username) === byName
+          ))
+        );
+        branchId = owner?.branchId?.trim() ?? "";
+      }
+      const branchName = branchId
+        ? branchNames.get(branchId) ?? String(budget.branchName ?? "").trim()
+        : "";
+      return branchId && branchName ? { ...budget, branchId, branchName } : budget;
+    });
+
+  if (auth?.role !== "mgr") return budgets;
+  const managerBranchId = auth.branchId?.trim() ?? "";
+  if (!managerBranchId) return [];
+  return budgets.filter(budget => String(budget.branchId ?? "") === managerBranchId);
+}
+
 // Keys that modify access control, credentials, or HR/legal/financial records.
 // Only admin-role users may write to these.
 const ADMIN_WRITE_KEYS = new Set([
@@ -714,9 +765,14 @@ async function validateDipPayload(data: unknown): Promise<string | null> {
 }
 
 router.get("/state", async (req, res): Promise<void> => {
-  const [rows, durableReports] = await Promise.all([
+  const [rows, durableReports, budgetStaff] = await Promise.all([
     db.select().from(appStateTable),
     db.select().from(pumpReportsTable),
+    db.select({
+      username: staffUsersTable.username,
+      empName: staffUsersTable.empName,
+      branchId: staffUsersTable.branchId,
+    }).from(staffUsersTable),
   ]);
   const result: Record<string, unknown> = {};
   const deletedPumpReportIds = pumpReportDeletionIds(
@@ -725,7 +781,14 @@ router.get("/state", async (req, res): Promise<void> => {
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
   for (const row of rows) {
     if (row.key === PUMP_REPORT_DELETIONS_KEY || row.key === COMPANY_ASSET_DELETIONS_KEY) continue;
-    result[row.key] = row.key === "maintenance" && Array.isArray(row.data)
+    result[row.key] = row.key === "budgets"
+      ? budgetStateForIdentity(
+          row.data,
+          rows.find(candidate => candidate.key === "branches")?.data,
+          budgetStaff,
+          req.auth,
+        )
+      : row.key === "maintenance" && Array.isArray(row.data)
       ? row.data.map(value => (
           value && typeof value === "object" && !Array.isArray(value)
             ? normalizeMaintenanceRecord(value as JsonRecord)
@@ -1367,6 +1430,18 @@ router.get("/state/:key", async (req, res): Promise<void> => {
   }
   if (key === "messages" && req.auth) {
     res.json(messagesForIdentity(row.data, await resolveChatIdentity(req.auth.username, req.auth.role)));
+    return;
+  }
+  if (key === "budgets") {
+    const [branchesRow, budgetStaff] = await Promise.all([
+      db.select().from(appStateTable).where(eq(appStateTable.key, "branches")),
+      db.select({
+        username: staffUsersTable.username,
+        empName: staffUsersTable.empName,
+        branchId: staffUsersTable.branchId,
+      }).from(staffUsersTable),
+    ]);
+    res.json(budgetStateForIdentity(row.data, branchesRow[0]?.data, budgetStaff, req.auth));
     return;
   }
   res.json(visibleMyFolderState(key, row.data, req.auth?.role));
