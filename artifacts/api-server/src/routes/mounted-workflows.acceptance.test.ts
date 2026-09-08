@@ -598,8 +598,8 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     });
     assert.equal(cannotReclassify.status, 409);
 
-    const budgetInput = (label: string, status?: string) => ({
-      month: 10,
+    const budgetInput = (label: string, status?: string, month = 11) => ({
+      month,
       year: 2026,
       appliesOn: branchA,
       label,
@@ -660,15 +660,23 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(budgetApproved.status, 201);
     assert.equal(recordFrom(budgetApproved).status, "fully_approved");
 
+    const duplicateSubmit = await command(manager.token, "/finance/budgets", {
+      budget: budgetInput(`${marker} duplicate`, "submitted"),
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-budget-duplicate-submit`,
+    });
+    assert.equal(duplicateSubmit.status, 409);
+    assert.match(String(duplicateSubmit.body.error), /already has a budget submitted/i);
+
     const draftBudget = await command(manager.token, "/finance/budgets", {
-      budget: budgetInput(`${marker} draft`),
+      budget: budgetInput(`${marker} draft`, undefined, 12),
       expectedRevision: 0,
       idempotencyKey: `${marker}-budget-draft-create`,
     });
     const draftBudgetId = String(recordFrom(draftBudget).id);
     const atomicSubmit = await command(manager.token, `/finance/budgets/${draftBudgetId}/update-submit`, {
       budget: {
-        ...budgetInput(`${marker} atomically updated`),
+        ...budgetInput(`${marker} atomically updated`, undefined, 12),
         items: [{ cat: "Operations", amt: 7_500 }],
       },
       expectedRevision: 1,
