@@ -126,6 +126,43 @@ const ADMIN_WRITE_KEYS = new Set([
   "reportAccessPolicyVersion",
 ]);
 
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+const MANAGER_BRANCH_ARRAY_KEYS = new Set([
+  "tanks", "lpgTanks", "pumps", "expenses", "sales", "dips", "deliveries",
+  "maintenance", "inventoryLog", "stockLogs", "startupStocks", "companyAssets",
+  "priceHistory", "priceProposals",
+]);
+
+function branchScopedStateForManager(key: string, data: unknown, branchId: string | null): unknown {
+  if (!branchId) {
+    if (key === "branches" || MANAGER_BRANCH_ARRAY_KEYS.has(key)) return [];
+    return data;
+  }
+  if (key === "branches") {
+    return Array.isArray(data)
+      ? data.filter(value => isJsonRecord(value) && String(value.id ?? "") === branchId)
+      : [];
+  }
+  if (MANAGER_BRANCH_ARRAY_KEYS.has(key)) {
+    return Array.isArray(data)
+      ? data.filter(value => isJsonRecord(value) && String(value.branchId ?? "") === branchId)
+      : [];
+  }
+  if (key === "prices" && isJsonRecord(data)) {
+    const branchPrices = isJsonRecord(data.branchPrices) ? data.branchPrices : {};
+    return {
+      ...data,
+      branchPrices: branchPrices[branchId] === undefined
+        ? {}
+        : { [branchId]: branchPrices[branchId] },
+    };
+  }
+  return data;
+}
+
 // Selling prices are operational. Managers may update only their own branch
 // override; CEO, MD, and admin may update the network fallback.
 const PRICE_WRITE_ROLES = new Set(["admin", "ceo", "md", "mgr"]);
@@ -820,6 +857,9 @@ router.get("/state", async (req, res): Promise<void> => {
       : row.key === "messages" && chatIdentity
       ? messagesForIdentity(row.data, chatIdentity)
       : visibleMyFolderState(row.key, row.data, req.auth?.role);
+    if (req.auth?.role === "mgr") {
+      result[row.key] = branchScopedStateForManager(row.key, result[row.key], managerBranchId ?? null);
+    }
   }
   result.companyAssetDeletedIds = Array.from(deletedCompanyAssetIds(
     rows.find(row => row.key === COMPANY_ASSET_DELETIONS_KEY)?.data,
@@ -838,7 +878,16 @@ router.get("/state", async (req, res): Promise<void> => {
 });
 
 router.post("/pump-reports", async (req, res): Promise<void> => {
-  const report = req.body?.report as JsonRecord | undefined;
+  const incomingReport = req.body?.report as JsonRecord | undefined;
+  const requestedBranchId = String(
+    req.auth?.role === "admin" ? incomingReport?.branchId ?? "" : req.auth?.branchId ?? "",
+  ).trim();
+  const [branchesRow] = await db.select().from(appStateTable).where(eq(appStateTable.key, "branches"));
+  const canonicalBranch = (Array.isArray(branchesRow?.data) ? branchesRow.data : [])
+    .find(value => isJsonRecord(value) && String(value.id ?? "") === requestedBranchId) as JsonRecord | undefined;
+  const report: JsonRecord | undefined = incomingReport && canonicalBranch
+    ? { ...incomingReport, branchId: requestedBranchId, branchName: String(canonicalBranch.name ?? "").trim() }
+    : undefined;
   const id = String(report?.id ?? "");
   const idempotencyKey = String(req.body?.idempotencyKey ?? report?.id ?? "").trim();
   const numericFields = [
@@ -873,7 +922,7 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     (req.auth.role !== "att" && req.auth.role !== "admin") ||
     (req.auth.role === "att" && (
       (report.submittedBy !== req.auth.username && report.submittedBy !== authEmpName) ||
-      (!!req.auth.branchId && report.branchId !== req.auth.branchId)
+      report.branchId !== req.auth.branchId
     ))
   ) {
     res.status(403).json({ error: "This account cannot submit that report" });
@@ -1475,7 +1524,13 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     res.json(pumpReportsForIdentity(row.data, req.auth, managerBranchId));
     return;
   }
-  res.json(visibleMyFolderState(key, row.data, req.auth?.role));
+  const visible = visibleMyFolderState(key, row.data, req.auth?.role);
+  if (req.auth?.role === "mgr") {
+    const managerBranchId = req.auth.branchId ?? await resolveManagerBranchId(req.auth.username);
+    res.json(branchScopedStateForManager(key, visible, managerBranchId ?? null));
+    return;
+  }
+  res.json(visible);
 });
 
 router.put("/state/:key", async (req, res): Promise<void> => {
@@ -1526,6 +1581,13 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Deletion tombstones are managed by workflow commands" });
     return;
   }
+  const managerBranchIdForWrite = req.auth?.role === "mgr"
+    ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
+    : null;
+  if (req.auth?.role === "mgr" && !managerBranchIdForWrite) {
+    res.status(403).json({ error: "A branch assignment is required" });
+    return;
+  }
 
   if ((key === "deliveries" || key === "expenses") && Array.isArray(data)) {
     const tombstoneKey = key === "deliveries"
@@ -1539,15 +1601,45 @@ router.put("/state/:key", async (req, res): Promise<void> => {
         tx.select().from(appStateTable).where(eq(appStateTable.key, tombstoneKey)),
       ]);
       const tombstones = mergeWorkflowTombstones(tombstoneRow[0]?.data, []);
-      const merged = mergeWorkflowRecords(currentRow[0]?.data, data, key, tombstones);
+      const incoming = req.auth?.role === "mgr"
+        ? (data as unknown[]).filter(value =>
+            isJsonRecord(value)
+            && String(value.branchId ?? "") === managerBranchIdForWrite
+          )
+        : data;
+      const merged = mergeWorkflowRecords(currentRow[0]?.data, incoming, key, tombstones);
       await tx.insert(appStateTable).values({ key, data: merged }).onConflictDoUpdate({
         target: appStateTable.key,
         set: { data: merged, updatedAt: new Date() },
       });
       return merged;
     });
-    res.json({ ok: true, [key]: result });
+    res.json({
+      ok: true,
+      [key]: req.auth?.role === "mgr"
+        ? branchScopedStateForManager(key, result, managerBranchIdForWrite ?? null)
+        : result,
+    });
     return;
+  }
+
+  if (
+    req.auth?.role === "mgr"
+    && managerBranchIdForWrite
+    && MANAGER_BRANCH_ARRAY_KEYS.has(key)
+    && Array.isArray(data)
+    && key !== "companyAssets"
+    && key !== "priceHistory"
+  ) {
+    const [existingRow] = await db.select().from(appStateTable).where(eq(appStateTable.key, key));
+    const existing = Array.isArray(existingRow?.data) ? existingRow.data : [];
+    const incomingOwn = data.filter(value =>
+      isJsonRecord(value) && String(value.branchId ?? "") === managerBranchIdForWrite
+    );
+    const existingOther = existing.filter(value =>
+      !isJsonRecord(value) || String(value.branchId ?? "") !== managerBranchIdForWrite
+    );
+    data = [...incomingOwn, ...existingOther];
   }
   if (key === "dips") {
     const dipError = await validateDipPayload(data);

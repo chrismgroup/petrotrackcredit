@@ -164,11 +164,18 @@ router.post("/workflows/dips", async (req, res) => run(req, res, async (tx, now)
   if (!record(input.rd) || !record(input.lpg) || typeof input.dt !== "string" || !input.dt) {
     return { status: 400, body: { error: "Dip date plus rd and lpg reading objects are required" } };
   }
-  const readingError = await validateReadings(tx, input.rd, input.lpg, req.auth!.branchId);
+  const assignedBranchId = String(req.auth!.branchId ?? "").trim();
+  const branches = await state(tx, "branches");
+  const assignedBranch = branches.find(branch => String(branch.id ?? "") === assignedBranchId);
+  const assignedBranchName = String(assignedBranch?.name ?? "").trim();
+  if (!assignedBranchId || !assignedBranchName) {
+    return { status: 400, body: { error: "The manager must be assigned to a valid branch" } };
+  }
+  const readingError = await validateReadings(tx, input.rd, input.lpg, assignedBranchId);
   if (readingError) return { status: 400, body: { error: readingError } };
   const dips = await state(tx, "dips");
   const existingDailyDip = dips.find(dip =>
-    dip.branchId === (req.auth!.branchId ?? null) &&
+    dip.branchId === assignedBranchId &&
     String(dip.dt ?? "").slice(0, 10) === input.dt.slice(0, 10) &&
     dip.status !== "rejected",
   );
@@ -182,7 +189,7 @@ router.post("/workflows/dips", async (req, res) => run(req, res, async (tx, now)
       },
     };
   }
-  const dip = { id: idFor(dips), dt: input.dt, rd: input.rd, lpg: input.lpg, obs: typeof input.obs === "string" ? input.obs : "", by: req.auth!.username, branchId: req.auth!.branchId ?? null, submittedAt: now, status: "pending", workflowRevision: 0 };
+  const dip = { id: idFor(dips), dt: input.dt, rd: input.rd, lpg: input.lpg, obs: typeof input.obs === "string" ? input.obs : "", by: req.auth!.username, branchId: assignedBranchId, branchName: assignedBranchName, submittedAt: now, status: "pending", workflowRevision: 0 };
   dips.unshift(dip); await save(tx, "dips", dips); await audit(tx, "Dip submitted", req.auth!.username, `Dip ${dip.id} submitted`, now);
   return { status: 201, body: { dip } };
 }));

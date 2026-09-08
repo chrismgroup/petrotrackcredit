@@ -42,6 +42,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { getDashboardApprovalRoute } from '@/lib/dashboard-approval-routing';
 import { findLatestDipForProduct } from '@/lib/dip-helpers';
+import { canAccessWorkspaceRoute } from '@/lib/workspace-access';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 import { G, Rect, Svg, Text as SvgText } from 'react-native-svg';
@@ -448,7 +449,7 @@ interface RevenueTrendChartProps {
 
 export default function HomeScreen() {
   const {
-    role, userName, branchId, staffId, userAccess, branches, navItems,
+    role, userName, branchId, staffId, roleAccess, userAccess, branches, navItems,
     tanks, lpgTanks, pumps, dips,
     deliveries, maintenance, expenses, budgets,
     financialEntry, priceProposals,
@@ -467,6 +468,8 @@ export default function HomeScreen() {
   const [approvalDetail, setApprovalDetail] = useState<'dips' | 'deliveries' | 'expenses' | 'prices' | 'pumpReports' | 'budgets' | 'accounts' | null>(null);
 
   if (!role) return null;
+  const canOpen = (route: string) =>
+    canAccessWorkspaceRoute(route, role, navItems, roleAccess, userAccess, staffId);
 
   const isApprover = role === 'md' || role === 'admin' || role === 'ceo';
   const canViewRevenue = role === 'admin' || navItems.some(item => item.id === 'revenue');
@@ -596,10 +599,11 @@ export default function HomeScreen() {
     isGlobalOverview || !scopedBranchId || !item.branchId || item.branchId === scopedBranchId;
   const isAdmin = role === 'admin';
   const isExecutive = role === 'md' || role === 'ceo';
-  const pendingDips = role === 'md' || isAdmin
+  const pendingDips = canOpen(SCREEN_ROUTES.tanks) && (role === 'md' || isAdmin)
     ? dips.filter(d => d.status === 'pending' && inApprovalScope(d))
     : [];
   const pendingDeliveries = deliveries.filter(delivery => {
+    if (!canOpen(SCREEN_ROUTES.recv)) return false;
     const status = delivery.approvalStatus;
     if (isAdmin) return status === 'pending' || status === 'pending_acc' || status === 'pending_md' || status === 'returned';
     if (role === 'acc') return status === 'pending' || status === 'pending_acc';
@@ -610,6 +614,7 @@ export default function HomeScreen() {
     return false;
   });
   const pendingExpenses = expenses.filter(expense => {
+    if (!canOpen(SCREEN_ROUTES.exp)) return false;
     if (isAdmin || isExecutive) return expense.status === 'pending' || expense.status === 'acc_forwarded' || expense.status === 'rejected';
     if (role === 'acc') return expense.status === 'pending' || expense.status === 'rejected';
     if (role === 'mgr' || role === 'csm' || role === 'mktg') {
@@ -617,10 +622,11 @@ export default function HomeScreen() {
     }
     return false;
   });
-  const pendingPriceProps = role === 'ceo' || isAdmin
+  const pendingPriceProps = canOpen(SCREEN_ROUTES.prices) && (role === 'ceo' || isAdmin)
     ? priceProposals.filter(p => p.status === 'pending')
     : [];
   const pendingPumpReports = pumpDailyReports.filter(r =>
+    canOpen(SCREEN_ROUTES.shift) &&
     (
       (isAdmin && ['pending_manager', 'pending_accountant', 'returned', 'returned_attendant'].includes(r.status)) ||
       (role === 'mgr' && (r.status === 'pending_manager' || r.status === 'returned')) ||
@@ -630,6 +636,7 @@ export default function HomeScreen() {
     (isGlobalOverview || !scopedBranchId || r.branchId === scopedBranchId || !r.branchId),
   );
   const pendingBudgets = budgets.filter(budget => {
+    if (!canOpen(SCREEN_ROUTES.budget)) return false;
     if (isAdmin) return budget.status === 'submitted' || budget.status === 'acc_forwarded' || budget.status === 'rejected';
     if (role === 'acc') return budget.status === 'submitted' || budget.status === 'rejected';
     if (isExecutive) return budget.status === 'acc_forwarded';
@@ -639,6 +646,7 @@ export default function HomeScreen() {
     return false;
   });
   const pendingAccounts = userAccounts.filter(a =>
+    canOpen(SCREEN_ROUTES.users) &&
     (role === 'md' && a.status === 'pending_md') ||
     (isAdmin && (a.status === 'pending' || a.status === 'pending_admin')) ||
     (role === 'csm' && a.status === 'pending_md'),
@@ -663,7 +671,9 @@ export default function HomeScreen() {
                 : pendingAccounts.length > 0 ? SCREEN_ROUTES.users
                   : SCREEN_ROUTES.exprpt;
 
-  const canViewOutstandingActionItems = canViewActionItemsDashboard(role, staffId, userAccess);
+  const canViewOutstandingActionItems =
+    canOpen(SCREEN_ROUTES.actionItems)
+    && canViewActionItemsDashboard(role, staffId, userAccess);
   const outstandingActionItems = useMemo(() => {
     if (!canViewOutstandingActionItems) return [] as ActionItem[];
     const urgencyOrder: Record<string, number> = { overdue: 0, 'due-soon': 1, 'on-track': 2 };
@@ -791,7 +801,9 @@ export default function HomeScreen() {
   }, [messages, role]);
 
   // ── Maintenance ────────────────────────────────────────────────────────
-  const urgentMaintenance = maintenance.filter(m => m.st === 'Open' && m.pri === 'Urgent');
+  const urgentMaintenance = canOpen(SCREEN_ROUTES.maint)
+    ? maintenance.filter(m => m.st === 'Open' && m.pri === 'Urgent')
+    : [];
   const openMaintenance = maintenance.filter(m => m.st === 'Open');
 
   // ── Budget ────────────────────────────────────────────────────────────
@@ -863,18 +875,20 @@ export default function HomeScreen() {
               <Text style={s.heroGreeting}>{greeting},</Text>
               <Text style={s.heroName}>{userName || ROLE_LABELS[role] || role}</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => router.push(SCREEN_ROUTES.notifications as never)}
-              style={s.heroNotif}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="notifications-outline" size={20} color="#F0FFF4" />
-              {unread > 0 ? (
-                <View style={[s.notifBadge, { backgroundColor: colors.amber }]}>
-                  <Text style={s.notifBadgeText}>{unread > 9 ? '9+' : unread}</Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
+            {canOpen(SCREEN_ROUTES.notifications) ? (
+              <TouchableOpacity
+                onPress={() => router.push(SCREEN_ROUTES.notifications as never)}
+                style={s.heroNotif}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="notifications-outline" size={20} color="#F0FFF4" />
+                {unread > 0 ? (
+                  <View style={[s.notifBadge, { backgroundColor: colors.amber }]}>
+                    <Text style={s.notifBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <Text style={s.heroDate}>{dayStamp}</Text>
@@ -925,9 +939,12 @@ export default function HomeScreen() {
           ) : null}
         </View>
 
-        <DocumentExpiryCard files={myFolderFiles} colors={colors} onOpen={openFolderFile} />
+        {canOpen(SCREEN_ROUTES.corp) ? (
+          <DocumentExpiryCard files={myFolderFiles} colors={colors} onOpen={openFolderFile} />
+        ) : null}
 
         {/* ── Daily stock snapshot ───────────────────────────────────── */}
+        {canOpen(SCREEN_ROUTES.stockSnapshot) ? (
         <Section label="STOCK SNAPSHOT" route={SCREEN_ROUTES.stockSnapshot} colors={colors}>
             <TouchableOpacity
               style={[s.snapshotCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -1017,6 +1034,7 @@ export default function HomeScreen() {
               ))}
             </TouchableOpacity>
         </Section>
+        ) : null}
 
         {/* ── Approvals Inbox ─────────────────────────────────────── */}
         <Section label="APPROVALS & ACTIONS" colors={colors}>
@@ -1355,7 +1373,7 @@ export default function HomeScreen() {
             { icon: 'bar-chart-outline' as const, label: 'Sales', route: SCREEN_ROUTES.sales, accent: colors.primary },
             { icon: 'receipt-outline' as const, label: 'Expenses', route: SCREEN_ROUTES.exp, accent: colors.amber },
             { icon: 'analytics-outline' as const, label: 'Reports', route: SCREEN_ROUTES.exprpt, accent: colors.purple },
-          ].map(({ icon, label, route, accent }) => (
+          ].filter(item => canOpen(item.route)).map(({ icon, label, route, accent }) => (
             <TouchableOpacity
               key={label}
               onPress={() => router.push(route as never)}

@@ -8,18 +8,23 @@ export type WorkspaceRouteAccess = {
 };
 
 export const WORKSPACE_ROUTE_ACCESS: readonly WorkspaceRouteAccess[] = [
+  { path: '/home', permission: 'home' },
+  { path: '/jobs', permission: 'jobs' },
+  { path: '/messages', permission: 'messages' },
+  { path: '/notifications', permission: 'notifications' },
+  { path: '/profile', permission: 'profile' },
   { path: '/operations', permission: 'ops' },
-  { path: '/tanks', permission: 'ops' },
+  { path: '/tanks', permission: 'tanks' },
   { path: '/maintenance', permission: 'maint' },
   { path: '/receiving', permission: 'recv' },
-  { path: '/stock-snapshot', permission: 'recv' },
-  { path: '/inventory', permission: 'recv' },
+  { path: '/stock-snapshot', permission: 'stockSnapshot' },
+  { path: '/inventory', permission: 'inventory' },
   { path: '/sales', permission: 'sales' },
   { path: '/shift', permission: 'shift' },
-  { path: '/pump-report', permission: 'shift' },
+  { path: '/pump-report', permission: 'pumpReport' },
   { path: '/accounts', permission: 'acct' },
-  { path: '/daily-revenue-log', permission: 'acct' },
-  { path: '/branch-revenue-log', permission: 'acct' },
+  { path: '/daily-revenue-log', permission: 'dailyRevenueLog' },
+  { path: '/branch-revenue-log', permission: 'branchRevenueLog' },
   { path: '/asset-management', permission: 'assets' },
   { path: '/expenses', permission: 'exp' },
   { path: '/budget', permission: 'budget' },
@@ -28,17 +33,17 @@ export const WORKSPACE_ROUTE_ACCESS: readonly WorkspaceRouteAccess[] = [
   { path: '/prices', permission: 'prices' },
   { path: '/hr', permission: 'hr' },
   { path: '/corporate', permission: 'corp' },
-  { path: '/corporate-workspace', permission: 'corp' },
-  { path: '/document-preview', permission: 'corp' },
+  { path: '/corporate-workspace', permission: 'corporateWorkspace' },
+  { path: '/document-preview', permission: 'documentPreview' },
   { path: '/tasks', permission: 'tasks' },
   { path: '/action-items', permission: 'actionItems' },
   { path: '/branches', permission: 'branches' },
   { path: '/call', permission: 'comms' },
   { path: '/comms', permission: 'comms' },
-  { path: '/users', allowedRoles: ['admin', 'csm', 'md'] },
-  { path: '/departments', adminOnly: true },
-  { path: '/audit', adminOnly: true },
-  { path: '/system-settings', adminOnly: true },
+  { path: '/users', permission: 'users' },
+  { path: '/departments', permission: 'depts' },
+  { path: '/audit', permission: 'audit' },
+  { path: '/system-settings', permission: 'settings' },
 ] as const;
 
 function pathnameMatches(pathname: string, protectedPath: string): boolean {
@@ -54,11 +59,21 @@ export function canAccessWorkspaceRoute(
   pathname: string,
   role: Role,
   navItems: readonly Pick<NavItem, 'id'>[],
+  roleAccess?: Readonly<Record<string, Readonly<Record<string, boolean>>>>,
+  userAccess?: Readonly<Record<number, Readonly<Record<string, boolean>>>>,
+  staffId?: number | null,
 ): boolean {
   if (role === 'admin') return true;
   const rule = workspaceRouteAccess(pathname);
-  if (!rule) return true;
+  if (!rule) return false;
   if (rule.adminOnly) return false;
   if (rule.allowedRoles && !rule.allowedRoles.includes(role)) return false;
-  return !rule.permission || navItems.some(item => item.id === rule.permission);
+  if (!rule.permission) return true;
+  if (staffId !== null && staffId !== undefined) {
+    const override = userAccess?.[staffId]?.[rule.permission];
+    if (override !== undefined) return override;
+  }
+  const roleGrant = roleAccess?.[role]?.[rule.permission];
+  if (roleGrant !== undefined) return roleGrant;
+  return navItems.some(item => item.id === rule.permission);
 }

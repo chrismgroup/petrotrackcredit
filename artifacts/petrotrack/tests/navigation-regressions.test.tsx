@@ -317,6 +317,7 @@ describe('dashboard and workspace navigation', () => {
   it('opens MD expense claims from Approvals & Actions in the read-only Expenses screen', () => {
     mockUseApp.mockReturnValue(baseAppState({
       role: 'md',
+      navItems: [{ id: 'exp' }],
       expenses: [{
         id: 101,
         dt: '2026-09-05',
@@ -464,7 +465,12 @@ describe('dashboard and workspace navigation', () => {
       },
     },
   ])('opens the actionable screen for $label', ({ role, title, route, state }) => {
-    mockUseApp.mockReturnValue(baseAppState({ role, ...state }));
+    const permission = workspaceRouteAccess(route)?.permission;
+    mockUseApp.mockReturnValue(baseAppState({
+      role,
+      navItems: permission ? [{ id: permission }] : [],
+      ...state,
+    }));
 
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<HomeScreen />); });
@@ -561,8 +567,8 @@ describe('global navigation safeguards', () => {
 
 describe('role-aware route access and stale notification links', () => {
   it.each([
-    ['Stock snapshot', '/(app)/stock-snapshot', 'recv'],
-    ['Daily Business-Date Revenue Log', '/(app)/daily-revenue-log', 'acct'],
+    ['Stock snapshot', '/(app)/stock-snapshot', 'stockSnapshot'],
+    ['Daily Business-Date Revenue Log', '/(app)/daily-revenue-log', 'dailyRevenueLog'],
     ['Branches', '/(app)/branches', 'branches'],
   ])('keeps the %s card and direct route aligned for restricted roles', (label, route, permission) => {
     const navItems = [{ id: permission }];
@@ -593,8 +599,29 @@ describe('role-aware route access and stale notification links', () => {
   });
 
   it('requires each protected My Jobs destination to be declared in the shared policy', () => {
-    expect(workspaceRouteAccess('/(app)/stock-snapshot')).toEqual(expect.objectContaining({ permission: 'recv' }));
+    expect(workspaceRouteAccess('/(app)/stock-snapshot')).toEqual(expect.objectContaining({ permission: 'stockSnapshot' }));
     expect(workspaceRouteAccess('/(app)/future-workspace')).toBeUndefined();
+    expect(canAccessWorkspaceRoute('/(app)/future-workspace', 'mgr', [{ id: 'home' }])).toBe(false);
+  });
+
+  it('lets an Admin user override take priority over the role page default', () => {
+    const roleAccess = { mgr: { exp: true } };
+    expect(canAccessWorkspaceRoute(
+      '/(app)/expenses',
+      'mgr',
+      [{ id: 'exp' }],
+      roleAccess,
+      { 42: { exp: false } },
+      42,
+    )).toBe(false);
+    expect(canAccessWorkspaceRoute(
+      '/(app)/expenses',
+      'mgr',
+      [],
+      { mgr: { exp: false } },
+      { 42: { exp: true } },
+      42,
+    )).toBe(true);
   });
 
   it('redirects a restricted role to its first permitted primary module', () => {

@@ -1132,13 +1132,24 @@ export const NAVDEF: Record<string, NavItem[]> = {
 // Admin toggles which of these each role/user can actually see via Access Control.
 export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'home',     icon: 'home',             label: 'Home'       },
+  { id: 'jobs',     icon: 'briefcase',         label: 'My Jobs'    },
+  { id: 'messages', icon: 'chatbubbles',       label: 'My Chats'   },
+  { id: 'notifications', icon: 'notifications', label: 'Notifications' },
+  { id: 'profile',  icon: 'person',            label: 'My Profile' },
+  { id: 'users',    icon: 'people',            label: 'Users'      },
+  { id: 'depts',    icon: 'grid',              label: 'Departments' },
+  { id: 'audit',    icon: 'list',              label: 'Audit'      },
+  { id: 'settings', icon: 'settings',          label: 'System Settings' },
   { id: 'revenue',  icon: 'cash',              label: 'Total Revenue' },
   { id: 'ops',      icon: 'construct',        label: 'Operations' },
+  { id: 'tanks',    icon: 'water',            label: 'Tank Dipping' },
   { id: 'maint',    icon: 'build',            label: 'Maintenance' },
   { id: 'tasks',    icon: 'checkmark-circle', label: 'Tasks'      },
   { id: 'actionItems', icon: 'flash',          label: 'Action Items' },
   { id: 'hr',       icon: 'people-circle',    label: 'HR'         },
   { id: 'acct',     icon: 'calculator',       label: 'Accounts'   },
+  { id: 'dailyRevenueLog', icon: 'calendar',  label: 'Daily Revenue Log' },
+  { id: 'branchRevenueLog', icon: 'business', label: 'Branch Revenue Log' },
   { id: 'assets',   icon: 'cube',             label: 'Asset Management' },
   { id: 'mktg',     icon: 'megaphone',        label: 'Marketing'  },
   { id: 'prices',   icon: 'pricetag',         label: 'Prices'     },
@@ -1148,8 +1159,13 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'sales',    icon: 'bar-chart',        label: 'Sales'      },
   { id: 'exp',      icon: 'receipt',          label: 'Expenses'   },
   { id: 'recv',     icon: 'cube',             label: 'Receiving'  },
+  { id: 'stockSnapshot', icon: 'speedometer', label: 'Stock Snapshot' },
+  { id: 'inventory', icon: 'layers',          label: 'Product Inventory' },
   { id: 'shift',    icon: 'speedometer',      label: 'Shift Report' },
+  { id: 'pumpReport', icon: 'document-text',  label: 'Pump Report Detail' },
   { id: 'corp',     icon: 'folder',            label: 'My Documents'  },
+  { id: 'corporateWorkspace', icon: 'briefcase', label: 'Corporate Workspace' },
+  { id: 'documentPreview', icon: 'document',  label: 'Document Preview' },
   { id: 'comms',    icon: 'chatbubbles',      label: 'Comms'      },
 ];
 
@@ -1205,7 +1221,13 @@ function defaultRoleAccess(): Record<string, Record<string, boolean>> {
   const result: Record<string, Record<string, boolean>> = {};
   const roles = ['ceo','md','acc','csm','mktg','mgr','att'];
   for (const r of roles) {
-    result[r] = Object.fromEntries(FULL_NAV_CATALOG.map(i => [i.id, i.id !== 'exprpt']));
+    result[r] = Object.fromEntries(FULL_NAV_CATALOG.map(i => {
+      if (i.id === 'exprpt' || i.id === 'depts' || i.id === 'audit' || i.id === 'settings') {
+        return [i.id, false];
+      }
+      if (i.id === 'users') return [i.id, r === 'md' || r === 'csm'];
+      return [i.id, true];
+    }));
   }
   return result;
 }
@@ -1218,13 +1240,13 @@ function isRequiredWorkflowAccess(targetRole: string | null, moduleId: string): 
 function normalizeRequiredWorkflowAccess(
   access: Record<string, Record<string, boolean>>,
 ): Record<string, Record<string, boolean>> {
-  let next = access;
-  for (const requiredRole of ['att', 'mgr', 'acc']) {
-    if (access[requiredRole]?.shift === true) continue;
-    if (next === access) next = { ...access };
-    next[requiredRole] = { ...(access[requiredRole] ?? {}), shift: true };
-  }
-  return next;
+  const defaults = defaultRoleAccess();
+  return Object.fromEntries(
+    Object.keys(defaults).map(targetRole => [
+      targetRole,
+      { ...defaults[targetRole], ...(access[targetRole] ?? {}) },
+    ]),
+  );
 }
 
 export const SCREEN_ROUTES: Record<string, string> = {
@@ -4663,7 +4685,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateRoleAccess = useCallback((targetRole: string, moduleId: string, enabled: boolean) => {
     if (role !== 'admin') return;
-    if (!enabled && isRequiredWorkflowAccess(targetRole, moduleId)) return;
     setRoleAccess(prev => ({
       ...prev,
       [targetRole]: { ...(prev[targetRole] ?? {}), [moduleId]: enabled },
@@ -4694,13 +4715,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateUserAccess = useCallback((uid: number, moduleId: string, enabled: boolean) => {
     if (role !== 'admin') return;
-    const targetRole = userAccounts.find(account => account.id === uid)?.role ?? null;
-    if (!enabled && isRequiredWorkflowAccess(targetRole, moduleId)) return;
     setUserAccess(prev => ({
       ...prev,
       [uid]: { ...(prev[uid] ?? {}), [moduleId]: enabled },
     }));
-  }, [role, userAccounts]);
+  }, [role]);
 
   const clearUserAccess = useCallback((uid: number) => {
     if (role !== 'admin') return;
@@ -4920,9 +4939,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const navItems: NavItem[] = role === 'admin'
     ? filterFolder(baseNav)
     : filterFolder(baseNav.filter(item => {
-        // Shift reports cannot complete their required attendant → manager →
-        // accountant handoff if any of those roles loses this module.
-        if (isRequiredWorkflowAccess(role, item.id)) return true;
         // Per-user override takes priority over the role default.
         // This applies equally to CEO, MD, accountant, CSM, manager,
         // marketing, and attendant accounts.
