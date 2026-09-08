@@ -39,10 +39,35 @@ jest.mock('@/components/AppliedDateField', () => ({
 }));
 
 jest.mock('@/components/BusinessDateConfirmation', () => ({
-  useBusinessDateConfirmation: () => ({
-    requestDateConfirmation: (_label: string, _date: string, callback: () => void) => callback(),
-    confirmationModal: null,
-  }),
+  useBusinessDateConfirmation: () => {
+    const React = require('react');
+    const [pending, setPending] = React.useState(
+      null as null | { callback: () => void; actionLabel: string },
+    );
+    return {
+      requestDateConfirmation: (
+        _label: string,
+        _date: string,
+        callback: () => void,
+        actionLabel = 'Confirm & submit',
+      ) => setPending({ callback, actionLabel }),
+      confirmationContent: pending
+        ? React.createElement(
+            'TouchableOpacity',
+            {
+              onPress: () => {
+                const callback = pending.callback;
+                setPending(null);
+                callback();
+              },
+            },
+            React.createElement('Text', null, pending.actionLabel),
+          )
+        : null,
+      hasPendingConfirmation: pending !== null,
+      confirmationModal: null,
+    };
+  },
 }));
 
 jest.mock('@/components/FormSheet', () => ({
@@ -264,6 +289,14 @@ describe('expense approval controls', () => {
     });
     await act(async () => {
       await touchable(renderer, 'Submit Expense').props.onPress();
+      await Promise.resolve();
+    });
+    expect(addExpense).not.toHaveBeenCalled();
+    expect(nodeText(renderer.root)).toContain('Confirm & save');
+    expect(nodeText(renderer.root)).not.toContain('New Expense');
+
+    await act(async () => {
+      await touchable(renderer, 'Confirm & save').props.onPress();
       await Promise.resolve();
     });
 
