@@ -208,6 +208,33 @@ afterEach(() => {
 });
 
 describe('expense approval controls', () => {
+  it('lets a branch manager select their fully approved legacy budget when its branch is inferred from ownership', () => {
+    mockedUseApp.mockReturnValue(appState({
+      role: 'mgr',
+      userName: 'Iniobong Inyang Edward',
+      branchId: 'branch-ikot-ekpene',
+      budgets: [budget({
+        id: 19,
+        status: 'fully_approved',
+        branchId: '',
+        branchName: '',
+        by: 'mgr',
+        byName: 'Iniobong Inyang Edward',
+      })],
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const addButton = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === '',
+    )[0];
+    act(() => { addButton.props.onPress(); });
+
+    expect(nodeText(renderer.root)).toContain('September 2026');
+    expect(nodeText(renderer.root)).not.toContain('No approved budgets available');
+    act(() => renderer.unmount());
+  });
+
   it('lets only the accountant approve or reject a pending expense', async () => {
     const approveExpenseConfirmed = jest.fn(async () => ({ ok: true }));
     const rejectExpenseConfirmed = jest.fn(async () => ({ ok: true }));
