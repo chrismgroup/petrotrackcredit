@@ -40,8 +40,8 @@ export default function PricesScreen() {
   const {
     role, userName, branchId, branches,
     prices, priceHistory, priceProposals, deliveries,
-    updatePrice, addPriceProposal,
-    approvePriceProposal, updateAndApprovePriceProposal, rejectPriceProposal,
+    updatePriceConfirmed, addPriceProposalConfirmed,
+    approvePriceProposalConfirmed, updateAndApprovePriceProposalConfirmed, rejectPriceProposal,
   } = useApp();
 
   // Last approved delivery cost price per product — gives MD market context
@@ -77,7 +77,7 @@ export default function PricesScreen() {
     setSetDraft(current > 0 ? String(current) : '');
     setSetReason('');
   }
-  function handleSet() {
+  async function handleSet() {
     if (!setProd) return;
     const val = parseFloat(setDraft);
     if (!setDraft || isNaN(val) || val <= 0) {
@@ -89,7 +89,11 @@ export default function PricesScreen() {
       Alert.alert('No change', 'The new price is the same as the current price.');
       return;
     }
-    updatePrice(setProd, val, undefined, setReason.trim() || undefined);
+    const result = await updatePriceConfirmed(setProd, val, setReason.trim() || undefined);
+    if (!result.ok) {
+      Alert.alert('Price not updated', result.error ?? 'The server could not update this price. Your entries remain available so you can retry.');
+      return;
+    }
     setSetProd(null);
     setSetReason('');
     const unit = PROD_META[setProd || 'PMS']?.unit ?? '/L';
@@ -104,7 +108,7 @@ export default function PricesScreen() {
   const [proposeDraft, setProposeDraft] = useState('');
 
   function openPropose(prod: PriceProduct) { setProposeProd(prod); setProposeDraft(''); }
-  function handlePropose() {
+  async function handlePropose() {
     if (!proposeProd) return;
     const val = parseFloat(proposeDraft);
     if (!proposeDraft || isNaN(val) || val <= 0) {
@@ -116,7 +120,11 @@ export default function PricesScreen() {
       Alert.alert('No change', 'Proposed price is the same as the current price.');
       return;
     }
-    addPriceProposal(proposeProd, val);
+    const result = await addPriceProposalConfirmed(proposeProd, val);
+    if (!result.ok) {
+      Alert.alert('Proposal not submitted', result.error ?? 'The server could not save this proposal. Your price remains available so you can retry.');
+      return;
+    }
     setProposeProd(null);
     Alert.alert('Proposal submitted', `Your ${proposeProd} price proposal has been sent for approval.`);
   }
@@ -129,14 +137,18 @@ export default function PricesScreen() {
   const [updateDraft,  setUpdateDraft]  = useState('');
 
   function openUpdate(p: PriceProposal) { setUpdateTarget(p); setUpdateDraft(String(safeNum(p.proposedPrice))); }
-  function handleUpdate() {
+  async function handleUpdate() {
     if (!updateTarget) return;
     const val = parseFloat(updateDraft);
     if (!updateDraft || isNaN(val) || val <= 0) {
       Alert.alert('Invalid price', 'Enter a valid price greater than 0.');
       return;
     }
-    updateAndApprovePriceProposal(updateTarget.id, val);
+    const result = await updateAndApprovePriceProposalConfirmed(updateTarget.id, val);
+    if (!result.ok) {
+      Alert.alert('Price not approved', result.error ?? 'The server could not approve this price. Your edited value remains available.');
+      return;
+    }
     setUpdateTarget(null);
   }
 
@@ -146,7 +158,10 @@ export default function PricesScreen() {
       `${safeStr(p.prod)}: ₦${safeNum(p.currentPrice).toLocaleString()} → ₦${safeNum(p.proposedPrice).toLocaleString()}${PROD_META[p.prod]?.unit ?? '/L'}\nProposed by ${safeStr(p.proposedBy)}`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Approve', style: 'default', onPress: () => approvePriceProposal(p.id) },
+        { text: 'Approve', style: 'default', onPress: async () => {
+          const result = await approvePriceProposalConfirmed(p.id);
+          if (!result.ok) Alert.alert('Price not approved', result.error ?? 'The server could not approve this proposal.');
+        } },
       ]
     );
   }

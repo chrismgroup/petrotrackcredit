@@ -172,8 +172,8 @@ export default function ReceivingScreen() {
     role, userName, branchId,
     deliveries, prices, branches,
     deliveryEvidences, addDeliveryEvidence,
-    addDelivery, updateDelivery, deleteDelivery,
-    submitDeliveryForApproval, accForwardToMd, accRecallDelivery, approveDelivery, rejectDelivery,
+    addDeliveryConfirmed, updateDeliveryConfirmed, deleteDelivery,
+    submitDeliveryForApprovalConfirmed, accForwardToMdConfirmed, accRecallDelivery, approveDeliveryConfirmed, rejectDeliveryConfirmed,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
@@ -239,7 +239,8 @@ export default function ReceivingScreen() {
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85, allowsEditing: false });
     if (!result.canceled && result.assets[0]) {
       const a = result.assets[0];
-      addDeliveryEvidence({ delivId, type: 'photo', name: a.fileName ?? `photo_${Date.now()}.jpg`, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg', size: a.fileSize });
+      const saved = await addDeliveryEvidence({ delivId, type: 'photo', name: a.fileName ?? `photo_${Date.now()}.jpg`, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg', size: a.fileSize });
+      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this photo. Please select it again to retry.');
     }
   }
 
@@ -253,7 +254,8 @@ export default function ReceivingScreen() {
     if (!result.canceled && result.assets[0]) {
       const a = result.assets[0];
       const isVid = a.type === 'video';
-      addDeliveryEvidence({ delivId, type: isVid ? 'video' : 'photo', name: a.fileName ?? `${isVid ? 'video' : 'photo'}_${Date.now()}`, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? (isVid ? 'video/mp4' : 'image/jpeg'), size: a.fileSize });
+      const saved = await addDeliveryEvidence({ delivId, type: isVid ? 'video' : 'photo', name: a.fileName ?? `${isVid ? 'video' : 'photo'}_${Date.now()}`, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? (isVid ? 'video/mp4' : 'image/jpeg'), size: a.fileSize });
+      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this attachment. Please select it again to retry.');
     }
   }
 
@@ -261,7 +263,8 @@ export default function ReceivingScreen() {
     const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (!result.canceled && result.assets?.[0]) {
       const a = result.assets[0];
-      addDeliveryEvidence({ delivId, type: 'document', name: a.name, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? 'application/octet-stream', size: a.size });
+      const saved = await addDeliveryEvidence({ delivId, type: 'document', name: a.name, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? 'application/octet-stream', size: a.size });
+      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this document. Please select it again to retry.');
     }
   }
 
@@ -282,14 +285,18 @@ export default function ReceivingScreen() {
       Alert.alert('Branch assignment required', 'Assign this manager to a branch before recording a delivery so the stock is added to the correct inventory ledger.');
       return;
     }
-    requestDateConfirmation('delivery', form.dt, () => {
-      addDelivery({
+    requestDateConfirmation('delivery', form.dt, async () => {
+      const result = await addDeliveryConfirmed({
         dt: form.dt,
         sup: form.sup.trim(), prod: form.prod, wb: form.wb,
         ord: vals.ordN, rec: vals.recN, st: form.st, notes: form.notes,
         receivedBy: userName, approvalStatus: 'draft',
         branchId: branchId ?? undefined,
       });
+      if (!result.ok) {
+        Alert.alert('Delivery not saved', result.error ?? 'The server could not save this delivery. Your entries remain available so you can retry.');
+        return;
+      }
       setForm(blankMgrForm());
       setShowForm(false);
     }, 'Confirm & save');
@@ -301,16 +308,16 @@ export default function ReceivingScreen() {
     if (!editTarget) return;
     const vals = validateMgrForm(editForm);
     if (!vals) return;
-    requestDateConfirmation('delivery', editForm.dt, () => {
-      const updated = updateDelivery(editTarget.id, {
+    requestDateConfirmation('delivery', editForm.dt, async () => {
+      const updated = await updateDeliveryConfirmed(editTarget.id, {
         dt: editForm.dt,
         sup: editForm.sup.trim(), prod: editForm.prod, wb: editForm.wb,
         ord: vals.ordN, rec: vals.recN, st: editForm.st, notes: editForm.notes,
         receivedBy: editTarget.receivedBy,
         approvalStatus: 'draft',
       });
-      if (!updated) {
-        Alert.alert('Unable to update', 'Only the original delivery manager can edit a returned delivery, and approved deliveries are locked.');
+      if (!updated.ok) {
+        Alert.alert('Unable to update', updated.error ?? 'The server could not update this delivery. Your changes remain available so you can retry.');
         return;
       }
       setEditTarget(null);
@@ -346,7 +353,10 @@ export default function ReceivingScreen() {
       `WB: ${d.wb} — ${d.prod} ${rec.toLocaleString()}${u} from ${d.sup}${mismatchLine}\n\nAccountant will set the cost price and forward to MD for approval.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: mismatch ? 'Forward Anyway' : 'Forward', style: mismatch ? 'destructive' : 'default', onPress: () => submitDeliveryForApproval(d.id) },
+        { text: mismatch ? 'Forward Anyway' : 'Forward', style: mismatch ? 'destructive' : 'default', onPress: async () => {
+          const result = await submitDeliveryForApprovalConfirmed(d.id);
+          if (!result.ok) Alert.alert('Delivery not forwarded', result.error ?? 'The server could not forward this delivery.');
+        } },
       ]
     );
   }
@@ -368,8 +378,12 @@ export default function ReceivingScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Forward to MD',
-          onPress: () => {
-            accForwardToMd(accTarget.id, cost, accNote.trim());
+          onPress: async () => {
+            const result = await accForwardToMdConfirmed(accTarget.id, cost, accNote.trim());
+            if (!result.ok) {
+              Alert.alert('Delivery not forwarded', result.error ?? 'The server could not forward this delivery. Your cost and note remain available.');
+              return;
+            }
             setAccTarget(null);
             setAccCostPrice('');
             setAccNote('');
@@ -401,8 +415,12 @@ export default function ReceivingScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Approve',
-          onPress: () => {
-            approveDelivery(mdTarget.id, sell, mdNote.trim() || undefined);
+          onPress: async () => {
+            const result = await approveDeliveryConfirmed(mdTarget.id, sell, mdNote.trim() || undefined);
+            if (!result.ok) {
+              Alert.alert('Delivery not approved', result.error ?? 'The server could not approve this delivery. Your entries remain available.');
+              return;
+            }
             setMdTarget(null);
             setMdSellingPrice('');
             setMdNote('');
@@ -412,10 +430,14 @@ export default function ReceivingScreen() {
     );
   }
 
-  function handleMdRejectConfirm() {
+  async function handleMdRejectConfirm() {
     if (!mdTarget) return;
     if (!mdNote.trim()) { Alert.alert('Required', 'Provide a reason for returning this record.'); return; }
-    rejectDelivery(mdTarget.id, mdNote.trim());
+    const result = await rejectDeliveryConfirmed(mdTarget.id, mdNote.trim());
+    if (!result.ok) {
+      Alert.alert('Delivery not returned', result.error ?? 'The server could not return this delivery. Your reason remains available.');
+      return;
+    }
     setMdTarget(null);
     setMdNote('');
   }

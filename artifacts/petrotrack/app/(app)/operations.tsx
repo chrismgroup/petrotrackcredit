@@ -215,17 +215,21 @@ function StockLogPanel() {
 
   useEffect(() => {
     if (buildEntries.length > 0 && hasSavedRecordDrift) {
-      upsertStockLogs(buildEntries);
+      void upsertStockLogs(buildEntries);
     }
   }, [buildEntries, hasSavedRecordDrift, upsertStockLogs]);
 
-  function createLog() {
+  async function createLog() {
     if (!businessDate) return;
     if (buildEntries.length === 0) {
       Alert.alert('Nothing to log', 'No branch assets or stock activity are available for this business date.');
       return;
     }
-    upsertStockLogs(buildEntries);
+    const result = await upsertStockLogs(buildEntries);
+    if (!result.ok) {
+      Alert.alert('Stock log not saved', result.error ?? 'The server could not save this stock log. Your calculated entries remain on screen so you can retry.');
+      return;
+    }
     Alert.alert('Stock log recorded', `${buildEntries.length} product stock calculations were saved for ${businessDate}.`);
   }
 

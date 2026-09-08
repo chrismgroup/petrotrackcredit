@@ -255,6 +255,52 @@ router.post("/workflows/price-proposals", async (req, res) => run(req, res, asyn
   return { status: 201, body: { proposal } };
 }));
 
+router.post("/workflows/prices/:product", async (req, res) => run(req, res, async (tx, now) => {
+  const cmd = command(req)!;
+  if (cmd.expectedRevision !== 0) return { status: 400, body: { error: "Direct price updates require expectedRevision 0" } };
+  if (!["admin", "ceo", "md", "mgr"].includes(req.auth!.role)) {
+    return { status: 403, body: { error: "You are not authorized to update selling prices" } };
+  }
+  const product = typeof req.params.product === "string" ? req.params.product.trim() : "";
+  const price = Number(req.body?.price);
+  if (!product || !Number.isFinite(price) || price <= 0) {
+    return { status: 400, body: { error: "Product and a positive selling price are required" } };
+  }
+  const requestedBranch = typeof req.body?.branchId === "string" && req.body.branchId.trim()
+    ? req.body.branchId.trim()
+    : undefined;
+  const branchId = req.auth!.role === "mgr" ? req.auth!.branchId ?? undefined : requestedBranch;
+  if (req.auth!.role === "mgr" && !branchId) {
+    return { status: 403, body: { error: "A branch assignment is required to update a selling price" } };
+  }
+  if (req.auth!.role === "mgr" && requestedBranch && requestedBranch !== branchId) {
+    return { status: 403, body: { error: "A manager can only update prices for the assigned branch" } };
+  }
+  const prices = await stateObject(tx, "prices");
+  const oldPrice = currentPrice(prices, product, branchId);
+  const allBranchPrices = record(prices.branchPrices) ? prices.branchPrices : {};
+  const selectedBranchPrices = branchId && record(allBranchPrices[branchId]) ? allBranchPrices[branchId] : {};
+  const nextPrices = branchId
+    ? { ...prices, branchPrices: { ...allBranchPrices, [branchId]: { ...selectedBranchPrices, [product]: price } } }
+    : { ...prices, [product]: price };
+  const history = await state(tx, "priceHistory");
+  const reason = typeof req.body?.reason === "string" && req.body.reason.trim() ? req.body.reason.trim() : undefined;
+  const historyEntry = {
+    id: randomUUID(),
+    prod: product,
+    oldPrice,
+    newPrice: price,
+    by: req.auth!.username,
+    dt: now,
+    branchId: branchId ?? null,
+    ...(reason ? { reason } : {}),
+  };
+  await save(tx, "prices", nextPrices);
+  await save(tx, "priceHistory", [historyEntry, ...history]);
+  await audit(tx, "Price update", req.auth!.username, `${product}: ${oldPrice} → ${price}${branchId ? ` at branch ${branchId}` : " network-wide"}`, now);
+  return { status: 200, body: { prices: nextPrices, priceHistory: historyEntry } };
+}));
+
 router.post("/workflows/price-proposals/:id/:decision", async (req, res) => run(req, res, async (tx, now) => {
   const cmd = command(req)!; const decision = req.params.decision;
   if (!["approve", "reject"].includes(decision)) return { status: 400, body: { error: "Decision must be approve or reject" } };

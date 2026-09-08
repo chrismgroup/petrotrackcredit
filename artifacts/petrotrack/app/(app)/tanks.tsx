@@ -22,7 +22,7 @@ const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', 
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
 export default function TanksScreen() {
-  const { role, tanks, lpgTanks, dips, deliveries, sales, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, addDelivery, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms } = useApp();
+  const { role, tanks, lpgTanks, dips, deliveries, sales, branches, addDip, updateDip, deleteDip, approveDip, rejectDip, addDeliveryConfirmed, prices, deliveryEvidences, addDeliveryEvidence, userName, branchId, mgrPerms } = useApp();
 
   async function pickCameraEvidence(delivId: number) {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -33,7 +33,8 @@ export default function TanksScreen() {
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: false });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      addDeliveryEvidence({ delivId, type: 'photo', name: asset.fileName ?? `photo_${Date.now()}.jpg`, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', size: asset.fileSize });
+      const saved = await addDeliveryEvidence({ delivId, type: 'photo', name: asset.fileName ?? `photo_${Date.now()}.jpg`, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', size: asset.fileSize });
+      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this photo. Please select it again to retry.');
     }
   }
 
@@ -47,7 +48,8 @@ export default function TanksScreen() {
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       const isVid = asset.type === 'video';
-      addDeliveryEvidence({ delivId, type: isVid ? 'video' : 'photo', name: asset.fileName ?? `${isVid ? 'video' : 'photo'}_${Date.now()}`, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? (isVid ? 'video/mp4' : 'image/jpeg'), size: asset.fileSize });
+      const saved = await addDeliveryEvidence({ delivId, type: isVid ? 'video' : 'photo', name: asset.fileName ?? `${isVid ? 'video' : 'photo'}_${Date.now()}`, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? (isVid ? 'video/mp4' : 'image/jpeg'), size: asset.fileSize });
+      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this attachment. Please select it again to retry.');
     }
   }
 
@@ -55,7 +57,8 @@ export default function TanksScreen() {
     const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (!result.canceled && result.assets?.[0]) {
       const asset = result.assets[0];
-      addDeliveryEvidence({ delivId, type: 'document', name: asset.name, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? 'application/octet-stream', size: asset.size });
+      const saved = await addDeliveryEvidence({ delivId, type: 'document', name: asset.name, by: userName || 'Manager', uri: asset.uri, mimeType: asset.mimeType ?? 'application/octet-stream', size: asset.size });
+      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this document. Please select it again to retry.');
     }
   }
   const colors = useColors();
@@ -231,8 +234,8 @@ export default function TanksScreen() {
       Alert.alert('Branch assignment required', 'Assign this manager to a branch before recording a delivery so the stock is added to the correct inventory ledger.');
       return;
     }
-    requestDateConfirmation('delivery', deliveryDate, () => {
-      addDelivery({
+    requestDateConfirmation('delivery', deliveryDate, async () => {
+      const result = await addDeliveryConfirmed({
         dt: deliveryDate,
         sup: delForm.sup,
         prod: delForm.prod,
@@ -243,6 +246,10 @@ export default function TanksScreen() {
         notes: delForm.notes,
         branchId,
       });
+      if (!result.ok) {
+        Alert.alert('Delivery not recorded', result.error ?? 'The server could not save this delivery. Your entries remain available so you can retry.');
+        return;
+      }
       setDelForm({ prod: 'PMS', sup: '', wb: '', ord: '', rec: '', st: 'ok', notes: '' });
       setDeliveryDate('');
       setShowDeliveryForm(false);
