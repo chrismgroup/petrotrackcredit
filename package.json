@@ -11,8 +11,8 @@
     "expo": "pnpm --filter @workspace/petrotrack exec expo",
     "android": "pnpm --filter @workspace/petrotrack exec expo run:android",
     "ios": "pnpm --filter @workspace/petrotrack exec expo run:ios",
-    "eas:build": "cd artifacts/petrotrack && eas build --config eas.json",
-    "eas:submit": "cd artifacts/petrotrack && eas submit --config eas.json"
+    "eas:build": "cd artifacts/petrotrack && eas build",
+    "eas:submit": "cd artifacts/petrotrack && eas submit"
   },
   "private": true,
   "devDependencies": {
