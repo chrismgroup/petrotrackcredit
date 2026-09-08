@@ -136,13 +136,13 @@ export default function ExpensesScreen() {
   const approvedAmt = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + e.amt, 0);
 
   const pendingForAcc = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded');
-  const pendingForViewer = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded' || e.status === 'rejected');
+  const pendingForViewer = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded');
   const myExpenses    = expenses.filter(e => e.by === role || e.byName === userName);
 
   /* Tab definitions per role */
   const TABS_MGR = ['My Expenses', 'All'];
   const TABS_ACC = ['For Review', 'All'];
-  const TABS_VIEWER = ['Workflow', 'Approved', 'All'];
+  const TABS_VIEWER = ['Pending Approval', 'Approved', 'All'];
   const currentTabs = isReadOnlyViewer ? TABS_VIEWER : isAcc ? TABS_ACC : TABS_MGR;
 
   const displayedExpensesBase = isReadOnlyViewer
@@ -261,7 +261,7 @@ export default function ExpensesScreen() {
         }]}>
           <Ionicons name="time" size={15} color={isAcc ? '#0C447C' : '#64748B'} />
           <Text style={[styles.pendingBannerText, { color: isAcc ? '#0C447C' : '#64748B' }]}>
-            {pendingCount}{' expense'}{pendingCount > 1 ? 's' : ''}{isAcc ? ' awaiting your review' : ' in the workflow'}
+            {pendingCount}{' expense'}{pendingCount > 1 ? 's' : ''}{isAcc ? ' awaiting your review' : ' pending approval'}
           </Text>
         </View>
       ) : null}

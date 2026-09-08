@@ -276,6 +276,34 @@ describe('expense approval controls', () => {
     },
   );
 
+  it('shows pending approval, approved, and all expense views without the workflow label', () => {
+    mockedUseApp.mockReturnValue(appState({
+      role: 'md',
+      expenses: [
+        expense({ id: 41, desc: 'Pending generator fuel', status: 'pending' }),
+        expense({ id: 42, desc: 'Approved security', status: 'approved', approvedBy: 'Accountant' }),
+        expense({ id: 43, desc: 'Returned utilities', status: 'rejected' }),
+      ],
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+
+    expect(nodeText(renderer.root)).toContain('Pending Approval');
+    expect(nodeText(renderer.root)).not.toContain('Workflow');
+    expect(nodeText(renderer.root)).toContain('Pending generator fuel');
+
+    press(renderer, 'Approved');
+    expect(nodeText(renderer.root)).toContain('Approved security');
+    expect(nodeText(renderer.root)).not.toContain('Pending generator fuel');
+
+    press(renderer, 'All');
+    expect(nodeText(renderer.root)).toContain('Pending generator fuel');
+    expect(nodeText(renderer.root)).toContain('Approved security');
+    expect(nodeText(renderer.root)).toContain('Returned utilities');
+    act(() => renderer.unmount());
+  });
+
   it.each(['ceo', 'admin'] as const)(
     'does not show expense decision controls to %s',
     role => {
