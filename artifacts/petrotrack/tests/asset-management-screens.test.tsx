@@ -596,6 +596,7 @@ describe('asset depreciation financial screens', () => {
     const viewerText = renderedText(viewer);
     expect(viewerText).toContain('P&L');
     expect(viewerText).toContain('Weekly report');
+    expect(viewerText).toContain('2026-09-15');
     expect(viewerText).toContain(branchB.name);
     expect(viewerText).not.toContain('Choose a report');
     act(() => viewer.unmount());
@@ -613,5 +614,30 @@ describe('asset depreciation financial screens', () => {
     expect(state.sales).toBe(originalSales);
     expect(state.sales).toEqual([expect.objectContaining({ id: 1, branchId: branchB.id })]);
     act(() => header.unmount());
+  });
+
+  it('falls back to safe report defaults for an invalid or missing deep-link value', () => {
+    mockRouteParams = {
+      type: 'not-a-report',
+      period: 'not-a-period',
+      date: 'not-a-date',
+      branch: 'missing-branch',
+    };
+    mockPathname = '/reports/view';
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      branches: [branchA, branchB],
+    }) as any);
+
+    const viewer = mount(<ReportViewScreen />);
+    const viewerText = renderedText(viewer);
+
+    expect(viewerText).toContain('Summary');
+    expect(viewerText).toContain('Monthly report');
+    expect(viewerText).toContain('All Branches');
+    expect(viewerText).not.toContain('not-a-report');
+    expect(viewerText).not.toContain('not-a-period');
+    expect(viewerText).not.toContain('missing-branch');
+    act(() => viewer.unmount());
   });
 });

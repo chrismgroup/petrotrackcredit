@@ -146,6 +146,21 @@ function IncompleteBadge() {
   );
 }
 
+function firstRouteParam(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : undefined;
+  }
+  return typeof value === 'string' ? value : undefined;
+}
+
+function validReportDate(value: unknown): string {
+  const candidate = firstRouteParam(value);
+  if (!candidate || !/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return '';
+
+  const parsed = new Date(`${candidate}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) || localDateKey(parsed) !== candidate ? '' : candidate;
+}
+
 /* ═══════════════════════════════════════════════════════════
    MAIN SCREEN
 ═══════════════════════════════════════════════════════════ */
@@ -245,17 +260,21 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   const safeStaff       = Array.isArray(staff) ? staff : [];
   const safeCompanyInfo = companyInfo && typeof companyInfo === 'object' ? companyInfo : ({} as any);
 
-  const params = useLocalSearchParams<{ type?: string; period?: string; date?: string; branch?: string }>();
-  const requestedType = params.type as ReportType | undefined;
-  const defaultType: ReportType = requestedType && perms.visible.includes(requestedType) ? requestedType : (perms.visible[0] ?? 'summary');
-  const requestedPeriod = params.period as Period | undefined;
-  const defaultPeriod: Period = requestedPeriod && PERIODS.includes(requestedPeriod) ? requestedPeriod : 'Monthly';
-  const defaultBranch = params.branch && params.branch !== 'all' ? params.branch : null;
+  const params = useLocalSearchParams();
+  const requestedType = firstRouteParam(params.type);
+  const defaultType: ReportType = requestedType && perms.visible.includes(requestedType as ReportType) ? requestedType as ReportType : (perms.visible[0] ?? 'summary');
+  const requestedPeriod = firstRouteParam(params.period);
+  const defaultPeriod: Period = requestedPeriod && PERIODS.includes(requestedPeriod as Period) ? requestedPeriod as Period : 'Monthly';
+  const requestedBranch = firstRouteParam(params.branch);
+  const defaultBranch = requestedBranch && requestedBranch !== 'all' && safeBranches.some(b => b.id === requestedBranch)
+    ? requestedBranch
+    : null;
+  const defaultDate = validReportDate(params.date);
   // att and mgr are locked to their own branch; other roles can switch branches
   const [selBranch,  setSelBranch]  = useState<string | null>(isBranchLocked ? (branchId ?? null) : defaultBranch);
   const [reportType, setReportType] = useState<ReportType>(defaultType);
   const [period,     setPeriod]     = useState<Period>(defaultPeriod);
-  const [anchorDate, setAnchorDate] = useState(params.date ?? '');
+  const [anchorDate, setAnchorDate] = useState(defaultDate);
 
   const { from, to } = useMemo(() => {
     return periodRange(period, anchorDate || undefined);
@@ -726,7 +745,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
           </View>
           <Text style={[s.previewTitle, { color: colors.text }]}>{meta.label}</Text>
           <Text style={[s.previewSub, { color: colors.textMuted }]}>
-            {period} report · {periodStr} · {branchName}. Read the report here or export a PDF when needed.
+            {period} report · {periodStr} · {branchName} · As at {anchorDate ? fmtDate(`${anchorDate}T12:00:00`) : 'today'}. Read the report here or export a PDF when needed.
           </Text>
         </View>
 
