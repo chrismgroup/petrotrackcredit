@@ -2,9 +2,10 @@ import { createHash, randomBytes } from "crypto";
 import { and, asc, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 
-import { db, staffUsersTable } from "@workspace/db";
+import { appStateTable, db, staffUsersTable } from "@workspace/db";
 
 const router: IRouter = Router();
+const FULL_USER_MANAGEMENT_ROLES = new Set(["admin", "csm"]);
 
 function serverHash(plaintext: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -18,9 +19,23 @@ function ensureHashed(pw: string): string {
   return serverHash(pw);
 }
 
-function safeRow(row: typeof staffUsersTable.$inferSelect) {
+async function canonicalBranch(branchId: unknown): Promise<{ id: string; name: string } | null> {
+  if (typeof branchId !== "string" || !branchId.trim()) return null;
+  const [state] = await db.select({ data: appStateTable.data })
+    .from(appStateTable)
+    .where(eq(appStateTable.key, "branches"));
+  const branches = Array.isArray(state?.data) ? state.data : [];
+  const branch = branches.find(item =>
+    item && typeof item === "object" && String((item as Record<string, unknown>).id) === branchId,
+  ) as Record<string, unknown> | undefined;
+  const name = typeof branch?.name === "string" ? branch.name.trim() : "";
+  return branch && name ? { id: branchId, name } : null;
+}
+
+async function safeRow(row: typeof staffUsersTable.$inferSelect) {
   const { password: _pw, ...rest } = row;
-  return rest;
+  const branch = await canonicalBranch(row.branchId);
+  return { ...rest, branchName: branch?.name ?? null };
 }
 
 // GET /users — list all (any authenticated user)
@@ -29,10 +44,10 @@ router.get("/users", async (_req, res): Promise<void> => {
     .select()
     .from(staffUsersTable)
     .orderBy(asc(staffUsersTable.createdAt));
-  res.json(rows.map(safeRow));
+  res.json(await Promise.all(rows.map(safeRow)));
 });
 
-// POST /users — create enrollment or account (admin can create active; any auth user can enroll)
+// POST /users — create enrollment or account (Admin/HR can create active; any auth user can enroll)
 router.post("/users", async (req, res): Promise<void> => {
   const {
     empName, empId, username, password, role, branchId, status,
@@ -45,11 +60,16 @@ router.post("/users", async (req, res): Promise<void> => {
     res.status(400).json({ error: "empName is required" });
     return;
   }
+  const branch = await canonicalBranch(branchId);
+  if (!branch) {
+    res.status(400).json({ error: "A valid branchId is required" });
+    return;
+  }
 
-  // Only admin can create active accounts directly
+  // Admin and HR can create active accounts directly.
   const wantsActive = status === "active" || (username && password && role && !status);
-  if (wantsActive && req.auth?.role !== "admin") {
-    res.status(403).json({ error: "Only admin can create active accounts" });
+  if (wantsActive && !FULL_USER_MANAGEMENT_ROLES.has(req.auth?.role ?? "")) {
+    res.status(403).json({ error: "Only Admin or HR can create active accounts" });
     return;
   }
 
@@ -65,7 +85,7 @@ router.post("/users", async (req, res): Promise<void> => {
         username:         username         ?? null,
         password:         ensureHashed(password ?? ""),
         role:             role             ?? null,
-        branchId:         branchId         ?? null,
+        branchId:         branch.id,
         status:           resolvedStatus,
         jobTitle:         jobTitle         ?? null,
         dept:             dept             ?? null,
@@ -82,7 +102,7 @@ router.post("/users", async (req, res): Promise<void> => {
       })
       .returning();
 
-    res.status(201).json(safeRow(row));
+    res.status(201).json(await safeRow(row));
   } catch (err: any) {
     if (err?.code === "23505") {
       res.status(409).json({ error: "Username already exists" });
@@ -126,38 +146,34 @@ router.delete("/users/native-fixtures/:runId", async (req, res): Promise<void> =
   res.json({ ok: true, deleted: deleted.length });
 });
 
-// PUT /users/:id — full update (admin; HR may correct rejected enrollments)
+// PUT /users/:id — full update (Admin or HR)
 router.put("/users/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const callerRole = req.auth?.role;
-  let existingStatus: string | undefined;
-  if (callerRole !== "admin") {
-    const [existing] = await db
-      .select({ status: staffUsersTable.status })
-      .from(staffUsersTable)
-      .where(eq(staffUsersTable.id, id));
-    existingStatus = existing?.status;
-    if (callerRole !== "csm" || existingStatus !== "rejected") {
-      res.status(403).json({ error: "HR may only edit rejected enrollments" });
-      return;
-    }
+  if (!FULL_USER_MANAGEMENT_ROLES.has(callerRole ?? "")) {
+    res.status(403).json({ error: "Only Admin or HR may edit users" });
+    return;
   }
 
   const {
     empName, empId, username, password, role, branchId, status, jobTitle, dept,
     phoneNumber, nin, staffAddress, guarantorName, guarantorPhone, guarantorAddress, employmentDocs,
   } = req.body ?? {};
+  if (branchId !== undefined && !await canonicalBranch(branchId)) {
+    res.status(400).json({ error: "branchId must identify an existing branch" });
+    return;
+  }
 
   const updates: Record<string, unknown> = {};
   if (empName           !== undefined) updates.empName           = empName;
-  if (empId             !== undefined && callerRole === "admin") updates.empId = empId;
-  if (username          !== undefined && callerRole === "admin") updates.username = username;
-  if (password          !== undefined && callerRole === "admin") updates.password = ensureHashed(password);
-  if (role              !== undefined && callerRole === "admin") updates.role = role;
-  if (branchId          !== undefined && callerRole === "admin") updates.branchId = branchId;
-  if (status            !== undefined && callerRole === "admin") updates.status = status;
+  if (empId             !== undefined) updates.empId = empId;
+  if (username          !== undefined) updates.username = username;
+  if (password          !== undefined) updates.password = ensureHashed(password);
+  if (role              !== undefined) updates.role = role;
+  if (branchId          !== undefined) updates.branchId = branchId;
+  if (status            !== undefined) updates.status = status;
   if (jobTitle          !== undefined) updates.jobTitle         = jobTitle;
   if (dept              !== undefined) updates.dept             = dept;
   if (phoneNumber       !== undefined) updates.phoneNumber      = phoneNumber;
@@ -181,7 +197,7 @@ router.put("/users/:id", async (req, res): Promise<void> => {
       .returning();
 
     if (!row) { res.status(404).json({ error: "User not found" }); return; }
-    res.json(safeRow(row));
+    res.json(await safeRow(row));
   } catch (err: any) {
     if (err?.code === "23505") {
       res.status(409).json({ error: "Username already exists" });
@@ -192,7 +208,7 @@ router.put("/users/:id", async (req, res): Promise<void> => {
 });
 
 // PATCH /users/:id/status — status transitions
-// Admin: any status, plus sets credentials on activation
+// Admin/HR: any status, plus sets credentials on activation
 // MD:    pending_md → pending_admin | rejected
 router.patch("/users/:id/status", async (req, res): Promise<void> => {
   const callerRole = req.auth?.role;
@@ -205,6 +221,14 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const { status, username, password, role, branchId, rejectionReason, rejectedBy } = req.body ?? {};
+  const [existing] = await db
+    .select({ status: staffUsersTable.status, branchId: staffUsersTable.branchId })
+    .from(staffUsersTable)
+    .where(eq(staffUsersTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
 
   // Validate MD's allowed transitions
   if (callerRole === "md") {
@@ -213,34 +237,15 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
       return;
     }
     // Confirm the record is currently pending_md
-    const [existing] = await db
-      .select({ status: staffUsersTable.status })
-      .from(staffUsersTable)
-      .where(eq(staffUsersTable.id, id));
-    if (!existing || existing.status !== "pending_md") {
+    if (existing.status !== "pending_md") {
       res.status(400).json({ error: "Record is not in pending_md state" });
       return;
     }
   }
 
-  if (callerRole === "csm") {
-    if (status !== "pending_admin") {
-      res.status(403).json({ error: "HR may only re-submit rejected enrollments" });
-      return;
-    }
-    const [existing] = await db
-      .select({ status: staffUsersTable.status })
-      .from(staffUsersTable)
-      .where(eq(staffUsersTable.id, id));
-    if (!existing || existing.status !== "rejected") {
-      res.status(400).json({ error: "Only rejected enrollments can be re-submitted by HR" });
-      return;
-    }
-  }
-
-  const adminAllowed = ["active", "suspended", "inactive", "rejected", "pending", "pending_md", "pending_admin"];
-  if (callerRole === "admin" && !adminAllowed.includes(status)) {
-    res.status(400).json({ error: `status must be one of: ${adminAllowed.join(", ")}` });
+  const managerAllowed = ["active", "suspended", "inactive", "rejected", "pending", "pending_md", "pending_admin"];
+  if (FULL_USER_MANAGEMENT_ROLES.has(callerRole ?? "") && !managerAllowed.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${managerAllowed.join(", ")}` });
     return;
   }
 
@@ -263,13 +268,18 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
     updates.rejectedAt = new Date();
   }
 
-  if (status === "active" && callerRole === "admin") {
+  if (status === "active" && FULL_USER_MANAGEMENT_ROLES.has(callerRole ?? "")) {
+    const assignedBranch = await canonicalBranch(branchId ?? existing.branchId);
+    if (!assignedBranch) {
+      res.status(400).json({ error: "A valid branchId is required before activation" });
+      return;
+    }
     updates.approvedBy = req.auth?.username;
     updates.approvedAt = new Date();
     if (username !== undefined) updates.username = username;
     if (password !== undefined) updates.password = ensureHashed(password);
     if (role     !== undefined) updates.role     = role;
-    if (branchId !== undefined) updates.branchId = branchId;
+    updates.branchId = assignedBranch.id;
   }
 
   try {
@@ -280,7 +290,7 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
       .returning();
 
     if (!row) { res.status(404).json({ error: "User not found" }); return; }
-    res.json(safeRow(row));
+    res.json(await safeRow(row));
   } catch (err: any) {
     if (err?.code === "23505") {
       res.status(409).json({ error: "Username already exists" });
@@ -290,21 +300,23 @@ router.patch("/users/:id/status", async (req, res): Promise<void> => {
   }
 });
 
-// DELETE /users/:id (admin; HR may remove rejected enrollments)
+// DELETE /users/:id (Admin or HR)
 router.delete("/users/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const callerRole = req.auth?.role;
-  if (callerRole !== "admin") {
-    const [existing] = await db
-      .select({ status: staffUsersTable.status })
-      .from(staffUsersTable)
-      .where(eq(staffUsersTable.id, id));
-    if (callerRole !== "csm" || existing?.status !== "rejected") {
-      res.status(403).json({ error: "HR may only delete rejected enrollments" });
-      return;
-    }
+  if (!FULL_USER_MANAGEMENT_ROLES.has(callerRole ?? "")) {
+    res.status(403).json({ error: "Only Admin or HR may delete users" });
+    return;
+  }
+  const [existing] = await db
+    .select({ username: staffUsersTable.username })
+    .from(staffUsersTable)
+    .where(eq(staffUsersTable.id, id));
+  if (existing?.username && existing.username === req.auth?.username) {
+    res.status(400).json({ error: "You cannot delete the account you are currently using" });
+    return;
   }
 
   const deleted = await db

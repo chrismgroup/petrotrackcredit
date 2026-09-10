@@ -63,3 +63,4 @@
 - [Biometric sign-in preference](biometric-preference.md) — explicit device opt-out survives later password logins; re-enabling requires password and local biometric checks
 - [Delivery approval authority](delivery-approval-authority.md) — Accountant-forwarded deliveries are decided by MD, not CEO; CEO retains read-only visibility
 - [Acceptance test lifecycle](acceptance-test-lifecycle.md) — shared database-backed tests must coordinate module-level pool ownership and teardown
+- [User and staff authority](user-staff-authority.md) — Admin and HR/CSM share full account and staff control; reconciliation must not guess among duplicate identities

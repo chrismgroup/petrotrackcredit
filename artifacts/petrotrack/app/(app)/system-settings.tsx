@@ -200,7 +200,7 @@ function RolePicker({ value, onChange, isAdmin, colors, roleColor }: {
 
 export default function SystemSettingsScreen() {
   const {
-    role, tanks, lpgTanks, pumps, staff, branches, mgrPerms, updateMgrPerms,
+    role, userName, tanks, lpgTanks, pumps, staff, branches, mgrPerms, updateMgrPerms,
     roleAccess, updateRoleAccess,
     userAccess, updateUserAccess, clearUserAccess,
     addTank, addLpgTank, addPump, addStaff, addActiveUserAccount,
@@ -218,6 +218,10 @@ export default function SystemSettingsScreen() {
   const isAdmin = role === 'admin';
   const isCsm = role === 'csm';
   const canManageStaff = isAdmin || isCsm;
+  const defaultStaffBranchId = branches.find(branch => branch.name.trim().toLowerCase() === 'head office')?.id
+    ?? branches.find(branch => branch.st === 'Active')?.id
+    ?? branches[0]?.id
+    ?? '';
   const headOfficeUsers = userAccounts.filter(
     account => account.status === 'active' && account.role && account.role !== 'admin' &&
       (GLOBAL_OVERVIEW_ROLES.has(account.role) || !account.branchId || account.branchId === 'HQ'),
@@ -357,7 +361,8 @@ export default function SystemSettingsScreen() {
   function saveStaff() {
     for (const [idStr, e] of Object.entries(staffEdits)) {
       if (!e.name.trim()) { Alert.alert('Error', 'Staff name cannot be empty.'); return; }
-      updateStaff(parseInt(idStr), { name: e.name.trim(), email: e.email.trim(), branchId: e.branchId || undefined });
+      if (!e.branchId) { Alert.alert('Branch required', `Assign ${e.name.trim()} to a branch before saving.`); return; }
+      updateStaff(parseInt(idStr), { name: e.name.trim(), email: e.email.trim(), branchId: e.branchId });
     }
     Alert.alert('Saved', 'Staff information updated.');
   }
@@ -433,22 +438,24 @@ export default function SystemSettingsScreen() {
     if (!email)    { Alert.alert('Error', 'Email address is required.'); return; }
     if (!username) { Alert.alert('Error', 'Username is required.'); return; }
     if (!password) { Alert.alert('Error', 'Password is required.'); return; }
+    const assignedBranchId = newStaff.branchId || defaultStaffBranchId;
+    if (!assignedBranchId) { Alert.alert('Branch required', 'Create an active branch before adding staff.'); return; }
     if (password.length < 6) { Alert.alert('Error', 'Password must be at least 6 characters.'); return; }
     if (userAccounts.some(a => a.username === username)) {
       Alert.alert('Error', `Username "${username}" is already taken. Please choose another.`); return;
     }
     const sal = parseInt(newStaff.sal) || 0;
     const deptId = (newStaff as any).dept as string | undefined;
-    const staffBranchId = GLOBAL_OVERVIEW_ROLES.has(newStaff.role) ? undefined : (newStaff.branchId || undefined);
-    const localStaffId = addStaff({ name, email, role: newStaff.role, sal, st: 'Active', dept: deptId, branchId: staffBranchId });
+    const assignedBranch = branches.find(branch => branch.id === assignedBranchId);
+    const localStaffId = addStaff({ name, email, role: newStaff.role, sal, st: 'Active', dept: deptId, branchId: assignedBranchId, branchName: assignedBranch?.name });
     const accountId = await addActiveUserAccount({
       empName: name,
       username,
       password,
       role: newStaff.role,
-      branchId: staffBranchId || null,
+      branchId: assignedBranchId,
       jobTitle: ROLE_LABELS[newStaff.role],
-      createdBy: 'System Admin',
+      createdBy: userName || (isCsm ? 'HR' : 'System Admin'),
     });
     if (accountId !== null) updateStaff(localStaffId, { accountId });
     setNewStaff(BLANK_STAFF);
@@ -692,7 +699,7 @@ export default function SystemSettingsScreen() {
                       <View style={[styles.prodPill, { backgroundColor: PROD_COLORS[tank.prod] + '22', borderColor: PROD_COLORS[tank.prod] + '55' }]}>
                         <Text style={[styles.prodPillText, { color: PROD_COLORS[tank.prod] }]}>{tank.prod}</Text>
                       </View>
-                      {isAdmin && (
+                      {canManageStaff && (
                         <TouchableOpacity
                           onPress={() => Alert.alert('Delete Tank', `Remove "${tank.name}"? This cannot be undone.`, [
                             { text: 'Cancel', style: 'cancel' },
@@ -789,7 +796,7 @@ export default function SystemSettingsScreen() {
                       <View style={[styles.prodPill, { backgroundColor: '#0F6E5622', borderColor: '#0F6E5655' }]}>
                         <Text style={[styles.prodPillText, { color: '#0F6E56' }]}>LPG</Text>
                       </View>
-                      {isAdmin && (
+                      {canManageStaff && (
                         <TouchableOpacity
                           onPress={() => Alert.alert('Delete LPG Tank', `Remove "${tank.name}"? This cannot be undone.`, [
                             { text: 'Cancel', style: 'cancel' },
@@ -1168,13 +1175,6 @@ export default function SystemSettingsScreen() {
                     <View style={{ marginBottom: 4 }}>
                       <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
                       <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
-                        <TouchableOpacity
-                          disabled={!canManageStaff}
-                          onPress={() => setStaffEdits(s => ({ ...s, [member.id]: { ...e, branchId: '' } }))}
-                          style={[styles.roleChip, { borderColor: !e.branchId ? roleColor : colors.border, backgroundColor: !e.branchId ? roleColor + '18' : colors.surface, opacity: canManageStaff ? 1 : 0.6 }]}
-                        >
-                          <Text style={[styles.roleChipText, { color: !e.branchId ? roleColor : colors.textMuted }]}>Head Office / Global</Text>
-                        </TouchableOpacity>
                         {branches.map(b => (
                           <TouchableOpacity
                             key={b.id}
@@ -1231,18 +1231,12 @@ export default function SystemSettingsScreen() {
                   <FieldInput colors={colors} label="Full Name *" value={newStaff.name} onChangeText={v => setNewStaff(n => ({ ...n, name: v, username: autoUsername(v) }))} placeholder="e.g. Chukwuma Adeyemi" autoCapitalize="words" />
                   <FieldInput colors={colors} label="Email Address *" value={newStaff.email} onChangeText={v => setNewStaff(n => ({ ...n, email: v }))} keyboardType="email-address" autoCapitalize="none" placeholder="user@company.com" />
                   <FieldInput colors={colors} label="Monthly Salary (₦)" value={newStaff.sal} onChangeText={v => setNewStaff(n => ({ ...n, sal: v }))} keyboardType="numeric" placeholder="150000" />
-                  <RolePicker isAdmin={isAdmin} colors={colors} roleColor={roleColor} value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v, branchId: GLOBAL_OVERVIEW_ROLES.has(v) ? '' : n.branchId }))} />
+                  <RolePicker isAdmin={isAdmin} colors={colors} roleColor={roleColor} value={newStaff.role} onChange={v => setNewStaff(n => ({ ...n, role: v }))} />
                   <View style={{ marginBottom: 10 }}>
                      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
-                     {GLOBAL_OVERVIEW_ROLES.has(newStaff.role)
-                       ? <Text style={[{ color: roleColor, fontSize: 13, fontWeight: '600', marginTop: 4 }]}>Global role — this user automatically sees all branches.</Text>
-                       : branches.length === 0
+                     {branches.length === 0
                       ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
                        : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
-                           <TouchableOpacity onPress={() => setNewStaff(n => ({ ...n, branchId: '' }))}
-                             style={[styles.roleChip, { borderColor: !newStaff.branchId ? roleColor : colors.border, backgroundColor: !newStaff.branchId ? roleColor + '18' : colors.surface }]}>
-                             <Text style={[styles.roleChipText, { color: !newStaff.branchId ? roleColor : colors.textMuted }]}>Head Office / Global</Text>
-                           </TouchableOpacity>
                           {branches.map(b => (
                             <TouchableOpacity key={b.id} onPress={() => setNewStaff(n => ({ ...n, branchId: b.id }))}
                               style={[styles.roleChip, { borderColor: newStaff.branchId === b.id ? roleColor : colors.border, backgroundColor: newStaff.branchId === b.id ? roleColor + '18' : colors.surface }]}>

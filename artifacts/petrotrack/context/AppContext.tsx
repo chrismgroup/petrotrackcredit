@@ -120,7 +120,7 @@ const HISTORICAL_BASELINE_REPAIRS: ReadonlyArray<{
   { branchName: 'uyo fuel station', product: 'PMS', quantity: 18800, seedDate: '2026-08-14' },
 ];
 export interface MarketCompetitor { id: string; name: string; location: string; pms: string; ago: string; dpk: string; lpg: string; updatedBy: string; updatedAt: string; }
-export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; branchId?: string; accountId?: number; }
+export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; branchId?: string; branchName?: string; accountId?: number; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
 export interface PriceProposal {
@@ -234,6 +234,7 @@ export interface UserAccount {
   password: string;
   role: Role | null;
   branchId?: string | null;
+  branchName?: string;
   status: AccountStatus;
   createdBy: string;
   createdAt: string;
@@ -1325,6 +1326,7 @@ function apiRowToUserAccount(r: StaffUserRecord): UserAccount {
     password:         '',
     role:             (r.role as Role)   ?? null,
     branchId:         r.branchId         ?? undefined,
+    branchName:       r.branchName       ?? undefined,
     status:           (r.status          as AccountStatus),
     createdBy:        r.createdBy,
     createdAt:        r.createdAt,
@@ -1557,6 +1559,7 @@ interface AppContextType {
   addStaff: (s: Omit<Staff, 'id'>) => number;
   toggleStaff: (id: number) => void;
   deleteStaff: (id: number) => Promise<boolean>;
+  reconcileUserStaffDirectory: () => Promise<{ added: number; linked: number; createdAccounts: number; ambiguousAccountIds: number[]; unassigned: number }>;
   addBranch: (b: Omit<Branch, 'id'>) => Branch;
   updateBranch: (id: string, updates: Partial<Pick<Branch, 'st' | 'mgr' | 'name' | 'pumps' | 'tanks'>>) => void;
   deleteBranch: (id: string) => void;
@@ -2953,9 +2956,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [userName]);
 
   const updateStaff = useCallback((id: number, updates: Partial<Pick<Staff, 'name' | 'email' | 'sal' | 'dept' | 'branchId' | 'accountId'>>) => {
-    setStaff(s => s.map(m => m.id === id ? { ...m, ...updates } : m));
+    const member = staff.find(item => item.id === id);
+    const canonicalBranch = updates.branchId !== undefined
+      ? branches.find(branch => branch.id === updates.branchId)
+      : undefined;
+    const resolvedUpdates = {
+      ...updates,
+      ...(updates.branchId !== undefined ? { branchName: canonicalBranch?.name } : {}),
+    };
+    setStaff(s => s.map(m => m.id === id ? { ...m, ...resolvedUpdates } : m));
+    if (updates.branchId !== undefined && member?.accountId) {
+      void usersApi.update(member.accountId, { branchId: updates.branchId }).then(row => {
+        if (!row) return;
+        setUserAccounts(prev => prev.map(account => account.id === member.accountId
+          ? { ...apiRowToUserAccount(row), branchName: canonicalBranch?.name, password: account.password }
+          : account));
+      });
+    }
     setAudit(a => [{ id: genId(), action: 'Staff record updated', user: userName, detail: `Staff ID ${id} updated`, ts: nowTs() }, ...a]);
-  }, [userName]);
+  }, [branches, staff, userName]);
 
   const addDip = useCallback(async (dip: Omit<DipRecord, 'id'>) => {
     const result = await workflowApi.dips.create(
@@ -3421,17 +3440,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addStaff = useCallback((s: Omit<Staff, 'id'>) => {
     const id = genId();
-    setStaff(st => [...st, { ...s, id }]);
+    const canonicalBranch = branches.find(branch => branch.id === s.branchId);
+    setStaff(st => [...st, { ...s, branchName: canonicalBranch?.name ?? s.branchName, id }]);
     setAudit(a => [{ id: genId(), action: 'User created', user: userName, detail: `${s.name} added as ${s.role}`, ts: nowTs() }, ...a]);
     return id;
-  }, [userName]);
+  }, [branches, userName]);
 
   const toggleStaff = useCallback((id: number) => {
     setStaff(st => st.map(s => s.id === id ? { ...s, st: s.st === 'Active' ? 'Suspended' : 'Active' } : s));
   }, []);
 
   const deleteStaff = useCallback(async (id: number): Promise<boolean> => {
-    if (role !== 'admin') return false;
+    if (role !== 'admin' && role !== 'csm') return false;
     const member = staff.find(s => s.id === id);
     if (!member) return false;
 
@@ -3460,6 +3480,110 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [role, staff, userAccounts, userName]);
 
+  const reconcileUserStaffDirectory = useCallback(async () => {
+    if (role !== 'admin' && role !== 'csm') {
+      return { added: 0, linked: 0, createdAccounts: 0, ambiguousAccountIds: [], unassigned: 0 };
+    }
+    const headOffice = branches.find(branch => branch.name.trim().toLowerCase() === 'head office')
+      ?? branches.find(branch => branch.st === 'Active')
+      ?? branches[0];
+    const eligibleAccounts = userAccounts.filter(account => account.role && account.status !== 'rejected');
+    const accountsByName = new Map<string, UserAccount[]>();
+    eligibleAccounts.forEach(account => {
+      const key = account.empName.trim().toLowerCase();
+      if (!key) return;
+      accountsByName.set(key, [...(accountsByName.get(key) ?? []), account]);
+    });
+
+    const ambiguousAccountIds = [...accountsByName.values()]
+      .filter(accounts => accounts.length > 1)
+      .flatMap(accounts => accounts.map(account => account.id));
+    const ambiguousIds = new Set(ambiguousAccountIds);
+    let added = 0;
+    let linked = 0;
+    let createdAccounts = 0;
+    let unassigned = 0;
+    const nextStaff = staff.map(member => {
+      const candidates = member.accountId !== undefined
+        ? eligibleAccounts.filter(account => account.id === member.accountId)
+        : accountsByName.get(member.name.trim().toLowerCase()) ?? [];
+      if (candidates.length !== 1) return member;
+      if (member.accountId === undefined) linked += 1;
+      const account = candidates[0];
+      const branch = branches.find(item => item.id === account.branchId)
+        ?? branches.find(item => item.id === member.branchId)
+        ?? headOffice;
+      if (!branch) unassigned += 1;
+      return {
+        ...member,
+        accountId: account.id,
+        role: account.role ?? member.role,
+        branchId: branch?.id,
+        branchName: branch?.name,
+        st: account.status === 'suspended' ? 'Suspended' as const : 'Active' as const,
+      };
+    });
+    const existingAccountIds = new Set(nextStaff.map(member => member.accountId).filter((id): id is number => id !== undefined));
+    eligibleAccounts.forEach(account => {
+      if (existingAccountIds.has(account.id) || ambiguousIds.has(account.id) || !account.role) return;
+      const email = account.username.includes('@') ? account.username : `${account.username}@petrotrack.com`;
+      const branch = branches.find(item => item.id === account.branchId) ?? headOffice;
+      if (!branch) { unassigned += 1; return; }
+      nextStaff.push({
+        id: genId(),
+        accountId: account.id,
+        name: account.empName,
+        role: account.role,
+        sal: 0,
+        st: account.status === 'suspended' ? 'Suspended' : 'Active',
+        email,
+        dept: account.dept,
+        branchId: branch.id,
+        branchName: branch.name,
+      });
+      existingAccountIds.add(account.id);
+      added += 1;
+    });
+    for (const account of eligibleAccounts) {
+      const branch = branches.find(item => item.id === account.branchId) ?? headOffice;
+      if (!branch || (account.branchId === branch.id && account.branchName === branch.name)) continue;
+      const row = await usersApi.update(account.id, { branchId: branch.id });
+      if (row) {
+        setUserAccounts(prev => prev.map(item => item.id === account.id
+          ? { ...apiRowToUserAccount(row), branchName: branch.name, password: item.password }
+          : item));
+      }
+    }
+    const linkedNames = new Set(eligibleAccounts.map(account => account.empName.trim().toLowerCase()));
+    for (const member of nextStaff) {
+      if (member.accountId !== undefined || linkedNames.has(member.name.trim().toLowerCase())) continue;
+      const branch = branches.find(item => item.id === member.branchId) ?? headOffice;
+      if (!branch) { unassigned += 1; continue; }
+      const row = await usersApi.create({
+        empName: member.name,
+        role: member.role,
+        branchId: branch.id,
+        dept: member.dept ?? null,
+        status: 'pending_admin',
+      });
+      if (!row) continue;
+      member.accountId = row.id;
+      member.branchId = branch.id;
+      member.branchName = branch.name;
+      setUserAccounts(prev => [...prev, { ...apiRowToUserAccount(row), branchName: branch.name }]);
+      createdAccounts += 1;
+    }
+    setStaff(nextStaff);
+    setAudit(a => [{
+      id: genId(),
+      action: 'Staff directory reconciled',
+      user: userName,
+      detail: `${linked} linked, ${added} staff added, ${createdAccounts} accounts created, ${ambiguousAccountIds.length} ambiguous accounts skipped`,
+      ts: nowTs(),
+    }, ...a]);
+    return { added, linked, createdAccounts, ambiguousAccountIds, unassigned };
+  }, [branches, role, staff, userAccounts, userName]);
+
   const addBranch = useCallback((b: Omit<Branch, 'id'>) => {
     const branch: Branch = { ...b, id: `B${genId()}` };
     setBranches(br => [...br, branch]);
@@ -3469,6 +3593,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateBranch = useCallback((id: string, updates: Partial<Pick<Branch, 'st' | 'mgr' | 'name' | 'pumps' | 'tanks'>>) => {
     setBranches(br => br.map(b => b.id === id ? { ...b, ...updates } : b));
+    if (updates.name !== undefined) {
+      setStaff(prev => prev.map(member => member.branchId === id ? { ...member, branchName: updates.name } : member));
+      setUserAccounts(prev => prev.map(account => account.branchId === id ? { ...account, branchName: updates.name } : account));
+    }
     setAudit(a => [{ id: genId(), action: 'Branch updated', user: userName, detail: `Branch ${id}: ${JSON.stringify(updates)}`, ts: nowTs() }, ...a]);
   }, [userName]);
 
@@ -3514,8 +3642,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUsers = useCallback(async () => {
     const rows = await usersApi.list();
-    if (rows) setUserAccounts(rows.map(apiRowToUserAccount));
-  }, []);
+    if (rows) setUserAccounts(rows.map(row => {
+      const account = apiRowToUserAccount(row);
+      return { ...account, branchName: branches.find(branch => branch.id === account.branchId)?.name };
+    }));
+  }, [branches]);
 
   const addUserAccount = useCallback((acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => {
     const localId = genId();
@@ -3533,7 +3664,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dept: acc.dept, phoneNumber: acc.phoneNumber ?? null, status: 'active',
     });
     if (row) {
-      setUserAccounts(prev => [...prev, apiRowToUserAccount(row)]);
+      const branch = branches.find(item => item.id === row.branchId);
+      setUserAccounts(prev => [...prev, { ...apiRowToUserAccount(row), branchName: branch?.name }]);
+      setStaff(prev => {
+        const existing = prev.find(member =>
+          member.accountId === row.id || member.name.trim().toLowerCase() === row.empName.trim().toLowerCase(),
+        );
+        if (existing) {
+          return prev.map(member => member.id === existing.id ? {
+            ...member, accountId: row.id, role: row.role ?? acc.role, st: 'Active',
+            branchId: row.branchId ?? undefined, branchName: branch?.name,
+          } : member);
+        }
+        return [...prev, {
+          id: genId(), accountId: row.id, name: row.empName, role: row.role ?? acc.role,
+          sal: 0, st: 'Active', email: row.username?.includes('@') ? row.username : `${row.username}@petrotrack.com`,
+          dept: row.dept ?? undefined, branchId: row.branchId ?? undefined, branchName: branch?.name,
+        }];
+      });
       setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
       return row.id;
     } else {
@@ -3543,13 +3691,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: localId, createdAt: nowTs(), status: 'active',
         approvedBy: acc.createdBy, approvedAt: nowTs(),
         empName: acc.empName, username: acc.username, password: '',
-        role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept,
+        role: acc.role, branchId: acc.branchId, branchName: branches.find(branch => branch.id === acc.branchId)?.name, jobTitle: acc.jobTitle, dept: acc.dept,
         phoneNumber: acc.phoneNumber, createdBy: acc.createdBy,
       }]);
       setAudit(a => [{ id: genId(), action: 'Account created', user: acc.createdBy, detail: `Login created for ${acc.empName} (${acc.username}) as ${acc.role}`, ts: nowTs() }, ...a]);
+      setStaff(prev => {
+        const existing = prev.find(member => member.name.trim().toLowerCase() === acc.empName.trim().toLowerCase());
+        const branchName = branches.find(branch => branch.id === acc.branchId)?.name;
+        if (existing) return prev.map(member => member.id === existing.id
+          ? { ...member, accountId: localId, role: acc.role, st: 'Active', branchId: acc.branchId ?? undefined, branchName }
+          : member);
+        return [...prev, {
+          id: genId(), accountId: localId, name: acc.empName, role: acc.role, sal: 0, st: 'Active',
+          email: acc.username.includes('@') ? acc.username : `${acc.username}@petrotrack.com`,
+          dept: acc.dept, branchId: acc.branchId ?? undefined, branchName,
+        }];
+      });
       return localId;
     }
-  }, []);
+  }, [branches]);
 
   const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string | null; phoneNumber?: string }, by: string) => {
     // Send plaintext password — server hashes via ensureHashed
@@ -3557,12 +3717,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Write to DB so login works on all devices immediately
     const row = await usersApi.update(id, resolved as Parameters<typeof usersApi.update>[1]);
     if (row) {
-      setUserAccounts(prev => prev.map(a => a.id === id ? { ...apiRowToUserAccount(row), password: a.password } : a));
+      const canonicalBranch = branches.find(branch => branch.id === row.branchId);
+      setUserAccounts(prev => prev.map(a => a.id === id ? { ...apiRowToUserAccount(row), branchName: canonicalBranch?.name, password: a.password } : a));
+      setStaff(prev => prev.map(member => member.accountId === id
+        ? { ...member, role: row.role ?? member.role, branchId: row.branchId ?? undefined, branchName: canonicalBranch?.name }
+        : member));
     } else {
       setUserAccounts(prev => prev.map(a => a.id === id ? { ...a, ...resolved } : a));
     }
     setAudit(a => [{ id: genId(), action: 'Account updated', user: by, detail: `Account #${id} credentials/role updated`, ts: nowTs() }, ...a]);
-  }, []);
+  }, [branches]);
 
   const changeOwnPassword = useCallback(async (currentPassword: string, newPassword: string): Promise<boolean> => {
     const acc = userAccounts.find(a => a.username === userName);
@@ -3644,15 +3808,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return { ...a, role, username, password: '', status: 'active', approvedBy: by, approvedAt: nowTs(), branchId: branchId ?? a.branchId };
       }));
     }
-    // Auto-add to staff directory and HR records on activation
-    if (role !== 'admin') {
+    // Every active user has a matching staff-directory and HR record.
+    {
       const empName  = activated?.empName ?? '';
       const dept     = activated?.dept;
       const phone    = activated?.phoneNumber ?? '';
       const empIdVal = activated?.empId;
       setStaff(prev => {
-        if (prev.some(s => s.name === empName)) return prev;
-         return [...prev, { id: genId(), accountId: id, name: empName, role, sal: 0, st: 'Active', email: `${username}@petrotrack.com`, dept, branchId: branchId ?? undefined }];
+        const branch = branches.find(item => item.id === branchId);
+        const existing = prev.find(member => member.name.trim().toLowerCase() === empName.trim().toLowerCase());
+        if (existing) return prev.map(member => member.id === existing.id
+          ? { ...member, accountId: id, role, st: 'Active', branchId: branchId ?? undefined, branchName: branch?.name }
+          : member);
+         return [...prev, { id: genId(), accountId: id, name: empName, role, sal: 0, st: 'Active', email: username.includes('@') ? username : `${username}@petrotrack.com`, dept, branchId: branchId ?? undefined, branchName: branch?.name }];
       });
       setHrEmployees(prev => {
         if (prev.some(e => e.name === empName)) return prev;
@@ -3668,7 +3836,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
     }
     setAudit(a => [{ id: genId(), action: 'Account approved', user: by, detail: `Account for ${username} approved as ${role}`, ts: nowTs() }, ...a]);
-  }, []);
+  }, [branches]);
 
   const suspendUserAccount = useCallback(async (id: number) => {
     await usersApi.setStatus(id, 'suspended');
@@ -3724,9 +3892,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteUserAccount = useCallback(async (id: number): Promise<boolean> => {
     const account = userAccounts.find(a => a.id === id);
-    // Admin may remove any record; HR retains its existing rejected-enrollment
-    // cleanup permission, which the API enforces independently.
-    if (role !== 'admin' && !(role === 'csm' && account?.status === 'rejected')) return false;
+    // Admin and HR share full account-management authority.
+    if (role !== 'admin' && role !== 'csm') return false;
     const removed = await usersApi.remove(id);
     if (!removed) return false;
     setUserAccounts(prev => prev.filter(a => a.id !== id));
@@ -5018,7 +5185,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       submitPumpReport, submitPumpReportConfirmed, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, adminReturnApprovedPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
           sendMessage, markRead, archiveConversation, unarchiveConversation, approveExpense, approveExpenseConfirmed, rejectExpense, rejectExpenseConfirmed,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
-      addStaff, toggleStaff, deleteStaff, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
+      addStaff, toggleStaff, deleteStaff, reconcileUserStaffDirectory, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
       deleteTank, deleteLpgTank, deletePump,
        addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
       userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, updateEnrollmentData, changeOwnPassword, enrollStaff, mdApproveEnrollment, mdRejectEnrollment, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, rejectEnrollmentWithReason, resubmitEnrollment, deleteUserAccount, validateCredentials,
