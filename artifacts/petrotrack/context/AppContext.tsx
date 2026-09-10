@@ -120,7 +120,7 @@ const HISTORICAL_BASELINE_REPAIRS: ReadonlyArray<{
   { branchName: 'uyo fuel station', product: 'PMS', quantity: 18800, seedDate: '2026-08-14' },
 ];
 export interface MarketCompetitor { id: string; name: string; location: string; pms: string; ago: string; dpk: string; lpg: string; updatedBy: string; updatedAt: string; }
-export interface Staff { id: number; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; branchId?: string; branchName?: string; accountId?: number; }
+export interface Staff { id: number; empId?: string; name: string; role: string; sal: number; st: 'Active' | 'Suspended'; email: string; dept?: string; branchId?: string; branchName?: string; accountId?: number; }
 export interface Branch { id: string; name: string; st: 'Active' | 'Pending' | 'Suspended'; rev: number; mgr: string; pumps: number; tanks: number; }
 export interface ComplianceDoc { id: number; name: string; cat: string; iss: string; exp: string; ref: string; }
 export interface PriceProposal {
@@ -1310,11 +1310,13 @@ export function fmtDateTime(dt: string) {
 function genId() { return Date.now() + Math.floor(Math.random() * 10000); }
 const MAX_AUDIT_ENTRIES = 500; // cap audit trail so sync payloads stay small
 function nowTs() { return new Date().toISOString(); }
-function generateEmpId(existing: UserAccount[]): string {
+function generateEmpId(existing: Array<{ empId?: string }>): string {
   const now = new Date();
   const prefix = `GS-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const sameMonth = existing.filter(a => a.empId?.startsWith(prefix));
-  return `${prefix}-${String(sameMonth.length + 1).padStart(3, '0')}`;
+  const used = new Set(existing.map(item => item.empId).filter((id): id is string => Boolean(id)));
+  let sequence = 1;
+  while (used.has(`${prefix}-${String(sequence).padStart(3, '0')}`)) sequence += 1;
+  return `${prefix}-${String(sequence).padStart(3, '0')}`;
 }
 
 function apiRowToUserAccount(r: StaffUserRecord): UserAccount {
@@ -1559,7 +1561,7 @@ interface AppContextType {
   addStaff: (s: Omit<Staff, 'id'>) => number;
   toggleStaff: (id: number) => void;
   deleteStaff: (id: number) => Promise<boolean>;
-  reconcileUserStaffDirectory: () => Promise<{ added: number; linked: number; createdAccounts: number; ambiguousAccountIds: number[]; unassigned: number }>;
+  reconcileUserStaffDirectory: () => Promise<{ added: number; linked: number; createdAccounts: number; idsAssigned: number; idFailures: number; ambiguousAccountIds: number[]; unassigned: number }>;
   addBranch: (b: Omit<Branch, 'id'>) => Branch;
   updateBranch: (id: string, updates: Partial<Pick<Branch, 'st' | 'mgr' | 'name' | 'pumps' | 'tanks'>>) => void;
   deleteBranch: (id: string) => void;
@@ -3441,10 +3443,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addStaff = useCallback((s: Omit<Staff, 'id'>) => {
     const id = genId();
     const canonicalBranch = branches.find(branch => branch.id === s.branchId);
-    setStaff(st => [...st, { ...s, branchName: canonicalBranch?.name ?? s.branchName, id }]);
+    const empId = s.empId ?? generateEmpId([...userAccounts, ...staff]);
+    setStaff(st => [...st, { ...s, empId, branchName: canonicalBranch?.name ?? s.branchName, id }]);
     setAudit(a => [{ id: genId(), action: 'User created', user: userName, detail: `${s.name} added as ${s.role}`, ts: nowTs() }, ...a]);
     return id;
-  }, [branches, userName]);
+  }, [branches, staff, userAccounts, userName]);
 
   const toggleStaff = useCallback((id: number) => {
     setStaff(st => st.map(s => s.id === id ? { ...s, st: s.st === 'Active' ? 'Suspended' : 'Active' } : s));
@@ -3482,18 +3485,59 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const reconcileUserStaffDirectory = useCallback(async () => {
     if (role !== 'admin' && role !== 'csm') {
-      return { added: 0, linked: 0, createdAccounts: 0, ambiguousAccountIds: [], unassigned: 0 };
+      return { added: 0, linked: 0, createdAccounts: 0, idsAssigned: 0, idFailures: 0, ambiguousAccountIds: [], unassigned: 0 };
     }
     const headOffice = branches.find(branch => branch.name.trim().toLowerCase() === 'head office')
       ?? branches.find(branch => branch.st === 'Active')
       ?? branches[0];
-    const eligibleAccounts = userAccounts.filter(account => account.role && account.status !== 'rejected');
-    const accountsByName = new Map<string, UserAccount[]>();
+    let eligibleAccounts = userAccounts.filter(account => account.role && account.status !== 'rejected');
+    let accountsByName = new Map<string, UserAccount[]>();
     eligibleAccounts.forEach(account => {
       const key = account.empName.trim().toLowerCase();
       if (!key) return;
       accountsByName.set(key, [...(accountsByName.get(key) ?? []), account]);
     });
+
+    let idsAssigned = 0;
+    let idFailures = 0;
+    const knownIds: Array<{ empId?: string }> = [...userAccounts, ...staff];
+    const accountsWithPermanentIds: UserAccount[] = [];
+    for (const original of eligibleAccounts) {
+      let account = original;
+      if (!account.empId) {
+        const exactStaff = staff.find(member => member.accountId === account.id);
+        const sameNameStaff = staff.filter(member =>
+          member.name.trim().toLowerCase() === account.empName.trim().toLowerCase(),
+        );
+        const uniqueNameMatch = accountsByName.get(account.empName.trim().toLowerCase())?.length === 1
+          && sameNameStaff.length === 1
+          ? sameNameStaff[0]
+          : undefined;
+        const linkedStaff = exactStaff ?? uniqueNameMatch;
+        const candidateId = linkedStaff?.empId;
+        const empId = candidateId && !knownIds.some(item => item.empId === candidateId && item !== linkedStaff)
+          ? candidateId
+          : generateEmpId(knownIds);
+        const row = await usersApi.update(account.id, { empId });
+        if (row) {
+          account = { ...apiRowToUserAccount(row), branchName: account.branchName, password: account.password };
+          knownIds.push({ empId });
+          idsAssigned += 1;
+        } else {
+          idFailures += 1;
+        }
+      }
+      accountsWithPermanentIds.push(account);
+    }
+    eligibleAccounts = accountsWithPermanentIds;
+    accountsByName = new Map<string, UserAccount[]>();
+    eligibleAccounts.forEach(account => {
+      const key = account.empName.trim().toLowerCase();
+      if (!key) return;
+      accountsByName.set(key, [...(accountsByName.get(key) ?? []), account]);
+    });
+    const accountsWithIdsById = new Map(eligibleAccounts.map(account => [account.id, account]));
+    setUserAccounts(prev => prev.map(account => accountsWithIdsById.get(account.id) ?? account));
 
     const ambiguousAccountIds = [...accountsByName.values()]
       .filter(accounts => accounts.length > 1)
@@ -3516,6 +3560,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!branch) unassigned += 1;
       return {
         ...member,
+        empId: account.empId ?? member.empId,
         accountId: account.id,
         role: account.role ?? member.role,
         branchId: branch?.id,
@@ -3532,6 +3577,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       nextStaff.push({
         id: genId(),
         accountId: account.id,
+         empId: account.empId,
         name: account.empName,
         role: account.role,
         sal: 0,
@@ -3559,18 +3605,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (member.accountId !== undefined || linkedNames.has(member.name.trim().toLowerCase())) continue;
       const branch = branches.find(item => item.id === member.branchId) ?? headOffice;
       if (!branch) { unassigned += 1; continue; }
+      const empId = member.empId ?? generateEmpId(knownIds);
       const row = await usersApi.create({
         empName: member.name,
+        empId,
         role: member.role,
         branchId: branch.id,
         dept: member.dept ?? null,
         status: 'pending_admin',
       });
-      if (!row) continue;
+      if (!row) { idFailures += 1; continue; }
+      const staffNeededId = !member.empId;
+      member.empId = row.empId ?? empId;
       member.accountId = row.id;
       member.branchId = branch.id;
       member.branchName = branch.name;
       setUserAccounts(prev => [...prev, { ...apiRowToUserAccount(row), branchName: branch.name }]);
+      knownIds.push({ empId });
+      if (staffNeededId) idsAssigned += 1;
       createdAccounts += 1;
     }
     setStaff(nextStaff);
@@ -3578,10 +3630,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id: genId(),
       action: 'Staff directory reconciled',
       user: userName,
-      detail: `${linked} linked, ${added} staff added, ${createdAccounts} accounts created, ${ambiguousAccountIds.length} ambiguous accounts skipped`,
+      detail: `${linked} linked, ${added} staff added, ${createdAccounts} accounts created, ${idsAssigned} permanent IDs assigned, ${idFailures} ID assignments failed, ${ambiguousAccountIds.length} ambiguous accounts skipped`,
       ts: nowTs(),
     }, ...a]);
-    return { added, linked, createdAccounts, ambiguousAccountIds, unassigned };
+    return { added, linked, createdAccounts, idsAssigned, idFailures, ambiguousAccountIds, unassigned };
   }, [branches, role, staff, userAccounts, userName]);
 
   const addBranch = useCallback((b: Omit<Branch, 'id'>) => {
@@ -3650,16 +3702,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addUserAccount = useCallback((acc: Omit<UserAccount, 'id' | 'createdAt' | 'status' | 'username' | 'password' | 'role'>) => {
     const localId = genId();
-    setUserAccounts(prev => [...prev, { ...acc, id: localId, createdAt: nowTs(), status: 'pending', username: '', password: '', role: null }]);
+    const empId = acc.empId ?? generateEmpId([...userAccounts, ...staff]);
+    setUserAccounts(prev => [...prev, { ...acc, empId, id: localId, createdAt: nowTs(), status: 'pending', username: '', password: '', role: null }]);
     // Persist to DB immediately so admin can track pending requests
-    usersApi.create({ empName: acc.empName, empId: acc.empId, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept, status: 'pending' })
+    usersApi.create({ empName: acc.empName, empId, branchId: acc.branchId, jobTitle: acc.jobTitle, dept: acc.dept, status: 'pending' })
       .then(row => { if (row) setUserAccounts(prev => prev.map(a => a.id === localId ? apiRowToUserAccount(row) : a)); });
-  }, []);
+  }, [staff, userAccounts]);
 
   const addActiveUserAccount = useCallback(async (acc: { empName: string; username: string; password: string; role: Role; branchId?: string | null; jobTitle?: string; dept?: string; phoneNumber?: string; createdBy: string }): Promise<number | null> => {
+    const matchingStaff = staff.filter(member => member.name.trim().toLowerCase() === acc.empName.trim().toLowerCase());
+    const empId = matchingStaff.length === 1 && matchingStaff[0].empId
+      ? matchingStaff[0].empId
+      : generateEmpId([...userAccounts, ...staff]);
     // Send plaintext — server hashes via ensureHashed
     const row = await usersApi.create({
-      empName: acc.empName, username: acc.username, password: acc.password,
+      empName: acc.empName, empId, username: acc.username, password: acc.password,
       role: acc.role, branchId: acc.branchId, jobTitle: acc.jobTitle,
       dept: acc.dept, phoneNumber: acc.phoneNumber ?? null, status: 'active',
     });
@@ -3672,12 +3729,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         );
         if (existing) {
           return prev.map(member => member.id === existing.id ? {
-            ...member, accountId: row.id, role: row.role ?? acc.role, st: 'Active',
+            ...member, empId: row.empId ?? empId, accountId: row.id, role: row.role ?? acc.role, st: 'Active',
             branchId: row.branchId ?? undefined, branchName: branch?.name,
           } : member);
         }
         return [...prev, {
-          id: genId(), accountId: row.id, name: row.empName, role: row.role ?? acc.role,
+          id: genId(), empId: row.empId ?? empId, accountId: row.id, name: row.empName, role: row.role ?? acc.role,
           sal: 0, st: 'Active', email: row.username?.includes('@') ? row.username : `${row.username}@petrotrack.com`,
           dept: row.dept ?? undefined, branchId: row.branchId ?? undefined, branchName: branch?.name,
         }];
@@ -3690,7 +3747,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setUserAccounts(prev => [...prev, {
         id: localId, createdAt: nowTs(), status: 'active',
         approvedBy: acc.createdBy, approvedAt: nowTs(),
-        empName: acc.empName, username: acc.username, password: '',
+        empName: acc.empName, empId, username: acc.username, password: '',
         role: acc.role, branchId: acc.branchId, branchName: branches.find(branch => branch.id === acc.branchId)?.name, jobTitle: acc.jobTitle, dept: acc.dept,
         phoneNumber: acc.phoneNumber, createdBy: acc.createdBy,
       }]);
@@ -3699,17 +3756,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const existing = prev.find(member => member.name.trim().toLowerCase() === acc.empName.trim().toLowerCase());
         const branchName = branches.find(branch => branch.id === acc.branchId)?.name;
         if (existing) return prev.map(member => member.id === existing.id
-          ? { ...member, accountId: localId, role: acc.role, st: 'Active', branchId: acc.branchId ?? undefined, branchName }
+          ? { ...member, empId, accountId: localId, role: acc.role, st: 'Active', branchId: acc.branchId ?? undefined, branchName }
           : member);
         return [...prev, {
-          id: genId(), accountId: localId, name: acc.empName, role: acc.role, sal: 0, st: 'Active',
+          id: genId(), empId, accountId: localId, name: acc.empName, role: acc.role, sal: 0, st: 'Active',
           email: acc.username.includes('@') ? acc.username : `${acc.username}@petrotrack.com`,
           dept: acc.dept, branchId: acc.branchId ?? undefined, branchName,
         }];
       });
       return localId;
     }
-  }, [branches]);
+  }, [branches, staff, userAccounts]);
 
   const updateUserAccount = useCallback(async (id: number, updates: { username?: string; password?: string; role?: Role; branchId?: string | null; phoneNumber?: string }, by: string) => {
     // Send plaintext password — server hashes via ensureHashed
@@ -3818,9 +3875,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const branch = branches.find(item => item.id === branchId);
         const existing = prev.find(member => member.name.trim().toLowerCase() === empName.trim().toLowerCase());
         if (existing) return prev.map(member => member.id === existing.id
-          ? { ...member, accountId: id, role, st: 'Active', branchId: branchId ?? undefined, branchName: branch?.name }
+          ? { ...member, empId: empIdVal ?? member.empId, accountId: id, role, st: 'Active', branchId: branchId ?? undefined, branchName: branch?.name }
           : member);
-         return [...prev, { id: genId(), accountId: id, name: empName, role, sal: 0, st: 'Active', email: username.includes('@') ? username : `${username}@petrotrack.com`, dept, branchId: branchId ?? undefined, branchName: branch?.name }];
+         return [...prev, { id: genId(), empId: empIdVal, accountId: id, name: empName, role, sal: 0, st: 'Active', email: username.includes('@') ? username : `${username}@petrotrack.com`, dept, branchId: branchId ?? undefined, branchName: branch?.name }];
       });
       setHrEmployees(prev => {
         if (prev.some(e => e.name === empName)) return prev;

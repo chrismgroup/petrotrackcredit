@@ -20,6 +20,7 @@ test("HR shares full user lifecycle control with Admin", {
   const branchName = `${marker} Branch`;
   const transferBranchId = `${marker}-transfer`;
   const transferBranchName = `${marker} Transfer Branch`;
+  const permanentStaffId = `GS-${marker}`;
   const hrUsername = `${marker}-hr`;
   const password = `Test-${randomUUID()}`;
   const server = app.listen(0);
@@ -73,6 +74,7 @@ test("HR shares full user lifecycle control with Admin", {
       method: "POST",
       body: JSON.stringify({
         empName: `${marker} Staff`,
+        empId: permanentStaffId,
         username: `${marker}-staff`,
         password,
         role: "att",
@@ -81,6 +83,7 @@ test("HR shares full user lifecycle control with Admin", {
       }),
     }, token);
     assert.equal(created.status, 201);
+    assert.equal(created.body.empId, permanentStaffId);
     assert.equal(created.body.branchName, branchName);
     const userId = Number(created.body.id);
 
@@ -90,8 +93,30 @@ test("HR shares full user lifecycle control with Admin", {
     }, token);
     assert.equal(updated.status, 200);
     assert.equal(updated.body.role, "mgr");
+    assert.equal(updated.body.empId, permanentStaffId);
     assert.equal(updated.body.branchId, transferBranchId);
     assert.equal(updated.body.branchName, transferBranchName);
+
+    const changedStaffId = await request(`/users/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify({ empId: `${permanentStaffId}-changed` }),
+    }, token);
+    assert.equal(changedStaffId.status, 409);
+    assert.match(String(changedStaffId.body.error), /permanent/i);
+
+    const duplicateStaffId = await request("/users", {
+      method: "POST",
+      body: JSON.stringify({
+        empName: `${marker} Duplicate`,
+        empId: permanentStaffId,
+        username: `${marker}-duplicate`,
+        password,
+        role: "att",
+        branchId,
+        status: "active",
+      }),
+    }, token);
+    assert.equal(duplicateStaffId.status, 409);
 
     const suspended = await request(`/users/${userId}/status`, {
       method: "PATCH",
