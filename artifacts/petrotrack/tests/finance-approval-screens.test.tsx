@@ -154,10 +154,9 @@ function touchableContaining(renderer: ReactTestRenderer, label: string): ReactT
 }
 
 function scorecardText(renderer: ReactTestRenderer, title: string): string {
-  const tile = renderer.root.findAll(node => {
-    const nodeStyles = Array.isArray(node.props.style) ? node.props.style : [node.props.style];
-    return nodeStyles.some((style: any) => style?.width === 278) && nodeText(node).includes(title);
-  })[0];
+  const tile = renderer.root.findAll(node =>
+    node.props.accessibilityLabel === `${title} scorecard`,
+  )[0];
   if (!tile) throw new Error(`Could not find scorecard "${title}"`);
   return nodeText(tile);
 }
