@@ -309,6 +309,77 @@ router.post("/finance/expenses", async (req, res) => {
   send(res, result, "expense.changed");
 });
 
+router.post("/finance/expenses/repair-branches", async (req, res) => {
+  if (req.auth?.role !== "admin") {
+    res.status(403).json({ error: "Only Admin may repair legacy expense branches" });
+    return;
+  }
+  const result = await db.transaction(async tx => {
+    await tx.execute(LOCK);
+    const [expenses, budgets, branches, staff] = await Promise.all([
+      load(tx, "expenses"),
+      load(tx, "budgets"),
+      load(tx, "branches"),
+      tx.select({
+        username: staffUsersTable.username,
+        empName: staffUsersTable.empName,
+        branchId: staffUsersTable.branchId,
+      }).from(staffUsersTable),
+    ]);
+    const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+    const branchNames = new Map(
+      branches
+        .map(branch => [String(branch.id ?? "").trim(), String(branch.name ?? "").trim()] as const)
+        .filter(([id, name]) => id && name),
+    );
+    const staffBranch = (item: JsonRecord) => {
+      const createdBy = normalize(item.createdBy);
+      const byName = normalize(item.byName);
+      return staff.find(candidate =>
+        (createdBy && normalize(candidate.username) === createdBy)
+        || (byName && (
+          normalize(candidate.empName) === byName
+          || normalize(candidate.username) === byName
+        ))
+      )?.branchId?.trim() ?? "";
+    };
+    const budgetBranches = new Map(
+      budgets.map(budget => {
+        const branchId = String(budget.branchId ?? "").trim() || staffBranch(budget);
+        return [String(budget.id ?? "").trim(), branchId] as const;
+      }).filter(([id, branchId]) => id && branchId && branchNames.has(branchId)),
+    );
+    const now = new Date().toISOString();
+    let repaired = 0;
+    const unresolvedIds: Array<string | number> = [];
+    const next = expenses.map(expense => {
+      const existingId = String(expense.branchId ?? "").trim();
+      const branchId = branchNames.has(existingId)
+        ? existingId
+        : budgetBranches.get(String(expense.budgetId ?? "").trim()) || staffBranch(expense);
+      const branchName = branchNames.get(branchId);
+      if (!branchId || !branchName) {
+        unresolvedIds.push((expense.id as string | number) ?? "unknown");
+        return expense;
+      }
+      if (expense.branchId === branchId && expense.branchName === branchName) return expense;
+      repaired += 1;
+      return {
+        ...expense,
+        branchId,
+        branchName,
+        updatedAt: now,
+        updatedBy: req.auth!.username,
+        revision: revision(expense) + 1,
+      };
+    });
+    if (repaired > 0) await save(tx, "expenses", next);
+    return { repaired, unresolvedIds, total: expenses.length };
+  });
+  if (result.repaired > 0) broadcastRealtime({ type: "expense.changed" });
+  res.json(result);
+});
+
 router.patch("/finance/expenses/:id", async (req, res) => {
   const body = canonicalExpense(req.body?.expense);
   if (!body) { res.status(400).json({ error: "Invalid expense fields" }); return; }

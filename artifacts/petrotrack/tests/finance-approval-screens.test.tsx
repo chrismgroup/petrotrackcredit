@@ -545,6 +545,10 @@ describe('expense approval controls', () => {
       act(() => { renderer = create(<ExpensesScreen />); });
       expect(touchables(renderer, 'Approve')).toHaveLength(0);
       expect(touchables(renderer, 'Reject')).toHaveLength(0);
+      const repairControls = renderer.root.findAll(node =>
+        node.props.accessibilityLabel === 'Repair legacy expense branches',
+      );
+      expect(repairControls.length > 0).toBe(role === 'admin');
       act(() => renderer.unmount());
     },
   );

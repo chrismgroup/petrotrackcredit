@@ -278,6 +278,7 @@ export const workflowApi = {
     update: <T>(id: number, expense: Partial<T>, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('PATCH', `/finance/expenses/${workflowPath(id)}`, { expense, ...command }),
     remove: <T>(id: number, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('DELETE', `/finance/expenses/${workflowPath(id)}`, command),
     transition: <T>(id: number, action: 'forward' | 'approve' | 'reject', command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', `/finance/expenses/${workflowPath(id)}/${action}`, command),
+    repairBranches: () => authenticatedJsonCommand<{ repaired: number; unresolvedIds: Array<string | number>; total: number }>('POST', '/finance/expenses/repair-branches', {}),
   },
   budgets: {
     create: <T>(budget: T, command: WorkflowCommand) => authenticatedJsonCommand<WorkflowRecordResponse<T>>('POST', '/finance/budgets', { budget, ...command }),

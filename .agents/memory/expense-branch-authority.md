@@ -38,3 +38,5 @@ Legacy expense reads must enrich branch identity before manager scoping: resolve
 **Why:** Older clients persisted expenses with valid branch IDs but blank branch names and legacy `acc_forwarded` statuses. This produced “Branch not assigned” labels and allowed stale workflow arrays to diverge from command-owned state.
 
 **How to apply:** Normalize both full-state and per-key expense responses before role filtering. Accountant, CEO, MD, and Admin must receive the same pending expense IDs; UI role differences may change available actions, not the underlying queue.
+
+Legacy branch enrichment on reads is not a durable repair. Admin must explicitly persist canonical expense branch IDs and names using existing branch IDs first, then linked budgets, then submitting staff; unresolved records must never be guessed.
