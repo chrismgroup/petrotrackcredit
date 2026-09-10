@@ -1281,6 +1281,11 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       expectedRevision: 0,
       idempotencyKey: `${marker}-dip-approve`,
     };
+    const adminDipApprovalBlocked = await command(admin.token, `/workflows/dips/${dipId}/approve`, {
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-dip-admin-approval-blocked`,
+    });
+    assert.equal(adminDipApprovalBlocked.status, 403);
     const dipApproved = await command(md.token, `/workflows/dips/${dipId}/approve`, dipApproveBody);
     assert.equal(dipApproved.status, 200);
     assert.equal((dipApproved.body.dip as JsonRecord).status, "approved");

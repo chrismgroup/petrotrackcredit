@@ -547,6 +547,34 @@ describe('dashboard and workspace navigation', () => {
     act(() => renderer.unmount());
   });
 
+  it.each(['md', 'ceo', 'acc', 'csm'] as const)(
+    'shows pending tank-dip workflow visibility on Home for %s',
+    role => {
+      mockUseApp.mockReturnValue(baseAppState({
+        role,
+        branchId: role === 'csm' ? 'branch-a' : null,
+        navItems: [{ id: 'tanks' }],
+        dips: [{
+          id: 211,
+          dt: '2026-09-05',
+          by: 'manager',
+          branchId: 'branch-a',
+          rd: { 'tank-1': 1_000 },
+          lpg: {},
+          obs: 'Workflow visibility',
+          status: 'pending',
+        }],
+      }));
+
+      let renderer!: ReactTestRenderer;
+      act(() => { renderer = create(<HomeScreen />); });
+      expect(renderer.root.findAll(node =>
+        String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Tank Dip Readings'),
+      )).toHaveLength(1);
+      act(() => renderer.unmount());
+    },
+  );
+
   it('opens the Home stock snapshot card in the stock snapshot screen', () => {
     mockUseApp.mockReturnValue(baseAppState());
 

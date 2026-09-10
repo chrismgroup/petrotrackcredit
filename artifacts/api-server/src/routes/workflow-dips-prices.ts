@@ -260,7 +260,7 @@ router.delete("/workflows/dips/:id", async (req, res) => run(req, res, async (tx
 router.post("/workflows/dips/:id/:decision", async (req, res) => run(req, res, async (tx, now) => {
   const cmd = command(req)!; const decision = req.params.decision;
   if (!["approve", "reject"].includes(decision)) return { status: 400, body: { error: "Decision must be approve or reject" } };
-  if (!["md", "admin"].includes(req.auth!.role)) return { status: 403, body: { error: "Only MD or admin may decide a dip" } };
+  if (req.auth!.role !== "md") return { status: 403, body: { error: "Only MD may decide a dip" } };
   const dips = await state(tx, "dips"); const index = dips.findIndex(d => String(d.id) === req.params.id);
   if (index < 0) return { status: 404, body: { error: "Dip not found" } }; const old = dips[index];
   if (old.status !== "pending" || revision(old) !== cmd.expectedRevision) return { status: 409, body: { error: "Dip is no longer pending or revision is stale" } };
