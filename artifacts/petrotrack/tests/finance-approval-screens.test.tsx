@@ -371,6 +371,87 @@ describe('expense approval controls', () => {
     act(() => renderer.unmount());
   });
 
+  it('refreshes approved budgets before opening a new expense and preselects the refreshed budget', async () => {
+    const state = appState({
+      role: 'mgr',
+      userName: 'Iniobong Inyang Edward',
+      branchId: 'branch-ikot-ekpene',
+      budgets: [],
+    }) as any;
+    state.refreshFinanceState = jest.fn(async () => {
+      state.budgets = [budget({
+        id: 23,
+        status: 'fully_approved',
+        branchId: 'branch-ikot-ekpene',
+        branchName: 'Ikot Ekpene Branch',
+      })];
+      return true;
+    });
+    mockedUseApp.mockReturnValue(state);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const addButton = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === '',
+    )[0];
+
+    await act(async () => {
+      await addButton.props.onPress();
+    });
+
+    expect(state.refreshFinanceState).toHaveBeenCalledTimes(1);
+    const budgetChoice = touchableContaining(renderer, 'Ikot Ekpene Branch · September 2026');
+    expect(budgetChoice.props.onPress).toEqual(expect.any(Function));
+    expect(budgetChoice.props.style).toEqual(expect.arrayContaining([
+      expect.objectContaining({ backgroundColor: '#1a6e3c' }),
+    ]));
+    act(() => renderer.unmount());
+  });
+
+  it('keeps the expense form open and blocks stale submission when budget refresh fails', async () => {
+    const addExpense = jest.fn(async () => ({ ok: true }));
+    const state = appState({
+      role: 'mgr',
+      userName: 'Iniobong Inyang Edward',
+      branchId: 'branch-ikot-ekpene',
+      budgets: [budget({
+        id: 24,
+        status: 'fully_approved',
+        branchId: 'branch-ikot-ekpene',
+        branchName: 'Ikot Ekpene Branch',
+      })],
+      addExpense,
+    }) as any;
+    state.refreshFinanceState = jest.fn(async () => false);
+    mockedUseApp.mockReturnValue(state);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const addButton = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === '',
+    )[0];
+
+    await act(async () => {
+      await addButton.props.onPress();
+    });
+
+    expect(nodeText(renderer.root)).toContain('New Expense');
+    expect(nodeText(renderer.root)).toContain('Could not refresh approved budgets. Please retry before submitting this expense.');
+
+    const inputs = renderer.root.findAll(node => String(node.type) === 'TextInput');
+    act(() => {
+      inputs[0].props.onChangeText('Stale budget should not submit');
+      inputs[1].props.onChangeText('25000');
+    });
+    await act(async () => {
+      await touchable(renderer, 'Submit Expense').props.onPress();
+    });
+
+    expect(addExpense).not.toHaveBeenCalled();
+    expect(nodeText(renderer.root)).toContain('Please retry before submitting this expense.');
+    act(() => renderer.unmount());
+  });
+
   it('submits an expense against the manager fully approved branch budget', async () => {
     const addExpense = jest.fn(async () => ({ ok: true }));
     mockedUseApp.mockReturnValue(appState({

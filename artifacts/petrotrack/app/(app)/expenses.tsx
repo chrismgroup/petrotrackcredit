@@ -161,6 +161,7 @@ export default function ExpensesScreen() {
   const [editTarget, setEditTarget] = useState<Expense | null>(null);
   const [form, setForm]             = useState<FormState>(blankForm());
   const [formError, setFormError]   = useState('');
+  const [budgetRefreshError, setBudgetRefreshError] = useState('');
   const [formBusy, setFormBusy]     = useState(false);
   const [repairingBranches, setRepairingBranches] = useState(false);
   const [selectedReportKey, setSelectedReportKey] = useState<string | null>(null);
@@ -271,14 +272,15 @@ export default function ExpensesScreen() {
     setForm(current => ({ ...current, budgetId: approvedBudgets[0].id }));
   }, [approvedBudgets, editTarget, form.budgetId, showForm]);
 
-  function showCreateForm() {
+  function showCreateForm(error = '') {
     setEditTarget(null);
     setForm(blankForm());
-    setFormError('');
+    setFormError(error);
+    setBudgetRefreshError(error);
     setShowForm(true);
   }
 
-  function openCreate() {
+  async function openCreate() {
     if (refreshingBudgets) return;
     // Keep lightweight screen test doubles and older embedded contexts
     // functional while the production provider refreshes authoritative data.
@@ -287,9 +289,15 @@ export default function ExpensesScreen() {
       return;
     }
     setRefreshingBudgets(true);
-    void refreshFinanceStateFromContext()
-      .finally(() => setRefreshingBudgets(false))
-      .then(showCreateForm);
+    try {
+      const refreshed = await refreshFinanceStateFromContext();
+      if (!refreshed) throw new Error('Finance state refresh did not complete.');
+      showCreateForm();
+    } catch {
+      showCreateForm('Could not refresh approved budgets. Please retry before submitting this expense.');
+    } finally {
+      setRefreshingBudgets(false);
+    }
   }
   function openEdit(e: Expense) { setEditTarget(e); setForm(expToForm(e)); setFormError(''); setShowForm(true); }
 
@@ -297,6 +305,10 @@ export default function ExpensesScreen() {
     if (formBusy) return;
     const amount = parseFloat(form.amt.replace(/,/g, ''));
     setFormError('');
+    if (!editTarget && budgetRefreshError) {
+      setFormError(budgetRefreshError);
+      return;
+    }
     if (!form.desc.trim()) { setFormError('Please enter a description.'); return; }
     if (!amount || amount <= 0) { setFormError('Please enter a valid amount.'); return; }
     if (!form.dt) { setFormError('Select the date this expense applies to.'); return; }
