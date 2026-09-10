@@ -38,6 +38,30 @@ function blankForm(): FormState {
   return { cat: EXPENSE_CATS[0], desc: '', amt: '', ref: '', budgetId: 0, dt: localDateKey() };
 }
 function expToForm(e: Expense): FormState { return { cat: e.cat, desc: e.desc, amt: String(e.amt), ref: e.ref ?? '', budgetId: e.budgetId, dt: e.dt.slice(0, 10) }; }
+type BranchExpenseTotal = { key: string; name: string; amount: number; count: number };
+
+function groupApprovedExpensesByBranch(
+  expenses: Expense[],
+  branchNames: Record<string, string>,
+  matchesPeriod: (businessDate: string) => boolean,
+): BranchExpenseTotal[] {
+  const totals = new Map<string, BranchExpenseTotal>();
+  expenses
+    .filter(expense => expense.status === 'approved' && matchesPeriod(expense.dt.slice(0, 10)))
+    .forEach(expense => {
+      const key = expense.branchId || expense.branchName || 'unassigned';
+      const current = totals.get(key) ?? {
+        key,
+        name: expense.branchName || branchNames[expense.branchId] || 'Branch not assigned',
+        amount: 0,
+        count: 0,
+      };
+      current.amount += safeNum(expense.amt);
+      current.count += 1;
+      totals.set(key, current);
+    });
+  return [...totals.values()].sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+}
 
 type FormSheetProps = {
   f: FormState;
@@ -144,13 +168,39 @@ export default function ExpensesScreen() {
   const [reviewingExpenseIds, setReviewingExpenseIds] = useState<Set<number>>(() => new Set());
   const reviewingExpenseIdsRef = useRef<Set<number>>(new Set());
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateKey();
   const todaySalesRev    = sales.filter(s => s.dt.startsWith(today)).reduce((s, x) => s + safeNum(x.L) * safeNum(x.price), 0);
   const todayApprovedExp = expenses.filter(e => e.status === 'approved' && e.dt.startsWith(today)).reduce((s, e) => s + e.amt, 0);
   const todayNet = todaySalesRev - todayApprovedExp;
 
   const pendingAmt  = expenses.filter(e => e.status === 'pending').reduce((s, e) => s + e.amt, 0);
   const approvedAmt = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + e.amt, 0);
+  const reportDate = filterDate || today;
+  const reportMonth = reportDate.slice(0, 7);
+  const reportYear = reportDate.slice(0, 4);
+  const expenseReports = [
+    {
+      key: 'daily',
+      title: 'Daily expenses',
+      period: reportDate,
+      icon: 'today-outline' as const,
+      totals: groupApprovedExpensesByBranch(expenses, branchNames, date => date === reportDate),
+    },
+    {
+      key: 'monthly',
+      title: 'Monthly expenses',
+      period: reportMonth,
+      icon: 'calendar-outline' as const,
+      totals: groupApprovedExpensesByBranch(expenses, branchNames, date => date.startsWith(reportMonth)),
+    },
+    {
+      key: 'ytd',
+      title: 'Year-to-date expenses',
+      period: `${reportYear} YTD`,
+      icon: 'analytics-outline' as const,
+      totals: groupApprovedExpensesByBranch(expenses, branchNames, date => date.startsWith(reportYear) && date <= reportDate),
+    },
+  ];
 
   const pendingForAcc = expenses.filter(e => e.status === 'pending');
   const pendingForMd = expenses.filter(e => e.status === 'acc_forwarded');
@@ -366,6 +416,50 @@ export default function ExpensesScreen() {
         </View>
       </View>
 
+      <AppliedDateField
+        value={filterDate}
+        onChange={setFilterDate}
+        label="Reporting business date"
+        accent={roleColor}
+        helper="Choose a business date to update these reports and filter the expense list."
+      />
+
+      <View style={styles.reportSection}>
+        <Text style={[styles.reportSectionTitle, { color: colors.text }]}>Approved expenses by branch</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reportTiles}>
+          {expenseReports.map(report => {
+            const total = report.totals.reduce((sum, branch) => sum + branch.amount, 0);
+            return (
+              <View key={report.key} style={[styles.reportTile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.reportTileHeader}>
+                  <View style={[styles.reportIcon, { backgroundColor: colors.infoBg }]}>
+                    <Ionicons name={report.icon} size={17} color={colors.info} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.reportTileTitle, { color: colors.text }]}>{report.title}</Text>
+                    <Text style={[styles.reportPeriod, { color: colors.textMuted }]}>{report.period}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.reportTotal, { color: roleColor }]}>{fmt(total)}</Text>
+                <Text style={[styles.reportTotalLabel, { color: colors.textSubtle }]}>Approved total</Text>
+                <View style={[styles.reportDivider, { backgroundColor: colors.border }]} />
+                {report.totals.length > 0 ? report.totals.map(branch => (
+                  <View key={branch.key} style={styles.branchReportRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.branchReportName, { color: colors.text }]} numberOfLines={1}>{branch.name}</Text>
+                      <Text style={[styles.branchReportCount, { color: colors.textSubtle }]}>{branch.count} item{branch.count === 1 ? '' : 's'}</Text>
+                    </View>
+                    <Text style={[styles.branchReportAmount, { color: colors.text }]}>{fmt(branch.amount)}</Text>
+                  </View>
+                )) : (
+                  <Text style={[styles.reportEmpty, { color: colors.textMuted }]}>No approved expenses for this period.</Text>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       {role === 'admin' ? (
         <TouchableOpacity
           accessibilityLabel="Repair legacy expense branches"
@@ -411,14 +505,6 @@ export default function ExpensesScreen() {
           </TouchableOpacity>
         ))}
       </View>
-
-      <AppliedDateField
-        value={filterDate}
-        onChange={setFilterDate}
-        label="View expenses for a date"
-        accent={roleColor}
-        helper="Filter by the date the expense applies to."
-      />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {displayedExpenses.length === 0 ? (
@@ -635,6 +721,22 @@ const styles = StyleSheet.create({
   metricValue:  { fontSize: 18, fontWeight: '700' },
   metricLabel:  { fontSize: 11, marginTop: 2 },
   metricCount:  { fontSize: 11, marginTop: 2 },
+  reportSection: { marginTop: 4, marginBottom: 6 },
+  reportSectionTitle: { fontSize: 15, fontWeight: '700', marginHorizontal: 16, marginBottom: 8 },
+  reportTiles: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
+  reportTile: { width: 278, borderRadius: 14, borderWidth: 1, padding: 14 },
+  reportTileHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  reportIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  reportTileTitle: { fontSize: 14, fontWeight: '700' },
+  reportPeriod: { fontSize: 11, marginTop: 1 },
+  reportTotal: { fontSize: 23, fontWeight: '800', marginTop: 13 },
+  reportTotalLabel: { fontSize: 10, marginTop: 1 },
+  reportDivider: { height: StyleSheet.hairlineWidth, marginVertical: 10 },
+  branchReportRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 },
+  branchReportName: { fontSize: 12, fontWeight: '600' },
+  branchReportCount: { fontSize: 10, marginTop: 1 },
+  branchReportAmount: { fontSize: 12, fontWeight: '700' },
+  reportEmpty: { fontSize: 11, lineHeight: 16, paddingVertical: 6 },
   pendingBanner:{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 8, borderRadius: 10, borderWidth: 1, padding: 10 },
   pendingBannerText: { fontSize: 13, fontWeight: '600' },
   tabRow:       { flexDirection: 'row', gap: 8, marginBottom: 4, paddingHorizontal: 16 },

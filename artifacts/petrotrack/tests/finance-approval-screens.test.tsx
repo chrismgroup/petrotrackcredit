@@ -237,6 +237,37 @@ afterEach(() => {
 });
 
 describe('expense approval controls', () => {
+  it('reports approved daily, monthly, and year-to-date expenses by branch', () => {
+    const now = new Date();
+    const year = String(now.getFullYear());
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const today = `${year}-${month}-${day}`;
+
+    mockedUseApp.mockReturnValue(appState({
+      expenses: [
+        expense({ id: 1, dt: today, status: 'approved', amt: 100, branchId: 'branch-a', branchName: 'Maitama Branch' }),
+        expense({ id: 2, dt: today, status: 'approved', amt: 200, branchId: 'branch-b', branchName: 'Wuse Branch' }),
+        expense({ id: 3, dt: `${year}-${month}-01`, status: 'approved', amt: 50, branchId: 'branch-a', branchName: 'Maitama Branch' }),
+        expense({ id: 4, dt: `${year}-01-01`, status: 'approved', amt: 25, branchId: 'branch-b', branchName: 'Wuse Branch' }),
+        expense({ id: 5, dt: today, status: 'pending', amt: 10_000, branchId: 'branch-a', branchName: 'Maitama Branch' }),
+      ],
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const text = nodeText(renderer.root);
+    expect(text).toContain('Daily expenses');
+    expect(text).toContain('Monthly expenses');
+    expect(text).toContain('Year-to-date expenses');
+    expect(text).toContain('₦300');
+    expect(text).toContain('₦350');
+    expect(text).toContain('₦375');
+    expect(text).toContain('Maitama Branch');
+    expect(text).toContain('Wuse Branch');
+    act(() => renderer.unmount());
+  });
+
   it('resolves an expense branch label from its canonical branch ID', () => {
     mockedUseApp.mockReturnValue(appState({
       expenses: [expense({
