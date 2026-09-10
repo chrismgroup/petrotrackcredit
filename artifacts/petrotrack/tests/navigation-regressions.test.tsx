@@ -369,6 +369,33 @@ describe('dashboard and workspace navigation', () => {
     act(() => jobsRenderer.unmount());
   });
 
+  it('shows legacy accountant-pending expenses to the Accountant on Home', () => {
+    mockUseApp.mockReturnValue(baseAppState({
+      role: 'acc',
+      navItems: [{ id: 'exp' }],
+      expenses: [{
+        id: 103,
+        dt: '2026-09-09',
+        cat: 'Utilities',
+        desc: 'Uyo generator diesel',
+        amt: 50000,
+        by: 'mgr',
+        byName: 'Utibe Jimmy',
+        status: 'acc_forwarded',
+        budgetId: 3,
+        branchId: 'B1784296733504',
+        branchName: 'Uyo fuel station',
+      }],
+    }));
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<HomeScreen />); });
+    expect(renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Expense Claims'),
+    )).toHaveLength(1);
+    act(() => renderer.unmount());
+  });
+
   it.each([
     {
       label: 'MD tank-dip approval',

@@ -617,7 +617,7 @@ export default function HomeScreen() {
   const pendingExpenses = expenses.filter(expense => {
     if (!canOpen(SCREEN_ROUTES.exp)) return false;
     if (isAdmin || isExecutive) return expense.status === 'pending' || expense.status === 'acc_forwarded' || expense.status === 'rejected';
-    if (role === 'acc') return expense.status === 'pending' || expense.status === 'rejected';
+    if (role === 'acc') return expense.status === 'pending' || expense.status === 'acc_forwarded' || expense.status === 'rejected';
     if (role === 'mgr' || role === 'csm' || role === 'mktg') {
       return expense.status === 'rejected' && (expense.by === role || expense.byName === userName);
     }

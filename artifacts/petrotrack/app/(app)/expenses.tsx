@@ -38,8 +38,14 @@ function blankForm(): FormState {
 }
 function expToForm(e: Expense): FormState { return { cat: e.cat, desc: e.desc, amt: String(e.amt), ref: e.ref ?? '', budgetId: e.budgetId, dt: e.dt.slice(0, 10) }; }
 
-type FormSheetProps = { f: FormState; setF: React.Dispatch<React.SetStateAction<FormState>>; roleColor: string; approvedBudgets: Budget[] };
-function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
+type FormSheetProps = {
+  f: FormState;
+  setF: React.Dispatch<React.SetStateAction<FormState>>;
+  roleColor: string;
+  approvedBudgets: Budget[];
+  branchNames: Record<string, string>;
+};
+function FormSheet({ f, setF, roleColor, approvedBudgets, branchNames }: FormSheetProps) {
   const colors = useColors();
   return (
     <>
@@ -68,7 +74,9 @@ function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
           {approvedBudgets.map(b => (
             <TouchableOpacity key={b.id} onPress={() => setF(p => ({ ...p, budgetId: b.id }))}
               style={[styles.catChip, { backgroundColor: f.budgetId === b.id ? roleColor : colors.surface, borderColor: f.budgetId === b.id ? roleColor : colors.border }]}>
-              <Text style={[styles.catChipText, { color: f.budgetId === b.id ? '#fff' : colors.textMuted }]}>{b.branchName}{' · '}{b.label}</Text>
+              <Text style={[styles.catChipText, { color: f.budgetId === b.id ? '#fff' : colors.textMuted }]}>
+                {b.branchName || branchNames[b.branchId] || 'Branch not assigned'}{' · '}{b.label}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -98,7 +106,7 @@ function FormSheet({ f, setF, roleColor, approvedBudgets }: FormSheetProps) {
 
 export default function ExpensesScreen() {
   const {
-    role, userName, expenses, sales, budgets,
+    role, userName, expenses, sales, budgets, branches,
     refreshFinanceState: refreshFinanceStateFromContext,
     addExpense, updateExpenseConfirmed, deleteExpense,
     approveExpenseConfirmed, rejectExpenseConfirmed,
@@ -121,6 +129,7 @@ export default function ExpensesScreen() {
   // can otherwise hide a valid approved budget before the request reaches the
   // server. Expense creation still validates status and branch authoritatively.
   const approvedBudgets = budgets.filter(b => b.status === 'fully_approved');
+  const branchNames = Object.fromEntries(branches.map(branch => [branch.id, branch.name]));
 
   const [tab, setTab]               = useState(0);
   const [showForm, setShowForm]     = useState(false);
@@ -378,7 +387,7 @@ export default function ExpensesScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.expCat, { color: colors.text }]}>{exp.cat}</Text>
                   <Text style={[styles.expDesc, { color: colors.textMuted }]}>{exp.desc}</Text>
-                   <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{exp.branchName || 'Branch not assigned'}{' · by '}{exp.byName}{' · applies on '}{exp.dt.slice(0, 10)}{' · submitted '}{exp.submittedAt ? fmtDateTime(exp.submittedAt) : fmtDateTime(exp.dt)}</Text>
+                   <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{exp.branchName || branchNames[exp.branchId] || 'Branch not assigned'}{' · by '}{exp.byName}{' · applies on '}{exp.dt.slice(0, 10)}{' · submitted '}{exp.submittedAt ? fmtDateTime(exp.submittedAt) : fmtDateTime(exp.dt)}</Text>
                   {exp.ref ? <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{'Ref: '}{exp.ref}</Text> : null}
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -495,7 +504,13 @@ export default function ExpensesScreen() {
                 <Text style={[styles.formErrorText, { color: colors.error }]}>{formError}</Text>
               </View>
             ) : null}
-            <FormSheet f={form} setF={setForm} roleColor={roleColor} approvedBudgets={approvedBudgets} />
+            <FormSheet
+              f={form}
+              setF={setForm}
+              roleColor={roleColor}
+              approvedBudgets={approvedBudgets}
+              branchNames={branchNames}
+            />
             {!editTarget && approvedBudgets.length === 0 ? (
               <View style={[styles.budgetRequirement, { backgroundColor: colors.infoBg, borderColor: colors.info }]}>
                 <Ionicons name="information-circle-outline" size={16} color={colors.info} />

@@ -32,3 +32,9 @@ Manager budget visibility in the expense form must trust the authenticated, bran
 **Why:** Local session branch metadata can lag canonical server identity and hide a valid approved budget before expense creation reaches the API.
 
 **How to apply:** Filter client options by approval status; enforce same-branch authority in the state response and expense command endpoint.
+
+Legacy expense reads must enrich branch identity before manager scoping: resolve the canonical name from an existing branch ID, then the linked budget, then the submitting staff identity. Generic whole-array state writes for expenses must be rejected because they can bypass canonical branch assignment and current workflow statuses.
+
+**Why:** Older clients persisted expenses with valid branch IDs but blank branch names and legacy `acc_forwarded` statuses. This produced “Branch not assigned” labels and allowed stale workflow arrays to diverge from command-owned state.
+
+**How to apply:** Normalize both full-state and per-key expense responses before role filtering. Accountant, CEO, MD, and Admin must receive the same pending expense IDs; UI role differences may change available actions, not the underlying queue.
