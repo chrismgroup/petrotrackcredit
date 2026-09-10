@@ -667,11 +667,6 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       idempotencyKey: `${marker}-expense-role-denied`,
     });
     assert.equal(expenseRoleDenied.status, 403);
-    const expenseForwardDenied = await command(accountant.token, `/finance/expenses/${expenseId}/forward`, {
-      expectedRevision: 1,
-      idempotencyKey: `${marker}-expense-forward-disabled`,
-    });
-    assert.equal(expenseForwardDenied.status, 403);
     const ceoExpenseState = await request("/state/expenses", {}, ceo.token);
     assert.equal(ceoExpenseState.status, 200);
     assert.ok((ceoExpenseState.body as unknown as JsonRecord[]).some(item => String(item.id) === expenseId));
@@ -691,7 +686,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       expectedRevision: 1,
       idempotencyKey: `${marker}-md-expense-approve-blocked`,
     });
-    assert.equal(mdExpenseApprovalBlocked.status, 403);
+    assert.equal(mdExpenseApprovalBlocked.status, 409);
     const staleExpense = await command(manager.token, `/finance/expenses/${expenseId}`, {
       expense: {
         cat: "Operations",
@@ -730,13 +725,29 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(resubmittedExpense.status, 201);
     assert.equal(recordFrom(resubmittedExpense).status, "pending");
     assert.equal(recordFrom(resubmittedExpense).revision, 3);
-    const expenseApproveBody = {
+    const accountantFinalApprovalBlocked = await command(accountant.token, `/finance/expenses/${expenseId}/approve`, {
       expectedRevision: 3,
+      idempotencyKey: `${marker}-expense-accountant-final-approval-blocked`,
+    });
+    assert.equal(accountantFinalApprovalBlocked.status, 403);
+    const expenseForwarded = await command(accountant.token, `/finance/expenses/${expenseId}/forward`, {
+      expectedRevision: 3,
+      idempotencyKey: `${marker}-expense-forward`,
+    });
+    assert.equal(expenseForwarded.status, 201);
+    assert.equal(recordFrom(expenseForwarded).status, "acc_forwarded");
+    const expenseApproveBody = {
+      expectedRevision: 4,
       idempotencyKey: `${marker}-expense-approve`,
     };
-    const expenseApproved = await command(accountant.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
+    const expenseApproved = await command(md.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
     assert.equal(expenseApproved.status, 201);
     assert.equal(recordFrom(expenseApproved).status, "approved");
+    const approvedExpenseDeleteBlocked = await command(admin.token, `/finance/expenses/${expenseId}`, {
+      expectedRevision: 5,
+      idempotencyKey: `${marker}-expense-approved-delete-blocked`,
+    }, "DELETE");
+    assert.equal(approvedExpenseDeleteBlocked.status, 409);
     const staleExpenseWrite = await request<{ error: string }>(
       "/state/expenses",
       {
@@ -780,7 +791,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     );
     assert.equal(staleDeletedExpenseWrite.status, 409);
     assert.match(staleDeletedExpenseWrite.body.error, /server-authoritative/);
-    const expenseReplay = await command(accountant.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
+    const expenseReplay = await command(md.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
     assert.equal(expenseReplay.status, 200);
     assert.equal(expenseReplay.body.replay, true);
 
@@ -802,17 +813,23 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       idempotencyKey: `${marker}-ceo-expense-approve`,
     });
     assert.equal(ceoExpenseApprovalBlocked.status, 403);
-    const mdExpenseApprovalAlsoBlocked = await command(md.token, `/finance/expenses/${ceoExpenseId}/approve`, {
+    const mdExpenseApprovalBeforeReviewBlocked = await command(md.token, `/finance/expenses/${ceoExpenseId}/approve`, {
       expectedRevision: 1,
       idempotencyKey: `${marker}-md-expense-approve`,
     });
-    assert.equal(mdExpenseApprovalAlsoBlocked.status, 403);
-    const accountantExpenseApproved = await command(accountant.token, `/finance/expenses/${ceoExpenseId}/approve`, {
+    assert.equal(mdExpenseApprovalBeforeReviewBlocked.status, 409);
+    const accountantExpenseForwarded = await command(accountant.token, `/finance/expenses/${ceoExpenseId}/forward`, {
       expectedRevision: 1,
-      idempotencyKey: `${marker}-accountant-expense-approve`,
+      idempotencyKey: `${marker}-accountant-expense-forward`,
     });
-    assert.equal(accountantExpenseApproved.status, 201);
-    assert.equal(recordFrom(accountantExpenseApproved).status, "approved");
+    assert.equal(accountantExpenseForwarded.status, 201);
+    assert.equal(recordFrom(accountantExpenseForwarded).status, "acc_forwarded");
+    const mdExpenseApproved = await command(md.token, `/finance/expenses/${ceoExpenseId}/approve`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-md-expense-final-approve`,
+    });
+    assert.equal(mdExpenseApproved.status, 201);
+    assert.equal(recordFrom(mdExpenseApproved).status, "approved");
 
     const legacyBudgetId = `${marker}-legacy-budget`;
     await pool.query(`
@@ -1147,26 +1164,29 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       expectedRevision: 0,
       idempotencyKey: `${marker}-${key}-create`,
     });
+    const approvePerformanceExpense = async (created: Awaited<ReturnType<typeof command>>, key: string) => {
+      const expenseId = recordFrom(created).id;
+      const forwarded = await command(accountant.token, `/finance/expenses/${expenseId}/forward`, {
+        expectedRevision: 1,
+        idempotencyKey: `${marker}-${key}-forward`,
+      });
+      assert.equal(forwarded.status, 201);
+      return command(md.token, `/finance/expenses/${expenseId}/approve`, {
+        expectedRevision: 2,
+        idempotencyKey: `${marker}-${key}-approve`,
+      });
+    };
     const warningExpense = await createPerformanceExpense(500, "budget-warning");
     assert.equal(warningExpense.status, 201);
-    const warningApproved = await command(accountant.token, `/finance/expenses/${recordFrom(warningExpense).id}/approve`, {
-      expectedRevision: 1,
-      idempotencyKey: `${marker}-budget-warning-approve`,
-    });
+    const warningApproved = await approvePerformanceExpense(warningExpense, "budget-warning");
     assert.equal(warningApproved.status, 201);
     assert.equal((await performanceNotifications()).filter(item => item.title === "Budget nearing exhaustion").length, 1);
     const nonCrossingExpense = await createPerformanceExpense(100, "budget-non-crossing");
-    const nonCrossingApproved = await command(accountant.token, `/finance/expenses/${recordFrom(nonCrossingExpense).id}/approve`, {
-      expectedRevision: 1,
-      idempotencyKey: `${marker}-budget-non-crossing-approve`,
-    });
+    const nonCrossingApproved = await approvePerformanceExpense(nonCrossingExpense, "budget-non-crossing");
     assert.equal(nonCrossingApproved.status, 201);
     assert.equal((await performanceNotifications()).length, 1);
     const overspendExpense = await createPerformanceExpense(1_600, "budget-overspend");
-    const overspendApproved = await command(accountant.token, `/finance/expenses/${recordFrom(overspendExpense).id}/approve`, {
-      expectedRevision: 1,
-      idempotencyKey: `${marker}-budget-overspend-approve`,
-    });
+    const overspendApproved = await approvePerformanceExpense(overspendExpense, "budget-overspend");
     assert.equal(overspendApproved.status, 201);
     const performanceAlertRows = await performanceNotifications();
     assert.equal(performanceAlertRows.filter(item => item.title === "Budget Overspent").length, 1);

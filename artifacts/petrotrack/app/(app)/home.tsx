@@ -618,7 +618,8 @@ export default function HomeScreen() {
     if (!canOpen(SCREEN_ROUTES.exp)) return false;
     if (isAdmin || isExecutive) return expense.status === 'pending' || expense.status === 'acc_forwarded' || expense.status === 'rejected';
     if (role === 'acc') return expense.status === 'pending' || expense.status === 'acc_forwarded' || expense.status === 'rejected';
-    if (role === 'mgr' || role === 'csm' || role === 'mktg') {
+    if (role === 'csm') return expense.status === 'pending' || expense.status === 'acc_forwarded' || expense.status === 'rejected';
+    if (role === 'mgr' || role === 'mktg') {
       return expense.status === 'rejected' && (expense.by === role || expense.byName === userName);
     }
     return false;
@@ -762,8 +763,10 @@ export default function HomeScreen() {
       meta: `${expense.dt} · ${expense.byName} · ${expense.branchName || 'Branch not recorded'}`,
       status: expense.status === 'rejected'
         ? 'With Manager for correction'
-        : 'With Accountant for approval',
-      statusColor: expense.status === 'rejected' ? colors.error : colors.blue,
+        : expense.status === 'acc_forwarded'
+          ? 'With MD for final approval'
+          : 'With Accountant for review',
+      statusColor: expense.status === 'rejected' ? colors.error : expense.status === 'acc_forwarded' ? colors.amber : colors.blue,
       facts: [`Amount: ${fmt(expense.amt)}`, expense.desc || 'No description provided', expense.ref ? `Reference: ${expense.ref}` : 'Reference: None'],
     })),
     prices: pendingPriceProps.map(proposal => ({

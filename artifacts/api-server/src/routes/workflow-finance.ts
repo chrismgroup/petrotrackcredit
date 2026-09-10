@@ -20,7 +20,6 @@ const EXPENSE_CREATORS = new Set(["mgr", "csm", "mktg", "acc", "admin"]);
 const BUDGET_CREATORS = new Set(["mgr", "csm", "mktg", "acc", "admin"]);
 const ACCOUNTANTS = new Set(["acc", "admin"]);
 const MD = new Set(["md", "ceo", "admin"]);
-const EXPENSE_DECIDERS = new Set(["acc"]);
 const MANAGERS = new Set(["mgr", "csm", "mktg"]);
 const FINAL_BUDGETS = new Set(["draft", "fully_approved", "rejected"]);
 const SUBMITTED_BUDGETS = new Set(["submitted", "acc_forwarded", "fully_approved"]);
@@ -348,6 +347,7 @@ router.delete("/finance/expenses/:id", async (req, res) => {
   const result = await command(req, "expenses", (items, auth) => {
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
     if (auth.role !== "admin" && !sameBranch(current, auth)) return forbidden("You cannot delete an expense from another branch");
+    if (String(current.status) === "approved") return conflict("Approved expenses are permanently locked and cannot be deleted");
     const allowed = auth.role === "admin"
       || (MANAGERS.has(auth.role) && canEditOwned(current, auth))
       || (ACCOUNTANTS.has(auth.role) && ["pending", "rejected"].includes(String(current.status)));
@@ -360,15 +360,17 @@ router.delete("/finance/expenses/:id", async (req, res) => {
 });
 
 function expenseTransition(action: "forward" | "approve" | "reject", from: string, role: string): string | null {
-  if ((action === "approve" || action === "reject") && EXPENSE_DECIDERS.has(role) && (from === "pending" || from === "acc_forwarded")) {
-    return action === "approve" ? "approved" : "rejected";
-  }
+  if (role === "acc" && from === "pending" && action === "forward") return "acc_forwarded";
+  if (role === "acc" && from === "pending" && action === "reject") return "rejected";
+  if (role === "md" && from === "acc_forwarded" && action === "approve") return "approved";
+  if (role === "md" && from === "acc_forwarded" && action === "reject") return "rejected";
   return null;
 }
 for (const action of ["forward", "approve", "reject"] as const) router.post(`/finance/expenses/:id/${action}`, async (req, res) => {
   const result = await command(req, "expenses", (items, auth, now) => {
-    if (action === "forward") return forbidden("Expenses are approved directly by the Accountant; forwarding is not used");
-    if ((action === "approve" || action === "reject") && !EXPENSE_DECIDERS.has(auth.role)) return forbidden("Only the Accountant can approve or reject expenses");
+    if (action === "forward" && auth.role !== "acc") return forbidden("Only the Accountant can forward expenses to MD");
+    if (action === "approve" && auth.role !== "md") return forbidden("Only MD can give final expense approval");
+    if (action === "reject" && auth.role !== "acc" && auth.role !== "md") return forbidden("Only the Accountant or MD can return an expense");
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
     if (!sameBranch(current, auth)) return forbidden("You cannot act on an expense from another branch");
     const status = expenseTransition(action, String(current.status), auth.role);
@@ -377,10 +379,14 @@ for (const action of ["forward", "approve", "reject"] as const) router.post(`/fi
     items[items.indexOf(current)] = item; return { item };
   });
   if (!result.error) {
-    const target = String(result.item?.createdBy ?? result.item?.byName ?? "");
+    const notificationTarget = action === "forward"
+      ? "md"
+      : String(result.item?.createdBy ?? result.item?.byName ?? "");
     await notify(result, {
-      target, type: "operational",
-      title: `Expense ${action === "approve" ? "Approved" : "Rejected"}`,
+      target: notificationTarget, type: "operational",
+      title: action === "forward"
+        ? "Expense Awaiting MD Approval"
+        : `Expense ${action === "approve" ? "Approved" : "Rejected"}`,
       body: `${result.item?.desc ?? "Expense"} — ₦${result.item?.amt ?? 0}`,
       data: { route: "/(app)/expenses", expenseId: result.item?.id },
     });

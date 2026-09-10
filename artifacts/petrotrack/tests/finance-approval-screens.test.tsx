@@ -355,12 +355,12 @@ describe('expense approval controls', () => {
     act(() => renderer.unmount());
   });
 
-  it('lets only the accountant approve or reject a pending expense', async () => {
-    const approveExpenseConfirmed = jest.fn(async () => ({ ok: true }));
+  it('lets the accountant review a pending expense and forward it to MD', async () => {
+    const forwardExpenseToMDConfirmed = jest.fn(async () => ({ ok: true }));
     const rejectExpenseConfirmed = jest.fn(async () => ({ ok: true }));
     mockedUseApp.mockReturnValue(appState({
       expenses: [expense()],
-      approveExpenseConfirmed,
+      forwardExpenseToMDConfirmed,
       rejectExpenseConfirmed,
     }) as any);
 
@@ -368,9 +368,9 @@ describe('expense approval controls', () => {
     act(() => { renderer = create(<ExpensesScreen />); });
 
     await act(async () => {
-      await touchable(renderer, 'Approve').props.onPress();
+      await touchable(renderer, 'Forward to MD').props.onPress();
     });
-    expect(approveExpenseConfirmed).toHaveBeenCalledWith(41);
+    expect(forwardExpenseToMDConfirmed).toHaveBeenCalledWith(41);
 
     await act(async () => {
       await touchable(renderer, 'Reject').props.onPress();
@@ -380,32 +380,32 @@ describe('expense approval controls', () => {
     act(() => renderer.unmount());
   });
 
-  it('blocks duplicate expense approvals and recovers after a server rejection', async () => {
+  it('blocks duplicate expense forwards and recovers after a server rejection', async () => {
     let resolveApproval!: (result: { ok: boolean; error?: string }) => void;
-    const approveExpenseConfirmed = jest.fn(() => new Promise<{ ok: boolean; error?: string }>(resolve => {
+    const forwardExpenseToMDConfirmed = jest.fn(() => new Promise<{ ok: boolean; error?: string }>(resolve => {
       resolveApproval = resolve;
     }));
     mockedUseApp.mockReturnValue(appState({
       expenses: [expense()],
-      approveExpenseConfirmed,
+      forwardExpenseToMDConfirmed,
     }) as any);
 
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<ExpensesScreen />); });
-    const approveButton = touchable(renderer, 'Approve');
+    const approveButton = touchable(renderer, 'Forward to MD');
     let pendingApproval!: Promise<unknown>;
     act(() => { pendingApproval = approveButton.props.onPress(); });
 
     expect(approveButton.props.disabled).toBe(true);
     act(() => { approveButton.props.onPress(); });
-    expect(approveExpenseConfirmed).toHaveBeenCalledTimes(1);
+    expect(forwardExpenseToMDConfirmed).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveApproval({ ok: false, error: 'This expense was already reviewed.' });
       await pendingApproval;
     });
 
-    expect(touchable(renderer, 'Approve').props.disabled).toBe(false);
+    expect(touchable(renderer, 'Forward to MD').props.disabled).toBe(false);
     act(() => renderer.unmount());
   });
 
@@ -484,17 +484,23 @@ describe('expense approval controls', () => {
   });
 
   it(
-    'shows no expense decision controls to MD, CEO, or admin',
-    () => {
+    'lets MD approve or reject an Accountant-forwarded expense',
+    async () => {
+      const approveExpenseConfirmed = jest.fn(async () => ({ ok: true }));
+      const rejectExpenseConfirmed = jest.fn(async () => ({ ok: true }));
       mockedUseApp.mockReturnValue(appState({
         role: 'md',
         expenses: [expense({ status: 'acc_forwarded' })],
+        approveExpenseConfirmed,
+        rejectExpenseConfirmed,
       }) as any);
 
       let renderer!: ReactTestRenderer;
       act(() => { renderer = create(<ExpensesScreen />); });
-      expect(touchables(renderer, 'Approve')).toHaveLength(0);
-      expect(touchables(renderer, 'Reject')).toHaveLength(0);
+      await act(async () => { await touchable(renderer, 'Approve & Lock').props.onPress(); });
+      expect(approveExpenseConfirmed).toHaveBeenCalledWith(41);
+      await act(async () => { await touchable(renderer, 'Reject').props.onPress(); });
+      expect(rejectExpenseConfirmed).toHaveBeenCalledWith(41);
       act(() => renderer.unmount());
     },
   );

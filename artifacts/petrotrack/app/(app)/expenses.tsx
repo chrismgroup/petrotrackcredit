@@ -21,7 +21,7 @@ const EXPENSE_CATS = [
 
 const ST_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   pending:      { label: 'With Accountant', color: '#0C447C', bg: '#E6F1FB', icon: 'time-outline' },
-  acc_forwarded:{ label: 'With Accountant', color: '#0C447C', bg: '#E6F1FB', icon: 'time-outline' },
+  acc_forwarded:{ label: 'With MD',         color: '#854F0B', bg: '#FAEEDA', icon: 'time-outline' },
   approved:     { label: 'Approved',        color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle' },
   rejected:     { label: 'With Manager',    color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle' },
 };
@@ -109,7 +109,7 @@ export default function ExpensesScreen() {
     role, userName, expenses, sales, budgets, branches,
     refreshFinanceState: refreshFinanceStateFromContext,
     addExpense, updateExpenseConfirmed, deleteExpense,
-    approveExpenseConfirmed, rejectExpenseConfirmed,
+    forwardExpenseToMDConfirmed, approveExpenseConfirmed, rejectExpenseConfirmed,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
@@ -150,7 +150,8 @@ export default function ExpensesScreen() {
   const pendingAmt  = expenses.filter(e => e.status === 'pending').reduce((s, e) => s + e.amt, 0);
   const approvedAmt = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + e.amt, 0);
 
-  const pendingForAcc = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded');
+  const pendingForAcc = expenses.filter(e => e.status === 'pending');
+  const pendingForMd = expenses.filter(e => e.status === 'acc_forwarded');
   const pendingForViewer = expenses.filter(e => e.status === 'pending' || e.status === 'acc_forwarded');
   const myExpenses    = expenses.filter(e => e.by === role || e.byName === userName);
 
@@ -177,7 +178,7 @@ export default function ExpensesScreen() {
     return b.id - a.id;
   });
 
-  const pendingCount = isAcc ? pendingForAcc.length : isReadOnlyViewer ? pendingForViewer.length : 0;
+  const pendingCount = isAcc ? pendingForAcc.length : isMD ? pendingForMd.length : isReadOnlyViewer ? pendingForViewer.length : 0;
 
   const [refreshingBudgets, setRefreshingBudgets] = useState(false);
 
@@ -269,17 +270,19 @@ export default function ExpensesScreen() {
     });
   }
 
-  async function handleExpenseDecision(id: number, decision: 'approve' | 'reject') {
+  async function handleExpenseDecision(id: number, decision: 'forward' | 'approve' | 'reject') {
     if (reviewingExpenseIdsRef.current.has(id)) return;
     reviewingExpenseIdsRef.current.add(id);
     setExpenseReviewBusy(id, true);
     try {
-      const result = decision === 'approve'
-        ? await approveExpenseConfirmed(id)
-        : await rejectExpenseConfirmed(id);
+      const result = decision === 'forward'
+        ? await forwardExpenseToMDConfirmed(id)
+        : decision === 'approve'
+          ? await approveExpenseConfirmed(id)
+          : await rejectExpenseConfirmed(id);
       if (!result?.ok) {
         Alert.alert(
-          decision === 'approve' ? 'Expense not approved' : 'Expense not rejected',
+          decision === 'forward' ? 'Expense not forwarded' : decision === 'approve' ? 'Expense not approved' : 'Expense not rejected',
           result?.error ?? `The server could not ${decision} this expense.`,
         );
       }
@@ -294,7 +297,8 @@ export default function ExpensesScreen() {
     isMgr && (e.status === 'pending' || e.status === 'rejected') && (e.by === role || e.byName === userName);
   const accCanEdit    = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
   const accCanDelete  = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
-  const accCanDecide = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'acc_forwarded');
+  const accCanReview = (e: Expense) => isAcc && e.status === 'pending';
+  const mdCanDecide = (e: Expense) => isMD && e.status === 'acc_forwarded';
 
   return (
     <ScreenLayout
@@ -423,7 +427,7 @@ export default function ExpensesScreen() {
                 </View>
               ) : null}
 
-               {/* Accountant: edit/delete plus direct approval decision */}
+               {/* Accountant: edit/delete before forwarding */}
               {accCanEdit(exp) ? (
                 <View style={styles.actionRow}>
                   <TouchableOpacity onPress={() => openEdit(exp)} style={[styles.actionBtn, { borderColor: '#0C447C' }]}>
@@ -439,8 +443,28 @@ export default function ExpensesScreen() {
                 </View>
               ) : null}
 
-               {/* Only the Accountant can approve or reject */}
-               {accCanDecide(exp) ? (
+               {/* Accountant reviews first and forwards to MD, or returns to manager */}
+               {accCanReview(exp) ? (
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    disabled={reviewingExpenseIds.has(exp.id)}
+                    onPress={() => handleExpenseDecision(exp.id, 'reject')}
+                    style={[styles.actionBtn, { borderColor: '#791F1F', flex: 1, opacity: reviewingExpenseIds.has(exp.id) ? 0.5 : 1 }]}>
+                    <Ionicons name="close" size={13} color="#791F1F" />
+                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Reject</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    disabled={reviewingExpenseIds.has(exp.id)}
+                    onPress={() => handleExpenseDecision(exp.id, 'forward')}
+                    style={[styles.approveBtn, { opacity: reviewingExpenseIds.has(exp.id) ? 0.5 : 1 }]}>
+                    <Ionicons name="checkmark" size={13} color="#fff" />
+                    <Text style={styles.approveBtnText}>Forward to MD</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              {/* MD makes the final decision after Accountant review */}
+              {mdCanDecide(exp) ? (
                 <View style={styles.actionRow}>
                   <TouchableOpacity
                     disabled={reviewingExpenseIds.has(exp.id)}
@@ -454,7 +478,7 @@ export default function ExpensesScreen() {
                     onPress={() => handleExpenseDecision(exp.id, 'approve')}
                     style={[styles.approveBtn, { opacity: reviewingExpenseIds.has(exp.id) ? 0.5 : 1 }]}>
                     <Ionicons name="checkmark" size={13} color="#fff" />
-                    <Text style={styles.approveBtnText}>Approve</Text>
+                    <Text style={styles.approveBtnText}>Approve & Lock</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
@@ -466,10 +490,10 @@ export default function ExpensesScreen() {
                   <Text style={[styles.lockText, { color: '#0C447C' }]}>Under accountant review</Text>
                 </View>
               ) : null}
-               {exp.status === 'acc_forwarded' && !isAcc ? (
+               {exp.status === 'acc_forwarded' && !isMD ? (
                 <View style={[styles.lockRow, { borderColor: '#BA7517' }]}>
                   <Ionicons name="lock-closed-outline" size={11} color="#BA7517" />
-                   <Text style={[styles.lockText, { color: '#0C447C' }]}>With Accountant for approval</Text>
+                    <Text style={[styles.lockText, { color: '#854F0B' }]}>With MD for final approval</Text>
                 </View>
               ) : null}
                {exp.status === 'rejected' ? (
