@@ -9,11 +9,11 @@ Every expense must be logged against a fully approved budget and inherit that bu
 
 **How to apply:** Validate the budget and branch on every expense create or edit command. If a historical budget’s branch is ambiguous, require finance classification before accepting expenses against it.
 
-Only the Accountant can approve or reject an expense, including legacy records that still use the forwarded status. Rejected expenses return to the originating manager for correction and resubmission. MD and CEO can inspect the workflow on Home and in Expenses, but have no decision controls.
+Expense approval is sequential: a manager submits to the Accountant, the Accountant reviews and either returns it or forwards it, and only MD can give final approval. Rejected expenses return to the originating manager for correction and resubmission. Final approval permanently locks the record, including against Admin deletion. CEO, MD, Accountant, CSM, and Admin can inspect active stages on Home when they have Expenses route access.
 
-**Why:** Expense decisions belong to the Accountant; executive visibility is needed for oversight but must not imply approval authority.
+**Why:** Accountant review validates the claim before executive authorization, while MD remains the sole final decision-maker. Oversight roles need stage visibility without receiving decision authority.
 
-**How to apply:** Enforce Accountant-only decisions in the API first, keep pending and legacy-forwarded records with the Accountant, label rejected records as with the Manager, and keep MD/CEO views read-only.
+**How to apply:** Enforce pending → Accountant forward → MD approve in the API. Label pending as with Accountant, forwarded as with MD, and rejected as with Manager. Keep CEO/CSM/Admin read-only.
 
 Manager expense forms must surface validation and server-command failures inline instead of silently returning. A newly created or submitted budget is not chargeable until it reaches `fully_approved`.
 
