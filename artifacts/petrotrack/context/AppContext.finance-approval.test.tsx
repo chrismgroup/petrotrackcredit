@@ -7,6 +7,7 @@ import { workflowApi, stateApi } from '@/lib/api';
 import { AppProvider, useApp, type Budget, type Expense } from './AppContext';
 
 type AppState = ReturnType<typeof useApp>;
+const actualWorkflowApi = jest.requireActual('@/lib/api').workflowApi as typeof workflowApi;
 
 let capturedApp: AppState | null = null;
 let renderer: ReactTestRenderer | null = null;
@@ -250,4 +251,96 @@ it('applies a successful branch-assigned executive budget approval and keeps it 
     expect(await app().login('md', 'Managing Director', 12, 'branch-a')).toBe(true);
   });
   expect(app().budgets).toEqual([approvedBudget]);
+});
+
+describe('finance transition response contracts', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    {
+      name: 'forwards an expense',
+      request: () => actualWorkflowApi.expenses.transition<Expense>(
+        41,
+        'forward',
+        { expectedRevision: 3, idempotencyKey: 'expense-forward-41' },
+      ),
+      record: { ...expense, status: 'acc_forwarded' as const, revision: 4 },
+    },
+    {
+      name: 'approves an expense',
+      request: () => actualWorkflowApi.expenses.transition<Expense>(
+        41,
+        'approve',
+        { expectedRevision: 3, idempotencyKey: 'expense-approve-41' },
+      ),
+      record: {
+        ...expense,
+        status: 'approved' as const,
+        approvedBy: 'Managing Director',
+        approvedDt: '2026-09-08T12:00:00.000Z',
+        revision: 4,
+      },
+    },
+  ])('$name with the canonical record, status, and revision', async ({ request, record }) => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ record }),
+    } as Response);
+
+    const result = await request();
+
+    expect(result).toEqual({ record });
+    expect(result?.record).toEqual(record);
+    expect(result?.record.status).toBe(record.status);
+    expect(result?.record.revision).toBe(record.revision);
+  });
+
+  it.each([
+    {
+      name: 'forwards a budget',
+      request: () => actualWorkflowApi.budgets.transition<Budget>(
+        7,
+        'forward',
+        'Reviewed',
+        { expectedRevision: 2, idempotencyKey: 'budget-forward-7' },
+      ),
+      record: { ...budget, status: 'acc_forwarded', revision: 3 },
+    },
+    {
+      name: 'approves a budget',
+      request: () => actualWorkflowApi.budgets.transition<Budget>(
+        7,
+        'approve',
+        'Approved',
+        { expectedRevision: 2, idempotencyKey: 'budget-approve-7' },
+      ),
+      record: {
+        ...budget,
+        status: 'fully_approved',
+        workflow: [{
+          stage: 'md',
+          by: 'Managing Director',
+          role: 'md',
+          dt: '2026-09-08T12:00:00.000Z',
+          action: 'approve',
+          note: 'Approved',
+        }],
+        revision: 3,
+      },
+    },
+  ])('$name with the canonical record, status, and revision', async ({ request, record }) => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ record }),
+    } as Response);
+
+    const result = await request();
+
+    expect(result).toEqual({ record });
+    expect(result?.record).toEqual(record);
+    expect(result?.record.status).toBe(record.status);
+    expect(result?.record.revision).toBe(record.revision);
+  });
 });
