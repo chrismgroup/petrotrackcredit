@@ -131,7 +131,7 @@ function FormSheet({ f, setF, roleColor, approvedBudgets, branchNames }: FormShe
 
 export default function ExpensesScreen() {
   const {
-    role, userName, expenses, sales, budgets, branches,
+    role, userName, branchId, expenses, sales, budgets, branches,
     refreshFinanceState: refreshFinanceStateFromContext,
     addExpense, updateExpenseConfirmed, deleteExpense,
     forwardExpenseToMDConfirmed, approveExpenseConfirmed, rejectExpenseConfirmed,
@@ -165,6 +165,8 @@ export default function ExpensesScreen() {
   const [repairingBranches, setRepairingBranches] = useState(false);
 
   const [filterDate, setFilterDate] = useState('');
+  const [periodStart, setPeriodStart] = useState(() => `${localDateKey().slice(0, 4)}-01-01`);
+  const [periodEnd, setPeriodEnd] = useState(() => localDateKey());
   const [reviewingExpenseIds, setReviewingExpenseIds] = useState<Set<number>>(() => new Set());
   const reviewingExpenseIdsRef = useRef<Set<number>>(new Set());
 
@@ -178,27 +180,41 @@ export default function ExpensesScreen() {
   const reportDate = filterDate || today;
   const reportMonth = reportDate.slice(0, 7);
   const reportYear = reportDate.slice(0, 4);
+  const canViewExpenseScorecards = ['mgr', 'acc', 'csm', 'mktg', 'md', 'ceo'].includes(role ?? '');
+  const reportExpenses = role === 'mgr'
+    ? expenses.filter(expense => !!branchId && expense.branchId === branchId)
+    : expenses;
+  const validCustomPeriod = !!periodStart && !!periodEnd && periodStart <= periodEnd;
   const expenseReports = [
     {
       key: 'daily',
       title: 'Daily expenses',
       period: reportDate,
       icon: 'today-outline' as const,
-      totals: groupApprovedExpensesByBranch(expenses, branchNames, date => date === reportDate),
+      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, date => date === reportDate),
     },
     {
       key: 'monthly',
       title: 'Monthly expenses',
       period: reportMonth,
       icon: 'calendar-outline' as const,
-      totals: groupApprovedExpensesByBranch(expenses, branchNames, date => date.startsWith(reportMonth)),
+      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, date => date.startsWith(reportMonth)),
     },
     {
       key: 'ytd',
       title: 'Year-to-date expenses',
       period: `${reportYear} YTD`,
       icon: 'analytics-outline' as const,
-      totals: groupApprovedExpensesByBranch(expenses, branchNames, date => date.startsWith(reportYear) && date <= reportDate),
+      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, date => date.startsWith(reportYear) && date <= reportDate),
+    },
+    {
+      key: 'period',
+      title: 'Expenses for a period',
+      period: validCustomPeriod ? `${periodStart} – ${periodEnd}` : 'Choose a valid period',
+      icon: 'options-outline' as const,
+      totals: validCustomPeriod
+        ? groupApprovedExpensesByBranch(reportExpenses, branchNames, date => date >= periodStart && date <= periodEnd)
+        : [],
     },
   ];
 
@@ -419,46 +435,74 @@ export default function ExpensesScreen() {
       <AppliedDateField
         value={filterDate}
         onChange={setFilterDate}
-        label="Reporting business date"
+        label={canViewExpenseScorecards ? 'Reporting business date' : 'View expenses for a business date'}
         accent={roleColor}
-        helper="Choose a business date to update these reports and filter the expense list."
+        helper={canViewExpenseScorecards
+          ? 'Choose a business date to update the daily, monthly, and year-to-date scorecards and filter the expense list.'
+          : 'Filter expenses by the date they apply to.'}
       />
 
-      <View style={styles.reportSection}>
-        <Text style={[styles.reportSectionTitle, { color: colors.text }]}>Approved expenses by branch</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reportTiles}>
-          {expenseReports.map(report => {
-            const total = report.totals.reduce((sum, branch) => sum + branch.amount, 0);
-            return (
-              <View key={report.key} style={[styles.reportTile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.reportTileHeader}>
-                  <View style={[styles.reportIcon, { backgroundColor: colors.infoBg }]}>
-                    <Ionicons name={report.icon} size={17} color={colors.info} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.reportTileTitle, { color: colors.text }]}>{report.title}</Text>
-                    <Text style={[styles.reportPeriod, { color: colors.textMuted }]}>{report.period}</Text>
-                  </View>
-                </View>
-                <Text style={[styles.reportTotal, { color: roleColor }]}>{fmt(total)}</Text>
-                <Text style={[styles.reportTotalLabel, { color: colors.textSubtle }]}>Approved total</Text>
-                <View style={[styles.reportDivider, { backgroundColor: colors.border }]} />
-                {report.totals.length > 0 ? report.totals.map(branch => (
-                  <View key={branch.key} style={styles.branchReportRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.branchReportName, { color: colors.text }]} numberOfLines={1}>{branch.name}</Text>
-                      <Text style={[styles.branchReportCount, { color: colors.textSubtle }]}>{branch.count} item{branch.count === 1 ? '' : 's'}</Text>
+      {canViewExpenseScorecards ? (
+        <View style={styles.reportSection}>
+          <Text style={[styles.reportSectionTitle, { color: colors.text }]}>Approved expense scorecards</Text>
+          <Text style={[styles.reportScope, { color: colors.textMuted }]}>
+            {role === 'mgr' ? 'Your assigned branch only' : 'All branches'}
+          </Text>
+          <View style={styles.periodFields}>
+            <View style={{ flex: 1 }}>
+              <AppliedDateField
+                value={periodStart}
+                onChange={setPeriodStart}
+                label="Period start"
+                accent={roleColor}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppliedDateField
+                value={periodEnd}
+                onChange={setPeriodEnd}
+                label="Period end"
+                accent={roleColor}
+              />
+            </View>
+          </View>
+          {!validCustomPeriod ? (
+            <Text style={[styles.periodError, { color: colors.error }]}>Period start must be on or before period end.</Text>
+          ) : null}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reportTiles}>
+            {expenseReports.map(report => {
+              const total = report.totals.reduce((sum, branch) => sum + branch.amount, 0);
+              return (
+                <View key={report.key} style={[styles.reportTile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={styles.reportTileHeader}>
+                    <View style={[styles.reportIcon, { backgroundColor: colors.infoBg }]}>
+                      <Ionicons name={report.icon} size={17} color={colors.info} />
                     </View>
-                    <Text style={[styles.branchReportAmount, { color: colors.text }]}>{fmt(branch.amount)}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.reportTileTitle, { color: colors.text }]}>{report.title}</Text>
+                      <Text style={[styles.reportPeriod, { color: colors.textMuted }]}>{report.period}</Text>
+                    </View>
                   </View>
-                )) : (
-                  <Text style={[styles.reportEmpty, { color: colors.textMuted }]}>No approved expenses for this period.</Text>
-                )}
-              </View>
-            );
-          })}
-        </ScrollView>
-      </View>
+                  <Text style={[styles.reportTotal, { color: roleColor }]}>{fmt(total)}</Text>
+                  <Text style={[styles.reportTotalLabel, { color: colors.textSubtle }]}>Approved total</Text>
+                  <View style={[styles.reportDivider, { backgroundColor: colors.border }]} />
+                  {report.totals.length > 0 ? report.totals.map(branch => (
+                    <View key={branch.key} style={styles.branchReportRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.branchReportName, { color: colors.text }]} numberOfLines={1}>{branch.name}</Text>
+                        <Text style={[styles.branchReportCount, { color: colors.textSubtle }]}>{branch.count} item{branch.count === 1 ? '' : 's'}</Text>
+                      </View>
+                      <Text style={[styles.branchReportAmount, { color: colors.text }]}>{fmt(branch.amount)}</Text>
+                    </View>
+                  )) : (
+                    <Text style={[styles.reportEmpty, { color: colors.textMuted }]}>No approved expenses for this period.</Text>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
 
       {role === 'admin' ? (
         <TouchableOpacity
@@ -723,6 +767,9 @@ const styles = StyleSheet.create({
   metricCount:  { fontSize: 11, marginTop: 2 },
   reportSection: { marginTop: 4, marginBottom: 6 },
   reportSectionTitle: { fontSize: 15, fontWeight: '700', marginHorizontal: 16, marginBottom: 8 },
+  reportScope: { fontSize: 11, marginHorizontal: 16, marginTop: -5, marginBottom: 6 },
+  periodFields: { flexDirection: 'row', gap: 8, marginHorizontal: 8 },
+  periodError: { fontSize: 11, marginHorizontal: 16, marginBottom: 8 },
   reportTiles: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
   reportTile: { width: 278, borderRadius: 14, borderWidth: 1, padding: 14 },
   reportTileHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
