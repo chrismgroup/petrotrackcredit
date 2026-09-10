@@ -639,11 +639,8 @@ export default function HomeScreen() {
   );
   const pendingBudgets = budgets.filter(budget => {
     if (!canOpen(SCREEN_ROUTES.budget)) return false;
-    if (isAdmin) return budget.status === 'submitted' || budget.status === 'acc_forwarded' || budget.status === 'rejected';
-    if (role === 'acc') return budget.status === 'submitted' || budget.status === 'rejected';
-    if (isExecutive) return budget.status === 'acc_forwarded';
-    if (role === 'mgr' || role === 'csm' || role === 'mktg') {
-      return budget.status === 'rejected' && (budget.by === role || budget.byName === userName);
+    if (isAdmin || ['mgr', 'acc', 'csm', 'mktg', 'md', 'ceo'].includes(role ?? '')) {
+      return budget.status === 'submitted' || budget.status === 'acc_forwarded' || budget.status === 'rejected';
     }
     return false;
   });
@@ -795,8 +792,12 @@ export default function HomeScreen() {
       id: `budget-${budget.id}`,
       title: budget.label,
       meta: `${budget.appliesOn ?? `${budget.month}/${budget.year}`} · ${budget.byName}`,
-      status: budget.status === 'forwarded' ? 'With MD for approval' : 'With MD for review',
-      statusColor: colors.amber,
+      status: budget.status === 'submitted' ? 'With Accountant for review'
+        : budget.status === 'acc_forwarded' ? 'With MD for approval'
+          : 'Returned for correction',
+      statusColor: budget.status === 'submitted' ? colors.blue
+        : budget.status === 'acc_forwarded' ? colors.amber
+          : colors.error,
       facts: [`Total: ${fmt(budget.total)}`, `Line items: ${budget.items.length}`, budget.workflow?.length ? `Last workflow step: ${budget.workflow[budget.workflow.length - 1].action}` : 'No workflow step recorded'],
     })),
     accounts: pendingAccounts.map(account => ({
@@ -1144,7 +1145,7 @@ export default function HomeScreen() {
                 icon="wallet-outline"
                 accent={colors.brown}
                 title="Budget Submissions"
-                meta={`${pendingBudgets.length} budget${pendingBudgets.length > 1 ? 's' : ''} awaiting sign-off`}
+                meta={`${pendingBudgets.length} budget${pendingBudgets.length > 1 ? 's' : ''} in active workflow`}
                 count={pendingBudgets.length}
                 onPress={() => router.push(SCREEN_ROUTES.budget as never)}
                 colors={colors}

@@ -612,6 +612,45 @@ describe('dashboard and workspace navigation', () => {
     },
   );
 
+  it.each(['mgr', 'acc', 'csm', 'mktg', 'md', 'ceo'] as const)(
+    'shows every active Budget workflow stage on Home for %s',
+    role => {
+      mockUseApp.mockReturnValue(baseAppState({
+        role,
+        branchId: ['mgr', 'csm', 'mktg'].includes(role) ? 'branch-a' : null,
+        navItems: [{ id: 'budget' }],
+        budgets: [
+          {
+            id: 231, label: 'September Branch Budget', month: 9, year: 2026,
+            appliesOn: '2026-09-01', by: 'mgr', byName: 'Station Manager',
+            branchId: 'branch-a', branchName: 'Branch A', status: 'submitted',
+            total: 100000, items: [], workflow: [],
+          },
+          {
+            id: 232, label: 'September CSM Budget', month: 9, year: 2026,
+            appliesOn: '2026-09-01', by: 'csm', byName: 'CSM',
+            branchId: 'branch-a', branchName: 'Branch A', status: 'acc_forwarded',
+            total: 200000, items: [], workflow: [],
+          },
+          {
+            id: 233, label: 'September Marketing Budget', month: 9, year: 2026,
+            appliesOn: '2026-09-01', by: 'mktg', byName: 'Marketing',
+            branchId: 'branch-a', branchName: 'Branch A', status: 'rejected',
+            total: 50000, items: [], workflow: [],
+          },
+        ],
+      }));
+
+      let renderer!: ReactTestRenderer;
+      act(() => { renderer = create(<HomeScreen />); });
+      const card = buttonWithText(renderer, 'Budget Submissions');
+      expect(nodeText(card)).toContain('3 budgets in active workflow');
+      act(() => { card.props.onPress(); });
+      expect(mockPush).toHaveBeenCalledWith('/(app)/budget');
+      act(() => renderer.unmount());
+    },
+  );
+
   it('opens the Home stock snapshot card in the stock snapshot screen', () => {
     mockUseApp.mockReturnValue(baseAppState());
 
