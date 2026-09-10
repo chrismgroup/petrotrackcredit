@@ -408,6 +408,7 @@ export default function ExpensesScreen() {
         ) : undefined
       }
     >
+      <ScrollView contentContainerStyle={styles.pageScroll} showsVerticalScrollIndicator={false}>
       {/* Net balance banner */}
       <View style={[styles.netBanner, { backgroundColor: todayNet >= 0 ? colors.successBg : colors.errorBg, borderColor: todayNet >= 0 ? colors.successBorder : colors.errorBorder }]}>
         <View style={{ flex: 1 }}>
@@ -469,11 +470,15 @@ export default function ExpensesScreen() {
           {!validCustomPeriod ? (
             <Text style={[styles.periodError, { color: colors.error }]}>Period start must be on or before period end.</Text>
           ) : null}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reportTiles}>
+          <View style={styles.reportTiles}>
             {expenseReports.map(report => {
               const total = report.totals.reduce((sum, branch) => sum + branch.amount, 0);
               return (
-                <View key={report.key} style={[styles.reportTile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View
+                  key={report.key}
+                  accessibilityLabel={`${report.title} scorecard`}
+                  style={[styles.reportTile, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                >
                   <View style={styles.reportTileHeader}>
                     <View style={[styles.reportIcon, { backgroundColor: colors.infoBg }]}>
                       <Ionicons name={report.icon} size={17} color={colors.info} />
@@ -500,7 +505,7 @@ export default function ExpensesScreen() {
                 </View>
               );
             })}
-          </ScrollView>
+          </View>
         </View>
       ) : null}
 
@@ -550,7 +555,7 @@ export default function ExpensesScreen() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.scroll}>
         {displayedExpenses.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="receipt-outline" size={40} color={colors.border} />
@@ -696,6 +701,7 @@ export default function ExpensesScreen() {
           );
         })}
         <View style={{ height: 20 }} />
+      </View>
       </ScrollView>
 
       {/* Add / Edit Modal */}
@@ -754,6 +760,7 @@ export default function ExpensesScreen() {
 }
 
 const styles = StyleSheet.create({
+  pageScroll:   { paddingBottom: 20 },
   scroll:       { padding: 16 },
   headerBtn:    { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   netBanner:    { flexDirection: 'row', alignItems: 'center', margin: 16, marginBottom: 8, padding: 16, borderRadius: 14, borderWidth: 1, gap: 12 },
@@ -771,7 +778,7 @@ const styles = StyleSheet.create({
   periodFields: { flexDirection: 'row', gap: 8, marginHorizontal: 8 },
   periodError: { fontSize: 11, marginHorizontal: 16, marginBottom: 8 },
   reportTiles: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
-  reportTile: { width: 278, borderRadius: 14, borderWidth: 1, padding: 14 },
+  reportTile: { width: '100%', borderRadius: 14, borderWidth: 1, padding: 14 },
   reportTileHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   reportIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   reportTileTitle: { fontSize: 14, fontWeight: '700' },
