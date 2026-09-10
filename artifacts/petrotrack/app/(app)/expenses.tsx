@@ -12,6 +12,7 @@ import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmati
 import { Budget, Expense, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
+import { workflowApi } from '@/lib/api';
 
 const EXPENSE_CATS = [
   'Generator fuel', 'Security & guarding', 'Utilities',
@@ -137,6 +138,7 @@ export default function ExpensesScreen() {
   const [form, setForm]             = useState<FormState>(blankForm());
   const [formError, setFormError]   = useState('');
   const [formBusy, setFormBusy]     = useState(false);
+  const [repairingBranches, setRepairingBranches] = useState(false);
 
   const [filterDate, setFilterDate] = useState('');
   const [reviewingExpenseIds, setReviewingExpenseIds] = useState<Set<number>>(() => new Set());
@@ -300,6 +302,35 @@ export default function ExpensesScreen() {
   const accCanReview = (e: Expense) => isAcc && e.status === 'pending';
   const mdCanDecide = (e: Expense) => isMD && e.status === 'acc_forwarded';
 
+  const repairLegacyBranches = () => {
+    Alert.alert(
+      'Repair legacy expense branches',
+      'This will permanently assign canonical branches to legacy expenses using their existing branch, linked budget, or submitting staff account.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Repair',
+          onPress: () => {
+            setRepairingBranches(true);
+            void workflowApi.expenses.repairBranches()
+              .then(async result => {
+                if (!result) {
+                  Alert.alert('Repair failed', 'The server could not repair legacy expense branches.');
+                  return;
+                }
+                await refreshFinanceStateFromContext();
+                Alert.alert(
+                  'Repair complete',
+                  `${result.repaired} expense item${result.repaired === 1 ? '' : 's'} updated.${result.unresolvedIds.length ? ` ${result.unresolvedIds.length} could not be assigned safely.` : ' All expense items now have a canonical branch.'}`,
+                );
+              })
+              .finally(() => setRepairingBranches(false));
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <ScreenLayout
       title="Expenses"
@@ -334,6 +365,29 @@ export default function ExpensesScreen() {
           <Text style={[styles.metricCount, { color: colors.textMuted }]}>{expenses.filter(e => e.status === 'approved').length}{' items'}</Text>
         </View>
       </View>
+
+      {role === 'admin' ? (
+        <TouchableOpacity
+          accessibilityLabel="Repair legacy expense branches"
+          onPress={repairLegacyBranches}
+          disabled={repairingBranches}
+          style={[styles.pendingBanner, {
+            backgroundColor: colors.infoBg,
+            borderColor: colors.border,
+            opacity: repairingBranches ? 0.6 : 1,
+          }]}
+        >
+          <Ionicons name="build-outline" size={17} color={colors.info} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.pendingBannerText, { color: colors.info }]}>
+              {repairingBranches ? 'Repairing legacy expense branches…' : 'Repair legacy expense branches'}
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+              Permanently assign branches using each expense’s budget and submitter records.
+            </Text>
+          </View>
+        </TouchableOpacity>
+      ) : null}
 
       {/* Pending badge banner for acc/md */}
       {pendingCount > 0 ? (
