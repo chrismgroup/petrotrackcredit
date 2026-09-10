@@ -537,7 +537,7 @@ function pumpReportsForIdentity(
   const rows = Array.isArray(reports)
     ? reports.filter((value): value is JsonRecord => !!value && typeof value === "object" && !Array.isArray(value))
     : [];
-  if (auth?.role !== "mgr") return rows;
+  if (auth?.role !== "mgr" && auth?.role !== "att") return rows;
   const branchId = auth.branchId ?? resolvedManagerBranchId;
   if (!branchId) return [];
   return rows.filter(report => report.branchId === branchId);
