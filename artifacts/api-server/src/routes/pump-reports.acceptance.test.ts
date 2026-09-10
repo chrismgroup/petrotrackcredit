@@ -50,6 +50,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
   };
   const reportIds = [`${marker}-approved`, `${marker}-returned`];
   const otherBranchReportId = `${marker}-other-branch`;
+  const untaggedReportId = `${marker}-untagged`;
   const deletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
   const attendantDeletedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
   const attendantResubmittedReportId = String(parseInt(randomUUID().slice(0, 8), 16));
@@ -61,6 +62,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     `${marker}-fixture`,
     `${marker}-unrelated`,
     otherBranchReportId,
+    untaggedReportId,
   ];
   const server = app.listen(0);
   await once(server, "listening");
@@ -263,6 +265,11 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
       otherAttendant.token,
     );
     assert.equal(otherBranchSeed.status, 201);
+    const untaggedReport = report(untaggedReportId, usernames.attendantA);
+    delete (untaggedReport as Partial<PumpReport>).branchId;
+    const untaggedSeed = await putReports(admin.token, [untaggedReport]);
+    assert.equal(untaggedSeed.status, 200);
+    assert.equal(untaggedSeed.body.reports.some(item => item.id === untaggedReportId), true);
     const managerFullState = await request<Record<string, unknown> & { pumpDailyReports: PumpReport[] }>("/state", {}, manager.token);
     assert.equal(managerFullState.status, 200);
     assert.equal(managerFullState.body.pumpDailyReports.some(item => item.id === otherBranchReportId), false);
@@ -280,6 +287,16 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     assert.equal(otherManagerReportState.status, 200);
     assert.equal(otherManagerReportState.body.some(item => item.id === otherBranchReportId), true);
     assert.ok(otherManagerReportState.body.every(item => item.branchId === otherBranchId));
+    const attendantFullState = await request<Record<string, unknown> & { pumpDailyReports: PumpReport[] }>("/state", {}, attendantA.token);
+    assert.equal(attendantFullState.status, 200);
+    assert.equal(attendantFullState.body.pumpDailyReports.some(item => item.id === otherBranchReportId), false);
+    assert.equal(attendantFullState.body.pumpDailyReports.some(item => item.id === untaggedReportId), false);
+    assert.ok(attendantFullState.body.pumpDailyReports.every(item => item.branchId === branchId));
+    const attendantReportState = await request<PumpReport[]>("/state/pumpDailyReports", {}, attendantA.token);
+    assert.equal(attendantReportState.status, 200);
+    assert.equal(attendantReportState.body.some(item => item.id === otherBranchReportId), false);
+    assert.equal(attendantReportState.body.some(item => item.id === untaggedReportId), false);
+    assert.ok(attendantReportState.body.every(item => item.branchId === branchId));
     const managerCrossBranchWrite = await putReports(manager.token, [otherBranchPending]);
     assert.equal(managerCrossBranchWrite.status, 200);
     assert.equal(managerCrossBranchWrite.body.ok, false);
@@ -299,7 +316,7 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     assert.equal(afterConcurrentWrites.status, 200);
     assert.deepEqual(
       afterConcurrentWrites.body.map(candidate => candidate.id).sort(),
-      [...reportIds, otherBranchReportId].sort(),
+      reportIds.sort(),
     );
 
     // A stale full-array write omits the other device's newer report. The
@@ -308,8 +325,12 @@ test("merges concurrent pump-report arrays and protects workflow ordering", {
     assert.equal(staleArrayWrite.status, 200);
     assert.deepEqual(
       staleArrayWrite.body.reports.map(candidate => candidate.id).sort(),
-      [...reportIds, otherBranchReportId].sort(),
+      reportIds.sort(),
     );
+    const adminReportsAfterAttendantSync = await request<PumpReport[]>("/state/pumpDailyReports", {}, admin.token);
+    assert.equal(adminReportsAfterAttendantSync.status, 200);
+    assert.equal(adminReportsAfterAttendantSync.body.some(item => item.id === otherBranchReportId), true);
+    assert.equal(adminReportsAfterAttendantSync.body.some(item => item.id === untaggedReportId), true);
 
     const approvedForwarded = {
       ...approvedPending,

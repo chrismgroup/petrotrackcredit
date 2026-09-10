@@ -7,6 +7,8 @@ const path = require("node:path");
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const EXPECTED_SLUG = "petrotrack";
 const EXPECTED_PROJECT_ID = "075f5965-7a4a-41dc-8700-f956b13b942f";
+const EXPECTED_IOS_BUNDLE_IDENTIFIER = "app.replit.petrotrack";
+const EXPECTED_ANDROID_PACKAGE = "petrotrack.replit.app";
 
 // These are the route entry points that make up the native app shell. Checking
 // the shell and both route groups catches an accidental app-root move before
@@ -82,6 +84,22 @@ function validateNativeRelease({ projectRoot = PROJECT_ROOT, config }) {
     );
   }
 
+  const iosBundleIdentifier = config.ios?.bundleIdentifier;
+  if (iosBundleIdentifier !== EXPECTED_IOS_BUNDLE_IDENTIFIER) {
+    fail(
+      `iOS bundle identifier: expected "${EXPECTED_IOS_BUNDLE_IDENTIFIER}", ` +
+        `found "${iosBundleIdentifier ?? "missing"}".`,
+    );
+  }
+
+  const androidPackage = config.android?.package;
+  if (androidPackage !== EXPECTED_ANDROID_PACKAGE) {
+    fail(
+      `Android package: expected "${EXPECTED_ANDROID_PACKAGE}", ` +
+        `found "${androidPackage ?? "missing"}".`,
+    );
+  }
+
   const missingRoutes = REQUIRED_ROUTE_ENTRIES.filter((relativePath) => {
     const absolutePath = path.join(projectRoot, relativePath);
     try {
@@ -103,7 +121,10 @@ function main() {
   validateNativeRelease({ config });
   console.log(
     `Petrotrack native release preflight passed: slug "${config.slug}", ` +
-      `EAS project "${config.extra.eas.projectId}", ${REQUIRED_ROUTE_ENTRIES.length} route entry points present.`,
+      `EAS project "${config.extra.eas.projectId}", ` +
+      `iOS bundle identifier "${config.ios.bundleIdentifier}", ` +
+      `Android package "${config.android.package}", ` +
+      `${REQUIRED_ROUTE_ENTRIES.length} route entry points present.`,
   );
 }
 
@@ -117,6 +138,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  EXPECTED_ANDROID_PACKAGE,
+  EXPECTED_IOS_BUNDLE_IDENTIFIER,
   EXPECTED_PROJECT_ID,
   EXPECTED_SLUG,
   REQUIRED_ROUTE_ENTRIES,

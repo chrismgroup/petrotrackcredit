@@ -8,6 +8,8 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  EXPECTED_ANDROID_PACKAGE,
+  EXPECTED_IOS_BUNDLE_IDENTIFIER,
   EXPECTED_PROJECT_ID,
   EXPECTED_SLUG,
   REQUIRED_ROUTE_ENTRIES,
@@ -21,6 +23,8 @@ function validConfig(root = projectRoot) {
   return {
     slug: EXPECTED_SLUG,
     extra: { eas: { projectId: EXPECTED_PROJECT_ID } },
+    ios: { bundleIdentifier: EXPECTED_IOS_BUNDLE_IDENTIFIER },
+    android: { package: EXPECTED_ANDROID_PACKAGE },
     _internal: { projectRoot: root },
   };
 }
@@ -42,6 +46,34 @@ test("rejects an unexpected Expo project identity", () => {
         config: { ...validConfig(), slug: "another-app" },
       }),
     /expected Expo slug "petrotrack"/,
+  );
+});
+
+test("rejects an unexpected iOS bundle identifier", () => {
+  assert.throws(
+    () =>
+      validateNativeRelease({
+        projectRoot,
+        config: {
+          ...validConfig(),
+          ios: { bundleIdentifier: "com.example.petrotrack" },
+        },
+      }),
+    /iOS bundle identifier: expected "app\.replit\.petrotrack", found "com\.example\.petrotrack"/,
+  );
+});
+
+test("rejects an unexpected Android package", () => {
+  assert.throws(
+    () =>
+      validateNativeRelease({
+        projectRoot,
+        config: {
+          ...validConfig(),
+          android: { package: "com.example.petrotrack" },
+        },
+      }),
+    /Android package: expected "petrotrack\.replit\.app", found "com\.example\.petrotrack"/,
   );
 });
 

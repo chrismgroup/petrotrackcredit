@@ -371,6 +371,87 @@ describe('expense approval controls', () => {
     act(() => renderer.unmount());
   });
 
+  it('refreshes approved budgets before opening a new expense and preselects the refreshed budget', async () => {
+    const state = appState({
+      role: 'mgr',
+      userName: 'Iniobong Inyang Edward',
+      branchId: 'branch-ikot-ekpene',
+      budgets: [],
+    }) as any;
+    state.refreshFinanceState = jest.fn(async () => {
+      state.budgets = [budget({
+        id: 23,
+        status: 'fully_approved',
+        branchId: 'branch-ikot-ekpene',
+        branchName: 'Ikot Ekpene Branch',
+      })];
+      return true;
+    });
+    mockedUseApp.mockReturnValue(state);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const addButton = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === '',
+    )[0];
+
+    await act(async () => {
+      await addButton.props.onPress();
+    });
+
+    expect(state.refreshFinanceState).toHaveBeenCalledTimes(1);
+    const budgetChoice = touchableContaining(renderer, 'Ikot Ekpene Branch · September 2026');
+    expect(budgetChoice.props.onPress).toEqual(expect.any(Function));
+    expect(budgetChoice.props.style).toEqual(expect.arrayContaining([
+      expect.objectContaining({ backgroundColor: '#1a6e3c' }),
+    ]));
+    act(() => renderer.unmount());
+  });
+
+  it('keeps the expense form open and blocks stale submission when budget refresh fails', async () => {
+    const addExpense = jest.fn(async () => ({ ok: true }));
+    const state = appState({
+      role: 'mgr',
+      userName: 'Iniobong Inyang Edward',
+      branchId: 'branch-ikot-ekpene',
+      budgets: [budget({
+        id: 24,
+        status: 'fully_approved',
+        branchId: 'branch-ikot-ekpene',
+        branchName: 'Ikot Ekpene Branch',
+      })],
+      addExpense,
+    }) as any;
+    state.refreshFinanceState = jest.fn(async () => false);
+    mockedUseApp.mockReturnValue(state);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const addButton = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === '',
+    )[0];
+
+    await act(async () => {
+      await addButton.props.onPress();
+    });
+
+    expect(nodeText(renderer.root)).toContain('New Expense');
+    expect(nodeText(renderer.root)).toContain('Could not refresh approved budgets. Please retry before submitting this expense.');
+
+    const inputs = renderer.root.findAll(node => String(node.type) === 'TextInput');
+    act(() => {
+      inputs[0].props.onChangeText('Stale budget should not submit');
+      inputs[1].props.onChangeText('25000');
+    });
+    await act(async () => {
+      await touchable(renderer, 'Submit Expense').props.onPress();
+    });
+
+    expect(addExpense).not.toHaveBeenCalled();
+    expect(nodeText(renderer.root)).toContain('Please retry before submitting this expense.');
+    act(() => renderer.unmount());
+  });
+
   it('submits an expense against the manager fully approved branch budget', async () => {
     const addExpense = jest.fn(async () => ({ ok: true }));
     mockedUseApp.mockReturnValue(appState({
@@ -462,6 +543,7 @@ describe('expense approval controls', () => {
       await touchable(renderer, 'Forward to MD').props.onPress();
     });
     expect(forwardExpenseToMDConfirmed).toHaveBeenCalledWith(41);
+    expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Expense forwarded to MD.');
 
     await act(async () => {
       await touchable(renderer, 'Reject').props.onPress();
@@ -496,6 +578,7 @@ describe('expense approval controls', () => {
       await pendingApproval;
     });
 
+    expect(Alert.alert).not.toHaveBeenCalledWith('Saved', expect.anything());
     expect(touchable(renderer, 'Forward to MD').props.disabled).toBe(false);
     act(() => renderer.unmount());
   });
@@ -590,6 +673,7 @@ describe('expense approval controls', () => {
       act(() => { renderer = create(<ExpensesScreen />); });
       await act(async () => { await touchable(renderer, 'Approve & Lock').props.onPress(); });
       expect(approveExpenseConfirmed).toHaveBeenCalledWith(41);
+      expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Expense approved.');
       await act(async () => { await touchable(renderer, 'Reject').props.onPress(); });
       expect(rejectExpenseConfirmed).toHaveBeenCalledWith(41);
       act(() => renderer.unmount());
@@ -671,7 +755,7 @@ describe('expense approval controls', () => {
 });
 
 describe('budget approval controls', () => {
-  it('locks manager budget submission while the server command is in flight', async () => {
+  it('locks manager budget submission and ignores repeated confirmation taps', async () => {
     let resolveSubmit!: (result: { ok: boolean }) => void;
     const submitBudgetToAcc = jest.fn(() => new Promise<{ ok: boolean }>(resolve => {
       resolveSubmit = resolve;
@@ -697,7 +781,9 @@ describe('budget approval controls', () => {
 
     const alertCall = (Alert.alert as jest.Mock).mock.calls.at(-1);
     act(() => { alertCall[2][1].onPress(); });
+    act(() => { alertCall[2][1].onPress(); });
 
+    expect(submitBudgetToAcc).toHaveBeenCalledTimes(1);
     expect(submitBudgetToAcc).toHaveBeenCalledWith(7);
     const submittingButtons = touchables(renderer, 'Submitting…');
     expect(submittingButtons).toHaveLength(2);
@@ -708,6 +794,45 @@ describe('budget approval controls', () => {
       await Promise.resolve();
     });
     expect(touchables(renderer, 'Submitting…')).toHaveLength(0);
+    act(() => renderer.unmount());
+  });
+
+  it('makes manager budget submission available again after the server rejects it', async () => {
+    const submitBudgetToAcc = jest.fn(async () => ({ ok: false, error: 'Budget is already submitted.' }));
+    mockedUseApp.mockReturnValue(appState({
+      role: 'mgr',
+      userName: 'Station Manager',
+      branchId: 'branch-a',
+      budgets: [budget({
+        status: 'draft',
+        by: 'mgr',
+        byName: 'Station Manager',
+        branchId: 'branch-a',
+        branchName: 'Maitama Branch',
+      })],
+      submitBudgetToAcc,
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BudgetScreen />); });
+    act(() => { touchableContaining(renderer, 'September 2026 Budget').props.onPress(); });
+    act(() => { touchable(renderer, 'Submit to Accountant').props.onPress({ stopPropagation: jest.fn() }); });
+
+    let alertCall = (Alert.alert as jest.Mock).mock.calls.at(-1);
+    await act(async () => {
+      await alertCall[2][1].onPress();
+    });
+
+    const availableButtons = touchables(renderer, 'Submit to Accountant');
+    expect(availableButtons).toHaveLength(2);
+    expect(availableButtons.every(button => button.props.disabled)).toBe(false);
+
+    act(() => { availableButtons[0].props.onPress({ stopPropagation: jest.fn() }); });
+    alertCall = (Alert.alert as jest.Mock).mock.calls.at(-1);
+    await act(async () => {
+      await alertCall[2][1].onPress();
+    });
+    expect(submitBudgetToAcc).toHaveBeenCalledTimes(2);
     act(() => renderer.unmount());
   });
 
@@ -770,14 +895,40 @@ describe('budget approval controls', () => {
       await pendingForward;
     });
 
+    expect(Alert.alert).not.toHaveBeenCalledWith('Saved', expect.anything());
     expect(touchable(renderer, 'Forward to MD').props.disabled).toBeFalsy();
+    expect(renderer.root.findByType('TextInput' as any).props.value).toBe('All amounts verified.');
+    act(() => renderer.unmount());
+  });
+
+  it('confirms a successfully forwarded budget without confirming a rejected one', async () => {
+    const forwardBudget = jest.fn(async () => ({ ok: true }));
+    mockedUseApp.mockReturnValue(appState({
+      budgets: [budget()],
+      forwardBudget,
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BudgetScreen />); });
+    act(() => { touchableContaining(renderer, 'September 2026 Budget').props.onPress(); });
+    act(() => { touchables(renderer, 'Forward to MD').at(-1)?.props.onPress(); });
+
+    const noteInput = renderer.root.findByType('TextInput' as any);
+    act(() => { noteInput.props.onChangeText('All amounts verified.'); });
+    await act(async () => {
+      await touchables(renderer, 'Forward to MD').at(-1)!.props.onPress();
+    });
+
+    expect(forwardBudget).toHaveBeenCalledWith(7, 'All amounts verified.');
+    expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Budget forwarded to MD.');
+    expect(renderer.root.findAll(node => String(node.type) === 'TextInput')).toHaveLength(0);
     act(() => renderer.unmount());
   });
 
   it.each(['md', 'ceo', 'admin'] as const)(
     'lets %s approve or reject a forwarded budget from another branch',
     async role => {
-      const approveBudget = jest.fn();
+      const approveBudget = jest.fn(async () => ({ ok: true }));
       const rejectBudget = jest.fn();
       mockedUseApp.mockReturnValue(appState({
         role,
@@ -796,8 +947,11 @@ describe('budget approval controls', () => {
       press(renderer, 'Approve');
       const noteInput = renderer.root.findByType('TextInput' as any);
       act(() => { noteInput.props.onChangeText('Approved after review.'); });
-      press(renderer, 'Confirm Approval');
+      await act(async () => {
+        await touchable(renderer, 'Confirm Approval').props.onPress();
+      });
       expect(approveBudget).toHaveBeenCalledWith(7, 'Approved after review.');
+      expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Budget approved.');
 
       act(() => renderer.unmount());
     },

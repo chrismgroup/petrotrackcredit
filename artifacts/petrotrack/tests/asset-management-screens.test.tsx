@@ -5,6 +5,7 @@ import { Alert } from 'react-native';
 
 import type { CompanyAsset } from '@/lib/asset-depreciation';
 import { useApp } from '@/context/AppContext';
+import { getPerms } from '@/lib/report-helpers';
 import AssetManagementScreen from '../app/(app)/asset-management';
 import { FinancialStatusCard } from '@/components/FinancialStatusCard';
 import ReportsScreen from '../app/(app)/reports';
@@ -163,11 +164,14 @@ jest.mock('@/lib/report-helpers', () => {
   const actual = jest.requireActual('@/lib/report-helpers');
   return {
     ...actual,
+    getPerms: jest.fn(actual.getPerms),
     computePumpReportCOGS: jest.fn(() => 0),
   };
 });
 
 const mockedUseApp = jest.mocked(useApp);
+const mockedGetPerms = jest.mocked(getPerms);
+const actualReportHelpers = jest.requireActual('@/lib/report-helpers') as typeof import('@/lib/report-helpers');
 
 const branchA = { id: 'branch-a', name: 'Maitama Branch', st: 'Active' };
 const branchB = { id: 'branch-b', name: 'Wuse Branch', st: 'Active' };
@@ -197,6 +201,7 @@ function baseAppState(overrides: Record<string, unknown> = {}) {
     role: 'acc',
     userName: 'Test Accountant',
     branchId: null,
+    isHydrated: true,
     notifications: [],
     logout: jest.fn(),
     changeOwnPassword: jest.fn(),
@@ -277,6 +282,10 @@ afterEach(() => {
   jest.clearAllMocks();
   mockRouteParams = { type: 'pnl' };
   mockPathname = '/reports';
+});
+
+beforeEach(() => {
+  mockedGetPerms.mockImplementation(actualReportHelpers.getPerms);
 });
 
 describe('asset register screen', () => {
@@ -649,6 +658,45 @@ describe('asset depreciation financial screens', () => {
     expect(hydratedText).not.toContain('All Branches');
     expect(hydratedText).toContain('₦250,000');
     expect(hydratedText).not.toContain('₦1,250,000');
+    act(() => viewer.unmount());
+  });
+
+  it('preserves a permitted viewer report and period while account permissions hydrate', () => {
+    mockRouteParams = {
+      type: 'hr',
+      period: 'Quarterly',
+      date: '2026-09-15',
+      branch: 'all',
+    };
+    mockPathname = '/reports/view';
+    mockedGetPerms.mockImplementation(role => role === null
+      ? { visible: ['summary'], canGenerate: [] }
+      : { visible: ['summary', 'hr'], canGenerate: ['hr'] });
+
+    const hydratingState = baseAppState({
+      role: null,
+      isHydrated: false,
+    });
+    mockedUseApp.mockReturnValue(hydratingState as any);
+
+    const viewer = mount(<ReportViewScreen />);
+    const initialText = renderedText(viewer);
+    expect(initialText).toContain('HR');
+    expect(initialText).toContain('Quarterly report');
+    expect(initialText).toContain('2026-09-15');
+
+    mockedUseApp.mockReturnValue({
+      ...hydratingState,
+      role: 'csm',
+      isHydrated: true,
+    } as any);
+    act(() => viewer.update(<ReportViewScreen />));
+
+    const hydratedText = renderedText(viewer);
+    expect(hydratedText).toContain('HR');
+    expect(hydratedText).toContain('Quarterly report');
+    expect(hydratedText).toContain('2026-09-15');
+    expect(hydratedText).not.toContain('Some link settings were unavailable');
     act(() => viewer.unmount());
   });
 

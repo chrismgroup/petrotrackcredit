@@ -2,7 +2,21 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
-import test from "node:test";
+import test, { after } from "node:test";
+
+type DatabasePool = typeof import("@workspace/db").pool;
+let databasePool: DatabasePool | undefined;
+
+async function getDatabasePool(): Promise<DatabasePool> {
+  if (!databasePool) {
+    ({ pool: databasePool } = await import("@workspace/db"));
+  }
+  return databasePool;
+}
+
+after(async () => {
+  await databasePool?.end();
+});
 
 type LoginResult = {
   token: string;
@@ -21,11 +35,11 @@ test("restoring a stale backup cannot resurrect deleted deliveries or expenses",
   skip: !process.env.DATABASE_URL || !process.env.JWT_SECRET || !process.env.PRIVATE_OBJECT_DIR,
   timeout: 30_000,
 }, async () => {
-  const [{ default: app }, { pool }, { objectStorageClient }] = await Promise.all([
+  const [{ default: app }, { objectStorageClient }] = await Promise.all([
     import("../app"),
-    import("@workspace/db"),
     import("../lib/objectStorage"),
   ]);
+  const pool = await getDatabasePool();
   const marker = `backup-restore-${randomUUID()}`;
   const password = `Test-${randomUUID()}`;
   const username = `${marker}-admin`;
@@ -249,15 +263,14 @@ test("restoring a stale backup cannot resurrect deleted deliveries or expenses",
   }
 });
 
+
 test("mounted workflow commands are server-authoritative, revision-safe, and idempotent", {
   concurrency: false,
   skip: !process.env.DATABASE_URL || !process.env.JWT_SECRET,
   timeout: 30_000,
 }, async () => {
-  const [{ default: app }, { pool }] = await Promise.all([
-    import("../app"),
-    import("@workspace/db"),
-  ]);
+  const { default: app } = await import("../app");
+  const pool = await getDatabasePool();
   const marker = `mounted-workflows-${randomUUID()}`;
   const password = `Test-${randomUUID()}`;
   const branchA = `${marker}-branch-a`;
@@ -1390,7 +1403,6 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       await new Promise<void>((resolve, reject) => {
         server.close(error => error ? reject(error) : resolve());
       });
-      await pool.end();
     }
   }
 });
