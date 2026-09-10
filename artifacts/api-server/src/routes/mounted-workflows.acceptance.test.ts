@@ -17,6 +17,7 @@ type ApiResult<T extends JsonRecord = JsonRecord> = {
 };
 
 test("restoring a stale backup cannot resurrect deleted deliveries or expenses", {
+  concurrency: false,
   skip: !process.env.DATABASE_URL || !process.env.JWT_SECRET || !process.env.PRIVATE_OBJECT_DIR,
   timeout: 30_000,
 }, async () => {
@@ -244,12 +245,12 @@ test("restoring a stale backup cannot resurrect deleted deliveries or expenses",
         configurable: true,
         value: originalBucket,
       });
-      await pool.end();
     }
   }
 });
 
 test("mounted workflow commands are server-authoritative, revision-safe, and idempotent", {
+  concurrency: false,
   skip: !process.env.DATABASE_URL || !process.env.JWT_SECRET,
   timeout: 30_000,
 }, async () => {
@@ -528,6 +529,18 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     });
     assert.equal(deliveryForwarded.status, 200);
     assert.equal((deliveryForwarded.body.delivery as JsonRecord).approvalStatus, "pending_md");
+    const ceoDeliveryApprovalBlocked = await command(ceo.token, `/deliveries/${deliveryId}/approve`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-ceo-delivery-approve-blocked`,
+      sellingPrice: 700,
+    });
+    assert.equal(ceoDeliveryApprovalBlocked.status, 403);
+    const ceoDeliveryReturnBlocked = await command(ceo.token, `/deliveries/${deliveryId}/reject`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-ceo-delivery-return-blocked`,
+      note: "CEO must not decide delivery reports",
+    });
+    assert.equal(ceoDeliveryReturnBlocked.status, 403);
     const deliveryApproveBody = {
       expectedRevision: 2,
       idempotencyKey: `${marker}-delivery-approve`,
@@ -866,6 +879,13 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(budget.status, "submitted");
     assert.equal(budget.branchId, branchA);
     assert.equal(budget.branchName, `${marker} Branch A`);
+    const duplicateSubmit = await command(manager.token, "/finance/budgets", {
+      budget: budgetInput(`${marker} duplicate`, "submitted"),
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-budget-duplicate-submit`,
+    });
+    assert.equal(duplicateSubmit.status, 409);
+    assert.match(String(duplicateSubmit.body.error), /already has a budget submitted/i);
     const otherBranchBudget = await command(otherManager.token, "/finance/budgets", {
       budget: budgetInput(`${marker} other branch`, "submitted"),
       expectedRevision: 0,
@@ -916,13 +936,52 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(adminDeleteApprovedBudget.status, 200);
     assert.equal(adminDeleteApprovedBudget.body.deleted, true);
 
-    const duplicateSubmit = await command(manager.token, "/finance/budgets", {
-      budget: budgetInput(`${marker} duplicate`, "submitted"),
+    const blockingBudget = await command(manager.token, "/finance/budgets", {
+      budget: budgetInput(`${marker} blocking submitted`, "submitted", 3),
       expectedRevision: 0,
-      idempotencyKey: `${marker}-budget-duplicate-submit`,
+      idempotencyKey: `${marker}-budget-blocking-submitted`,
     });
-    assert.equal(duplicateSubmit.status, 409);
-    assert.match(String(duplicateSubmit.body.error), /already has a budget submitted/i);
+    const competingDraft = await command(manager.token, "/finance/budgets", {
+      budget: budgetInput(`${marker} competing draft`, undefined, 3),
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-budget-competing-draft`,
+    });
+    assert.equal(competingDraft.status, 201);
+    const competingDraftId = String(recordFrom(competingDraft).id);
+    const competingUpdateSubmit = await command(manager.token, `/finance/budgets/${competingDraftId}/update-submit`, {
+      budget: budgetInput(`${marker} competing update`, "draft", 3),
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-budget-competing-update-submit`,
+    });
+    assert.equal(competingUpdateSubmit.status, 409);
+    assert.match(String(competingUpdateSubmit.body.error), /already has a budget submitted/i);
+    const competingDirectSubmit = await command(manager.token, `/finance/budgets/${competingDraftId}/submit`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-budget-competing-direct-submit`,
+    });
+    assert.equal(competingDirectSubmit.status, 409);
+    assert.match(String(competingDirectSubmit.body.error), /already has a budget submitted/i);
+
+    const rejectedResubmission = await command(manager.token, "/finance/budgets", {
+      budget: budgetInput(`${marker} rejected resubmission`, "submitted", 2),
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-budget-rejected-create`,
+    });
+    assert.equal(rejectedResubmission.status, 201);
+    const rejectedBudgetId = String(recordFrom(rejectedResubmission).id);
+    const rejectedBudget = await command(accountant.token, `/finance/budgets/${rejectedBudgetId}/reject`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-budget-rejected-decision`,
+      note: "Please correct the forecast",
+    });
+    assert.equal(rejectedBudget.status, 201);
+    assert.equal(recordFrom(rejectedBudget).status, "rejected");
+    const resubmittedBudget = await command(manager.token, `/finance/budgets/${rejectedBudgetId}/submit`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-budget-rejected-resubmit`,
+    });
+    assert.equal(resubmittedBudget.status, 201);
+    assert.equal(recordFrom(resubmittedBudget).status, "submitted");
 
     const draftBudget = await command(manager.token, "/finance/budgets", {
       budget: budgetInput(`${marker} draft`, undefined, 12),
@@ -947,6 +1006,171 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     }, "DELETE");
     assert.equal(accountantDelete.status, 200);
     assert.equal(accountantDelete.body.deleted, true);
+
+    const headOfficeBranchId = `${marker}-head-office`;
+    const currentBranches = (await readState("branches") as JsonRecord[]).concat([{
+      id: headOfficeBranchId,
+      name: "Head office",
+      st: "Active",
+    }]);
+    await pool.query(
+      "UPDATE app_state SET data = $2::jsonb, updated_at = NOW() WHERE key = $1",
+      ["branches", JSON.stringify(currentBranches)],
+    );
+    const consolidationBudgets = [
+      {
+        id: 1001, month: 12, year: 2026, label: "December 2026",
+        items: [{ cat: "Operations", amt: 5_000 }], total: 5_000,
+        status: "fully_approved", workflow: [], branchId: branchA,
+        branchName: `${marker} Branch A`, revision: 1,
+      },
+      {
+        id: 1002, month: 12, year: 2026, label: "December 2026",
+        items: [{ cat: "Utilities", amt: 2_000 }], total: 2_000,
+        status: "submitted", workflow: [], branchId: branchA,
+        branchName: `${marker} Branch A`, revision: 1,
+      },
+      {
+        id: 1003, month: 12, year: 2026, label: "December 2026",
+        items: [{ cat: "Operations", amt: 7_000 }], total: 7_000,
+        status: "fully_approved", workflow: [], branchId: branchB,
+        branchName: `${marker} Branch B`, revision: 1,
+      },
+      {
+        id: 1004, month: 12, year: 2026, label: "December 2026",
+        items: [{ cat: "Security", amt: 1_000 }], total: 1_000,
+        status: "fully_approved", workflow: [], branchId: branchB,
+        branchName: `${marker} Branch B`, revision: 1,
+      },
+      {
+        id: 1005, month: 12, year: 2026, label: "December 2026",
+        items: [{ cat: "Payroll", amt: 3_000 }], total: 3_000,
+        status: "submitted", workflow: [], by: "acc", byName: "Accountant-created",
+        revision: 1,
+      },
+      {
+        id: 1006, month: 12, year: 2026, label: "December 2026",
+        items: [{ cat: "Training", amt: 1_500 }], total: 1_500,
+        status: "fully_approved", workflow: [], by: "acc", byName: "Accountant-created",
+        revision: 1,
+      },
+    ];
+    const consolidationExpenses = [
+      { id: 2001, budgetId: 1002, branchId: branchA, branchName: `${marker} Branch A`, status: "approved", revision: 1, amt: 500 },
+      { id: 2002, budgetId: 1004, branchId: branchB, branchName: `${marker} Branch B`, status: "approved", revision: 1, amt: 600 },
+      { id: 2003, budgetId: 1006, status: "pending", revision: 1, amt: 300 },
+      { id: 2004, budgetId: 9999, branchId: branchA, branchName: `${marker} Branch A`, status: "approved", revision: 1, amt: 50 },
+    ];
+    await pool.query(
+      "UPDATE app_state SET data = $2::jsonb, updated_at = NOW() WHERE key = $1",
+      ["budgets", JSON.stringify(consolidationBudgets)],
+    );
+    await pool.query(
+      "UPDATE app_state SET data = $2::jsonb, updated_at = NOW() WHERE key = $1",
+      ["expenses", JSON.stringify(consolidationExpenses)],
+    );
+    const consolidated = await command(accountant.token, "/finance/budgets/consolidate-month", {
+      year: 2026,
+      month: 12,
+      headOfficeBranchId,
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-budget-consolidate-december`,
+    });
+    assert.equal(consolidated.status, 201);
+    assert.deepEqual(consolidated.body.archivedBudgetIds, [1002, 1004, 1006]);
+    assert.deepEqual(consolidated.body.relinkedExpenseIds, [2001, 2002, 2003]);
+    const canonicalBudgets = consolidated.body.canonicalBudgets as JsonRecord[];
+    assert.equal(canonicalBudgets.length, 3);
+    const canonicalByBranch = new Map(canonicalBudgets.map(item => [String(item.branchId), item]));
+    assert.equal(canonicalByBranch.get(branchA)?.status, "submitted");
+    assert.equal(canonicalByBranch.get(branchA)?.total, 7_000);
+    assert.equal(canonicalByBranch.get(branchB)?.status, "fully_approved");
+    assert.equal(canonicalByBranch.get(branchB)?.total, 8_000);
+    assert.equal(canonicalByBranch.get(headOfficeBranchId)?.status, "submitted");
+    assert.equal(canonicalByBranch.get(headOfficeBranchId)?.total, 4_500);
+    const archivedBudgets = (await readState("budgets") as JsonRecord[]).filter(item => item.archivedAt);
+    assert.deepEqual(
+      archivedBudgets.map(item => [item.id, item.mergedIntoBudgetId, item.archivedBy, item.archivedReason]),
+      [
+        [1002, 1001, users.accountant, "Merged into budget 1001"],
+        [1004, 1003, users.accountant, "Merged into budget 1003"],
+        [1006, 1005, users.accountant, "Merged into budget 1005"],
+      ],
+    );
+    const relinkedExpenses = (await readState("expenses") as JsonRecord[]).filter(item => [2001, 2002, 2003].includes(Number(item.id)));
+    assert.deepEqual(
+      relinkedExpenses.map(item => [item.id, item.budgetId, item.branchId, item.branchName, item.revision]),
+      [
+        [2001, 1001, branchA, `${marker} Branch A`, 2],
+        [2002, 1003, branchB, `${marker} Branch B`, 2],
+        [2003, 1005, headOfficeBranchId, "Head office", 2],
+      ],
+    );
+    const untouchedExpense = (await readState("expenses") as JsonRecord[]).find(item => Number(item.id) === 2004);
+    assert.equal(untouchedExpense?.budgetId, 9999);
+
+    const performanceBudget = {
+      id: 3001, month: 9, year: 2026, label: "September 2026",
+      items: [{ cat: "Operations", amt: 10_000 }], total: 10_000,
+      status: "fully_approved", workflow: [], branchId: branchA,
+      branchName: `${marker} Branch A`, revision: 1,
+    };
+    await pool.query(
+      "UPDATE app_state SET data = $2::jsonb, updated_at = NOW() WHERE key = $1",
+      ["budgets", JSON.stringify([performanceBudget])],
+    );
+    await pool.query(
+      "UPDATE app_state SET data = $2::jsonb, updated_at = NOW() WHERE key = $1",
+      ["expenses", JSON.stringify([{
+        id: 3000, budgetId: 3001, branchId: branchA, branchName: `${marker} Branch A`,
+        status: "approved", revision: 1, amt: 8_400,
+      }])],
+    );
+    const notificationRows = async (token: string) => {
+      const result = await request("/notifications", {}, token);
+      assert.equal(result.status, 200);
+      return result.body as unknown as JsonRecord[];
+    };
+    const performanceNotifications = () =>
+      notificationRows(accountant.token).then(rows => rows.filter(notification =>
+        Number((notification.data as JsonRecord | undefined)?.budgetId) === 3001
+          && ["Budget nearing exhaustion", "Budget Overspent"].includes(String(notification.title)),
+      ));
+    const createPerformanceExpense = (amount: number, key: string) => command(manager.token, "/finance/expenses", {
+      expense: {
+        cat: "Operations",
+        desc: `${marker} performance ${amount}`,
+        amt: amount,
+        dt: "2026-09-08",
+        budgetId: 3001,
+      },
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-${key}-create`,
+    });
+    const warningExpense = await createPerformanceExpense(500, "budget-warning");
+    assert.equal(warningExpense.status, 201);
+    const warningApproved = await command(accountant.token, `/finance/expenses/${recordFrom(warningExpense).id}/approve`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-budget-warning-approve`,
+    });
+    assert.equal(warningApproved.status, 201);
+    assert.equal((await performanceNotifications()).filter(item => item.title === "Budget nearing exhaustion").length, 1);
+    const nonCrossingExpense = await createPerformanceExpense(100, "budget-non-crossing");
+    const nonCrossingApproved = await command(accountant.token, `/finance/expenses/${recordFrom(nonCrossingExpense).id}/approve`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-budget-non-crossing-approve`,
+    });
+    assert.equal(nonCrossingApproved.status, 201);
+    assert.equal((await performanceNotifications()).length, 1);
+    const overspendExpense = await createPerformanceExpense(1_600, "budget-overspend");
+    const overspendApproved = await command(accountant.token, `/finance/expenses/${recordFrom(overspendExpense).id}/approve`, {
+      expectedRevision: 1,
+      idempotencyKey: `${marker}-budget-overspend-approve`,
+    });
+    assert.equal(overspendApproved.status, 201);
+    const performanceAlertRows = await performanceNotifications();
+    assert.equal(performanceAlertRows.filter(item => item.title === "Budget Overspent").length, 1);
+    assert.equal(performanceAlertRows.length, 2);
 
     const dipCreated = await command(manager.token, "/workflows/dips", {
       dip: {
@@ -1040,6 +1264,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     const dipApproved = await command(md.token, `/workflows/dips/${dipId}/approve`, dipApproveBody);
     assert.equal(dipApproved.status, 200);
     assert.equal((dipApproved.body.dip as JsonRecord).status, "approved");
+    const approvedDipRevision = Number((dipApproved.body.dip as JsonRecord).workflowRevision);
     const dipReplay = await command(md.token, `/workflows/dips/${dipId}/approve`, dipApproveBody);
     assert.equal(dipReplay.status, 200);
     assert.equal(dipReplay.body.replayed, true);
@@ -1052,24 +1277,24 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(inventory.filter(entry => String(entry.dipId) === dipId && entry.tankId === tankId).length, 1);
     const managerApprovedEdit = await command(manager.token, `/workflows/dips/${dipId}`, {
       dip: { obs: "Manager attempted approved correction" },
-      expectedRevision: 1,
+      expectedRevision: approvedDipRevision,
       idempotencyKey: `${marker}-dip-approved-manager-edit`,
     }, "PATCH");
     assert.equal(managerApprovedEdit.status, 409);
     const managerApprovedDelete = await command(manager.token, `/workflows/dips/${dipId}`, {
-      expectedRevision: 1,
+      expectedRevision: approvedDipRevision,
       idempotencyKey: `${marker}-dip-approved-manager-delete`,
     }, "DELETE");
     assert.equal(managerApprovedDelete.status, 409);
     const adminApprovedEdit = await command(admin.token, `/workflows/dips/${dipId}`, {
       dip: { obs: "Admin corrected approved dip" },
-      expectedRevision: 1,
+      expectedRevision: approvedDipRevision,
       idempotencyKey: `${marker}-dip-approved-admin-edit`,
     }, "PATCH");
     assert.equal(adminApprovedEdit.status, 409);
     assert.match(String(adminApprovedEdit.body.error), /permanently locked/i);
     const adminApprovedDelete = await command(admin.token, `/workflows/dips/${dipId}`, {
-      expectedRevision: 2,
+      expectedRevision: approvedDipRevision,
       idempotencyKey: `${marker}-dip-approved-admin-delete`,
     }, "DELETE");
     assert.equal(adminApprovedDelete.status, 409);

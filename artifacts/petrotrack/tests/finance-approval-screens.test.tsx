@@ -220,6 +220,10 @@ function appState(overrides: Record<string, unknown> = {}) {
     deleteBudget: jest.fn(),
     archiveBudgets: jest.fn(),
     classifyBudgetBranch: jest.fn(async () => ({ ok: true })),
+    consolidateBudgetMonth: jest.fn(async () => ({
+      ok: true,
+      result: { canonicalBudgets: [], archivedBudgetIds: [] },
+    })),
     submitBudgetToAcc: jest.fn(),
     forwardBudget: jest.fn(),
     approveBudget: jest.fn(),
@@ -402,6 +406,80 @@ describe('expense approval controls', () => {
     });
 
     expect(touchable(renderer, 'Approve').props.disabled).toBe(false);
+    act(() => renderer.unmount());
+  });
+
+  it.each(['acc', 'admin'] as const)('lets %s open and run monthly budget consolidation', async role => {
+    const consolidateBudgetMonth = jest.fn(async () => ({
+      ok: true,
+      result: { canonicalBudgets: [budget({ status: 'submitted' })], archivedBudgetIds: [8] },
+    }));
+    mockedUseApp.mockReturnValue(appState({
+      role,
+      budgets: [budget({ status: 'fully_approved' })],
+      branches: [
+        { id: 'branch-a', name: 'Maitama Branch', st: 'Active' },
+        { id: 'head-office', name: 'Head office', st: 'Active' },
+      ],
+      consolidateBudgetMonth,
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BudgetScreen />); });
+    expect(touchable(renderer, 'Consolidate a month')).toBeTruthy();
+    press(renderer, 'Consolidate a month');
+    expect(nodeText(renderer.root)).toContain('Head office');
+
+    await act(async () => {
+      await touchable(renderer, 'Consolidate budgets').props.onPress();
+    });
+    expect(consolidateBudgetMonth).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      'head-office',
+    );
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Budgets consolidated',
+      expect.stringContaining('1 branch budgets are now active'),
+    );
+    act(() => renderer.unmount());
+  });
+
+  it('shows near-exhaustion at 85% and overspent performance states', () => {
+    mockedUseApp.mockReturnValue(appState({
+      budgets: [
+        budget({
+          id: 7,
+          label: 'September 2026',
+          total: 100_000,
+          items: [{ cat: 'Operations', amt: 100_000 }],
+          status: 'fully_approved',
+        }),
+        budget({
+          id: 8,
+          label: 'October 2026',
+          total: 100_000,
+          items: [{ cat: 'Operations', amt: 100_000 }],
+          status: 'fully_approved',
+        }),
+      ],
+      expenses: [
+        expense({ id: 51, budgetId: 7, status: 'approved', amt: 85_000 }),
+        expense({ id: 52, budgetId: 8, status: 'approved', amt: 110_000 }),
+      ],
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BudgetScreen />); });
+    press(renderer, 'All Budgets');
+
+    act(() => { touchableContaining(renderer, 'September 2026 Budget').props.onPress(); });
+    expect(nodeText(renderer.root)).toContain('85%');
+    expect(nodeText(renderer.root)).toContain('⚠ Near');
+
+    act(() => { touchableContaining(renderer, 'October 2026 Budget').props.onPress(); });
+    expect(nodeText(renderer.root)).toContain('110%');
+    expect(nodeText(renderer.root)).toContain('⬆ Over');
     act(() => renderer.unmount());
   });
 

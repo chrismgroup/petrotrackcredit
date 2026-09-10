@@ -296,7 +296,7 @@ router.post("/deliveries/:id/recall", async (req, res) => {
   if (!("error" in result)) broadcastRealtime({ type: "delivery.changed", deliveryId: req.params.id }); respond(res, result);
 });
 router.post("/deliveries/:id/approve", async (req, res) => {
-  if (!["md", "ceo", "admin"].includes(req.auth!.role)) { res.status(403).json({ error: "Only MD, CEO, or admin may approve deliveries" }); return; }
+  if (!["md", "admin"].includes(req.auth!.role)) { res.status(403).json({ error: "Only MD or admin may approve deliveries" }); return; }
   if (!validPositiveNumber(req.body?.sellingPrice)) { res.status(400).json({ error: "A positive sellingPrice is required" }); return; }
   const result = await transition(req, ["pending_md"], "md_approved", (item, now) => ({ ...item, sellingPrice: req.body.sellingPrice, mdNote: String(req.body.note ?? ""), approvedBy: req.auth!.username, approvedAt: now, mdBy: req.auth!.username, mdAt: now }), true);
   if (!("error" in result)) await notify(result, {
@@ -308,7 +308,7 @@ router.post("/deliveries/:id/approve", async (req, res) => {
   if (!("error" in result)) broadcastRealtime({ type: "delivery.changed", deliveryId: req.params.id }); respond(res, result);
 });
 router.post("/deliveries/:id/reject", async (req, res) => {
-  if (!["md", "ceo", "admin"].includes(req.auth!.role)) { res.status(403).json({ error: "Only MD, CEO, or admin may reject deliveries" }); return; }
+  if (!["md", "admin"].includes(req.auth!.role)) { res.status(403).json({ error: "Only MD or admin may return deliveries" }); return; }
   const result = await transition(req, ["pending_md"], "returned", (item, now) => ({ ...item, rejectedNote: String(req.body.note ?? ""), rejectedBy: req.auth!.username, rejectedAt: now }));
   if (!("error" in result)) await notify(result, {
     target: String(result.item.receivedByUsername ?? result.item.receivedBy ?? ""),

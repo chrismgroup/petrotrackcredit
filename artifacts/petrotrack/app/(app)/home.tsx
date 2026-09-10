@@ -608,7 +608,7 @@ export default function HomeScreen() {
     const status = delivery.approvalStatus;
     if (isAdmin) return status === 'pending' || status === 'pending_acc' || status === 'pending_md' || status === 'returned';
     if (role === 'acc') return status === 'pending' || status === 'pending_acc';
-    if (isExecutive) return status === 'pending_md';
+    if (role === 'md') return status === 'pending_md';
     if (role === 'mgr' || role === 'csm') {
       return status === 'returned' && (!delivery.receivedBy || delivery.receivedBy === userName);
     }
