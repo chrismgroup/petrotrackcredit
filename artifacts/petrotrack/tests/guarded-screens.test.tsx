@@ -51,7 +51,12 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('@/components/AppliedDateField', () => ({
-  AppliedDateField: () => null,
+  AppliedDateField: ({ onChange }: { onChange: (value: string) => void }) => {
+    const React = require('react');
+    return React.createElement('TouchableOpacity', {
+      onPress: () => onChange('2026-09-10'),
+    }, 'Choose date');
+  },
 }));
 
 jest.mock('@/components/BusinessDateConfirmation', () => ({
@@ -575,6 +580,60 @@ describe('screens tolerate incomplete synced records', () => {
     expect(text).not.toContain('Delivery Records');
     expect(text).not.toContain('Inventory');
     act(() => mounted.unmount());
+  });
+
+  it('does not claim or notify that a dip was submitted when the server rejects it', async () => {
+    const addDip = jest.fn(async () => ({
+      ok: false,
+      error: 'This branch already has a tank dip awaiting MD approval for that business date',
+    }));
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role: 'mgr',
+      userName: 'Station Manager',
+      branchId: 'branch-1',
+      tanks: [{
+        id: 'tank-1',
+        name: 'PMS Tank',
+        prod: 'PMS',
+        branchId: 'branch-1',
+        cap: 10_000,
+        op: 1_000,
+        rv: 0,
+        sl: 0,
+      }],
+      addDip,
+    } as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<TanksScreen />); });
+    const dateButton = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Choose date'),
+    )[0];
+    act(() => dateButton.props.onPress());
+    const readingInput = renderer.root.findAll(node =>
+      String(node.type) === 'TextInput' && node.props.keyboardType === 'numeric',
+    )[0];
+    act(() => readingInput.props.onChangeText('1125'));
+    const submit = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Submit Dip to MD'),
+    )[0];
+    await act(async () => { await submit.props.onPress(); });
+
+    expect(addDip).toHaveBeenCalledWith(expect.objectContaining({
+      dt: '2026-09-10',
+      rd: { 'tank-1': 1125 },
+      status: 'pending',
+    }));
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Dip not submitted',
+      'This branch already has a tank dip awaiting MD approval for that business date',
+    );
+    expect(Alert.alert).not.toHaveBeenCalledWith(
+      'Dip Submitted',
+      expect.any(String),
+    );
+    act(() => renderer.unmount());
   });
 
   it('keeps approved dips out of the workflow review surface', () => {
