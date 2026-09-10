@@ -674,7 +674,7 @@ describe('expense approval controls', () => {
 });
 
 describe('budget approval controls', () => {
-  it('locks manager budget submission while the server command is in flight', async () => {
+  it('locks manager budget submission and ignores repeated confirmation taps', async () => {
     let resolveSubmit!: (result: { ok: boolean }) => void;
     const submitBudgetToAcc = jest.fn(() => new Promise<{ ok: boolean }>(resolve => {
       resolveSubmit = resolve;
@@ -700,7 +700,9 @@ describe('budget approval controls', () => {
 
     const alertCall = (Alert.alert as jest.Mock).mock.calls.at(-1);
     act(() => { alertCall[2][1].onPress(); });
+    act(() => { alertCall[2][1].onPress(); });
 
+    expect(submitBudgetToAcc).toHaveBeenCalledTimes(1);
     expect(submitBudgetToAcc).toHaveBeenCalledWith(7);
     const submittingButtons = touchables(renderer, 'Submitting…');
     expect(submittingButtons).toHaveLength(2);
@@ -711,6 +713,45 @@ describe('budget approval controls', () => {
       await Promise.resolve();
     });
     expect(touchables(renderer, 'Submitting…')).toHaveLength(0);
+    act(() => renderer.unmount());
+  });
+
+  it('makes manager budget submission available again after the server rejects it', async () => {
+    const submitBudgetToAcc = jest.fn(async () => ({ ok: false, error: 'Budget is already submitted.' }));
+    mockedUseApp.mockReturnValue(appState({
+      role: 'mgr',
+      userName: 'Station Manager',
+      branchId: 'branch-a',
+      budgets: [budget({
+        status: 'draft',
+        by: 'mgr',
+        byName: 'Station Manager',
+        branchId: 'branch-a',
+        branchName: 'Maitama Branch',
+      })],
+      submitBudgetToAcc,
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BudgetScreen />); });
+    act(() => { touchableContaining(renderer, 'September 2026 Budget').props.onPress(); });
+    act(() => { touchable(renderer, 'Submit to Accountant').props.onPress({ stopPropagation: jest.fn() }); });
+
+    let alertCall = (Alert.alert as jest.Mock).mock.calls.at(-1);
+    await act(async () => {
+      await alertCall[2][1].onPress();
+    });
+
+    const availableButtons = touchables(renderer, 'Submit to Accountant');
+    expect(availableButtons).toHaveLength(2);
+    expect(availableButtons.every(button => button.props.disabled)).toBe(false);
+
+    act(() => { availableButtons[0].props.onPress({ stopPropagation: jest.fn() }); });
+    alertCall = (Alert.alert as jest.Mock).mock.calls.at(-1);
+    await act(async () => {
+      await alertCall[2][1].onPress();
+    });
+    expect(submitBudgetToAcc).toHaveBeenCalledTimes(2);
     act(() => renderer.unmount());
   });
 
