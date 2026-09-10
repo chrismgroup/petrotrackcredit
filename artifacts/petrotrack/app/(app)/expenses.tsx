@@ -369,6 +369,11 @@ export default function ExpensesScreen() {
           decision === 'forward' ? 'Expense not forwarded' : decision === 'approve' ? 'Expense not approved' : 'Expense not rejected',
           result?.error ?? `The server could not ${decision} this expense.`,
         );
+      } else if (decision === 'forward' || decision === 'approve') {
+        Alert.alert(
+          'Saved',
+          decision === 'forward' ? 'Expense forwarded to MD.' : 'Expense approved.',
+        );
       }
     } finally {
       reviewingExpenseIdsRef.current.delete(id);

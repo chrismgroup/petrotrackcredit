@@ -462,6 +462,7 @@ describe('expense approval controls', () => {
       await touchable(renderer, 'Forward to MD').props.onPress();
     });
     expect(forwardExpenseToMDConfirmed).toHaveBeenCalledWith(41);
+    expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Expense forwarded to MD.');
 
     await act(async () => {
       await touchable(renderer, 'Reject').props.onPress();
@@ -496,6 +497,7 @@ describe('expense approval controls', () => {
       await pendingApproval;
     });
 
+    expect(Alert.alert).not.toHaveBeenCalledWith('Saved', expect.anything());
     expect(touchable(renderer, 'Forward to MD').props.disabled).toBe(false);
     act(() => renderer.unmount());
   });
@@ -590,6 +592,7 @@ describe('expense approval controls', () => {
       act(() => { renderer = create(<ExpensesScreen />); });
       await act(async () => { await touchable(renderer, 'Approve & Lock').props.onPress(); });
       expect(approveExpenseConfirmed).toHaveBeenCalledWith(41);
+      expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Expense approved.');
       await act(async () => { await touchable(renderer, 'Reject').props.onPress(); });
       expect(rejectExpenseConfirmed).toHaveBeenCalledWith(41);
       act(() => renderer.unmount());
@@ -770,14 +773,38 @@ describe('budget approval controls', () => {
       await pendingForward;
     });
 
+    expect(Alert.alert).not.toHaveBeenCalledWith('Saved', expect.anything());
     expect(touchable(renderer, 'Forward to MD').props.disabled).toBeFalsy();
+    act(() => renderer.unmount());
+  });
+
+  it('confirms a successfully forwarded budget without confirming a rejected one', async () => {
+    const forwardBudget = jest.fn(async () => ({ ok: true }));
+    mockedUseApp.mockReturnValue(appState({
+      budgets: [budget()],
+      forwardBudget,
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BudgetScreen />); });
+    act(() => { touchableContaining(renderer, 'September 2026 Budget').props.onPress(); });
+    act(() => { touchables(renderer, 'Forward to MD').at(-1)?.props.onPress(); });
+
+    const noteInput = renderer.root.findByType('TextInput' as any);
+    act(() => { noteInput.props.onChangeText('All amounts verified.'); });
+    await act(async () => {
+      await touchables(renderer, 'Forward to MD').at(-1)!.props.onPress();
+    });
+
+    expect(forwardBudget).toHaveBeenCalledWith(7, 'All amounts verified.');
+    expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Budget forwarded to MD.');
     act(() => renderer.unmount());
   });
 
   it.each(['md', 'ceo', 'admin'] as const)(
     'lets %s approve or reject a forwarded budget from another branch',
     async role => {
-      const approveBudget = jest.fn();
+      const approveBudget = jest.fn(async () => ({ ok: true }));
       const rejectBudget = jest.fn();
       mockedUseApp.mockReturnValue(appState({
         role,
@@ -796,8 +823,11 @@ describe('budget approval controls', () => {
       press(renderer, 'Approve');
       const noteInput = renderer.root.findByType('TextInput' as any);
       act(() => { noteInput.props.onChangeText('Approved after review.'); });
-      press(renderer, 'Confirm Approval');
+      await act(async () => {
+        await touchable(renderer, 'Confirm Approval').props.onPress();
+      });
       expect(approveBudget).toHaveBeenCalledWith(7, 'Approved after review.');
+      expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Budget approved.');
 
       act(() => renderer.unmount());
     },

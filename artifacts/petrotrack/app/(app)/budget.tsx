@@ -415,10 +415,16 @@ export default function BudgetScreen() {
           ? await approveBudget(budgetId, note)
           : await rejectBudget(budgetId, note);
 
+      const committed = result?.ok === true;
+      if (committed && (actionType === 'forward' || actionType === 'approve')) {
+        Alert.alert(
+          'Saved',
+          actionType === 'forward' ? 'Budget forwarded to MD.' : 'Budget approved.',
+        );
+      }
       setActionType(null);
       setActionNote('');
-      if (result?.ok === false) return;
-      setSelected(null);
+      if (committed) setSelected(null);
     } finally {
       reviewingBudgetIdsRef.current.delete(budgetId);
       setBudgetReviewBusy(budgetId, false);
