@@ -29,7 +29,6 @@ jobs:
       # Keep the account marker deterministic across provisioning and the
       # always-run cleanup step, even if provisioning never writes metadata.
       PETROTRACK_TEST_RUN_ID: ${{ github.run_id }}
-      PETROTRACK_ANDROID_APP_ID: petrotrack.replit.app
       PETROTRACK_NATIVE_ARTIFACT_DIR: ${{ runner.temp }}/native-outbox-artifacts
       PETROTRACK_FIXTURE_FILE: ${{ runner.temp }}/native-outbox-fixture.env
       EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
@@ -43,6 +42,9 @@ jobs:
           set -Eeuo pipefail
           pnpm install --frozen-lockfile --filter @workspace/petrotrack...
           pnpm --filter @workspace/petrotrack run preflight:native
+          android_app_id="$(node -e 'process.stdout.write(require("./artifacts/petrotrack/app.json").expo.android.package)')"
+          test -n "$android_app_id"
+          echo "PETROTRACK_ANDROID_APP_ID=$android_app_id" >> "$GITHUB_ENV"
 
       - name: Verify scheduled device tools
         shell: bash
