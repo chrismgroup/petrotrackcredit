@@ -575,6 +575,43 @@ describe('dashboard and workspace navigation', () => {
     },
   );
 
+  it.each(['md', 'ceo', 'acc', 'csm'] as const)(
+    'shows every active Shift Report stage on Home for %s',
+    role => {
+      mockUseApp.mockReturnValue(baseAppState({
+        role,
+        branchId: role === 'csm' ? 'branch-a' : null,
+        navItems: [{ id: 'shift' }],
+        pumpDailyReports: [
+          {
+            id: 221, pumpId: 'pump-1', pumpName: 'Pump 1', product: 'PMS',
+            branchId: 'branch-a', date: '2026-09-05', submittedAt: '2026-09-05T08:00:00.000Z',
+            submittedBy: 'attendant', submittedByName: 'Pump Attendant',
+            status: 'pending_manager', openingMeter: 100, closingMeter: 110,
+            liters: 10, grossAmount: 9000,
+          },
+          {
+            id: 222, pumpId: 'pump-2', pumpName: 'Pump 2', product: 'AGO',
+            branchId: 'branch-a', date: '2026-09-05', submittedAt: '2026-09-05T09:00:00.000Z',
+            submittedBy: 'attendant', submittedByName: 'Pump Attendant',
+            status: 'pending_accountant', openingMeter: 200, closingMeter: 210,
+            liters: 10, grossAmount: 9500,
+          },
+        ],
+      }));
+
+      let renderer!: ReactTestRenderer;
+      act(() => { renderer = create(<HomeScreen />); });
+      const card = buttonWithText(renderer, 'Pump Daily Reports');
+      expect(nodeText(card)).toContain('2 shift reports needing action');
+      act(() => { card.props.onPress(); });
+      expect(mockPush).toHaveBeenCalledWith(
+        role === 'acc' ? '/(app)/shift?tab=pending_acc' : '/(app)/shift?tab=all_records',
+      );
+      act(() => renderer.unmount());
+    },
+  );
+
   it('opens the Home stock snapshot card in the stock snapshot screen', () => {
     mockUseApp.mockReturnValue(baseAppState());
 
