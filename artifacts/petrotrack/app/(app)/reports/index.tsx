@@ -11,7 +11,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import { Branch, getPriceForProduct, ROLE_COLORS, fmt, fmtDate, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import {
-  PERIODS, PROD_COLORS, REPORT_META,
+  ALL_REPORT_TYPES, PERIODS, PROD_COLORS, REPORT_META,
   Period, ReportType,
   buildPdf, getLastKnownCostPrice, getPerms, matchesProd, nfmt, periodRange,
   localDateKey, priBg, priColor, stColor, safeNum, safeStr, isMissingNum,
@@ -167,6 +167,7 @@ function validReportDate(value: unknown): string {
 export default function ReportsScreen({ detail = false }: { detail?: boolean }) {
   const {
     role, userName, branchId,
+    isHydrated,
     expenses, sales, branches, deliveries, prices, priceHistory, priceProposals,
     maintenance, dips, staff, hrEmployees, pumpDailyReports, companyInfo, companyAssets,
     financialEntry,
@@ -262,7 +263,14 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
 
   const params = useLocalSearchParams();
   const requestedType = firstRouteParam(params.type);
-  const defaultType: ReportType = requestedType && perms.visible.includes(requestedType as ReportType) ? requestedType as ReportType : (perms.visible[0] ?? 'summary');
+  const requestedReportType: ReportType | undefined = requestedType && ALL_REPORT_TYPES.includes(requestedType as ReportType)
+    ? requestedType as ReportType
+    : undefined;
+  const fallbackType: ReportType = perms.visible[0] ?? 'summary';
+  // A saved viewer link can render before the account role/access policy has
+  // finished hydrating. Keep a known requested report stable for that first
+  // render; once hydration settles, the permission result can still replace it.
+  const defaultType: ReportType = requestedReportType ?? fallbackType;
   const requestedPeriod = firstRouteParam(params.period);
   const defaultPeriod: Period = requestedPeriod && PERIODS.includes(requestedPeriod as Period) ? requestedPeriod as Period : 'Monthly';
   const requestedBranch = firstRouteParam(params.branch);
@@ -274,6 +282,15 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   const [reportType, setReportType] = useState<ReportType>(defaultType);
   const [period,     setPeriod]     = useState<Period>(defaultPeriod);
   const [anchorDate, setAnchorDate] = useState(defaultDate);
+
+  useEffect(() => {
+    if (
+      !isHydrated
+      || !requestedReportType
+      || perms.visible.includes(requestedReportType)
+    ) return;
+    setReportType(fallbackType);
+  }, [fallbackType, isHydrated, perms.visible, requestedReportType]);
 
   useEffect(() => {
     if (
@@ -298,8 +315,8 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   const canExport   = perms.canGenerate.includes(reportType);
   const meta        = REPORT_META[reportType] ?? REPORT_META.summary;
   const routeFallbacks = detail ? [
-    requestedType && requestedType !== defaultType
-      ? `Report type was replaced with ${REPORT_META[defaultType]?.label ?? 'Summary'}.`
+    requestedType && requestedType !== reportType
+      ? `Report type was replaced with ${REPORT_META[reportType]?.label ?? 'Summary'}.`
       : null,
     requestedPeriod && requestedPeriod !== defaultPeriod
       ? `Reporting period was replaced with ${defaultPeriod}.`
