@@ -182,7 +182,7 @@ export default function ReceivingScreen() {
 
   const isMgr        = role === 'mgr' || role === 'csm' || role === 'admin';
   const isAcc        = role === 'acc' || role === 'admin';
-  const isMd         = role === 'md'  || role === 'ceo' || role === 'admin';
+  const isMd         = role === 'md' || role === 'admin';
   const isAdmin      = role === 'admin';
 
   const [showForm, setShowForm] = useState(false);

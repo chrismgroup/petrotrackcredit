@@ -61,4 +61,5 @@
 - [Admin page access](admin-page-access.md) — role defaults remain, but Admin per-user overrides govern every app route and hidden routes fail closed
 - [Native form confirmations](native-form-confirmations.md) — confirmation steps inside an open native form modal must render in that modal, not open a second modal above it
 - [Biometric sign-in preference](biometric-preference.md) — explicit device opt-out survives later password logins; re-enabling requires password and local biometric checks
+- [Delivery approval authority](delivery-approval-authority.md) — Accountant-forwarded deliveries are decided by MD, not CEO; CEO retains read-only visibility
 - [Acceptance test lifecycle](acceptance-test-lifecycle.md) — shared database-backed tests must coordinate module-level pool ownership and teardown

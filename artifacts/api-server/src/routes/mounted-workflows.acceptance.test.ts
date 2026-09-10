@@ -529,6 +529,18 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     });
     assert.equal(deliveryForwarded.status, 200);
     assert.equal((deliveryForwarded.body.delivery as JsonRecord).approvalStatus, "pending_md");
+    const ceoDeliveryApprovalBlocked = await command(ceo.token, `/deliveries/${deliveryId}/approve`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-ceo-delivery-approve-blocked`,
+      sellingPrice: 700,
+    });
+    assert.equal(ceoDeliveryApprovalBlocked.status, 403);
+    const ceoDeliveryReturnBlocked = await command(ceo.token, `/deliveries/${deliveryId}/reject`, {
+      expectedRevision: 2,
+      idempotencyKey: `${marker}-ceo-delivery-return-blocked`,
+      note: "CEO must not decide delivery reports",
+    });
+    assert.equal(ceoDeliveryReturnBlocked.status, 403);
     const deliveryApproveBody = {
       expectedRevision: 2,
       idempotencyKey: `${marker}-delivery-approve`,

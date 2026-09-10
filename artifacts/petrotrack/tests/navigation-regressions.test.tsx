@@ -396,6 +396,46 @@ describe('dashboard and workspace navigation', () => {
     act(() => renderer.unmount());
   });
 
+  it('routes Accountant-forwarded deliveries to MD approval, not CEO approval', () => {
+    const delivery = {
+      id: 104,
+      dt: '2026-09-09',
+      sup: 'Supplier',
+      prod: 'PMS',
+      wb: 'WB-MD-1',
+      ord: 1000,
+      rec: 1000,
+      st: 'ok',
+      notes: '',
+      approvalStatus: 'pending_md',
+      costPrice: 800,
+    };
+
+    mockUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      navItems: [{ id: 'recv' }],
+      deliveries: [delivery],
+    }));
+    let mdRenderer!: ReactTestRenderer;
+    act(() => { mdRenderer = create(<HomeScreen />); });
+    expect(mdRenderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Product Deliveries'),
+    )).toHaveLength(1);
+    act(() => mdRenderer.unmount());
+
+    mockUseApp.mockReturnValue(baseAppState({
+      role: 'ceo',
+      navItems: [{ id: 'recv' }],
+      deliveries: [delivery],
+    }));
+    let ceoRenderer!: ReactTestRenderer;
+    act(() => { ceoRenderer = create(<HomeScreen />); });
+    expect(ceoRenderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Product Deliveries'),
+    )).toHaveLength(0);
+    act(() => ceoRenderer.unmount());
+  });
+
   it.each([
     {
       label: 'MD tank-dip approval',
