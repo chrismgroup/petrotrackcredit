@@ -65,6 +65,15 @@ router.post("/users", async (req, res): Promise<void> => {
     res.status(400).json({ error: "A valid branchId is required" });
     return;
   }
+  if (empId) {
+    const [duplicate] = await db.select({ id: staffUsersTable.id })
+      .from(staffUsersTable)
+      .where(eq(staffUsersTable.empId, empId));
+    if (duplicate) {
+      res.status(409).json({ error: "Staff ID already exists" });
+      return;
+    }
+  }
 
   // Admin and HR can create active accounts directly.
   const wantsActive = status === "active" || (username && password && role && !status);
@@ -164,6 +173,28 @@ router.put("/users/:id", async (req, res): Promise<void> => {
   if (branchId !== undefined && !await canonicalBranch(branchId)) {
     res.status(400).json({ error: "branchId must identify an existing branch" });
     return;
+  }
+  if (empId !== undefined) {
+    const [current] = await db.select({ empId: staffUsersTable.empId })
+      .from(staffUsersTable)
+      .where(eq(staffUsersTable.id, id));
+    if (!current) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    if (current.empId && current.empId !== empId) {
+      res.status(409).json({ error: "Staff ID is permanent and cannot be changed" });
+      return;
+    }
+    if (empId) {
+      const [duplicate] = await db.select({ id: staffUsersTable.id })
+        .from(staffUsersTable)
+        .where(eq(staffUsersTable.empId, empId));
+      if (duplicate && duplicate.id !== id) {
+        res.status(409).json({ error: "Staff ID already exists" });
+        return;
+      }
+    }
   }
 
   const updates: Record<string, unknown> = {};

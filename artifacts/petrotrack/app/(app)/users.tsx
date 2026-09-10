@@ -245,6 +245,8 @@ export default function UsersScreen() {
       'Staff Directory Updated',
       `${result.linked} existing staff record${result.linked === 1 ? '' : 's'} linked and ${result.added} missing staff record${result.added === 1 ? '' : 's'} added.`
       + ` ${result.createdAccounts} missing user account${result.createdAccounts === 1 ? '' : 's'} created for activation.`
+      + ` ${result.idsAssigned} permanent staff ID${result.idsAssigned === 1 ? '' : 's'} assigned.`
+      + (result.idFailures ? ` ${result.idFailures} staff ID assignment${result.idFailures === 1 ? '' : 's'} failed and should be retried.` : '')
       + (result.ambiguousAccountIds.length
         ? ` ${result.ambiguousAccountIds.length} account records were skipped because their staff identity is ambiguous.`
         : '')

@@ -63,6 +63,8 @@ test('HR can manage registered users and reconcile the staff directory', async (
     added: 1,
     linked: 1,
     createdAccounts: 0,
+    idsAssigned: 2,
+    idFailures: 0,
     ambiguousAccountIds: [],
     unassigned: 0,
   }));
