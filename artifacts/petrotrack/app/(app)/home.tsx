@@ -600,7 +600,7 @@ export default function HomeScreen() {
     isGlobalOverview || !scopedBranchId || !item.branchId || item.branchId === scopedBranchId;
   const isAdmin = role === 'admin';
   const isExecutive = role === 'md' || role === 'ceo';
-  const pendingDips = canOpen(SCREEN_ROUTES.tanks) && (role === 'md' || isAdmin)
+  const pendingDips = canOpen(SCREEN_ROUTES.tanks) && ['md', 'ceo', 'acc', 'csm'].includes(role ?? '')
     ? dips.filter(d => d.status === 'pending' && inApprovalScope(d))
     : [];
   const pendingDeliveries = deliveries.filter(delivery => {

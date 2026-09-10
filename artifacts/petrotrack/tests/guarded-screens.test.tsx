@@ -636,7 +636,7 @@ describe('screens tolerate incomplete synced records', () => {
     act(() => renderer.unmount());
   });
 
-  it('keeps approved dips out of the workflow review surface', () => {
+  it('keeps approved dips locked and out of the manager correction surface', () => {
     const tank = {
       id: 'tank-1',
       name: 'PMS Tank',
@@ -690,13 +690,58 @@ describe('screens tolerate incomplete synced records', () => {
       adminRenderer = create(<TanksScreen />);
     });
     const mountedAdmin = adminRenderer as unknown as ReactTestRenderer;
-    expect(renderedText(mountedAdmin)).toContain('Pending Dip Reports for Review');
+    expect(renderedText(mountedAdmin)).not.toContain('Pending Dip Reports for Review');
     expect(renderedText(mountedAdmin)).not.toContain('Edit');
     expect(renderedText(mountedAdmin)).not.toContain('Delete');
     expect(renderedText(mountedAdmin)).not.toContain('History');
     expect(renderedText(mountedAdmin)).not.toContain('Inventory');
     act(() => mountedAdmin.unmount());
   });
+
+  it.each(['ceo', 'acc', 'csm'] as const)(
+    'shows the full tank-dip workflow to %s without decision controls',
+    role => {
+      mockedUseApp.mockReturnValue({
+        ...baseAppState(),
+        role,
+        branchId: null,
+        tanks: [],
+        lpgTanks: [],
+        branches: [],
+        dips: [{
+          id: 44,
+          dt: '2026-09-08',
+          by: 'Station Manager',
+          branchId: 'branch-1',
+          rd: { 'tank-1': 1_125 },
+          lpg: {},
+          obs: 'Pending oversight',
+          status: 'pending',
+          workflowRevision: 0,
+        }, {
+          id: 45,
+          dt: '2026-09-07',
+          by: 'Station Manager',
+          branchId: 'branch-1',
+          rd: { 'tank-1': 1_100 },
+          lpg: {},
+          obs: 'Approved history',
+          status: 'approved',
+          workflowRevision: 1,
+        }],
+      } as any);
+
+      let renderer!: ReactTestRenderer;
+      act(() => { renderer = create(<TanksScreen />); });
+      const text = renderedText(renderer);
+      expect(text).toContain('Pending oversight');
+      expect(text).toContain('Approved history');
+      expect(renderer.root.findAll(node =>
+        String(node.type) === 'TouchableOpacity' && ['Approve', 'Reject'].includes(nodeText(node)),
+      )).toHaveLength(0);
+      act(() => renderer.unmount());
+    },
+  );
 
   it('shows MD pending dips even before tank metadata is hydrated', () => {
     const pendingDip = {

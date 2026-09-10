@@ -2975,8 +2975,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const rec = dips.find(r => r.id === id);
     if (!rec) return;
     void workflowApi.dips.decide(id, 'approve', workflowMeta(rec.workflowRevision ?? 0))
-      .then(result => result?.dip ? applyDip(result.dip as DipRecord) : workflowFailure('Dip approval'));
-  }, [dips]);
+      .then(async result => {
+        if (!result?.dip) {
+          workflowFailure('Dip approval');
+          return;
+        }
+        applyDip(result.dip as DipRecord);
+        await syncFromServer();
+      });
+  }, [applyDip, dips, syncFromServer, workflowFailure]);
 
   const rejectDip = useCallback((id: number) => {
     const rec = dips.find(item => item.id === id); if (!rec) return;

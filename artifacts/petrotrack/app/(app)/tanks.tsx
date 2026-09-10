@@ -32,7 +32,7 @@ export default function TanksScreen() {
   const [selectedHistoryBranchId, setSelectedHistoryBranchId] = useState<string | null>(null);
 
   const isMD = role === 'md';
-  const isAdmin = role === 'admin';
+  const canViewWorkflow = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm';
   // Pending dips are independent submissions. Do not block a manager from
   // recording a new reading because an earlier reading is still awaiting MD;
   // MD can review multiple pending records and the server remains the source
@@ -50,7 +50,7 @@ export default function TanksScreen() {
     Object.keys(dip.rd ?? {}).some(tankId => visiblePetrolTankIds.has(tankId)) ||
     Object.keys(dip.lpg ?? {}).some(tankId => visibleLpgTankIds.has(tankId));
   const canReviewDip = (dip: (typeof dips)[number]) =>
-    isMD || isAdmin || dipHasVisibleReading(dip);
+    canViewWorkflow || dipHasVisibleReading(dip);
   const getDipBranch = (dip: (typeof dips)[number]) => {
     if (dip.branchId) {
       return {
@@ -75,7 +75,7 @@ export default function TanksScreen() {
     canReviewDip(dip)
     && (canEdit
       ? dip.status === 'rejected' && dip.by === userName
-      : (isMD || isAdmin) && dip.status === 'pending'),
+      : canViewWorkflow),
   );
   const dipHistoryGroups = visibleDipRecords.reduce<Array<{ id: string; name: string; dips: typeof visibleDipRecords }>>((groups, dip) => {
     const branch = getDipBranch(dip);
@@ -274,7 +274,7 @@ export default function TanksScreen() {
         </View>
       )}
 
-      {((canEdit && visibleDipRecords.length > 0) || isMD || isAdmin) && (
+      {((canEdit && visibleDipRecords.length > 0) || canViewWorkflow) && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {isMD && dips.some(d => d.status === 'pending') && (
             <View style={[styles.mdBanner, { backgroundColor: '#4527a018', borderColor: '#4527a0' }]}>
@@ -382,7 +382,7 @@ export default function TanksScreen() {
                     {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
                   </Text>
                 )}
-                {(isAdmin && isPending || canEdit && dip.status === 'rejected') && (
+                {canEdit && dip.status === 'rejected' && (
                   <View style={[styles.mdActions, { marginTop: 8 }]}>
                     <TouchableOpacity
                       style={[styles.rejectBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]}
@@ -461,35 +461,6 @@ export default function TanksScreen() {
                     >
                       <Ionicons name="close" size={15} color="#A32D2D" />
                       <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Reject</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {isAdmin && isPending && (
-                  <View style={[styles.mdActions, { marginTop: 6 }]}>
-                    <TouchableOpacity
-                      style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
-                      onPress={() => { approveDip(dip.id); Alert.alert('Approved', 'Dip record approved by admin.'); }}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="checkmark" size={15} color="#fff" />
-                      <Text style={styles.mdActionText}>Approve</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.rejectBtn, { borderColor: '#791F1F', backgroundColor: '#FCEBEB' }]}
-                      onPress={() =>
-                        Alert.alert(
-                          'Reset Dip Record',
-                          `This will reject the pending dip by "${dip.by}" so they can submit a new one. Continue?`,
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Reset', style: 'destructive', onPress: () => { rejectDip(dip.id); Alert.alert('Reset', 'Dip reset. Manager can now submit a new dip.'); } },
-                          ]
-                        )
-                      }
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="refresh" size={15} color="#791F1F" />
-                      <Text style={[styles.mdActionText, { color: '#791F1F' }]}>Reset (Unblock)</Text>
                     </TouchableOpacity>
                   </View>
                 )}
