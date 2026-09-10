@@ -481,6 +481,17 @@ export default function HomeScreen() {
   const scopedBranchId = isGlobalOverview ? null : branchId;
   const accountsReceivable = calculateAccountsReceivable(pumpDailyReports, scopedBranchId);
   const greeting = dayGreeting();
+  const currentAccount = userAccounts.find(account => account.id === staffId)
+    ?? userAccounts.find(account => account.empName.trim().toLowerCase() === userName.trim().toLowerCase());
+  const assignedBranchId = currentAccount?.branchId ?? branchId;
+  const assignedBranch = branches.find(branch => branch.id === assignedBranchId);
+  const assignedBranchName = currentAccount?.branchName ?? assignedBranch?.name;
+  const staffDisplayId = currentAccount?.empId;
+  const roleLabel = currentAccount?.jobTitle
+    ?? ROLE_LABELS[currentAccount?.role ?? role]
+    ?? currentAccount?.role
+    ?? role;
+  const identityIncomplete = !staffDisplayId || !assignedBranchId || !assignedBranchName;
   const dayStamp = new Date().toLocaleDateString('en-NG', {
     weekday: 'long', day: 'numeric', month: 'long',
   });
@@ -908,6 +919,13 @@ export default function HomeScreen() {
               <Text style={s.heroEyebrow}>PETROTRACK COMMAND</Text>
               <Text style={s.heroGreeting}>{greeting},</Text>
               <Text style={s.heroName}>{userName || ROLE_LABELS[role] || role}</Text>
+              <Text style={s.heroIdentity}>{roleLabel} · {assignedBranchName ?? 'Branch not assigned'}</Text>
+              <Text style={s.heroIdentityIds}>
+                Staff ID: {staffDisplayId ?? 'Not assigned'} · Branch ID: {assignedBranchId ?? 'Not assigned'}
+              </Text>
+              {identityIncomplete ? (
+                <Text style={s.heroIdentityWarning}>Contact Admin or HR to correct your staff or branch assignment.</Text>
+              ) : null}
             </View>
             {canOpen(SCREEN_ROUTES.notifications) ? (
               <TouchableOpacity
@@ -1472,6 +1490,9 @@ const s = StyleSheet.create({
   heroEyebrow: { color: '#7CB89A', fontSize: 9, fontWeight: '800', letterSpacing: 1.6, marginBottom: 6 },
   heroGreeting: { color: '#C8DED0', fontSize: 13, fontWeight: '400' },
   heroName: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
+  heroIdentity: { color: '#DCECE2', fontSize: 12, fontWeight: '700', marginTop: 5 },
+  heroIdentityIds: { color: '#AFC9B7', fontSize: 10, fontWeight: '600', marginTop: 3 },
+  heroIdentityWarning: { color: '#FFD28A', fontSize: 10, lineHeight: 14, fontWeight: '700', marginTop: 5 },
   heroDate: { color: '#9BBBA3', fontSize: 11, marginTop: 14 },
   heroNotif: {
     width: 42, height: 42, borderRadius: 14,

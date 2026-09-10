@@ -7,7 +7,7 @@ import {
 
 import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { GLOBAL_OVERVIEW_ROLES, ROLE_COLORS, ROLE_LABELS, UserAccount, useApp, type Role } from '@/context/AppContext';
+import { ROLE_COLORS, ROLE_LABELS, UserAccount, useApp, type Role } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
 type Tab = 'pending' | 'active' | 'staff';
@@ -21,7 +21,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   pending_md:    'Awaiting MD',
-  pending_admin: 'Awaiting Admin',
+  pending_admin: 'Awaiting Activation',
   pending:       'Pending',
   active:        'Active',
   suspended:     'Suspended',
@@ -38,13 +38,18 @@ export default function UsersScreen() {
     approveUserAccount, updateUserAccount,
     updateEnrollmentData,
     suspendUserAccount, reactivateUserAccount,
-    rejectUserAccount, deleteUserAccount, deleteStaff,
+    rejectUserAccount, deleteUserAccount, deleteStaff, reconcileUserStaffDirectory,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
   const isAdmin = role === 'admin';
   const isHR    = role === 'csm';
   const isMD    = role === 'md';
+  const canManageUsers = isAdmin || isHR;
+  const defaultBranchId = branches.find(branch => branch.name.trim().toLowerCase() === 'head office')?.id
+    ?? branches.find(branch => branch.st === 'Active')?.id
+    ?? branches[0]?.id
+    ?? '';
 
   const [tab, setTab]       = useState<Tab>('pending');
   const [search, setSearch] = useState('');
@@ -118,13 +123,11 @@ export default function UsersScreen() {
   const pendingLegacy    = userAccounts.filter(a => a.status === 'pending');
   const pendingForRole   = isMD
     ? pendingMdRecs
-    : isAdmin
-      ? [...pendingAdminRecs, ...pendingLegacy]
-      : isHR
-        ? pendingMdRecs
+    : canManageUsers
+      ? [...pendingAdminRecs, ...pendingLegacy, ...pendingMdRecs]
         : [];
   const active   = userAccounts.filter(a => ['active', 'suspended'].includes(a.status));
-  const registeredUsers = isAdmin ? userAccounts : active;
+  const registeredUsers = canManageUsers ? userAccounts : active;
   const filtered = (tab === 'pending' ? pendingForRole : registeredUsers).filter(a =>
     !search || a.empName.toLowerCase().includes(search.toLowerCase()) ||
     a.username.toLowerCase().includes(search.toLowerCase())
@@ -150,7 +153,7 @@ export default function UsersScreen() {
     const suggested = acc.empName.split(' ').map(w => w[0]?.toLowerCase()).join('') +
       (acc.empName.split(' ')[1] || '').toLowerCase().slice(0, 5);
     setARole('att'); setAUsername(suggested || ''); setAPassword('');
-    setABranch(''); setShowApprovePw(false);
+    setABranch(acc.branchId || defaultBranchId); setShowApprovePw(false);
     setApproving(acc);
   }
 
@@ -158,10 +161,10 @@ export default function UsersScreen() {
     if (!approving) return;
     if (!aUsername.trim()) { Alert.alert('Required', 'Username is required.'); return; }
     if (!aPassword.trim()) { Alert.alert('Required', 'Set a temporary password.'); return; }
+    if (!aBranch) { Alert.alert('Required', 'Assign this user to a branch.'); return; }
     const dup = userAccounts.find(a => a.username === aUsername.trim() && a.id !== approving.id);
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
-    const accountBranch = GLOBAL_OVERVIEW_ROLES.has(aRole) ? null : (aBranch || null);
-    await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', accountBranch);
+    await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch);
     Alert.alert('Account Approved', `${approving.empName} can now log in as @${aUsername.trim()}.`);
     setApproving(null);
   }
@@ -177,20 +180,21 @@ export default function UsersScreen() {
   function openEdit(acc: UserAccount) {
     setEUsername(acc.username); setEPassword('');
     setERole((acc.role as Role) || 'att');
-    setEBranch(acc.branchId || ''); setEPhone(acc.phoneNumber || '');
+    setEBranch(acc.branchId || defaultBranchId); setEPhone(acc.phoneNumber || '');
     setShowEditPw(false); setEditing(acc);
   }
 
   async function handleSaveEdit() {
     if (!editing) return;
     if (!eUsername.trim()) { Alert.alert('Required', 'Username cannot be empty.'); return; }
+    if (!eBranch) { Alert.alert('Required', 'Assign this user to a branch.'); return; }
     if (ePassword.trim() && ePassword.trim().length < 6) {
       Alert.alert('Invalid', 'New password must be at least 6 characters.'); return;
     }
     const dup = userAccounts.find(a => a.username === eUsername.trim() && a.id !== editing.id);
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
     const updates: { username?: string; password?: string; role?: Role; branchId?: string | null; phoneNumber?: string } = {
-      username: eUsername.trim(), role: eRole, branchId: GLOBAL_OVERVIEW_ROLES.has(eRole) ? null : (eBranch || null),
+      username: eUsername.trim(), role: eRole, branchId: eBranch,
       phoneNumber: ePhone.trim() || undefined,
     };
     if (ePassword.trim()) updates.password = ePassword.trim();
@@ -214,6 +218,10 @@ export default function UsersScreen() {
   }
 
   function handleDelete(acc: UserAccount) {
+    if (acc.username === userName) {
+      Alert.alert('Action Not Allowed', 'You cannot delete the account you are currently using.');
+      return;
+    }
     Alert.alert('Delete Account', `Permanently remove ${acc.empName}'s account? This cannot be undone.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -231,12 +239,25 @@ export default function UsersScreen() {
     ]);
   }
 
+  async function handleReconcileStaff() {
+    const result = await reconcileUserStaffDirectory();
+    Alert.alert(
+      'Staff Directory Updated',
+      `${result.linked} existing staff record${result.linked === 1 ? '' : 's'} linked and ${result.added} missing staff record${result.added === 1 ? '' : 's'} added.`
+      + ` ${result.createdAccounts} missing user account${result.createdAccounts === 1 ? '' : 's'} created for activation.`
+      + (result.ambiguousAccountIds.length
+        ? ` ${result.ambiguousAccountIds.length} account records were skipped because their staff identity is ambiguous.`
+        : '')
+      + (result.unassigned ? ` ${result.unassigned} records still need a branch because no canonical branch is available.` : ''),
+    );
+  }
+
   /* ─── enroll helpers (CSM) ─── */
   const REQUIRED_DOCS = ['CV / Resume', 'Academic Certificates', 'Government-issued ID', "Guarantor's ID", 'Passport Photo'];
   const OPTIONAL_DOCS = ['Previous Employment Letter', 'Reference Letter', 'Medical Certificate'];
 
   function openEnroll() {
-    setNEmpName(''); setNJobTitle(''); setNDept(''); setNBranch(''); setNPhone('');
+    setNEmpName(''); setNJobTitle(''); setNDept(''); setNBranch(defaultBranchId); setNPhone('');
     setNNin(''); setNStaffAddress('');
     setNGuarantorName(''); setNGuarantorPhone(''); setNGuarantorAddress('');
     setNDocs(new Set());
@@ -253,6 +274,7 @@ export default function UsersScreen() {
 
   async function handleEnroll() {
     if (!nEmpName.trim()) { Alert.alert('Required', 'Full name is required.'); return; }
+    if (!nBranch) { Alert.alert('Required', 'Assign this staff member to a branch.'); return; }
     const phone = nPhone.trim();
     if (!phone) { Alert.alert('Required', 'Phone number is required for Comms.'); return; }
     if (!/^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(phone.replace(/\s/g, ''))) {
@@ -276,7 +298,7 @@ export default function UsersScreen() {
     }
     await enrollStaff({
       empName: nEmpName.trim(), jobTitle: nJobTitle.trim() || undefined,
-      dept: nDept.trim() || undefined, branchId: nBranch || undefined,
+      dept: nDept.trim() || undefined, branchId: nBranch,
       phoneNumber: phone, nin,
       staffAddress: nStaffAddress.trim(),
       guarantorName: nGuarantorName.trim(), guarantorPhone: gPhone,
@@ -333,7 +355,7 @@ export default function UsersScreen() {
       (acc.empName.split(' ')[1] || '').toLowerCase().slice(0, 5);
     setVaRole('att');
     setVaUsername(suggested || '');
-    setVaPassword(''); setVaBranch(''); setShowVaPw(false);
+    setVaPassword(''); setVaBranch(acc.branchId || defaultBranchId); setShowVaPw(false);
   }
 
   async function handleSaveEnrollEdit() {
@@ -369,6 +391,7 @@ export default function UsersScreen() {
     if (!viewEnroll) return;
     if (!vaUsername.trim()) { Alert.alert('Required', 'Username is required.'); return; }
     if (!vaPassword.trim()) { Alert.alert('Required', 'Set a temporary password.'); return; }
+    if (!vaBranch) { Alert.alert('Required', 'Assign this user to a branch.'); return; }
     const dup = userAccounts.find(a => a.username === vaUsername.trim() && a.id !== viewEnroll.id);
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
     const phone = viewEnroll.phoneNumber || vePhone.trim();
@@ -376,8 +399,7 @@ export default function UsersScreen() {
       Alert.alert('Phone Missing', 'Add a phone number to the enrollment before activating.');
       return;
     }
-    const accountBranch = GLOBAL_OVERVIEW_ROLES.has(vaRole) ? null : (vaBranch || null);
-    await approveUserAccount(viewEnroll.id, vaRole, vaUsername.trim(), vaPassword.trim(), userName || 'Admin', accountBranch);
+    await approveUserAccount(viewEnroll.id, vaRole, vaUsername.trim(), vaPassword.trim(), userName || 'Admin', vaBranch);
     Alert.alert('Account Activated', `${viewEnroll.empName} can now log in as @${vaUsername.trim()}.`);
     setViewEnroll(null);
   }
@@ -395,7 +417,7 @@ export default function UsersScreen() {
   /* ─── create helpers (admin only) ─── */
   function openCreate() {
     setCEmpName(''); setCUsername(''); setCPassword('');
-    setCRole('att'); setCBranch(''); setCPhone(''); setShowCreatePw(false);
+    setCRole('att'); setCBranch(defaultBranchId); setCPhone(''); setShowCreatePw(false);
     setShowCreate(true);
   }
 
@@ -405,11 +427,12 @@ export default function UsersScreen() {
     if (!cPassword.trim() || cPassword.trim().length < 6) {
       Alert.alert('Required', 'Password must be at least 6 characters.'); return;
     }
+    if (!cBranch) { Alert.alert('Required', 'Assign this user to a branch.'); return; }
     const dup = userAccounts.find(a => a.username === cUsername.trim());
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
     await addActiveUserAccount({
       empName: cEmpName.trim(), username: cUsername.trim(), password: cPassword.trim(),
-      role: cRole, branchId: GLOBAL_OVERVIEW_ROLES.has(cRole) ? null : (cBranch || null), phoneNumber: cPhone.trim() || undefined,
+      role: cRole, branchId: cBranch, phoneNumber: cPhone.trim() || undefined,
       createdBy: userName || 'Admin',
     });
     Alert.alert('Account Created', `${cEmpName.trim()} can now log in as @${cUsername.trim()}.`);
@@ -420,7 +443,7 @@ export default function UsersScreen() {
     name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
   const phoneOk = (v: string) => /^(0[789]\d{9}|(\+?234)[789]\d{9})$/.test(v.replace(/\s/g, ''));
-  const tabs: { id: Tab; label: string; count: number }[] = isAdmin
+  const tabs: { id: Tab; label: string; count: number }[] = canManageUsers
     ? [
         { id: 'pending', label: 'Pending Approval', count: pendingForRole.length },
         { id: 'active', label: 'All Registered Users', count: userAccounts.length },
@@ -463,7 +486,7 @@ export default function UsersScreen() {
             onChangeText={setSearch}
           />
         </View>
-        {isAdmin && tab === 'active' && (
+        {canManageUsers && tab === 'active' && (
           <TouchableOpacity
             onPress={openCreate}
             style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: roleColor, alignItems: 'center', justifyContent: 'center' }}
@@ -497,11 +520,11 @@ export default function UsersScreen() {
               </View>
             ) : (
               <>
-                {isAdmin && pendingForRole.length > 0 && (
+                {canManageUsers && pendingForRole.length > 0 && (
                   <View style={[styles.infoBanner, { backgroundColor: '#BA751722', borderColor: '#BA751744' }]}>
                     <Ionicons name="information-circle" size={16} color="#BA7517" />
                     <Text style={[styles.infoBannerText, { color: '#BA7517' }]}>
-                      {pendingForRole.length} enrollment{pendingForRole.length > 1 ? 's' : ''} approved by MD — tap to review details and activate.
+                      {pendingForRole.length} enrollment{pendingForRole.length > 1 ? 's' : ''} awaiting review or activation.
                     </Text>
                   </View>
                 )}
@@ -583,11 +606,11 @@ export default function UsersScreen() {
               ))}
             </View>
 
-            {!isAdmin && (
+            {!canManageUsers && (
               <View style={[styles.infoBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
                 <Text style={[styles.infoBannerText, { color: colors.textMuted }]}>
-                  View only — only System Admin can manage accounts
+                  View only — only Admin or HR can manage accounts
                 </Text>
               </View>
             )}
@@ -607,7 +630,7 @@ export default function UsersScreen() {
               return (
                 <TouchableOpacity
                   key={acc.id}
-                  onPress={() => isAdmin ? openEdit(acc) : setViewAcc(acc)}
+                  onPress={() => canManageUsers ? openEdit(acc) : setViewAcc(acc)}
                   activeOpacity={0.8}
                   style={[styles.accCard, { backgroundColor: colors.surface, borderColor: isSuspended ? colors.errorBorder : colors.border }]}
                 >
@@ -618,7 +641,7 @@ export default function UsersScreen() {
                     <Text style={[styles.accName, { color: colors.text }]}>{acc.empName}</Text>
                     <Text style={[styles.accSub, { color: colors.textMuted }]}>
                       {ROLE_LABELS[acc.role || ''] ?? acc.role ?? 'Unknown role'}
-                      {acc.branchId ? ` · ${acc.branchId}` : ''}
+                      {acc.branchId ? ` · ${acc.branchName ?? branches.find(branch => branch.id === acc.branchId)?.name ?? acc.branchId} (${acc.branchId})` : ' · Branch not assigned'}
                     </Text>
                     <Text style={[styles.accId, { color: colors.textSubtle }]}>@{acc.username}</Text>
                   </View>
@@ -628,7 +651,7 @@ export default function UsersScreen() {
                         {STATUS_LABELS[acc.status] ?? acc.status}
                       </Text>
                     </View>
-                    {isAdmin && (
+                    {canManageUsers && (
                       <View style={{ flexDirection: 'row', gap: 5 }}>
                         {canToggleStatus && <TouchableOpacity
                           onPress={e => { e.stopPropagation(); handleSuspend(acc); }}
@@ -652,7 +675,7 @@ export default function UsersScreen() {
         )}
 
         {/* ── ALL STAFF TAB ── */}
-        {tab === 'staff' && isAdmin && (
+        {tab === 'staff' && canManageUsers && (
           <>
             <View style={styles.statsRow}>
               {[
@@ -669,10 +692,18 @@ export default function UsersScreen() {
 
             <View style={[styles.infoBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="people-outline" size={16} color={roleColor} />
-              <Text style={[styles.infoBannerText, { color: colors.textMuted }]}>
-                All staff directory records are shown here. Admin can remove suspended or inactive staff and their linked login account.
+              <Text style={[styles.infoBannerText, { color: colors.textMuted, flex: 1 }]}>
+                All staff directory records are shown here. Admin and HR can remove staff and their linked login accounts.
               </Text>
             </View>
+            <TouchableOpacity
+              accessibilityLabel="Reconcile users and staff"
+              onPress={handleReconcileStaff}
+              style={[styles.confirmBtn, { backgroundColor: roleColor, marginBottom: 12 }]}
+            >
+              <Ionicons name="sync" size={16} color="#fff" />
+              <Text style={styles.confirmBtnText}>Sync Users to Staff Directory</Text>
+            </TouchableOpacity>
 
             {filteredStaff.length === 0 ? (
               <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -682,7 +713,7 @@ export default function UsersScreen() {
               </View>
             ) : filteredStaff.map(member => {
               const stCol = member.st === 'Active' ? '#1a6e3c' : colors.error;
-              const branchName = branches.find(branch => branch.id === member.branchId)?.name ?? member.branchId ?? 'Head Office / Global';
+              const branchName = member.branchName ?? branches.find(branch => branch.id === member.branchId)?.name ?? 'Branch not assigned';
               return (
                 <View key={member.id} style={[styles.accCard, { backgroundColor: colors.surface, borderColor: member.st === 'Active' ? colors.border : colors.errorBorder }]}>
                   <View style={[styles.avatar, { backgroundColor: stCol + '18' }]}>
@@ -691,7 +722,7 @@ export default function UsersScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.accName, { color: colors.text }]}>{member.name}</Text>
                     <Text style={[styles.accSub, { color: colors.textMuted }]}>
-                      {ROLE_LABELS[member.role] ?? member.role} · {branchName}
+                       {ROLE_LABELS[member.role] ?? member.role} · {branchName}{member.branchId ? ` (${member.branchId})` : ''}
                     </Text>
                     <Text style={[styles.accId, { color: colors.textSubtle }]}>
                       {member.email || 'No login email'}{member.dept ? ` · ${member.dept}` : ''}
@@ -747,7 +778,7 @@ export default function UsersScreen() {
                   </View>
                 </View>
               </View>
-              {isAdmin && !editingEnroll && (
+              {canManageUsers && !editingEnroll && (
                 <TouchableOpacity
                   onPress={() => setEditingEnroll(true)}
                   style={[styles.editToggleBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]}
@@ -756,7 +787,7 @@ export default function UsersScreen() {
                   <Text style={[styles.editToggleBtnText, { color: roleColor }]}>Edit</Text>
                 </TouchableOpacity>
               )}
-              {isAdmin && editingEnroll && (
+              {canManageUsers && editingEnroll && (
                 <TouchableOpacity
                   onPress={() => { setEditingEnroll(false); openViewEnroll(viewEnroll); }}
                   style={[styles.editToggleBtn, { borderColor: colors.border }]}
@@ -934,7 +965,7 @@ export default function UsersScreen() {
               )}
 
               {/* ── Save edit button ── */}
-              {editingEnroll && isAdmin && (
+              {editingEnroll && canManageUsers && (
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
                   <TouchableOpacity onPress={handleSaveEnrollEdit} style={[styles.confirmBtn, { backgroundColor: roleColor, flex: 1 }]} activeOpacity={0.85}>
                     <Ionicons name="save-outline" size={16} color="#fff" />
@@ -947,7 +978,7 @@ export default function UsersScreen() {
               )}
 
               {/* ── ACTIVATION PANEL (Admin only) ── */}
-              {isAdmin && !editingEnroll && (
+              {canManageUsers && !editingEnroll && (
                 <View style={[styles.activationPanel, { backgroundColor: colors.surface, borderColor: '#1a6e3c44' }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
                     <Ionicons name="person-add" size={16} color='#1a6e3c' />
@@ -974,12 +1005,6 @@ export default function UsersScreen() {
 
                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                     <TouchableOpacity
-                       onPress={() => setVaBranch('')}
-                       style={[styles.roleChip, { backgroundColor: !vaBranch ? (ROLE_COLORS[vaRole] || roleColor) : colors.background, borderColor: !vaBranch ? (ROLE_COLORS[vaRole] || roleColor) : colors.border }]}
-                     >
-                       <Text style={[styles.roleChipText, { color: !vaBranch ? '#fff' : colors.textMuted }]}>Head Office / Global</Text>
-                     </TouchableOpacity>
                      {branches.map(b => (
                           <TouchableOpacity
                             key={b.id}
@@ -1047,7 +1072,7 @@ export default function UsersScreen() {
                 </View>
               )}
 
-              {isAdmin && !editingEnroll && (
+              {canManageUsers && !editingEnroll && (
                 <TouchableOpacity
                   onPress={() => handleDelete(viewEnroll)}
                   style={[styles.deleteBtn, { borderColor: colors.errorBorder, backgroundColor: colors.errorBg, marginTop: 4 }]}
@@ -1095,11 +1120,6 @@ export default function UsersScreen() {
             </View>
              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-               <TouchableOpacity onPress={() => setABranch('')}
-                 style={[styles.roleChip, { backgroundColor: !aBranch ? (ROLE_COLORS[aRole] || roleColor) : colors.surface, borderColor: !aBranch ? (ROLE_COLORS[aRole] || roleColor) : colors.border }]}
-               >
-                 <Text style={[styles.roleChipText, { color: !aBranch ? '#fff' : colors.textMuted }]}>Head Office / Global</Text>
-               </TouchableOpacity>
               {branches.map(b => (
                 <TouchableOpacity key={b.id} onPress={() => setABranch(b.id)}
                   style={[styles.roleChip, { backgroundColor: aBranch === b.id ? (ROLE_COLORS[aRole] || roleColor) : colors.surface, borderColor: aBranch === b.id ? (ROLE_COLORS[aRole] || roleColor) : colors.border }]}
@@ -1166,11 +1186,6 @@ export default function UsersScreen() {
               </View>
                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-                 <TouchableOpacity onPress={() => setEBranch('')}
-                   style={[styles.roleChip, { backgroundColor: !eBranch ? (ROLE_COLORS[eRole] || roleColor) : colors.surface, borderColor: !eBranch ? (ROLE_COLORS[eRole] || roleColor) : colors.border }]}
-                 >
-                   <Text style={[styles.roleChipText, { color: !eBranch ? '#fff' : colors.textMuted }]}>Head Office / Global</Text>
-                 </TouchableOpacity>
                 {branches.map(b => (
                   <TouchableOpacity key={b.id} onPress={() => setEBranch(b.id)}
                     style={[styles.roleChip, { backgroundColor: eBranch === b.id ? (ROLE_COLORS[eRole] || roleColor) : colors.surface, borderColor: eBranch === b.id ? (ROLE_COLORS[eRole] || roleColor) : colors.border }]}
@@ -1262,11 +1277,6 @@ export default function UsersScreen() {
             </View>
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Location</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-              <TouchableOpacity onPress={() => setCBranch('')}
-                style={[styles.roleChip, { backgroundColor: !cBranch ? (ROLE_COLORS[cRole] || roleColor) : colors.surface, borderColor: !cBranch ? (ROLE_COLORS[cRole] || roleColor) : colors.border }]}
-              >
-                <Text style={[styles.roleChipText, { color: !cBranch ? '#fff' : colors.textMuted }]}>Head Office / Global</Text>
-              </TouchableOpacity>
               {branches.length === 0
                 ? null
                 : branches.map(b => (
@@ -1386,11 +1396,6 @@ export default function UsersScreen() {
 
              <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Post to Branch</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-               <TouchableOpacity onPress={() => setNBranch('')}
-                 style={[styles.roleChip, { backgroundColor: !nBranch ? roleColor : colors.surface, borderColor: !nBranch ? roleColor : colors.border }]}
-               >
-                 <Text style={[styles.roleChipText, { color: !nBranch ? '#fff' : colors.text }]}>Head Office / Global</Text>
-               </TouchableOpacity>
                {branches.length === 0
                  ? <Text style={{ color: colors.textMuted, fontSize: 12, fontStyle: 'italic', alignSelf: 'center' }}>No branches available yet.</Text>
                  : branches.map(b => (

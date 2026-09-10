@@ -298,6 +298,39 @@ afterEach(() => {
 });
 
 describe('dashboard and workspace navigation', () => {
+  it('shows the signed-in staff ID and canonical branch assignment on Home', () => {
+    mockUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      userName: 'Mfon Ndon',
+      staffId: 42,
+      branchId: 'HQ',
+      branches: [{ id: 'HQ', name: 'Head Office', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 }],
+      userAccounts: [{
+        id: 42,
+        empId: 'GS-202609-042',
+        empName: 'Mfon Ndon',
+        username: 'mfon.ndon',
+        password: '',
+        role: 'md',
+        jobTitle: 'Managing Director',
+        branchId: 'HQ',
+        branchName: 'Head Office',
+        status: 'active',
+        createdBy: 'Admin',
+        createdAt: '2026-09-01T00:00:00.000Z',
+      }],
+    }));
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<HomeScreen />); });
+    const text = nodeText(renderer.root);
+    expect(text).toContain('Mfon Ndon');
+    expect(text).toContain('Managing Director · Head Office');
+    expect(text).toContain('Staff ID: GS-202609-042 · Branch ID: HQ');
+    expect(text).not.toContain('Contact Admin or HR');
+    act(() => renderer.unmount());
+  });
+
   it.each([
     ['Tank Dipping', '/(app)/tanks'],
     ['Sales', '/(app)/sales'],

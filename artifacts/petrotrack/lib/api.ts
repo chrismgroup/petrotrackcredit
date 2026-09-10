@@ -453,6 +453,7 @@ export interface StaffUserRecord {
   username: string | null;
   role: string | null;
   branchId: string | null;
+  branchName: string | null;
   status: string;
   jobTitle: string | null;
   dept: string | null;
@@ -478,7 +479,7 @@ export const usersApi = {
   /** Fetch all staff user accounts from the database */
   list: () => get<StaffUserRecord[]>('/users'),
 
-  /** Create a new staff user account (admin only) */
+  /** Create a new staff user account (Admin or HR) */
   create: (data: {
     empName: string;
     empId?: string | null;
@@ -498,7 +499,7 @@ export const usersApi = {
     employmentDocs?: string[];
   }) => post<StaffUserRecord>('/users', data),
 
-  /** Update enrollment fields; HR is limited to rejected records, admin has full access */
+  /** Update user or enrollment fields (Admin or HR) */
   update: (id: number, data: Partial<{
     empName: string;
     empId: string | null;
@@ -518,7 +519,7 @@ export const usersApi = {
     employmentDocs: string[];
   }>) => putR<StaffUserRecord>(`/users/${id}`, data),
 
-  /** Manage status transitions; HR may only re-submit rejected records */
+  /** Manage status transitions (Admin or HR; MD retains enrollment review only) */
   setStatus: (id: number, status: string, extra?: {
     username?: string;
     password?: string;
