@@ -816,6 +816,7 @@ describe('budget approval controls', () => {
 
     expect(Alert.alert).not.toHaveBeenCalledWith('Saved', expect.anything());
     expect(touchable(renderer, 'Forward to MD').props.disabled).toBeFalsy();
+    expect(renderer.root.findByType('TextInput' as any).props.value).toBe('All amounts verified.');
     act(() => renderer.unmount());
   });
 
@@ -839,6 +840,7 @@ describe('budget approval controls', () => {
 
     expect(forwardBudget).toHaveBeenCalledWith(7, 'All amounts verified.');
     expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Budget forwarded to MD.');
+    expect(renderer.root.findAll(node => String(node.type) === 'TextInput')).toHaveLength(0);
     act(() => renderer.unmount());
   });
 

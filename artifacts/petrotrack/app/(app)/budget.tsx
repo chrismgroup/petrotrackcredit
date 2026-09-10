@@ -422,9 +422,11 @@ export default function BudgetScreen() {
           actionType === 'forward' ? 'Budget forwarded to MD.' : 'Budget approved.',
         );
       }
-      setActionType(null);
-      setActionNote('');
-      if (committed) setSelected(null);
+      if (committed) {
+        setActionType(null);
+        setActionNote('');
+        setSelected(null);
+      }
     } finally {
       reviewingBudgetIdsRef.current.delete(budgetId);
       setBudgetReviewBusy(budgetId, false);
