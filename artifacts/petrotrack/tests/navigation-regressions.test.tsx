@@ -712,6 +712,10 @@ describe('dashboard and workspace navigation', () => {
     mockPush.mockClear();
     act(() => { buttonWithText(renderer, 'Stock snapshot').props.onPress(); });
     expect(mockPush).toHaveBeenCalledWith('/(app)/stock-snapshot');
+
+    mockPush.mockClear();
+    act(() => { buttonWithText(renderer, 'Users').props.onPress(); });
+    expect(mockPush).toHaveBeenCalledWith('/(app)/users');
     act(() => renderer.unmount());
   });
 });

@@ -44,6 +44,7 @@ const finance: JobItem[] = [
 ];
 
 const supportItems: JobItem[] = [
+  { id: 'users', label: 'Users', description: 'Manage user accounts and the complete staff directory', icon: 'people-outline', route: SCREEN_ROUTES.users, accent: '#0D6E56' },
   { id: 'tasks', label: 'Tasks & KPIs', description: 'Keep assigned work and targets moving', icon: 'checkmark-circle-outline', route: SCREEN_ROUTES.tasks, accent: '#28698B' },
   { id: 'actionItems', label: 'Action Items', description: 'Track ownership, close-out dates and branch accountability', icon: 'flash-outline', route: SCREEN_ROUTES.actionItems, accent: '#B45309' },
   { id: 'prices', label: 'Prices', description: 'Review product prices and proposals', icon: 'pricetag-outline', route: SCREEN_ROUTES.prices, accent: '#7C3AED' },
