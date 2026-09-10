@@ -46,6 +46,7 @@ const ALLOWED_KEYS = new Set([
   "deliveryDeletionTombstones", "expenseDeletionTombstones",
 ]);
 const COMMAND_OWNED_WORKFLOW_KEYS = new Set([
+  "expenses",
   "budgets",
   "dips",
   "priceProposals",
@@ -114,6 +115,64 @@ function budgetStateForIdentity(
   const managerBranchId = auth.branchId?.trim() ?? "";
   if (!managerBranchId) return [];
   return budgets.filter(budget => String(budget.branchId ?? "") === managerBranchId);
+}
+
+function expenseStateForIdentity(
+  data: unknown,
+  branchesData: unknown,
+  budgetsData: unknown,
+  staff: BudgetStaffIdentity[],
+  auth?: { role?: string; branchId?: string | null },
+): JsonRecord[] {
+  const branchNames = new Map(
+    (Array.isArray(branchesData) ? branchesData : [])
+      .filter(isJsonRecord)
+      .map(branch => [String(branch.id ?? "").trim(), String(branch.name ?? "").trim()] as const)
+      .filter(([id, name]) => id && name),
+  );
+  const canonicalBudgets = budgetStateForIdentity(budgetsData, branchesData, staff);
+  const budgetBranches = new Map(
+    canonicalBudgets
+      .map(budget => [
+        String(budget.id ?? "").trim(),
+        {
+          branchId: String(budget.branchId ?? "").trim(),
+          branchName: String(budget.branchName ?? "").trim(),
+        },
+      ] as const)
+      .filter(([id, branch]) => id && branch.branchId),
+  );
+  const normalizedIdentity = (value: unknown) => String(value ?? "").trim().toLowerCase();
+  const expenses = (Array.isArray(data) ? data : [])
+    .filter(isJsonRecord)
+    .map(expense => {
+      let branchId = String(expense.branchId ?? "").trim();
+      const budgetBranch = budgetBranches.get(String(expense.budgetId ?? "").trim());
+      if (!branchId) branchId = budgetBranch?.branchId ?? "";
+      if (!branchId) {
+        const createdBy = normalizedIdentity(expense.createdBy);
+        const byName = normalizedIdentity(expense.byName);
+        const owner = staff.find(candidate =>
+          (createdBy && normalizedIdentity(candidate.username) === createdBy)
+          || (byName && (
+            normalizedIdentity(candidate.empName) === byName
+            || normalizedIdentity(candidate.username) === byName
+          ))
+        );
+        branchId = owner?.branchId?.trim() ?? "";
+      }
+      const branchName = branchId
+        ? branchNames.get(branchId)
+          || (budgetBranch?.branchId === branchId ? budgetBranch.branchName : "")
+          || String(expense.branchName ?? "").trim()
+        : "";
+      return branchId && branchName ? { ...expense, branchId, branchName } : expense;
+    });
+
+  if (auth?.role !== "mgr") return expenses;
+  const managerBranchId = auth.branchId?.trim() ?? "";
+  if (!managerBranchId) return [];
+  return expenses.filter(expense => String(expense.branchId ?? "") === managerBranchId);
 }
 
 // Keys that modify access control, credentials, or HR/legal/financial records.
@@ -848,6 +907,14 @@ router.get("/state", async (req, res): Promise<void> => {
           budgetStaff,
           req.auth,
         )
+      : row.key === "expenses"
+      ? expenseStateForIdentity(
+          row.data,
+          rows.find(candidate => candidate.key === "branches")?.data,
+          rows.find(candidate => candidate.key === "budgets")?.data,
+          budgetStaff,
+          req.auth,
+        )
       : row.key === "maintenance" && Array.isArray(row.data)
       ? row.data.map(value => (
           value && typeof value === "object" && !Array.isArray(value)
@@ -1515,6 +1582,25 @@ router.get("/state/:key", async (req, res): Promise<void> => {
       }).from(staffUsersTable),
     ]);
     res.json(budgetStateForIdentity(row.data, branchesRow[0]?.data, budgetStaff, req.auth));
+    return;
+  }
+  if (key === "expenses") {
+    const [branchesRow, budgetsRow, expenseStaff] = await Promise.all([
+      db.select().from(appStateTable).where(eq(appStateTable.key, "branches")),
+      db.select().from(appStateTable).where(eq(appStateTable.key, "budgets")),
+      db.select({
+        username: staffUsersTable.username,
+        empName: staffUsersTable.empName,
+        branchId: staffUsersTable.branchId,
+      }).from(staffUsersTable),
+    ]);
+    res.json(expenseStateForIdentity(
+      row.data,
+      branchesRow[0]?.data,
+      budgetsRow[0]?.data,
+      expenseStaff,
+      req.auth,
+    ));
     return;
   }
   if (key === "pumpDailyReports") {

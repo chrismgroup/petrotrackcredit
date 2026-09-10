@@ -662,6 +662,18 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     const ceoExpenseState = await request("/state/expenses", {}, ceo.token);
     assert.equal(ceoExpenseState.status, 200);
     assert.ok((ceoExpenseState.body as unknown as JsonRecord[]).some(item => String(item.id) === expenseId));
+    const accountantExpenseState = await request("/state/expenses", {}, accountant.token);
+    assert.equal(accountantExpenseState.status, 200);
+    assert.deepEqual(
+      (accountantExpenseState.body as unknown as JsonRecord[])
+        .filter(item => ["pending", "acc_forwarded"].includes(String(item.status)))
+        .map(item => String(item.id))
+        .sort(),
+      (ceoExpenseState.body as unknown as JsonRecord[])
+        .filter(item => ["pending", "acc_forwarded"].includes(String(item.status)))
+        .map(item => String(item.id))
+        .sort(),
+    );
     const mdExpenseApprovalBlocked = await command(md.token, `/finance/expenses/${expenseId}/approve`, {
       expectedRevision: 1,
       idempotencyKey: `${marker}-md-expense-approve-blocked`,
@@ -712,7 +724,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     const expenseApproved = await command(accountant.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
     assert.equal(expenseApproved.status, 201);
     assert.equal(recordFrom(expenseApproved).status, "approved");
-    const staleExpenseWrite = await request<{ ok: boolean; expenses: JsonRecord[] }>(
+    const staleExpenseWrite = await request<{ error: string }>(
       "/state/expenses",
       {
         method: "PUT",
@@ -724,11 +736,8 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       },
       manager.token,
     );
-    assert.equal(staleExpenseWrite.status, 200);
-    assert.equal(
-      staleExpenseWrite.body.expenses.find(item => String(item.id) === expenseId)?.status,
-      "approved",
-    );
+    assert.equal(staleExpenseWrite.status, 409);
+    assert.match(staleExpenseWrite.body.error, /server-authoritative/);
     const deletableExpense = await command(manager.token, "/finance/expenses", {
       expense: {
         cat: "Operations",
@@ -748,7 +757,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     }, "DELETE");
     assert.equal(deletedExpense.status, 200);
     assert.equal(deletedExpense.body.deleted, true);
-    const staleDeletedExpenseWrite = await request<{ ok: boolean; expenses: JsonRecord[] }>(
+    const staleDeletedExpenseWrite = await request<{ error: string }>(
       "/state/expenses",
       {
         method: "PUT",
@@ -756,11 +765,8 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       },
       manager.token,
     );
-    assert.equal(staleDeletedExpenseWrite.status, 200);
-    assert.equal(
-      staleDeletedExpenseWrite.body.expenses.some(item => String(item.id) === deletableExpenseId),
-      false,
-    );
+    assert.equal(staleDeletedExpenseWrite.status, 409);
+    assert.match(staleDeletedExpenseWrite.body.error, /server-authoritative/);
     const expenseReplay = await command(accountant.token, `/finance/expenses/${expenseId}/approve`, expenseApproveBody);
     assert.equal(expenseReplay.status, 200);
     assert.equal(expenseReplay.body.replay, true);

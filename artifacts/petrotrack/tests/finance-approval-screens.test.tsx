@@ -233,6 +233,22 @@ afterEach(() => {
 });
 
 describe('expense approval controls', () => {
+  it('resolves an expense branch label from its canonical branch ID', () => {
+    mockedUseApp.mockReturnValue(appState({
+      expenses: [expense({
+        branchId: 'branch-b',
+        branchName: '',
+        byName: 'Uyo Manager',
+      })],
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    expect(nodeText(renderer.root)).toContain('Wuse Branch · by Uyo Manager');
+    expect(nodeText(renderer.root)).not.toContain('Branch not assigned');
+    act(() => renderer.unmount());
+  });
+
   it('lets a branch manager select their fully approved legacy budget when its branch is inferred from ownership', () => {
     mockedUseApp.mockReturnValue(appState({
       role: 'mgr',

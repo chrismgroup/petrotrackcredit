@@ -164,7 +164,7 @@ it.each([
   );
   expect(mockAuthenticate).not.toHaveBeenCalled();
   expect(mockApiLogin).toHaveBeenCalledWith('operator', 'secret');
-  expect(mockLogin).toHaveBeenCalledWith('mgr', 'Operator', 'staff-1', 'branch-1');
+  expect(mockLogin).toHaveBeenCalledWith('mgr', 'Operator', 'staff-1', 'branch-1', 'operator');
   act(() => renderer.unmount());
 });
 

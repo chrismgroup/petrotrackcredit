@@ -1,14 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Alert, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, ROLE_LABELS, UINFO, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { clearCredentials, isBiometricEnabled, saveCredentials, setBiometricEnabled } from '@/lib/biometric-auth';
+import { apiLogin } from '@/lib/api';
 
 type InfoTopicKey = 'aboutApp' | 'aboutUs' | 'userPolicy' | 'dataPrivacy' | 'faq' | 'support' | 'contact';
 
@@ -101,7 +104,7 @@ const INFO_CONTENT: Record<InfoTopicKey, {
 };
 
 export default function ProfileScreen() {
-  const { role, userName, branchId, staffId, navItems, unreadCount, changeOwnPassword, logout } = useApp();
+  const { role, userName, accountUsername, branchId, staffId, navItems, unreadCount, changeOwnPassword, logout } = useApp();
   const colors = useColors();
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
@@ -109,6 +112,39 @@ export default function ProfileScreen() {
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [activeInfoTopic, setActiveInfoTopic] = useState<InfoTopicKey | null>(null);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [biometricEnabled, setBiometricEnabledState] = useState(false);
+  const [biometricType, setBiometricType] = useState<'face' | 'fingerprint' | 'biometric'>('biometric');
+  const [showBiometricPassword, setShowBiometricPassword] = useState(false);
+  const [biometricPassword, setBiometricPassword] = useState('');
+  const [biometricBusy, setBiometricBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (Platform.OS === 'web') return;
+    (async () => {
+      try {
+        const [hasHardware, enrolled] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+        ]);
+        if (!hasHardware || !enrolled) return;
+        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+        if (!types.length || !active) return;
+        if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+          setBiometricType('face');
+        } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+          setBiometricType('fingerprint');
+        }
+        setBiometricSupported(true);
+        setBiometricEnabledState(await isBiometricEnabled());
+      } catch {
+        if (active) setBiometricSupported(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   if (!role) return null;
 
   const roleColor = ROLE_COLORS[role] || colors.primary;
@@ -141,6 +177,73 @@ export default function ProfileScreen() {
   async function completeSignOut() {
     await logout();
     router.replace('/');
+  }
+
+  const biometricLabel = biometricType === 'face'
+    ? 'Face ID'
+    : biometricType === 'fingerprint'
+      ? 'Fingerprint'
+      : 'Biometrics';
+
+  function requestBiometricChange(enabled: boolean) {
+    if (biometricBusy) return;
+    if (!enabled) {
+      setBiometricEnabledState(false);
+      void Promise.all([clearCredentials(), setBiometricEnabled(false)]);
+      return;
+    }
+    setBiometricPassword('');
+    setShowBiometricPassword(true);
+  }
+
+  async function enableBiometric() {
+    const password = biometricPassword.trim();
+    if (!password) {
+      Alert.alert('Required', 'Enter your Petrotrack password to continue.');
+      return;
+    }
+    if (!accountUsername) {
+      Alert.alert('Sign in again required', 'Sign out and sign in with your password before enabling biometric sign-in on this device.');
+      return;
+    }
+
+    setBiometricBusy(true);
+    try {
+      const loginResult = await apiLogin(accountUsername, password);
+      if (typeof loginResult === 'string') {
+        Alert.alert(
+          loginResult === 'credentials' ? 'Incorrect password' : 'Unable to verify password',
+          loginResult === 'credentials'
+            ? 'That password is not correct.'
+            : loginResult === 'network'
+              ? 'Check your internet connection and try again.'
+              : 'The server could not verify your password. Try again shortly.',
+        );
+        return;
+      }
+
+      const biometricResult = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Confirm ${biometricLabel} to enable biometric sign-in`,
+        cancelLabel: 'Cancel',
+      });
+      if (!biometricResult.success) {
+        Alert.alert('Not enabled', `Biometric sign-in was not enabled because ${biometricLabel} was not confirmed.`);
+        return;
+      }
+
+      await saveCredentials(accountUsername, password);
+      await setBiometricEnabled(true);
+      setBiometricEnabledState(true);
+      setShowBiometricPassword(false);
+      setBiometricPassword('');
+      Alert.alert('Biometric sign-in enabled', `You can now sign in with ${biometricLabel} on this device.`);
+    } catch {
+      await clearCredentials();
+      setBiometricEnabledState(false);
+      Alert.alert('Not enabled', 'Petrotrack could not save biometric sign-in on this device. Your password sign-in is unchanged.');
+    } finally {
+      setBiometricBusy(false);
+    }
   }
 
   function signOut() {
@@ -189,6 +292,28 @@ export default function ProfileScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Security & account</Text>
           <View style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <ActionRow icon="key-outline" title="Change password" subtitle="Update your Petrotrack sign-in password" onPress={() => setShowPassword(true)} colors={colors} />
+            {biometricSupported ? (
+              <View style={[styles.actionRow, { borderBottomColor: colors.border }]}>
+                <View style={[styles.actionIcon, { backgroundColor: colors.primary + '14' }]}>
+                  <Ionicons name={biometricType === 'face' ? 'scan-outline' : 'finger-print-outline'} size={18} color={colors.primary} />
+                </View>
+                <View style={styles.biometricCopy}>
+                  <Text style={[styles.actionTitle, { color: colors.text }]}>Biometric sign-in</Text>
+                  <Text style={[styles.actionSubtitle, { color: colors.textMuted }]}>
+                    {biometricEnabled ? `Use ${biometricLabel} for quicker sign-in` : `Enable ${biometricLabel} for quicker sign-in`}
+                  </Text>
+                </View>
+                <Switch
+                  testID="profile-biometric-toggle"
+                  value={biometricEnabled}
+                  onValueChange={requestBiometricChange}
+                  disabled={biometricBusy}
+                  trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                  thumbColor={biometricEnabled ? colors.primary : colors.surface}
+                  accessibilityLabel="Biometric sign-in"
+                />
+              </View>
+            ) : null}
             <ActionRow icon="chatbubbles-outline" title="Open My Chats" subtitle="Chat with staff and message selected users" onPress={() => router.replace('/(app)/messages' as never)} colors={colors} />
             <ActionRow icon="log-out-outline" title="Sign out" subtitle="End this session on the device" onPress={signOut} colors={colors} destructive />
           </View>
@@ -220,6 +345,33 @@ export default function ProfileScreen() {
           <PasswordField label="New password" value={newPw} onChangeText={setNewPw} colors={colors} />
           <PasswordField label="Confirm new password" value={confirmPw} onChangeText={setConfirmPw} colors={colors} />
           <TouchableOpacity style={[styles.saveButton, { backgroundColor: roleColor }]} onPress={savePassword}><Text style={styles.saveButtonText}>Update password</Text><Ionicons name="arrow-forward" size={17} color="#fff" /></TouchableOpacity>
+        </View>
+      </ModalSheet>
+
+      <ModalSheet visible={showBiometricPassword} onClose={() => { if (!biometricBusy) setShowBiometricPassword(false); }}>
+        <View style={[styles.passwordSheet, { backgroundColor: colors.background }]}>
+          <View style={styles.sheetTitleRow}>
+            <View style={[styles.sheetIcon, { backgroundColor: roleColor + '18' }]}>
+              <Ionicons name={biometricType === 'face' ? 'scan-outline' : 'finger-print-outline'} size={20} color={roleColor} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>Enable biometric sign-in</Text>
+              <Text style={[styles.sheetSubtitle, { color: colors.textMuted }]}>Confirm your password, then {biometricLabel}</Text>
+            </View>
+            <TouchableOpacity onPress={() => { if (!biometricBusy) setShowBiometricPassword(false); }} accessibilityLabel="Close biometric sign-in">
+              <Ionicons name="close" size={22} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <PasswordField label="Current password" value={biometricPassword} onChangeText={setBiometricPassword} colors={colors} />
+          <TouchableOpacity
+            testID="profile-biometric-confirm"
+            style={[styles.saveButton, { backgroundColor: roleColor, opacity: biometricBusy ? 0.65 : 1 }]}
+            onPress={() => void enableBiometric()}
+            disabled={biometricBusy}
+          >
+            <Text style={styles.saveButtonText}>{biometricBusy ? 'Verifying…' : 'Continue'}</Text>
+            <Ionicons name="arrow-forward" size={17} color="#fff" />
+          </TouchableOpacity>
         </View>
       </ModalSheet>
 
@@ -309,6 +461,7 @@ const styles = StyleSheet.create({
   actionIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   actionTitle: { fontSize: 13, fontWeight: '700' },
   actionSubtitle: { fontSize: 10, marginTop: 3 },
+  biometricCopy: { flex: 1 },
   footer: { fontSize: 10, textAlign: 'center', marginTop: 2 },
   passwordSheet: { padding: 22, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   infoSheet: { maxHeight: '88%', padding: 22, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
