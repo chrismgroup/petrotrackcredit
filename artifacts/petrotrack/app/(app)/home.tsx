@@ -631,8 +631,8 @@ export default function HomeScreen() {
     canOpen(SCREEN_ROUTES.shift) &&
     (
       (isAdmin && ['pending_manager', 'pending_accountant', 'returned', 'returned_attendant'].includes(r.status)) ||
+      (['md', 'ceo', 'acc', 'csm'].includes(role ?? '') && ['pending_manager', 'pending_accountant', 'returned', 'returned_attendant'].includes(r.status)) ||
       (role === 'mgr' && (r.status === 'pending_manager' || r.status === 'returned')) ||
-      (role === 'acc' && r.status === 'pending_accountant') ||
       (role === 'att' && r.status === 'returned_attendant' && r.submittedBy === userName)
     ) &&
     (isGlobalOverview || !scopedBranchId || r.branchId === scopedBranchId || !r.branchId),
