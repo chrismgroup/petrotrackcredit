@@ -254,10 +254,10 @@ describe('expense approval controls', () => {
 
     mockedUseApp.mockReturnValue(appState({
       expenses: [
-        expense({ id: 1, dt: today, status: 'approved', amt: 100, branchId: 'branch-a', branchName: 'Maitama Branch' }),
-        expense({ id: 2, dt: today, status: 'approved', amt: 200, branchId: 'branch-b', branchName: 'Wuse Branch' }),
-        expense({ id: 3, dt: `${year}-${month}-01`, status: 'approved', amt: 50, branchId: 'branch-a', branchName: 'Maitama Branch' }),
-        expense({ id: 4, dt: `${year}-01-01`, status: 'approved', amt: 25, branchId: 'branch-b', branchName: 'Wuse Branch' }),
+        expense({ id: 1, dt: today, desc: 'Maitama daily expense', status: 'approved', amt: 100, branchId: 'branch-a', branchName: 'Maitama Branch' }),
+        expense({ id: 2, dt: today, desc: 'Wuse daily expense', status: 'approved', amt: 200, branchId: 'branch-b', branchName: 'Wuse Branch' }),
+        expense({ id: 3, dt: `${year}-${month}-01`, desc: 'Earlier monthly expense', status: 'approved', amt: 50, branchId: 'branch-a', branchName: 'Maitama Branch' }),
+        expense({ id: 4, dt: `${year}-01-01`, desc: 'Earlier annual expense', status: 'approved', amt: 25, branchId: 'branch-b', branchName: 'Wuse Branch' }),
         expense({ id: 5, dt: today, status: 'pending', amt: 10_000, branchId: 'branch-a', branchName: 'Maitama Branch' }),
       ],
     }) as any);
@@ -274,6 +274,14 @@ describe('expense approval controls', () => {
     expect(text).toContain('₦375');
     expect(text).toContain('Maitama Branch');
     expect(text).toContain('Wuse Branch');
+    const dailyScorecard = renderer.root.findByProps({ accessibilityLabel: 'Daily expenses scorecard' });
+    act(() => dailyScorecard.props.onPress());
+    const detailText = nodeText(renderer.root);
+    expect(detailText).toContain('Approved expenditure');
+    expect(detailText).toContain('Maitama daily expense');
+    expect(detailText).toContain('Wuse daily expense');
+    expect(detailText).not.toContain('Earlier annual expense');
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Close expense scorecard details' })).toBeTruthy();
     act(() => renderer.unmount());
   });
 
@@ -602,6 +610,7 @@ describe('expense approval controls', () => {
     act(() => { renderer = create(<ExpensesScreen />); });
 
     expect(nodeText(renderer.root)).toContain('Pending Approval');
+    expect(nodeText(renderer.root).indexOf('Pending Approval')).toBeLessThan(nodeText(renderer.root).indexOf("Today's Net Balance"));
     expect(nodeText(renderer.root)).not.toContain('Workflow');
     expect(nodeText(renderer.root)).toContain('Pending generator fuel');
 
@@ -609,7 +618,7 @@ describe('expense approval controls', () => {
     expect(nodeText(renderer.root)).toContain('Approved security');
     expect(nodeText(renderer.root)).not.toContain('Pending generator fuel');
 
-    press(renderer, 'All');
+    press(renderer, 'All Expenses');
     expect(nodeText(renderer.root)).toContain('Pending generator fuel');
     expect(nodeText(renderer.root)).toContain('Approved security');
     expect(nodeText(renderer.root)).toContain('Returned utilities');

@@ -163,6 +163,7 @@ export default function ExpensesScreen() {
   const [formError, setFormError]   = useState('');
   const [formBusy, setFormBusy]     = useState(false);
   const [repairingBranches, setRepairingBranches] = useState(false);
+  const [selectedReportKey, setSelectedReportKey] = useState<string | null>(null);
 
   const [filterDate, setFilterDate] = useState('');
   const [periodStart, setPeriodStart] = useState(() => `${localDateKey().slice(0, 4)}-01-01`);
@@ -185,38 +186,53 @@ export default function ExpensesScreen() {
     ? expenses.filter(expense => !!branchId && expense.branchId === branchId)
     : expenses;
   const validCustomPeriod = !!periodStart && !!periodEnd && periodStart <= periodEnd;
+  const dailyMatches = (date: string) => date === reportDate;
+  const monthlyMatches = (date: string) => date.startsWith(reportMonth);
+  const ytdMatches = (date: string) => date.startsWith(reportYear) && date <= reportDate;
+  const periodMatches = (date: string) => validCustomPeriod && date >= periodStart && date <= periodEnd;
   const expenseReports = [
     {
       key: 'daily',
       title: 'Daily expenses',
       period: reportDate,
       icon: 'today-outline' as const,
-      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, date => date === reportDate),
+      matches: dailyMatches,
+      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, dailyMatches),
     },
     {
       key: 'monthly',
       title: 'Monthly expenses',
       period: reportMonth,
       icon: 'calendar-outline' as const,
-      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, date => date.startsWith(reportMonth)),
+      matches: monthlyMatches,
+      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, monthlyMatches),
     },
     {
       key: 'ytd',
       title: 'Year-to-date expenses',
       period: `${reportYear} YTD`,
       icon: 'analytics-outline' as const,
-      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, date => date.startsWith(reportYear) && date <= reportDate),
+      matches: ytdMatches,
+      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, ytdMatches),
     },
     {
       key: 'period',
       title: 'Expenses for a period',
       period: validCustomPeriod ? `${periodStart} – ${periodEnd}` : 'Choose a valid period',
       icon: 'options-outline' as const,
+      matches: periodMatches,
       totals: validCustomPeriod
-        ? groupApprovedExpensesByBranch(reportExpenses, branchNames, date => date >= periodStart && date <= periodEnd)
+        ? groupApprovedExpensesByBranch(reportExpenses, branchNames, periodMatches)
         : [],
     },
   ];
+  const selectedReport = expenseReports.find(report => report.key === selectedReportKey);
+  const selectedReportItems = selectedReport
+    ? reportExpenses
+        .filter(expense => expense.status === 'approved' && selectedReport.matches(expense.dt.slice(0, 10)))
+        .slice()
+        .sort((a, b) => b.dt.localeCompare(a.dt) || b.id - a.id)
+    : [];
 
   const pendingForAcc = expenses.filter(e => e.status === 'pending');
   const pendingForMd = expenses.filter(e => e.status === 'acc_forwarded');
@@ -226,7 +242,7 @@ export default function ExpensesScreen() {
   /* Tab definitions per role */
   const TABS_MGR = ['My Expenses', 'All'];
   const TABS_ACC = ['For Review', 'All'];
-  const TABS_VIEWER = ['Pending Approval', 'Approved', 'All'];
+  const TABS_VIEWER = ['Pending Approval', 'Approved', 'All Expenses'];
   const currentTabs = isReadOnlyViewer ? TABS_VIEWER : isAcc ? TABS_ACC : TABS_MGR;
 
   const displayedExpensesBase = isReadOnlyViewer
@@ -409,6 +425,16 @@ export default function ExpensesScreen() {
       }
     >
       <ScrollView contentContainerStyle={styles.pageScroll} showsVerticalScrollIndicator={false}>
+      {/* Expense status shortcuts */}
+      <View style={styles.topTabRow}>
+        {currentTabs.map((t, i) => (
+          <TouchableOpacity key={t} onPress={() => setTab(i)}
+            style={[styles.tabBtn, { backgroundColor: tab === i ? roleColor : colors.surface, borderColor: tab === i ? roleColor : colors.border }]}>
+            <Text style={[styles.tabText, { color: tab === i ? '#fff' : colors.textMuted }]}>{t}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* Net balance banner */}
       <View style={[styles.netBanner, { backgroundColor: todayNet >= 0 ? colors.successBg : colors.errorBg, borderColor: todayNet >= 0 ? colors.successBorder : colors.errorBorder }]}>
         <View style={{ flex: 1 }}>
@@ -474,9 +500,12 @@ export default function ExpensesScreen() {
             {expenseReports.map(report => {
               const total = report.totals.reduce((sum, branch) => sum + branch.amount, 0);
               return (
-                <View
+                <TouchableOpacity
                   key={report.key}
                   accessibilityLabel={`${report.title} scorecard`}
+                  accessibilityRole="button"
+                  onPress={() => setSelectedReportKey(report.key)}
+                  disabled={report.key === 'period' && !validCustomPeriod}
                   style={[styles.reportTile, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 >
                   <View style={styles.reportTileHeader}>
@@ -502,7 +531,11 @@ export default function ExpensesScreen() {
                   )) : (
                     <Text style={[styles.reportEmpty, { color: colors.textMuted }]}>No approved expenses for this period.</Text>
                   )}
-                </View>
+                  <View style={styles.reportDetailsLink}>
+                    <Text style={[styles.reportDetailsText, { color: roleColor }]}>View expense items</Text>
+                    <Ionicons name="chevron-forward" size={14} color={roleColor} />
+                  </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -544,16 +577,6 @@ export default function ExpensesScreen() {
           </Text>
         </View>
       ) : null}
-
-      {/* Tabs */}
-      <View style={styles.tabRow}>
-        {currentTabs.map((t, i) => (
-          <TouchableOpacity key={t} onPress={() => setTab(i)}
-            style={[styles.tabBtn, { backgroundColor: tab === i ? roleColor : colors.surface, borderColor: tab === i ? roleColor : colors.border }]}>
-            <Text style={[styles.tabText, { color: tab === i ? '#fff' : colors.textMuted }]}>{t}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
 
       <View style={styles.scroll}>
         {displayedExpenses.length === 0 ? (
@@ -704,6 +727,59 @@ export default function ExpensesScreen() {
       </View>
       </ScrollView>
 
+      <ModalSheet visible={!!selectedReport} onClose={() => setSelectedReportKey(null)}>
+        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+          <View style={styles.reportDetailHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 2 }]}>
+                {selectedReport?.title ?? 'Expense details'}
+              </Text>
+              <Text style={[styles.reportPeriod, { color: colors.textMuted }]}>{selectedReport?.period}</Text>
+            </View>
+            <TouchableOpacity
+              accessibilityLabel="Close expense scorecard details"
+              onPress={() => setSelectedReportKey(null)}
+              style={[styles.detailCloseBtn, { borderColor: colors.border }]}
+            >
+              <Ionicons name="close" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.detailSummary, { backgroundColor: colors.infoBg, borderColor: colors.border }]}>
+            <Text style={[styles.reportTotalLabel, { color: colors.textMuted }]}>Approved expenditure</Text>
+            <Text style={[styles.detailSummaryTotal, { color: roleColor }]}>
+              {fmt(selectedReportItems.reduce((sum, expense) => sum + expense.amt, 0))}
+            </Text>
+            <Text style={[styles.reportTotalLabel, { color: colors.textSubtle }]}>
+              {selectedReportItems.length} expense item{selectedReportItems.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+          {selectedReportItems.length > 0 ? selectedReportItems.map(expense => (
+            <View key={expense.id} style={[styles.detailExpenseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.detailExpenseHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.expCat, { color: colors.text }]}>{expense.cat}</Text>
+                  <Text style={[styles.expDesc, { color: colors.textMuted }]}>{expense.desc}</Text>
+                </View>
+                <Text style={[styles.detailExpenseAmount, { color: roleColor }]}>{fmt(expense.amt)}</Text>
+              </View>
+              <Text style={[styles.expMeta, { color: colors.textSubtle }]}>
+                {expense.branchName || branchNames[expense.branchId] || 'Branch not assigned'}
+                {' · '}{expense.dt.slice(0, 10)}{' · '}{expense.byName}
+              </Text>
+              {expense.ref ? (
+                <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{'Ref: '}{expense.ref}</Text>
+              ) : null}
+            </View>
+          )) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="receipt-outline" size={36} color={colors.border} />
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No approved expense items in this scorecard.</Text>
+            </View>
+          )}
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      </ModalSheet>
+
       {/* Add / Edit Modal */}
       <ModalSheet visible={showForm} onClose={() => { setShowForm(false); setFormError(''); }}>
         {hasPendingConfirmation ? confirmationContent : (
@@ -791,8 +867,11 @@ const styles = StyleSheet.create({
   branchReportCount: { fontSize: 10, marginTop: 1 },
   branchReportAmount: { fontSize: 12, fontWeight: '700' },
   reportEmpty: { fontSize: 11, lineHeight: 16, paddingVertical: 6 },
+  reportDetailsLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 3, marginTop: 9 },
+  reportDetailsText: { fontSize: 11, fontWeight: '700' },
   pendingBanner:{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 8, borderRadius: 10, borderWidth: 1, padding: 10 },
   pendingBannerText: { fontSize: 13, fontWeight: '600' },
+  topTabRow:    { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 0, paddingHorizontal: 16 },
   tabRow:       { flexDirection: 'row', gap: 8, marginBottom: 4, paddingHorizontal: 16 },
   tabBtn:       { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10, borderWidth: 1 },
   tabText:      { fontSize: 13, fontWeight: '600' },
@@ -802,6 +881,13 @@ const styles = StyleSheet.create({
   expDesc:      { fontSize: 12, marginTop: 2, lineHeight: 17 },
   expMeta:      { fontSize: 11, marginTop: 3 },
   expAmt:       { fontSize: 18, fontWeight: '700' },
+  reportDetailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  detailCloseBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  detailSummary: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 12 },
+  detailSummaryTotal: { fontSize: 24, fontWeight: '800', marginVertical: 3 },
+  detailExpenseCard: { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 8 },
+  detailExpenseHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  detailExpenseAmount: { fontSize: 15, fontWeight: '800' },
   stBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
   stText:       { fontSize: 11, fontWeight: '700' },
   approvedRow:  { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5 },
