@@ -9,7 +9,6 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { DEFAULT_MGR_PERMS, ROLE_COLORS, SCREEN_ROUTES, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { sendOperationalNotification } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
 
 const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
@@ -119,19 +118,16 @@ export default function TanksScreen() {
     for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
 
-    requestDateConfirmation('tank dip', appliesOn, () => {
-      addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
+    requestDateConfirmation('tank dip', appliesOn, async () => {
+      const result = await addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
+      if (!result.ok) {
+        Alert.alert(
+          'Dip not submitted',
+          result.error ?? 'The server did not accept this tank dip. Your readings remain available so you can retry.',
+        );
+        return;
+      }
       setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
-
-      void sendOperationalNotification({
-        target: 'md',
-        title: 'Tank Dip Report Awaiting Approval',
-        body: `${userName} submitted a tank dip for MD review.`,
-        route: SCREEN_ROUTES.tanks,
-      }).catch(() => {
-        // The dip remains saved locally and will sync independently.
-      });
-
       Alert.alert('Dip Submitted', 'Tank readings recorded and sent to MD for approval.');
     });
   }
