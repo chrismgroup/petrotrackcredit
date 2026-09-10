@@ -10,3 +10,5 @@ Every new budget must carry both a valid branch ID and its canonical branch name
 **How to apply:** Scope manager budget reads and approved-budget selectors by authenticated branch on both the API and mobile client. Resolve legacy manager budgets from the submitting staff account’s current branch, but never guess a branch when ownership is ambiguous.
 
 Ambiguous historical budgets may be classified once by an accountant, MD, CEO, or admin. The assignment must use a canonical branch, be revision-safe, and append an audit step; it cannot be changed through the same command after classification.
+
+Station Manager, Accountant, CSM, Marketing, MD, and CEO see submitted, Accountant-forwarded, and rejected budgets in Home Approvals & Actions for general oversight. Visibility does not expand transition authority.
