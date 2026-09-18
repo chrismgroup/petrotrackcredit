@@ -71,6 +71,14 @@ function getDeploymentDomain() {
   process.exit(1);
 }
 
+function requireProductionApiUrl() {
+  if (process.env.NODE_ENV === "production" && !process.env.EXPO_PUBLIC_API_URL) {
+    throw new Error(
+      "EXPO_PUBLIC_API_URL is required for production builds. Set it to the deployed API service URL.",
+    );
+  }
+}
+
 function prepareDirectories(timestamp) {
   console.log("Preparing build directories...");
 
@@ -550,6 +558,7 @@ async function main() {
   console.log("Building static Expo Go deployment...");
 
   setupSignalHandlers();
+  requireProductionApiUrl();
 
   const domain = getDeploymentDomain();
   const baseUrl = `https://${domain}`;
