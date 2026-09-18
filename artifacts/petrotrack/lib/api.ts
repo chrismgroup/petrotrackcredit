@@ -2,11 +2,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 
 function getBase(): string {
+  const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (configuredApiUrl) {
+    const normalizedUrl = configuredApiUrl.startsWith('http')
+      ? configuredApiUrl
+      : `https://${configuredApiUrl}`;
+    return normalizedUrl.replace(/\/$/, '') + '/api';
+  }
+
   if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
     return `${window.location.origin}/api`;
   }
-  const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? 'petrotrack.replit.app';
-  return `https://${DOMAIN}/api`;
+
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (!domain) return '';
+  return `https://${domain.replace(/\/$/, '')}/api`;
 }
 
 const BASE = getBase();

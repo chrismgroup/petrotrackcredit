@@ -42,7 +42,7 @@ export interface BackupMetadata {
 function getPrivateObjectDir(): string {
   const dir = process.env.PRIVATE_OBJECT_DIR || "";
   if (!dir) {
-    throw new Error("PRIVATE_OBJECT_DIR not set");
+    throw new Error("PRIVATE_OBJECT_DIR not set. Set it to a bucket path such as /bucket/private.");
   }
   return dir.endsWith("/") ? dir.slice(0, -1) : dir;
 }

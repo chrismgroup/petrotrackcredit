@@ -56,20 +56,17 @@ function stripProtocol(domain) {
 }
 
 function getDeploymentDomain() {
-  if (process.env.REPLIT_INTERNAL_APP_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_INTERNAL_APP_DOMAIN);
-  }
+  const configuredDomain =
+    process.env.RENDER_EXTERNAL_URL ||
+    process.env.RENDER_EXTERNAL_HOSTNAME ||
+    process.env.EXPO_PUBLIC_DOMAIN;
 
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
-  }
-
-  if (process.env.EXPO_PUBLIC_DOMAIN) {
-    return stripProtocol(process.env.EXPO_PUBLIC_DOMAIN);
+  if (configuredDomain) {
+    return stripProtocol(configuredDomain);
   }
 
   console.error(
-    "ERROR: No deployment domain found. Set REPLIT_INTERNAL_APP_DOMAIN, REPLIT_DEV_DOMAIN, or EXPO_PUBLIC_DOMAIN",
+    "ERROR: No deployment domain found. Set RENDER_EXTERNAL_URL or EXPO_PUBLIC_DOMAIN",
   );
   process.exit(1);
 }
@@ -174,11 +171,7 @@ async function checkMetroHealth(metroPort) {
   }
 }
 
-function getExpoPublicReplId() {
-  return process.env.REPL_ID || process.env.EXPO_PUBLIC_REPL_ID;
-}
-
-async function startMetro(metroPort, expoPublicDomain, expoPublicReplId) {
+async function startMetro(metroPort, expoPublicDomain) {
   const isRunning = await checkMetroHealth(metroPort);
   if (isRunning) {
     console.log(`Metro already running on port ${metroPort}`);
@@ -190,12 +183,7 @@ async function startMetro(metroPort, expoPublicDomain, expoPublicReplId) {
   const env = {
     ...process.env,
     EXPO_PUBLIC_DOMAIN: expoPublicDomain,
-    EXPO_PUBLIC_REPL_ID: expoPublicReplId,
   };
-
-  if (expoPublicReplId) {
-    console.log(`Setting EXPO_PUBLIC_REPL_ID=${expoPublicReplId}`);
-  }
 
   metroProcess = spawn(
     "pnpm",
@@ -564,7 +552,6 @@ async function main() {
   setupSignalHandlers();
 
   const domain = getDeploymentDomain();
-  const expoPublicReplId = getExpoPublicReplId();
   const baseUrl = `https://${domain}`;
   const timestamp = `${Date.now()}-${process.pid}`;
   const metroPort = await findAvailableMetroPort();
@@ -573,7 +560,7 @@ async function main() {
   prepareDirectories(timestamp);
   clearMetroCache();
 
-  await startMetro(metroPort, domain, expoPublicReplId);
+  await startMetro(metroPort, domain);
 
   const downloadTimeout = 600000;
   const downloadPromise = downloadBundlesAndManifests(timestamp, metroPort);

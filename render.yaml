@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: petrotrack-api
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @workspace/api-server run build
+    startCommand: pnpm --filter @workspace/api-server run start
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: petrotrack-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DAILY_API_KEY
+        sync: false
+      - key: GCP_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: PUBLIC_OBJECT_SEARCH_PATHS
+        sync: false
+      - key: PRIVATE_OBJECT_DIR
+        sync: false
+
+  - type: web
+    name: petrotrack-web
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @workspace/petrotrack run build
+    startCommand: pnpm --filter @workspace/petrotrack run serve
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: EXPO_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: petrotrack-api
+          property: host
+
+databases:
+  - name: petrotrack-db
+    plan: free
+    databaseName: petrotrack
+    user: petrotrack
