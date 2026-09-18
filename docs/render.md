@@ -33,7 +33,7 @@ Render supplies `PORT` to each service. The API health check is
    `NODE_ENV=production`; use a reviewed SQL migration or run the schema
    provisioning command from a controlled non-production environment against
    the new database.
-6. Replace `https://petrotrack-1.onrender.com/` in `app.json` if a custom
+6. Replace `https://petrotrack.onrender.com/` in `app.json` if a custom
    web domain is used.
 
 ## Native builds

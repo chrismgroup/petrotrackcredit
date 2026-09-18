@@ -31,7 +31,7 @@
       [
         "expo-router",
         {
-          "origin": "https://petrotrack-1.onrender.com/"
+          "origin": "https://petrotrack.onrender.com/"
         }
       ],
       "expo-font",
