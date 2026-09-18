@@ -11,7 +11,7 @@ done
 
 API_BASE="${PETROTRACK_TEST_API_URL%/}"
 API_BASE="${API_BASE%/api}"
-if [[ "${API_BASE}" == *"petrotrack.replit.app" ]]; then
+if [[ -n "${PETROTRACK_PRODUCTION_API_URL:-}" && "${API_BASE}" == "${PETROTRACK_PRODUCTION_API_URL%/}" ]]; then
   echo "PETROTRACK_TEST_API_URL must point to the isolated test deployment, not production." >&2
   exit 2
 fi

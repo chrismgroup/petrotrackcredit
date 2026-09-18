@@ -7,7 +7,7 @@ This project is a pnpm monorepo with a publicly deployed Express 5 API (`artifac
 Production-scoping assumptions for this repo:
 - `NODE_ENV=production` in production API builds and runs.
 - The mockup sandbox artifact is development-only unless future deployment wiring proves otherwise.
-- Replit terminates TLS for deployed traffic.
+- Render terminates TLS for deployed traffic.
 - Because deployment visibility is public, internet attackers can reach public routes directly.
 
 ## Assets

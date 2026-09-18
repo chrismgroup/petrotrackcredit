@@ -3,8 +3,8 @@ import { StyleSheet, Text, View } from "react-native";
 export default function TabOneScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Replit Agent is building...</Text>
-      <Text style={styles.text}>Your app will appear here once it's ready.</Text>
+      <Text style={styles.title}>Petrotrack</Text>
+      <Text style={styles.text}>Your workspace is ready.</Text>
     </View>
   );
 }
