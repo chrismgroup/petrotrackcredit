@@ -30,6 +30,7 @@ type SnapshotRow = {
   sold: number;
   bookStock: number | null;
   tankDip: number | null;
+  tankDipPending: boolean;
   variance: number | null;
 };
 
@@ -139,6 +140,7 @@ export default function StockSnapshotScreen() {
               sold: stockBook.sold,
               bookStock: stockBook.bookStock,
               tankDip,
+              tankDipPending: todayDip?.status === 'pending',
               variance,
             };
           });
@@ -247,6 +249,15 @@ export default function StockSnapshotScreen() {
                     ) : null}
                   </View>
 
+                  {row.tankDipPending ? (
+                    <View style={[styles.pendingBanner, { backgroundColor: colors.amber + '18' }]}>
+                      <Ionicons name="time-outline" size={13} color={colors.amber} />
+                      <Text style={[styles.pendingBannerText, { color: colors.amber }]}>
+                        Based on a tank dip awaiting MD approval
+                      </Text>
+                    </View>
+                  ) : null}
+
                   <View style={styles.metricsGrid}>
                     {stockSnapshotConfig.metrics.startupStock ? (
                       <Metric label="Opening qty." value={formatQuantity(row.opening)} unit={row.unit} colors={colors} />
@@ -261,7 +272,12 @@ export default function StockSnapshotScreen() {
                       <Metric label="Book stock" value={formatQuantity(row.bookStock)} unit={row.unit} colors={colors} />
                     ) : null}
                     {stockSnapshotConfig.metrics.submittedTankDip ? (
-                      <Metric label="Tank dip" value={formatQuantity(row.tankDip)} unit={row.unit} colors={colors} />
+                      <Metric
+                        label={row.tankDipPending ? 'Tank dip (pending)' : 'Tank dip'}
+                        value={formatQuantity(row.tankDip)}
+                        unit={row.unit}
+                        colors={colors}
+                      />
                     ) : null}
                   </View>
 
@@ -340,6 +356,8 @@ const styles = StyleSheet.create({
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 10, fontWeight: '800' },
+  pendingBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 },
+  pendingBannerText: { fontSize: 11, fontWeight: '700' },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
   metric: { width: '30%', minWidth: 80 },
   metricLabel: { fontSize: 10, lineHeight: 13 },

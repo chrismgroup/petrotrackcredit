@@ -13,10 +13,7 @@
       "buildNumber": "54",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSFaceIDUsageDescription": "Petrotrack uses Face ID to let you sign in quickly and securely.",
-        "UIBackgroundModes": [
-          "voip"
-        ]
+        "NSFaceIDUsageDescription": "Petrotrack uses Face ID to let you sign in quickly and securely."
       }
     },
     "android": {
@@ -44,14 +41,6 @@
           "image": "./assets/images/icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
-        }
-      ],
-      [
-        "@daily-co/config-plugin-rn-daily-js",
-        {
-          "enableCamera": true,
-          "enableMicrophone": true,
-          "enableScreenShare": false
         }
       ],
       "expo-asset",

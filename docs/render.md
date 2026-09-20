@@ -26,7 +26,6 @@ Render supplies `PORT` to each service. The API health check is
    - `PUBLIC_OBJECT_SEARCH_PATHS`: comma-separated paths such as
      `/petrotrack-assets/public`.
    - `PRIVATE_OBJECT_DIR`: a path such as `/petrotrack-assets/private`.
-   - `DAILY_API_KEY`: the Daily API key if calling features are enabled.
 
 5. Provision the Render database schema before first use. The repository's
    `@workspace/db push` command is intentionally blocked when

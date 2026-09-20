@@ -435,25 +435,6 @@ export function sendOperationalNotification(input: OperationalNotificationInput)
   });
 }
 
-export type DailyCallKind = 'audio' | 'video';
-export interface DailyCallSession {
-  callId: string;
-  roomUrl: string;
-  token: string;
-  kind: DailyCallKind;
-  peerName: string;
-  expiresAt: number;
-}
-
-export const dailyCallsApi = {
-  create: (data: {
-    recipientUsername: string;
-    recipientName: string;
-    kind: DailyCallKind;
-  }) => post<DailyCallSession>('/calls', data),
-  token: (callId: string) => post<DailyCallSession>(`/calls/${encodeURIComponent(callId)}/token`, {}),
-};
-
 // ─── Staff Users API — dedicated DB table, real-time ─────────────────────────
 
 export interface StaffUserRecord {

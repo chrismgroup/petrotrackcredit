@@ -221,15 +221,24 @@ export default function JobsScreen() {
         {canAccessWorkspaceRoute(SCREEN_ROUTES.exprpt, role, navItems) && (
           <View style={styles.section}>
             <SectionHeader icon="document-text-outline" title="Reports" subtitle="Open a focused report or export the full picture" colors={colors} />
-            <View style={styles.reportGrid}>
+            <View style={styles.jobList}>
               {visibleReportTypes.map(type => {
                 const meta = REPORT_META[type];
                 return (
-                  <TouchableOpacity key={type} style={[styles.reportCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => openReport(type)} activeOpacity={0.78}>
-                    <View style={[styles.reportIcon, { backgroundColor: meta.color + '18' }]}><Ionicons name={meta.icon as any} size={18} color={meta.color} /></View>
-                    <Text style={[styles.reportLabel, { color: colors.text }]}>{meta.label}</Text>
-                    <Text style={[styles.reportDesc, { color: colors.textMuted }]} numberOfLines={2}>{meta.desc}</Text>
-                    <Ionicons name="arrow-forward" size={14} color={meta.color} style={styles.reportArrow} />
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.jobCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                    onPress={() => openReport(type)}
+                    activeOpacity={0.78}
+                  >
+                    <View style={[styles.jobIcon, { backgroundColor: meta.color + '16' }]}>
+                      <Ionicons name={meta.icon as any} size={20} color={meta.color} />
+                    </View>
+                    <View style={styles.jobCopy}>
+                      <Text style={[styles.jobTitle, { color: colors.text }]}>{meta.label}</Text>
+                      <Text style={[styles.jobDescription, { color: colors.textMuted }]}>{meta.desc}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={17} color={colors.textSubtle} />
                   </TouchableOpacity>
                 );
               })}
@@ -266,10 +275,4 @@ const styles = StyleSheet.create({
   jobCopy: { flex: 1 },
   jobTitle: { fontSize: 14, fontWeight: '700' },
   jobDescription: { fontSize: 11, lineHeight: 16, marginTop: 3 },
-  reportGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  reportCard: { width: '48.5%', minHeight: 142, borderWidth: 1, borderRadius: 17, padding: 13, position: 'relative' },
-  reportIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  reportLabel: { fontSize: 13, fontWeight: '800', paddingRight: 4 },
-  reportDesc: { fontSize: 10, lineHeight: 14, marginTop: 5, paddingRight: 5 },
-  reportArrow: { position: 'absolute', right: 13, bottom: 13 },
 }) as any;

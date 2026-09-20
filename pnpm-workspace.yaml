@@ -30,8 +30,6 @@ minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   # Exclude trusted platform packages from the minimum release age check.
   # These packages are intentionally allowlisted for urgent workspace builds.
-  - '@replit/*'
-  - stripe-replit-sync
 
 packages:
   - artifacts/*
@@ -40,9 +38,6 @@ packages:
   - scripts
 
 catalog:
-  '@replit/vite-plugin-cartographer': ^0.5.21
-  '@replit/vite-plugin-dev-banner': ^0.1.1
-  '@replit/vite-plugin-runtime-error-modal': ^0.0.6
   '@tailwindcss/vite': ^4.1.14
   '@tanstack/react-query': ^5.90.21
   '@types/node': ^25.3.3
@@ -90,7 +85,7 @@ overrides:
   qs: 6.16.0
   tar: 7.5.21
   undici: 6.28.0
-  # replit uses linux-x64 only, we can exclude all other platforms
+  # The web build only needs the host platform's esbuild binary.
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
   "esbuild>@esbuild/freebsd-arm64": "-"
@@ -177,6 +172,3 @@ overrides:
   postcss: "8.5.23"
   # uuid <=10.0.0 has insufficient randomness (GHSA-w5hq-g745-h8pq); force all transitive deps to v11+
   uuid: "^11.0.0"
-
-patchedDependencies:
-  '@daily-co/react-native-daily-js@0.86.0': patches/@daily-co__react-native-daily-js@0.86.0.patch

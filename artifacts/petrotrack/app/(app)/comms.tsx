@@ -2,7 +2,6 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
   Alert,
@@ -21,9 +20,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { dailyCallsApi } from '@/lib/api';
 import {
-  CallRecord,
   Message,
   ROLE_COLORS,
   ROLE_LABELS,
@@ -34,9 +31,8 @@ import {
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
-type Tab    = 'chats' | 'calls';
+type Tab    = 'chats';
 type InboxFilter = 'active' | 'archived';
-type CallKind = 'audio' | 'video';
 type Colors = ReturnType<typeof useColors>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -82,23 +78,6 @@ function conversationTime(message?: Message): string {
 function UserAvatar({ account, size = 40, colors }: { account: UserAccount; size?: number; colors: Colors }) {
   const color    = userColor(account);
   const initials = userInitials(account.empName);
-  return (
-    <View style={{
-      width: size, height: size, borderRadius: size / 2,
-      backgroundColor: color + '22', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1.5, borderColor: color + '44',
-    }}>
-      <Text style={{ fontSize: size * 0.32, fontWeight: '800', color }}>
-        {initials}
-      </Text>
-    </View>
-  );
-}
-
-function RoleAvatar({ role, size = 40, colors }: { role: string; size?: number; colors: Colors }) {
-  const color    = ROLE_COLORS[role] || colors.primary;
-  const label    = ROLE_LABELS[role as Role] ?? role;
-  const initials = label.split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
   return (
     <View style={{
       width: size, height: size, borderRadius: size / 2,
@@ -228,21 +207,18 @@ function ImageViewerModal({ uri, onClose }: { uri: string; onClose: () => void }
 export default function CommsScreen() {
   const {
     role, userName, userAccounts,
-    sendMessage, markRead, getConversation, unreadCount,
+    sendMessage, markRead, getConversation,
     archiveConversation, unarchiveConversation,
-    callLog, addCallRecord,
   } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'admin'] || colors.primary;
-  const router = useRouter();
 
   // All active users that are not the current user
   const peerUsers: UserAccount[] = userAccounts.filter(
     a => a.status === 'active' && a.empName !== userName,
   );
 
-  // ── Tab state ──────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<Tab>('chats');
+  // ── Tab state ────────────────────────────────────────────────────────────
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>('active');
   const [showNewMessage, setShowNewMessage] = useState(false);
 
@@ -316,26 +292,21 @@ export default function CommsScreen() {
   // ── Media picker ───────────────────────────────────────────────────────────
   function handleAttach() {
     Alert.alert('Send Attachment', 'Choose a file type', [
-      { text: 'Camera',         onPress: () => handlePickImage('camera') },
-      { text: 'Photo Library',  onPress: () => handlePickImage('library') },
+      { text: 'Photo Library',  onPress: handlePickImage },
       { text: 'Video',          onPress: handlePickVideo },
       { text: 'File / Document',onPress: handlePickDocument },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }
 
-  async function handlePickImage(source: 'camera' | 'library') {
+  async function handlePickImage() {
     if (!chatPeer) return;
-    const permResult = source === 'camera'
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permResult.granted) {
-      Alert.alert('Permission Required', 'Please allow access in Settings to use this feature.');
+      Alert.alert('Permission Required', 'Please allow photo library access in Settings to use this feature.');
       return;
     }
-    const result = source === 'camera'
-      ? await ImagePicker.launchCameraAsync({ quality: 0.25, base64: true })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.25, base64: true });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.25, base64: true });
     if (result.canceled) return;
     const asset = result.assets[0];
     const b64   = asset.base64 || '';
@@ -409,67 +380,6 @@ export default function CommsScreen() {
     Alert.alert('Message sent', `Sent to ${count} selected user${count === 1 ? '' : 's'}.`);
   }
 
-  // ── Calls ──────────────────────────────────────────────────────────────────
-  async function startCall(user: UserAccount, kind: CallKind) {
-    try {
-      const session = await dailyCallsApi.create({
-        recipientUsername: user.username,
-        recipientName: user.empName,
-        kind,
-      });
-      if (!session) {
-        Alert.alert('Calling Unavailable', 'In-app calling is not configured or the call could not be started.');
-        return;
-      }
-      sendMessage(user.empName, {
-        type: 'call',
-        body: `${kind === 'video' ? 'Video' : 'Audio'} call`,
-        to: user.empName,
-        call: { callId: session.callId, kind: session.kind, roomUrl: session.roomUrl },
-      });
-      addCallRecord({ kind, from: role!, fromName: userName, to: user.role!, toName: user.empName, status: 'ended' });
-      router.push({
-        pathname: '/(app)/call',
-        params: {
-          callId: session.callId,
-          token: session.token,
-          roomUrl: session.roomUrl,
-          kind: session.kind,
-          peerName: session.peerName,
-        },
-      } as never);
-    } catch {
-      Alert.alert('Cannot Start Call', 'Your device could not start this in-app call.');
-    }
-  }
-
-  function initiateCall(user: UserAccount) {
-    void startCall(user, 'audio');
-  }
-
-  function initiateVideoCall(user: UserAccount) {
-    void startCall(user, 'video');
-  }
-
-  async function joinCall(message: Message) {
-    if (!message.call) return;
-    const session = await dailyCallsApi.token(message.call.callId);
-    if (!session) {
-      Alert.alert('Call Unavailable', 'This call has expired or is no longer available.');
-      return;
-    }
-    router.push({
-      pathname: '/(app)/call',
-      params: {
-        callId: session.callId,
-        token: session.token,
-        roomUrl: session.roomUrl,
-        kind: session.kind,
-        peerName: session.peerName,
-      },
-    } as never);
-  }
-
   // ── Filtered peer list for search ──────────────────────────────────────────
   const chatPeers = userAccounts
     .filter(user => user.empName !== userName)
@@ -520,22 +430,8 @@ export default function CommsScreen() {
             </Text>
           </View>
           <TouchableOpacity
-            onPress={() => initiateCall(chatPeer)}
-            style={[styles.callBtn, { backgroundColor: '#27ae60' + '18' }]}
-            accessibilityLabel="Start audio call"
-          >
-            <Ionicons name="call" size={18} color="#27ae60" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => initiateVideoCall(chatPeer)}
-            style={[styles.callBtn, { backgroundColor: '#185FA5' + '18' }]}
-            accessibilityLabel="Start video call"
-          >
-            <Ionicons name="videocam" size={18} color="#185FA5" />
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={() => { toggleArchive(chatPeer); setChatPeer(null); }}
-            style={[styles.callBtn, { backgroundColor: colors.background }]}
+            style={[styles.headerActionBtn, { backgroundColor: colors.background }]}
             accessibilityLabel={isArchived(chatPeer) ? 'Unarchive conversation' : 'Archive conversation'}
           >
             <Ionicons name={isArchived(chatPeer) ? 'archive' : 'archive-outline'} size={18} color={colors.textMuted} />
@@ -594,15 +490,9 @@ export default function CommsScreen() {
                             {msg.call.kind === 'video' ? 'Video call' : 'Audio call'}
                           </Text>
                           <Text style={[styles.callBubbleSub, { color: isMine ? 'rgba(255,255,255,0.72)' : colors.textMuted }]}>
-                            {isMine ? 'Call started' : 'Tap to join'}
+                            In-app calling has been discontinued.
                           </Text>
                         </View>
-                        <TouchableOpacity
-                          onPress={() => void joinCall(msg)}
-                          style={[styles.joinCallBtn, { backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : roleColor }]}
-                        >
-                          <Text style={styles.joinCallText}>Join</Text>
-                        </TouchableOpacity>
                       </View>
                     </View>
                   );
@@ -689,9 +579,7 @@ export default function CommsScreen() {
     );
   }
 
-  // ── Main tabs view ─────────────────────────────────────────────────────────
-  const totalUnread = unreadCount();
-
+  // ── Main list view ─────────────────────────────────────────────────
   return (
     <ScreenLayout title="My Chats">
       <Modal
@@ -821,38 +709,7 @@ export default function CommsScreen() {
         </Pressable>
       </Modal>
 
-      {/* Tab bar */}
-      <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
-        {([
-          { id: 'chats'     as Tab, label: 'Chats', icon: 'chatbubbles', badge: totalUnread },
-          { id: 'calls'     as Tab, label: 'Calls',     icon: 'call',        badge: 0 },
-        ]).map(t => (
-          <TouchableOpacity
-            key={t.id}
-            onPress={() => setActiveTab(t.id)}
-            style={[styles.tab, activeTab === t.id && { borderBottomColor: roleColor, borderBottomWidth: 2 }]}
-          >
-            <View style={{ position: 'relative' }}>
-              <Ionicons name={t.icon as any} size={15} color={activeTab === t.id ? roleColor : colors.textMuted} />
-              {t.badge > 0 && (
-                <View style={[styles.tabBadge, { backgroundColor: roleColor }]}>
-                  <Text style={styles.tabBadgeText}>{t.badge}</Text>
-                </View>
-              )}
-            </View>
-            <Text style={[styles.tabLabel, {
-              color:      activeTab === t.id ? roleColor : colors.textMuted,
-              fontWeight: activeTab === t.id ? '700' : '500',
-            }]}>
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* ── Chats tab ── */}
-      {activeTab === 'chats' && (
-        <ScrollView
+      <ScrollView
           contentContainerStyle={styles.listScroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -983,131 +840,12 @@ export default function CommsScreen() {
                    >
                      <Ionicons name={isArchived(user) ? 'archive' : 'archive-outline'} size={15} color={colors.textMuted} />
                    </TouchableOpacity>
-                   <View style={styles.callIconRow}>
-                     <TouchableOpacity
-                       onPress={() => initiateCall(user)}
-                       style={[styles.callIconBtn, { backgroundColor: '#27ae60' + '18' }]}
-                       accessibilityLabel="Start audio call"
-                     >
-                       <Ionicons name="call-outline" size={15} color="#27ae60" />
-                     </TouchableOpacity>
-                     <TouchableOpacity
-                       onPress={() => initiateVideoCall(user)}
-                       style={[styles.callIconBtn, { backgroundColor: '#185FA5' + '18' }]}
-                       accessibilityLabel="Start video call"
-                     >
-                       <Ionicons name="videocam-outline" size={15} color="#185FA5" />
-                     </TouchableOpacity>
-                   </View>
                   <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
                 </View>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
-      )}
-
-      {/* ── Calls tab ── */}
-      {activeTab === 'calls' && (
-        <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Staff Directory</Text>
-
-          {peerUsers.length === 0 && (
-            <View style={[styles.emptyState, { marginTop: 16 }]}>
-              <Ionicons name="people-outline" size={44} color={colors.border} />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Active Staff</Text>
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No active staff members to call.</Text>
-            </View>
-          )}
-
-          {peerUsers.map(user => {
-            const roleLabel = ROLE_LABELS[user.role as Role] ?? user.role ?? 'Staff';
-            return (
-              <View key={user.id} style={[styles.callContactRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={{ marginRight: 12 }}>
-                  <UserAvatar account={user} size={42} colors={colors} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.contactName, { color: colors.text }]}>{user.empName}</Text>
-                  <Text style={[styles.contactSub,  { color: colors.textMuted }]}>{roleLabel}</Text>
-                  {user.phoneNumber ? (
-                    <Text style={[styles.contactSub, { color: colors.textSubtle }]}>{user.phoneNumber}</Text>
-                  ) : (
-                    <Text style={[styles.contactSub, { color: colors.textSubtle }]}>No phone on file</Text>
-                  )}
-                </View>
-                 <View style={styles.callActions}>
-                   <TouchableOpacity
-                     onPress={() => initiateCall(user)}
-                     style={[styles.callNowBtn, { backgroundColor: user.phoneNumber ? '#27ae60' : colors.border }]}
-                     disabled={!user.phoneNumber}
-                     accessibilityLabel="Start audio call"
-                   >
-                     <Ionicons name="call" size={14} color="#fff" />
-                     <Text style={styles.callNowText}>Audio</Text>
-                   </TouchableOpacity>
-                   <TouchableOpacity
-                     onPress={() => initiateVideoCall(user)}
-                     style={[styles.callNowBtn, { backgroundColor: user.phoneNumber ? '#185FA5' : colors.border }]}
-                     disabled={!user.phoneNumber}
-                     accessibilityLabel="Start video call"
-                   >
-                     <Ionicons name="videocam" size={14} color="#fff" />
-                     <Text style={styles.callNowText}>Video</Text>
-                   </TouchableOpacity>
-                 </View>
-              </View>
-            );
-          })}
-
-          {callLog.length > 0 && (
-            <>
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 24 }]}>Recent Calls</Text>
-              {callLog.slice(0, 25).map((c: CallRecord) => {
-                const isMine     = c.from === role;
-                const peerName   = isMine ? c.toName : c.fromName;
-                const peerRoleStr = isMine ? (c.to || '') : (c.from || '');
-                const statusColor =
-                  c.status === 'ended'  ? colors.success :
-                  c.status === 'missed' ? colors.error   : colors.warning;
-                return (
-                  <View key={c.id} style={[styles.callLogRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <RoleAvatar role={peerRoleStr} size={38} colors={colors} />
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={[styles.contactName, { color: colors.text }]}>{peerName}</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                        <Ionicons
-                          name={c.kind === 'video' ? 'videocam-outline' : 'call-outline'}
-                          size={10}
-                          color={c.kind === 'video' ? '#185FA5' : '#27ae60'}
-                        />
-                        <Ionicons
-                          name={isMine ? 'arrow-up-outline' : 'arrow-down-outline'}
-                          size={10}
-                          color={colors.textMuted}
-                        />
-                        <Text style={[styles.contactSub, { color: statusColor }]}>{c.status}</Text>
-                        {c.duration && (
-                          <Text style={[styles.contactSub, { color: colors.textMuted }]}>· {c.duration}</Text>
-                        )}
-                      </View>
-                    </View>
-                    <Text style={[styles.callTime, { color: colors.textSubtle }]}>{c.ts.split('T')[0]}</Text>
-                  </View>
-                );
-              })}
-            </>
-          )}
-
-          {callLog.length === 0 && peerUsers.length > 0 && (
-            <View style={[styles.emptyState, { marginTop: 16 }]}>
-              <Ionicons name="call-outline" size={44} color={colors.border} />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Calls Yet</Text>
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>Tap Call next to any contact above.</Text>
-            </View>
-          )}
-        </ScrollView>
-      )}
     </ScreenLayout>
   );
 }
@@ -1115,13 +853,6 @@ export default function CommsScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // Tab bar
-  tabBar:       { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
-  tab:          { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 13 },
-  tabLabel:     { fontSize: 12 },
-  tabBadge:     { position: 'absolute', top: -4, right: -6, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
-  tabBadgeText: { color: '#fff', fontSize: 8, fontWeight: '800' },
-
   // List
   listScroll: { padding: 16, paddingBottom: 32 },
 
@@ -1147,10 +878,6 @@ const styles = StyleSheet.create({
   conversationTime: { fontSize: 10, fontWeight: '700' },
   avatarBadge:    { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, borderWidth: 1.5, borderColor: '#fff' },
   avatarBadgeText:{ color: '#fff', fontSize: 8, fontWeight: '800' },
-  unreadBadge:    { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  unreadText:     { color: '#fff', fontSize: 10, fontWeight: '800' },
-  callIconRow:    { flexDirection: 'row', gap: 5 },
-  callIconBtn:    { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   archiveIconBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 
   // Contact picker
@@ -1165,7 +892,7 @@ const styles = StyleSheet.create({
   backBtn:        { marginRight: 2 },
   chatHeaderName: { fontSize: 14, fontWeight: '700' },
   chatHeaderSub:  { fontSize: 11 },
-  callBtn:        { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  headerActionBtn:{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   chatScroll:     { padding: 14, paddingBottom: 8 },
   emptyChat:      { alignItems: 'center', marginTop: 60, gap: 8 },
   emptyTextSub:   { fontSize: 12, textAlign: 'center' },
@@ -1179,8 +906,6 @@ const styles = StyleSheet.create({
   callBubble:  { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 210, borderRadius: 16, padding: 12 },
   callBubbleTitle: { fontSize: 13, fontWeight: '800' },
   callBubbleSub: { fontSize: 11, marginTop: 2 },
-  joinCallBtn: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
-  joinCallText: { color: '#fff', fontSize: 11, fontWeight: '800' },
 
   // Media bubbles
   mediaBubble: { borderRadius: 16, overflow: 'hidden', paddingBottom: 8 },
@@ -1220,13 +945,4 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', marginTop: 56, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: '700' },
   emptyText:  { fontSize: 13, textAlign: 'center' },
-
-  // Calls tab
-  sectionTitle:   { fontSize: 15, fontWeight: '700', marginBottom: 12 },
-  callContactRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
-  callActions:    { flexDirection: 'row', gap: 5 },
-  callNowBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 8, borderRadius: 10 },
-  callNowText:    { color: '#fff', fontSize: 13, fontWeight: '700' },
-  callLogRow:     { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
-  callTime:       { fontSize: 11, marginRight: 8 },
 });

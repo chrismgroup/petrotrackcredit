@@ -199,6 +199,8 @@ export default function ReceivingScreen() {
   const [mdNote, setMdNote] = useState('');
   const [mdRejectMode, setMdRejectMode] = useState(false);
   const [mdSellingPrice, setMdSellingPrice] = useState('');
+  const [isSubmittingMdAction, setIsSubmittingMdAction] = useState(false);
+  const [isSubmittingAccForward, setIsSubmittingAccForward] = useState(false);
 
   /* ── branch + role scoping ─────────────────────────────────────────────
      - admin / ceo / md / mktg / acc / csm : see all delivery records
@@ -228,20 +230,6 @@ export default function ReceivingScreen() {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  async function pickFromCamera(delivId: number) {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera access is needed to take delivery evidence photos.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85, allowsEditing: false });
-    if (!result.canceled && result.assets[0]) {
-      const a = result.assets[0];
-      const saved = await addDeliveryEvidence({ delivId, type: 'photo', name: a.fileName ?? `photo_${Date.now()}.jpg`, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg', size: a.fileSize });
-      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this photo. Please select it again to retry.');
-    }
   }
 
   async function pickFromGallery(delivId: number) {
@@ -368,7 +356,7 @@ export default function ReceivingScreen() {
   }
 
   function handleAccForward() {
-    if (!accTarget) return;
+    if (!accTarget || isSubmittingAccForward) return;
     const cost = parseFloat(accCostPrice);
     if (!cost || cost <= 0) { Alert.alert('Required', `Enter a valid cost price per ${unitForProd(accTarget.prod)}.`); return; }
     Alert.alert(
@@ -379,7 +367,10 @@ export default function ReceivingScreen() {
         {
           text: 'Forward to MD',
           onPress: async () => {
+            if (isSubmittingAccForward) return;
+            setIsSubmittingAccForward(true);
             const result = await accForwardToMdConfirmed(accTarget.id, cost, accNote.trim());
+            setIsSubmittingAccForward(false);
             if (!result.ok) {
               Alert.alert('Delivery not forwarded', result.error ?? 'The server could not forward this delivery. Your cost and note remain available.');
               return;
@@ -405,7 +396,7 @@ export default function ReceivingScreen() {
   }
 
   function handleMdApprove() {
-    if (!mdTarget) return;
+    if (!mdTarget || isSubmittingMdAction) return;
     const sell = parseFloat(mdSellingPrice);
     if (!sell || sell <= 0) { Alert.alert('Required', `Enter a valid selling price per ${unitForProd(mdTarget.prod)} before approving.`); return; }
     Alert.alert(
@@ -416,7 +407,12 @@ export default function ReceivingScreen() {
         {
           text: 'Approve',
           onPress: async () => {
+            // Guards a double-tap (or a stacked duplicate Alert) from firing a
+            // second approve command against a record the first tap already moved.
+            if (isSubmittingMdAction) return;
+            setIsSubmittingMdAction(true);
             const result = await approveDeliveryConfirmed(mdTarget.id, sell, mdNote.trim() || undefined);
+            setIsSubmittingMdAction(false);
             if (!result.ok) {
               Alert.alert('Delivery not approved', result.error ?? 'The server could not approve this delivery. Your entries remain available.');
               return;
@@ -431,9 +427,11 @@ export default function ReceivingScreen() {
   }
 
   async function handleMdRejectConfirm() {
-    if (!mdTarget) return;
+    if (!mdTarget || isSubmittingMdAction) return;
     if (!mdNote.trim()) { Alert.alert('Required', 'Provide a reason for returning this record.'); return; }
+    setIsSubmittingMdAction(true);
     const result = await rejectDeliveryConfirmed(mdTarget.id, mdNote.trim());
+    setIsSubmittingMdAction(false);
     if (!result.ok) {
       Alert.alert('Delivery not returned', result.error ?? 'The server could not return this delivery. Your reason remains available.');
       return;
@@ -736,10 +734,6 @@ export default function ReceivingScreen() {
                       </Text>
                       {canAdd && (
                         <View style={styles.evBtns}>
-                          <TouchableOpacity onPress={() => pickFromCamera(d.id)} style={[styles.evBtn, { backgroundColor: roleColor + '12', borderColor: roleColor + '44' }]}>
-                            <Ionicons name="camera-outline" size={12} color={roleColor} />
-                            <Text style={[styles.evBtnText, { color: roleColor }]}>Camera</Text>
-                          </TouchableOpacity>
                           <TouchableOpacity onPress={() => pickFromGallery(d.id)} style={[styles.evBtn, { backgroundColor: '#2980B912', borderColor: '#2980B944' }]}>
                             <Ionicons name="images-outline" size={12} color="#2980B9" />
                             <Text style={[styles.evBtnText, { color: '#2980B9' }]}>Gallery</Text>
@@ -993,9 +987,13 @@ export default function ReceivingScreen() {
             <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setAccTarget(null)}>
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#185FA5' }]} onPress={handleAccForward}>
+            <TouchableOpacity
+              style={[styles.saveBtn, { flex: 2, backgroundColor: '#185FA5', opacity: isSubmittingAccForward ? 0.6 : 1 }]}
+              onPress={handleAccForward}
+              disabled={isSubmittingAccForward}
+            >
               <Ionicons name="send" size={15} color="#fff" />
-              <Text style={styles.saveBtnText}>Forward to MD</Text>
+              <Text style={styles.saveBtnText}>{isSubmittingAccForward ? 'Forwarding…' : 'Forward to MD'}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -1088,9 +1086,13 @@ export default function ReceivingScreen() {
             <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => { setMdTarget(null); setMdSellingPrice(''); setMdNote(''); }}>
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#27500A' }]} onPress={handleMdApprove}>
+            <TouchableOpacity
+              style={[styles.saveBtn, { flex: 2, backgroundColor: '#27500A', opacity: isSubmittingMdAction ? 0.6 : 1 }]}
+              onPress={handleMdApprove}
+              disabled={isSubmittingMdAction}
+            >
               <Ionicons name="checkmark-circle" size={15} color="#fff" />
-              <Text style={styles.saveBtnText}>Approve & Lock</Text>
+              <Text style={styles.saveBtnText}>{isSubmittingMdAction ? 'Approving…' : 'Approve & Lock'}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -1124,9 +1126,13 @@ export default function ReceivingScreen() {
             <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => { setMdTarget(null); setMdNote(''); }}>
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.saveBtn, { flex: 2, backgroundColor: '#791F1F' }]} onPress={handleMdRejectConfirm}>
+            <TouchableOpacity
+              style={[styles.saveBtn, { flex: 2, backgroundColor: '#791F1F', opacity: isSubmittingMdAction ? 0.6 : 1 }]}
+              onPress={handleMdRejectConfirm}
+              disabled={isSubmittingMdAction}
+            >
               <Ionicons name="return-down-back" size={15} color="#fff" />
-              <Text style={styles.saveBtnText}>Return to Accountant</Text>
+              <Text style={styles.saveBtnText}>{isSubmittingMdAction ? 'Returning…' : 'Return to Accountant'}</Text>
             </TouchableOpacity>
           </View>
         </View>

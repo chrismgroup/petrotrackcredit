@@ -38,7 +38,6 @@ export const WORKSPACE_ROUTE_ACCESS: readonly WorkspaceRouteAccess[] = [
   { path: '/tasks', permission: 'tasks' },
   { path: '/action-items', permission: 'actionItems' },
   { path: '/branches', permission: 'branches' },
-  { path: '/call', permission: 'comms' },
   { path: '/comms', permission: 'comms' },
   { path: '/users', permission: 'users' },
   { path: '/departments', permission: 'depts' },

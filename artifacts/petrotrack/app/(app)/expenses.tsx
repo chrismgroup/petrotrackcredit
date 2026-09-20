@@ -326,6 +326,7 @@ export default function ExpensesScreen() {
             Alert.alert('Expense not updated', result.error ?? 'The server could not update this expense. Your entries remain available so you can retry.');
             return;
           }
+          Alert.alert('Expense Updated', `${form.cat} \u00b7 ${fmt(amount)} saved.`);
         } else {
           const result = await addExpense({
             dt: form.dt,
@@ -341,6 +342,7 @@ export default function ExpensesScreen() {
             setFormError(result.error ?? 'The server could not save this expense. Check the selected budget and try again.');
             return;
           }
+          Alert.alert('Expense Submitted', `${form.cat} \u00b7 ${fmt(amount)} saved and sent to the accountant for approval.`);
         }
         setShowForm(false);
         setFormError('');

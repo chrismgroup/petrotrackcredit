@@ -7,7 +7,7 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
-import { DEFAULT_MGR_PERMS, ROLE_COLORS, SCREEN_ROUTES, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
+import { DEFAULT_MGR_PERMS, ROLE_COLORS, SCREEN_ROUTES, businessDateKey, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
 
@@ -30,6 +30,8 @@ export default function TanksScreen() {
   const [editDipLpg, setEditDipLpg] = useState<Record<string, string>>({});
   const [editDipObs, setEditDipObs] = useState('');
   const [selectedHistoryBranchId, setSelectedHistoryBranchId] = useState<string | null>(null);
+  const [decidingDipId, setDecidingDipId] = useState<number | null>(null);
+  const [isSavingEditDip, setIsSavingEditDip] = useState(false);
 
   const isMD = role === 'md';
   const canViewWorkflow = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm';
@@ -74,9 +76,18 @@ export default function TanksScreen() {
   const visibleDipRecords = dips.filter(dip =>
     canReviewDip(dip)
     && (canEdit
-      ? dip.status === 'rejected' && dip.by === userName
+      ? (dip.status === 'rejected' || dip.status === 'pending') && dip.by === userName
       : canViewWorkflow),
   );
+  // Pending/awaiting-review reports surface first, then everything else by
+  // most recent applies-on/submitted date and time.
+  const compareDipsForReview = (a: (typeof visibleDipRecords)[number], b: (typeof visibleDipRecords)[number]) => {
+    const rank = (dip: (typeof visibleDipRecords)[number]) => dip.status === 'pending' ? 0 : 1;
+    const rankDiff = rank(a) - rank(b);
+    if (rankDiff !== 0) return rankDiff;
+    const timeOf = (dip: (typeof visibleDipRecords)[number]) => new Date(dip.submittedAt ?? dip.dt).getTime();
+    return timeOf(b) - timeOf(a);
+  };
   const dipHistoryGroups = visibleDipRecords.reduce<Array<{ id: string; name: string; dips: typeof visibleDipRecords }>>((groups, dip) => {
     const branch = getDipBranch(dip);
     const group = groups.find(item => item.id === branch.id);
@@ -97,7 +108,9 @@ export default function TanksScreen() {
       if (existing) existing.dips.push(...group.dips);
       else groups.set(group.id, { ...group, dips: [...group.dips] });
     });
-    return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...groups.values()]
+      .map(group => ({ ...group, dips: [...group.dips].sort(compareDipsForReview) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   })();
   const activeHistoryBranchId = selectedHistoryBranchId && historyBranchGroups.some(group => group.id === selectedHistoryBranchId)
     ? selectedHistoryBranchId
@@ -107,10 +120,22 @@ export default function TanksScreen() {
   );
   const hasDisplayedHistory = displayedDipHistoryGroups.some(group => group.dips.length > 0);
   const pendingDips = dips.filter(d => d.status === 'pending' && dipHasVisibleReading(d));
+  // The server allows only one non-rejected dip per branch per business date.
+  // Warn before submitting so a manager never hits that block with no visible
+  // explanation of what's already pending.
+  const hasPendingDipForDate = canEdit && Boolean(appliesOn) && dips.some(d =>
+    d.by === userName &&
+    d.status === 'pending' &&
+    businessDateKey(d.dt) === businessDateKey(appliesOn),
+  );
 
   function handleDipSubmit() {
     if (!appliesOn) {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
+      return;
+    }
+    if (hasPendingDipForDate) {
+      Alert.alert('Already submitted', 'This date already has a dip record awaiting MD approval. Edit or withdraw it in "My Dip Submissions" below to submit a corrected reading.');
       return;
     }
     const rd: Record<string, number> = {};
@@ -145,22 +170,63 @@ export default function TanksScreen() {
     setEditDipObs('');
   }
   function saveEditDip(dipId: number) {
+    if (isSavingEditDip) return;
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
     for (const [k, v] of Object.entries(editDipReadings)) { const n = parseFloat(v); if (!isNaN(n)) rd[k] = n; }
     for (const [k, v] of Object.entries(editDipLpg)) { const n = parseFloat(v); if (!isNaN(n)) lpg[k] = n; }
-    updateDip(dipId, { rd, lpg, obs: editDipObs.trim() });
-    cancelEditDip();
+    setIsSavingEditDip(true);
+    updateDip(dipId, { rd, lpg, obs: editDipObs.trim() }).then(result => {
+      setIsSavingEditDip(false);
+      if (!result.ok) {
+        Alert.alert('Dip not updated', result.error ?? 'The server could not update this dip. Please refresh and try again.');
+        return;
+      }
+      cancelEditDip();
+      Alert.alert('Dip Updated', 'Readings have been saved.');
+    });
   }
   function handleDeleteDip(dip: typeof dips[0]) {
+    const isPending = dip.status === 'pending';
     Alert.alert(
-      'Delete Dip Record?',
-      `Recorded by ${dip.by} for ${fmtDate(dip.dt)}. Submitted ${fmtDateTime(dip.submittedAt ?? dip.dt)}. This cannot be undone.`,
+      isPending ? 'Withdraw Dip Record?' : 'Delete Dip Record?',
+      `${isPending ? 'Awaiting MD approval, submitted' : 'Recorded by ' + dip.by + ' for ' + fmtDate(dip.dt) + '. Submitted'} ${fmtDateTime(dip.submittedAt ?? dip.dt)}.${isPending ? ' Withdrawing frees up this date so you can submit a corrected reading.' : ' This cannot be undone.'}`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteDip(dip.id) },
+        {
+          text: isPending ? 'Withdraw' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await deleteDip(dip.id);
+            if (!result.ok) {
+              Alert.alert(isPending ? 'Dip not withdrawn' : 'Dip not deleted', result.error ?? 'The server could not complete this request. Please refresh and try again.');
+            }
+          },
+        },
       ]
     );
+  }
+  async function handleApproveDip(dipId: number) {
+    if (decidingDipId !== null) return;
+    setDecidingDipId(dipId);
+    const result = await approveDip(dipId);
+    setDecidingDipId(null);
+    if (!result.ok) {
+      Alert.alert('Dip not approved', result.error ?? 'The server could not approve this dip. Please refresh and try again.');
+      return;
+    }
+    Alert.alert('Approved', 'Dip record has been approved.');
+  }
+  async function handleRejectDip(dipId: number) {
+    if (decidingDipId !== null) return;
+    setDecidingDipId(dipId);
+    const result = await rejectDip(dipId);
+    setDecidingDipId(null);
+    if (!result.ok) {
+      Alert.alert('Dip not rejected', result.error ?? 'The server could not reject this dip. Please refresh and try again.');
+      return;
+    }
+    Alert.alert('Rejected', 'Dip record has been rejected.');
   }
 
   return (
@@ -259,13 +325,26 @@ export default function TanksScreen() {
             accent={roleColor}
             helper="Select the business date for this reading."
           />
+          {hasPendingDipForDate && (
+            <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517' }]}>
+              <Ionicons name="time" size={16} color="#BA7517" />
+              <Text style={[styles.pendingText, { color: '#BA7517' }]}>
+                This date already has a dip record awaiting MD approval. Edit or withdraw it in "My Dip Submissions" below.
+              </Text>
+            </View>
+          )}
 
           <View style={{ height: 8 }} />
         </ScrollView>
 
         {canEdit && (
           <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
-            <TouchableOpacity style={[styles.submitBtn, { backgroundColor: roleColor, marginBottom: 0 }]} onPress={handleDipSubmit} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={[styles.submitBtn, { backgroundColor: roleColor, marginBottom: 0, opacity: hasPendingDipForDate ? 0.6 : 1 }]}
+              onPress={handleDipSubmit}
+              disabled={hasPendingDipForDate}
+              activeOpacity={0.85}
+            >
               <Ionicons name="send" size={18} color="#fff" />
               <Text style={styles.submitBtnText}>Submit Dip to MD</Text>
             </TouchableOpacity>
@@ -285,9 +364,9 @@ export default function TanksScreen() {
             </View>
           )}
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            {canEdit ? 'Returned Dip Reports' : 'Pending Dip Reports for Review'}
+            {canEdit ? 'My Dip Submissions' : 'Pending Dip Reports for Review'}
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyBranchRail}>
+          <View style={styles.historyBranchRail}>
             {canSeeAllTanks && (
               <TouchableOpacity
                 style={[
@@ -321,13 +400,13 @@ export default function TanksScreen() {
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
           {!hasDisplayedHistory ? (
             <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="time-outline" size={16} color={colors.textMuted} />
               <Text style={[styles.noBannerText, { color: colors.textMuted }]}>
                  {canEdit
-                   ? 'No rejected dip reports require your attention.'
+                   ? 'No dip submissions awaiting MD review or requiring correction.'
                    : 'No dip reports are awaiting MD approval.'}
               </Text>
             </View>
@@ -382,7 +461,7 @@ export default function TanksScreen() {
                     {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
                   </Text>
                 )}
-                {canEdit && dip.status === 'rejected' && (
+                {canEdit && (dip.status === 'rejected' || dip.status === 'pending') && (
                   <View style={[styles.mdActions, { marginTop: 8 }]}>
                     <TouchableOpacity
                       style={[styles.rejectBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]}
@@ -398,7 +477,7 @@ export default function TanksScreen() {
                       activeOpacity={0.85}
                     >
                       <Ionicons name="trash-outline" size={15} color="#A32D2D" />
-                      <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Delete</Text>
+                      <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>{dip.status === 'pending' ? 'Withdraw' : 'Delete'}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -435,10 +514,15 @@ export default function TanksScreen() {
                       multiline numberOfLines={2} value={editDipObs} onChangeText={setEditDipObs}
                     />
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor }]} onPress={() => saveEditDip(dip.id)} activeOpacity={0.85}>
-                        <Text style={styles.submitBtnText}>Save</Text>
+                      <TouchableOpacity
+                        style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor, opacity: isSavingEditDip ? 0.6 : 1 }]}
+                        onPress={() => saveEditDip(dip.id)}
+                        disabled={isSavingEditDip}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.submitBtnText}>{isSavingEditDip ? 'Saving\u2026' : 'Save'}</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={cancelEditDip}>
+                      <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={cancelEditDip} disabled={isSavingEditDip}>
                         <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
                       </TouchableOpacity>
                     </View>
@@ -447,20 +531,22 @@ export default function TanksScreen() {
                 {isMD && isPending && (
                   <View style={styles.mdActions}>
                     <TouchableOpacity
-                      style={[styles.approveBtn, { backgroundColor: '#1a6e3c' }]}
-                      onPress={() => { approveDip(dip.id); Alert.alert('Approved', 'Dip record has been approved.'); }}
+                      style={[styles.approveBtn, { backgroundColor: '#1a6e3c', opacity: decidingDipId === dip.id ? 0.6 : 1 }]}
+                      onPress={() => handleApproveDip(dip.id)}
+                      disabled={decidingDipId !== null}
                       activeOpacity={0.85}
                     >
                       <Ionicons name="checkmark" size={15} color="#fff" />
-                      <Text style={styles.mdActionText}>Approve</Text>
+                      <Text style={styles.mdActionText}>{decidingDipId === dip.id ? 'Approving\u2026' : 'Approve'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.rejectBtn, { borderColor: '#A32D2D' }]}
-                      onPress={() => { rejectDip(dip.id); Alert.alert('Rejected', 'Dip record has been rejected.'); }}
+                      style={[styles.rejectBtn, { borderColor: '#A32D2D', opacity: decidingDipId === dip.id ? 0.6 : 1 }]}
+                      onPress={() => handleRejectDip(dip.id)}
+                      disabled={decidingDipId !== null}
                       activeOpacity={0.85}
                     >
                       <Ionicons name="close" size={15} color="#A32D2D" />
-                      <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>Reject</Text>
+                      <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>{decidingDipId === dip.id ? 'Rejecting\u2026' : 'Reject'}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -517,10 +603,10 @@ const styles = StyleSheet.create({
   dipStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   dipStatusText: { fontSize: 10, fontWeight: '700' },
   approvedByText: { fontSize: 11, marginTop: 4 },
-  historyBranchRail: { gap: 8, paddingBottom: 4 },
-  historyBranchTile: { width: 132, minHeight: 92, padding: 11, borderRadius: 13, borderWidth: 1, justifyContent: 'space-between' },
-  historyBranchTileName: { fontSize: 12, fontWeight: '800', marginTop: 8 },
-  historyBranchTileCount: { fontSize: 10, fontWeight: '600', marginTop: 4 },
+  historyBranchRail: { gap: 8, paddingBottom: 4, marginBottom: 4 },
+  historyBranchTile: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingHorizontal: 13, paddingVertical: 11, borderRadius: 13, borderWidth: 1 },
+  historyBranchTileName: { flex: 1, fontSize: 13, fontWeight: '800' },
+  historyBranchTileCount: { fontSize: 11, fontWeight: '600' },
   mdActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   approveBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10 },
   rejectBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, borderWidth: 1.5 },

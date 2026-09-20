@@ -1125,6 +1125,37 @@ describe('daily stock log balance', () => {
     expect(rejected.bookStock).toBe(2_000);
   });
 
+  it('still surfaces today\'s delivered and sold totals when no admin opening baseline exists', () => {
+    const result = calculateDailyOperationalStock(
+      undefined,
+      'PMS',
+      'branch-1',
+      [{
+        id: 40,
+        dt: '2026-08-15',
+        sup: 'Supplier',
+        prod: 'PMS',
+        wb: 'WB-40',
+        rec: 500,
+        ord: 500,
+        st: 'ok',
+        notes: '',
+        approvalStatus: 'approved',
+        branchId: 'branch-1',
+      }],
+      [{ ...reportWithStatus('approved'), date: '2026-08-15', openingMeter: 0, closingMeter: 200, liters: 200 }],
+      '2026-08-15',
+      [{ id: 'pump-1', branchId: 'branch-1' }],
+    );
+
+    expect(result).toEqual({
+      startupStock: null,
+      delivered: 500,
+      sold: 200,
+      bookStock: null,
+    });
+  });
+
   it('marks a higher physical dip as excess', () => {
     const result = calculateDailyStockLogBalance(1_000, 300, 200, 1_150);
 
@@ -1229,11 +1260,24 @@ describe('tank dip synchronization', () => {
     )).toEqual(approved);
   });
 
-  it('does not treat a pending product dip as a physical stock snapshot', () => {
+  it('uses a pending product dip so the MD can see the variance before approving', () => {
     const pending = baseDip('pending', '2026-08-20T10:00:00.000Z');
 
     expect(findLatestDipForProduct(
       [pending],
+      '2026-08-20',
+      'uyo-fuel',
+      'PMS',
+      [{ id: 'tank-uyo-pms', prod: 'PMS' }],
+      [],
+    )).toEqual(pending);
+  });
+
+  it('does not use a rejected dip as a physical stock snapshot', () => {
+    const rejected = baseDip('rejected', '2026-08-20T10:00:00.000Z');
+
+    expect(findLatestDipForProduct(
+      [rejected],
       '2026-08-20',
       'uyo-fuel',
       'PMS',

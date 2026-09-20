@@ -285,7 +285,6 @@ export interface PriceChange { id: number; prod: string; oldPrice: number; newPr
 export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media' | 'call'; body: string; ts: string; createdAt?: string; read: boolean; archivedBy?: string[]; archiveState?: Record<string, { archived: boolean; updatedAt: string }>; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; call?: { callId: string; kind: 'audio' | 'video'; roomUrl: string }; }
 export type { AppNotification };
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
-export interface CallRecord { id: number; from: Role; fromName: string; to: Role; toName: string; ts: string; status: 'ended' | 'missed' | 'declined'; kind?: 'audio' | 'video'; duration?: string; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
 export interface ShiftHandoverNote { id: number; body: string; by: string; ts: string; branchId?: string; }
 export interface InventoryLogEntry {
@@ -839,19 +838,26 @@ export function calculateDailyOperationalStock(
   businessDate: string,
   pumps: Pick<Pump, 'id' | 'branchId'>[] = [],
 ): StockBookCalculation {
-  const seedDate = startupStockSeedDate(startupStock);
-  if (
-    !startupStock ||
-    branchId === null ||
-    startupStock.branchId !== branchId ||
-    !businessDate ||
-    !seedDate ||
-    businessDate < seedDate
-  ) {
+  if (branchId === null || !businessDate) {
     return { startupStock: null, delivered: 0, sold: 0, bookStock: null };
   }
 
   const approvedReports = reports.filter(report => report.status === 'approved');
+
+  // No admin-set opening baseline (yet). There is no book stock to roll
+  // forward, but today's deliveries and approved sales are still real events
+  // that must be surfaced instead of being hidden behind a forced zero.
+  if (!startupStock || startupStock.branchId !== branchId) {
+    const today = calculateStockBook(
+      undefined, product, branchId, deliveries, approvedReports, businessDate, pumps, undefined, false,
+    );
+    return { startupStock: null, delivered: today.delivered, sold: today.sold, bookStock: null };
+  }
+
+  const seedDate = startupStockSeedDate(startupStock);
+  if (!seedDate || businessDate < seedDate) {
+    return { startupStock: null, delivered: 0, sold: 0, bookStock: null };
+  }
   const current = calculateStockBook(
     startupStock,
     product,
@@ -1453,13 +1459,12 @@ interface AppContextType {
   forwardBudget: (id: number, note: string) => Promise<{ ok: boolean; error?: string }>;
   approveBudget: (id: number, note: string) => Promise<{ ok: boolean; error?: string }>;
   rejectBudget: (id: number, note: string) => Promise<{ ok: boolean; error?: string }>;
-  messages: Record<string, Message[]>; broadcasts: Broadcast[]; callLog: CallRecord[];
+  messages: Record<string, Message[]>; broadcasts: Broadcast[];
   notifications: AppNotification[];
   refreshNotifications: () => Promise<void>;
   markNotificationRead: (id: number) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   addBroadcast: (b: Omit<Broadcast, 'id' | 'ts'>) => void;
-  addCallRecord: (r: Omit<CallRecord, 'id' | 'ts'>) => void;
   audit: AuditEntry[]; departments: Department[];
   handoverNotes: ShiftHandoverNote[];
   addShiftHandoverNote: (body: string) => void;
@@ -1524,10 +1529,10 @@ interface AppContextType {
   addCompanyFile: (file: Omit<CompanyFile, 'id' | 'dt'>) => void;
   addDeliveryEvidence: (ev: Omit<DeliveryEvidence, 'id' | 'dt'>) => Promise<{ ok: boolean; error?: string }>;
   addDip: (dip: Omit<DipRecord, 'id'>) => Promise<{ ok: boolean; error?: string }>;
-  updateDip: (id: number, updates: Partial<Omit<DipRecord, 'id'>>) => void;
-  deleteDip: (id: number) => void;
-  approveDip: (id: number) => void;
-  rejectDip: (id: number) => void;
+  updateDip: (id: number, updates: Partial<Omit<DipRecord, 'id'>>) => Promise<{ ok: boolean; error?: string }>;
+  deleteDip: (id: number) => Promise<{ ok: boolean; error?: string }>;
+  approveDip: (id: number) => Promise<{ ok: boolean; error?: string }>;
+  rejectDip: (id: number) => Promise<{ ok: boolean; error?: string }>;
   addDelivery: (rec: Omit<Delivery, 'id'>) => void;
   addDeliveryConfirmed: (rec: Omit<Delivery, 'id'>) => Promise<{ ok: boolean; error?: string }>;
   updateDelivery: (id: number, updates: Partial<Omit<Delivery, 'id'>>) => boolean;
@@ -1712,7 +1717,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [corpProjects, setCorpProjects] = useState<CorpProject[]>(INIT_CORP_PROJECTS);
   const [meetingMinutes, setMeetingMinutes] = useState<MeetingMinutes[]>(INIT_MEETING_MINUTES);
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
-  const [callLog, setCallLog] = useState<CallRecord[]>([]);
   const [pumpDailyReports, setPumpDailyReports] = useState<PumpDailyReport[]>([]);
   // Approval side effects must be idempotent even if an accountant taps
   // approve twice before the state update causes a re-render.
@@ -1769,7 +1773,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'deliveries', 'maintenance', 'audit', 'handoverNotes', 'messages', 'tasks', 'kpis', 'actionItems',
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
-      'broadcasts', 'callLog', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
+      'broadcasts', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
       'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks', 'stockSnapshotConfig', 'stockLogs', 'companyAssets',
        SHIFT_REPORT_OUTBOX_STORAGE_KEY,
     ] as const;
@@ -1850,7 +1854,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.corpProjects)      setCorpProjects(s.corpProjects);
       if (s.meetingMinutes)    setMeetingMinutes(s.meetingMinutes);
       if (s.broadcasts)        setBroadcasts(s.broadcasts);
-      if (s.callLog)           setCallLog(s.callLog);
       if (s.marketCompetitors) setMarketCompetitors(s.marketCompetitors);
        if (s.financialEntry)    setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
        if (Array.isArray(s.companyAssets)) setCompanyAssets(s.companyAssets as CompanyAsset[]);
@@ -2043,7 +2046,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!p.has('legalMatters'))      setLegalMatters(safeArray<LegalMatter>(s.legalMatters));
       if (!p.has('corpProjects'))      setCorpProjects(safeArray<CorpProject>(s.corpProjects));
       if (!p.has('broadcasts'))        setBroadcasts(safeArray<Broadcast>(s.broadcasts));
-      if (!p.has('callLog'))           setCallLog(safeArray<CallRecord>(s.callLog));
       if (!p.has('marketCompetitors')) setMarketCompetitors(safeArray<MarketCompetitor>(s.marketCompetitors));
       if (!p.has('meetingMinutes'))    setMeetingMinutes(safeArray<MeetingMinutes>(s.meetingMinutes));
        if (!p.has('pumpDailyReports') && Array.isArray(s.pumpDailyReports)) {
@@ -2526,7 +2528,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('handoverNotes',    handoverNotes); },       [handoverNotes, loaded]);
   useEffect(() => { if (loaded) syncSlice('messages',          messages); },          [messages, loaded]);
   useEffect(() => { if (loaded) syncSlice('broadcasts',        broadcasts); },        [broadcasts, loaded]);
-  useEffect(() => { if (loaded) syncSlice('callLog',           callLog); },           [callLog, loaded]);
   useEffect(() => { if (loaded) syncSlice('marketCompetitors', marketCompetitors); }, [marketCompetitors, loaded]);
   useEffect(() => { if (loaded) syncSlice('tasks',             tasks); },             [tasks, loaded]);
   useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
@@ -2992,37 +2993,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   }, [applyDip]);
 
-  const approveDip = useCallback((id: number) => {
+  const approveDip = useCallback(async (id: number) => {
     const rec = dips.find(r => r.id === id);
-    if (!rec) return;
-    void workflowApi.dips.decide(id, 'approve', workflowMeta(rec.workflowRevision ?? 0))
-      .then(async result => {
-        if (!result?.dip) {
-          workflowFailure('Dip approval');
-          return;
-        }
-        applyDip(result.dip as DipRecord);
-        await syncFromServer();
-      });
-  }, [applyDip, dips, syncFromServer, workflowFailure]);
+    if (!rec) return { ok: false, error: 'This dip record no longer exists.' };
+    const result = await workflowApi.dips.decide(id, 'approve', workflowMeta(rec.workflowRevision ?? 0));
+    if (!result?.dip) {
+      void syncFromServer();
+      return { ok: false, error: result?.error ?? 'The server could not approve this dip. Please refresh and try again.' };
+    }
+    applyDip(result.dip as DipRecord);
+    return { ok: true };
+  }, [applyDip, dips, syncFromServer]);
 
-  const rejectDip = useCallback((id: number) => {
-    const rec = dips.find(item => item.id === id); if (!rec) return;
-    void workflowApi.dips.decide(id, 'reject', workflowMeta(rec.workflowRevision ?? 0))
-      .then(result => result?.dip ? applyDip(result.dip as DipRecord) : workflowFailure('Dip rejection'));
-  }, [dips]);
+  const rejectDip = useCallback(async (id: number) => {
+    const rec = dips.find(item => item.id === id);
+    if (!rec) return { ok: false, error: 'This dip record no longer exists.' };
+    const result = await workflowApi.dips.decide(id, 'reject', workflowMeta(rec.workflowRevision ?? 0));
+    if (!result?.dip) {
+      void syncFromServer();
+      return { ok: false, error: result?.error ?? 'The server could not reject this dip. Please refresh and try again.' };
+    }
+    applyDip(result.dip as DipRecord);
+    return { ok: true };
+  }, [dips, syncFromServer]);
 
-  const updateDip = useCallback((id: number, updates: Partial<Omit<DipRecord, 'id'>>) => {
-    const rec = dips.find(item => item.id === id); if (!rec) return;
-    void workflowApi.dips.update(id, updates, workflowMeta(rec.workflowRevision ?? 0))
-      .then(result => result?.dip ? applyDip(result.dip as DipRecord) : workflowFailure('Dip update'));
-  }, [dips]);
+  const updateDip = useCallback(async (id: number, updates: Partial<Omit<DipRecord, 'id'>>) => {
+    const rec = dips.find(item => item.id === id);
+    if (!rec) return { ok: false, error: 'This dip record no longer exists.' };
+    const result = await workflowApi.dips.update(id, updates, workflowMeta(rec.workflowRevision ?? 0));
+    if (!result?.dip) {
+      void syncFromServer();
+      return { ok: false, error: result?.error ?? 'The server could not update this dip. Please refresh and try again.' };
+    }
+    applyDip(result.dip as DipRecord);
+    return { ok: true };
+  }, [dips, syncFromServer]);
 
-  const deleteDip = useCallback((id: number) => {
-    const rec = dips.find(item => item.id === id); if (!rec) return;
-    void workflowApi.dips.remove(id, workflowMeta(rec.workflowRevision ?? 0))
-      .then(result => result?.dip ? applyDip(result.dip as DipRecord, true) : workflowFailure('Dip deletion'));
-  }, [dips]);
+  const deleteDip = useCallback(async (id: number) => {
+    const rec = dips.find(item => item.id === id);
+    if (!rec) return { ok: false, error: 'This dip record no longer exists.' };
+    const result = await workflowApi.dips.remove(id, workflowMeta(rec.workflowRevision ?? 0));
+    if (!result?.dip) {
+      void syncFromServer();
+      return { ok: false, error: result?.error ?? 'The server could not withdraw this dip. Please refresh and try again.' };
+    }
+    applyDip(result.dip as DipRecord, true);
+    return { ok: true };
+  }, [dips, syncFromServer]);
 
   const addDeliveryConfirmed = useCallback(async (rec: Omit<Delivery, 'id'>) => {
     const result = await workflowApi.deliveries.create({ ...rec, id: genId() }, workflowMeta(0));
@@ -3095,10 +3112,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const d = deliveries.find(d => d.id === id);
     if (!d) return { ok: false, error: 'This delivery no longer exists.' };
     const result = await workflowApi.deliveries.forward(id, costPrice, accNote, workflowMeta(d.workflowVersion ?? 0));
-    if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not forward this delivery.' };
+    if (!result?.delivery) {
+      void syncFromServer();
+      return { ok: false, error: result?.error ?? 'The server could not forward this delivery.' };
+    }
     applyDelivery(result.delivery as Delivery);
     return { ok: true };
-  }, [deliveries]);
+  }, [deliveries, syncFromServer]);
 
   const accForwardToMd = useCallback((id: number, costPrice: number, accNote: string) => {
     void accForwardToMdConfirmed(id, costPrice, accNote)
@@ -3116,10 +3136,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const d = deliveries.find(d => d.id === id);
     if (!d) return { ok: false, error: 'This delivery no longer exists.' };
     const result = await workflowApi.deliveries.approve(id, sellingPrice, mdNote ?? '', workflowMeta(d.workflowVersion ?? 0));
-    if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not approve this delivery.' };
+    if (!result?.delivery) {
+      void syncFromServer();
+      return { ok: false, error: result?.error ?? 'The server could not approve this delivery.' };
+    }
     applyDelivery(result.delivery as Delivery);
     return { ok: true };
-  }, [deliveries]);
+  }, [deliveries, syncFromServer]);
 
   const approveDelivery = useCallback((id: number, sellingPrice: number, mdNote?: string) => {
     void approveDeliveryConfirmed(id, sellingPrice, mdNote)
@@ -3133,10 +3156,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, error: 'This delivery is no longer awaiting MD review.' };
     }
     const result = await workflowApi.deliveries.reject(id, note ?? '', workflowMeta(d.workflowVersion ?? 0));
-    if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not return this delivery.' };
+    if (!result?.delivery) {
+      void syncFromServer();
+      return { ok: false, error: result?.error ?? 'The server could not return this delivery.' };
+    }
     applyDelivery(result.delivery as Delivery);
     return { ok: true };
-  }, [role, deliveries]);
+  }, [role, deliveries, syncFromServer]);
 
   const rejectDelivery = useCallback((id: number, note?: string) => {
     void rejectDeliveryConfirmed(id, note)
@@ -4334,7 +4360,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCorpProjects([]);
     setMeetingMinutes([]);
     setBroadcasts([]);
-    setCallLog([]);
     setPumpDailyReports([]);
     setPumpLockedMeters({});
     setPriceHistory([]);
@@ -5007,10 +5032,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setBroadcasts(prev => [{ ...b, id: genId(), ts: nowTs() }, ...prev]);
   }, []);
 
-  const addCallRecord = useCallback((r: Omit<CallRecord, 'id' | 'ts'>) => {
-    setCallLog(prev => [{ ...r, id: genId(), ts: nowTs() }, ...prev]);
-  }, []);
-
   const addMarketCompetitor = useCallback((competitor: Omit<MarketCompetitor, 'id'>) => {
     setMarketCompetitors(prev => [{ ...competitor, id: String(genId()) }, ...prev]);
   }, []);
@@ -5223,12 +5244,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refreshFinanceState: syncFromServer,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
-       maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts, callLog,
+       maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts,
        companyAssets, companyAssetSaveError, clearCompanyAssetSaveError,
        addCompanyAsset, updateCompanyAsset, deleteCompanyAsset,
        handoverNotes, addShiftHandoverNote,
        marketCompetitors, addMarketCompetitor, updateMarketCompetitor, deleteMarketCompetitor,
-       addBroadcast, addCallRecord,
+       addBroadcast,
       audit, departments, companyFiles, deliveryEvidences, myFolders, myFolderFiles,
       priceProposals, addPriceProposal, addPriceProposalConfirmed, approvePriceProposal, approvePriceProposalConfirmed, updateAndApprovePriceProposal, updateAndApprovePriceProposalConfirmed, rejectPriceProposal,
       updatePrice, updatePriceConfirmed, addTank, addLpgTank, addPump,
