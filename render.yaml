@@ -23,7 +23,7 @@ services:
         sync: false
 
   - type: web
-    name: petrotrack-web
+    name: petrotrack-1
     runtime: node
     plan: free
     buildCommand: pnpm install --frozen-lockfile && pnpm --filter @workspace/petrotrack run build

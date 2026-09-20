@@ -3,7 +3,7 @@
 The repository deploys as two Render web services:
 
 - `petrotrack-api` runs the Express API and uses Render Postgres.
-- `petrotrack-web` serves the Expo static build and points to the API service.
+- `petrotrack-1` serves the Expo static build and points to the API service.
 
 Create both services and the database from the repository's `render.yaml`.
 Render supplies `PORT` to each service. The API health check is
@@ -12,7 +12,7 @@ Render supplies `PORT` to each service. The API health check is
 ## Required setup
 
 1. Create or connect a Render workspace and deploy the blueprint.
-2. Set `EXPO_PUBLIC_API_URL` on `petrotrack-web` to the public URL of the
+2. Set `EXPO_PUBLIC_API_URL` on `petrotrack-1` to the public URL of the
    deployed `petrotrack-api` service, for example
    `https://petrotrack-api.onrender.com`. Do not leave this unset: the web
    service cannot serve `/api` itself.
