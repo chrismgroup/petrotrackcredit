@@ -70,7 +70,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           test -n "$EXPO_PUBLIC_DOMAIN"
-          test "$EXPO_PUBLIC_DOMAIN" != "petrotrack.onrender.com"
+          test "$EXPO_PUBLIC_DOMAIN" != "petrotrack-1.onrender.com"
           mkdir -p "$RUNNER_TEMP/eas"
           cd artifacts/petrotrack
           eas build \
