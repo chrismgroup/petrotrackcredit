@@ -47,3 +47,6 @@ Thumbs.db
 # Local workspace caches
 .cache/
 .local/
+
+# Local CLI tool state (e.g. eas-cli analytics device id)
+.config/
