@@ -68,7 +68,6 @@
   },
   "dependencies": {
     "expo-asset": "~57.0.16",
-    "expo-audio": "~57.0.4",
     "expo-document-picker": "~57.0.1",
     "expo-file-system": "~57.0.6",
     "expo-local-authentication": "~57.0.2",

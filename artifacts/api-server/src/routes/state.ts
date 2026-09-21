@@ -222,6 +222,30 @@ function branchScopedStateForManager(key: string, data: unknown, branchId: strin
   return data;
 }
 
+function inferDipBranchIds(data: unknown, tanksData: unknown, lpgTanksData: unknown): unknown {
+  if (!Array.isArray(data)) return data;
+  const branchByTankId = new Map<string, string>();
+  for (const value of [tanksData, lpgTanksData]) {
+    if (!Array.isArray(value)) continue;
+    for (const tank of value) {
+      if (!isJsonRecord(tank) || typeof tank.id !== "string" || typeof tank.branchId !== "string") continue;
+      if (tank.branchId) branchByTankId.set(tank.id, tank.branchId);
+    }
+  }
+  return data.map(value => {
+    if (!isJsonRecord(value) || value.branchId) return value;
+    const branchIds = new Set<string>();
+    for (const readings of [value.rd, value.lpg]) {
+      if (!isJsonRecord(readings)) continue;
+      for (const tankId of Object.keys(readings)) {
+        const branchId = branchByTankId.get(tankId);
+        if (branchId) branchIds.add(branchId);
+      }
+    }
+    return branchIds.size === 1 ? { ...value, branchId: [...branchIds][0] } : value;
+  });
+}
+
 // Selling prices are operational. Managers may update only their own branch
 // override; CEO, MD, and admin may update the network fallback.
 const PRICE_WRITE_ROLES = new Set(["admin", "ceo", "md", "mgr"]);
@@ -900,16 +924,23 @@ router.get("/state", async (req, res): Promise<void> => {
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
   for (const row of rows) {
     if (row.key === PUMP_REPORT_DELETIONS_KEY || row.key === COMPANY_ASSET_DELETIONS_KEY) continue;
+    const visibleState = row.key === "dips"
+      ? inferDipBranchIds(
+        row.data,
+        rows.find(candidate => candidate.key === "tanks")?.data,
+        rows.find(candidate => candidate.key === "lpgTanks")?.data,
+      )
+      : row.data;
     result[row.key] = row.key === "budgets"
       ? budgetStateForIdentity(
-          row.data,
+          visibleState,
           rows.find(candidate => candidate.key === "branches")?.data,
           budgetStaff,
           req.auth,
         )
       : row.key === "expenses"
       ? expenseStateForIdentity(
-          row.data,
+          visibleState,
           rows.find(candidate => candidate.key === "branches")?.data,
           rows.find(candidate => candidate.key === "budgets")?.data,
           budgetStaff,
@@ -923,7 +954,7 @@ router.get("/state", async (req, res): Promise<void> => {
         ))
       : row.key === "messages" && chatIdentity
       ? messagesForIdentity(row.data, chatIdentity)
-      : visibleMyFolderState(row.key, row.data, req.auth?.role);
+      : visibleMyFolderState(row.key, visibleState, req.auth?.role);
     if (req.auth?.role === "mgr") {
       result[row.key] = branchScopedStateForManager(row.key, result[row.key], managerBranchId ?? null);
     }
@@ -1610,7 +1641,15 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     res.json(pumpReportsForIdentity(row.data, req.auth, managerBranchId));
     return;
   }
-  const visible = visibleMyFolderState(key, row.data, req.auth?.role);
+  let visibleData = row.data;
+  if (key === "dips") {
+    const [tanksRow, lpgTanksRow] = await Promise.all([
+      db.select().from(appStateTable).where(eq(appStateTable.key, "tanks")),
+      db.select().from(appStateTable).where(eq(appStateTable.key, "lpgTanks")),
+    ]);
+    visibleData = inferDipBranchIds(row.data, tanksRow[0]?.data, lpgTanksRow[0]?.data);
+  }
+  const visible = visibleMyFolderState(key, visibleData, req.auth?.role);
   if (req.auth?.role === "mgr") {
     const managerBranchId = req.auth.branchId ?? await resolveManagerBranchId(req.auth.username);
     res.json(branchScopedStateForManager(key, visible, managerBranchId ?? null));

@@ -44,7 +44,6 @@
         }
       ],
       "expo-asset",
-      "expo-audio",
       [
         "expo-secure-store",
         {

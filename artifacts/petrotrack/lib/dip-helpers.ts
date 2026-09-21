@@ -22,6 +22,8 @@ export function findLatestDipForProduct(
     : petrolTanks.some(tank =>
       tank.prod === product && dip.rd?.[tank.id] !== undefined,
     );
+  const belongsToBranch = (dip: DipRecord) =>
+    !dip.branchId || branchId === null || dip.branchId === branchId;
 
   return dips
     .filter(dip => {
@@ -29,7 +31,7 @@ export function findLatestDipForProduct(
       return dipDate !== '' &&
         (beforeDate ? dipDate < dateKey : dipDate === dateKey) &&
         dip.status !== 'rejected' &&
-        (branchId === null || dip.branchId === branchId) &&
+        belongsToBranch(dip) &&
         hasProductReading(dip);
     })
     .sort((a, b) => {

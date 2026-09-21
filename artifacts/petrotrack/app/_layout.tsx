@@ -15,7 +15,6 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
-import { useNotificationSound } from "@/hooks/useNotificationSound";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 SplashScreen.preventAutoHideAsync();
@@ -23,7 +22,6 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 function SoundController() {
-  useNotificationSound();
   usePushNotifications();
   return null;
 }

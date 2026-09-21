@@ -1273,6 +1273,22 @@ describe('tank dip synchronization', () => {
     )).toEqual(pending);
   });
 
+  it('matches a legacy branchless dip by its branch tank reading', () => {
+    const legacyDip: DipRecord = {
+      ...baseDip('approved', '2026-08-20T10:00:00.000Z'),
+      branchId: undefined,
+    };
+
+    expect(findLatestDipForProduct(
+      [legacyDip],
+      '2026-08-20',
+      'uyo-fuel',
+      'PMS',
+      [{ id: 'tank-uyo-pms', prod: 'PMS' }],
+      [],
+    )).toEqual(legacyDip);
+  });
+
   it('does not use a rejected dip as a physical stock snapshot', () => {
     const rejected = baseDip('rejected', '2026-08-20T10:00:00.000Z');
 
