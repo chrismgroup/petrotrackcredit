@@ -124,7 +124,7 @@ export default function ExpensesScreen() {
   const isAcc = role === 'acc';
   const isMD  = role === 'md';
   const isCeo = role === 'ceo';
-  const isReadOnlyViewer = role === 'admin' || isMD || isCeo;
+  const isReadOnlyViewer = isMD || isCeo;
   // Manager state is already branch-scoped by the authenticated API response.
   // Do not apply a second client-session branch check: a stale local branch ID
   // can otherwise hide a valid approved budget before the request reaches the
@@ -310,9 +310,11 @@ export default function ExpensesScreen() {
 
   /* Permission helpers */
   const mgrCanEdit = (e: Expense) =>
-    isMgr && (e.status === 'pending' || e.status === 'rejected') && (e.by === role || e.byName === userName);
+    isMgr && (e.status === 'pending' || e.status === 'rejected')
+    && Boolean(branchId && e.branchId === branchId);
   const accCanEdit    = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
   const accCanDelete  = (e: Expense) => isAcc && (e.status === 'pending' || e.status === 'rejected');
+  const adminCanCleanUp = (e: Expense) => role === 'admin' && e.status === 'rejected';
   const accCanReview = (e: Expense) => isAcc && e.status === 'pending';
   const mdCanDecide = (e: Expense) => isMD && e.status === 'acc_forwarded';
 
@@ -508,6 +510,19 @@ export default function ExpensesScreen() {
                       <Text style={[styles.actionBtnText, { color: '#365A47' }]}>Delete</Text>
                     </TouchableOpacity>
                   ) : null}
+                </View>
+              ) : null}
+
+              {adminCanCleanUp(exp) ? (
+                <View style={styles.actionRow}>
+                  <TouchableOpacity onPress={() => openEdit(exp)} style={[styles.actionBtn, { borderColor: '#286247' }]}>
+                    <Ionicons name="create-outline" size={13} color="#286247" />
+                    <Text style={[styles.actionBtnText, { color: '#286247' }]}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDelete(exp)} style={[styles.actionBtn, { borderColor: '#365A47' }]}>
+                    <Ionicons name="trash-outline" size={13} color="#365A47" />
+                    <Text style={[styles.actionBtnText, { color: '#365A47' }]}>Delete</Text>
+                  </TouchableOpacity>
                 </View>
               ) : null}
 

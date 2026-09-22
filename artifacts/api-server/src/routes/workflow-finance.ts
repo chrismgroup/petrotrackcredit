@@ -57,8 +57,9 @@ function sameBranch(item: JsonRecord, auth: Auth): boolean {
     );
 }
 function canEditOwned(item: JsonRecord, auth: Auth): boolean {
-  return (auth.role === "admin" || (MANAGERS.has(auth.role) && String(item.createdBy ?? item.byName ?? "") === auth.username))
-    && sameBranch(item, auth);
+  // Manager workflow records belong to their branch. Requiring the original
+  // username strands rejected records after staff/account changes.
+  return auth.role === "admin" || (MANAGERS.has(auth.role) && sameBranch(item, auth));
 }
 function canonicalExpense(input: unknown): JsonRecord | null {
   if (!record(input)) return null;
@@ -387,10 +388,12 @@ router.patch("/finance/expenses/:id", async (req, res) => {
   if ("kind" in assignedBranch) { res.status(409).json({ error: assignedBranch.error }); return; }
   const result = await command(req, "expenses", (items, auth, now) => {
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
-    if (!sameBranch(current, auth)) return forbidden("You cannot modify an expense from another branch");
+    if (!sameBranch(current, auth) && !canEditOwned(current, auth)) return forbidden("You cannot modify an expense from another branch");
     if (auth.branchId && String(auth.branchId) !== assignedBranch.branchId) return forbidden("You cannot use another branch's budget");
     if (current.branchId && String(current.branchId) !== assignedBranch.branchId) return conflict("An expense cannot be moved to another branch's budget");
-    const editable = (MANAGERS.has(auth.role) && canEditOwned(current, auth)) || (ACCOUNTANTS.has(auth.role) && ["pending", "rejected"].includes(String(current.status)));
+    const editable = (auth.role === "admin" && current.status === "rejected")
+      || (MANAGERS.has(auth.role) && canEditOwned(current, auth))
+      || (ACCOUNTANTS.has(auth.role) && ["pending", "rejected"].includes(String(current.status)));
     if (!editable) return forbidden("Your role cannot edit this expense");
     if (!["pending", "rejected"].includes(String(current.status))) return conflict("This expense is locked in its current workflow state");
     const resubmitting = MANAGERS.has(auth.role) && current.status === "rejected";
@@ -417,7 +420,7 @@ router.patch("/finance/expenses/:id", async (req, res) => {
 router.delete("/finance/expenses/:id", async (req, res) => {
   const result = await command(req, "expenses", (items, auth) => {
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
-    if (auth.role !== "admin" && !sameBranch(current, auth)) return forbidden("You cannot delete an expense from another branch");
+    if (auth.role !== "admin" && !sameBranch(current, auth) && !canEditOwned(current, auth)) return forbidden("You cannot delete an expense from another branch");
     if (String(current.status) === "approved") return conflict("Approved expenses are permanently locked and cannot be deleted");
     const allowed = auth.role === "admin"
       || (MANAGERS.has(auth.role) && canEditOwned(current, auth))
@@ -727,8 +730,10 @@ router.patch("/finance/budgets/:id", async (req, res) => {
   if (!body) { res.status(400).json({ error: "Invalid budget fields" }); return; }
   const result = await command(req, "budgets", (items, auth, now) => {
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
-    if (!sameBranch(current, auth)) return forbidden("You cannot modify a budget from another branch");
-    const allowed = (MANAGERS.has(auth.role) && canEditOwned(current, auth)) || (ACCOUNTANTS.has(auth.role) && ["submitted", "rejected"].includes(String(current.status)));
+    if (!sameBranch(current, auth) && !canEditOwned(current, auth)) return forbidden("You cannot modify a budget from another branch");
+    const allowed = (auth.role === "admin" && current.status === "rejected")
+      || (MANAGERS.has(auth.role) && canEditOwned(current, auth))
+      || (ACCOUNTANTS.has(auth.role) && ["submitted", "rejected"].includes(String(current.status)));
     if (!allowed) return forbidden("Your role cannot edit this budget");
     if (current.archivedAt || !["draft", "submitted", "rejected"].includes(String(current.status))) return conflict("This budget is locked in its current workflow state");
     const item: JsonRecord = { ...current, ...body, updatedAt: now, updatedBy: auth.username, revision: revision(current) + 1 };
@@ -744,7 +749,7 @@ router.post("/finance/budgets/:id/update-submit", async (req, res) => {
   if (!body) { res.status(400).json({ error: "Invalid budget fields" }); return; }
   const result = await command(req, "budgets", (items, auth, now) => {
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
-    if (!MANAGERS.has(auth.role) || !canEditOwned(current, auth)) return forbidden("Only the originating user may update and submit this budget");
+    if (!MANAGERS.has(auth.role) || !canEditOwned(current, auth)) return forbidden("Only a manager assigned to this branch may update and submit this budget");
     if (current.archivedAt || !["draft", "rejected"].includes(String(current.status))) return conflict("Only a draft or rejected budget can be updated and submitted");
     const history = Array.isArray(current.workflow) ? current.workflow.filter(record) : [];
     const item = {
@@ -773,7 +778,7 @@ router.post("/finance/budgets/:id/update-submit", async (req, res) => {
 router.delete("/finance/budgets/:id", async (req, res) => {
   const result = await command(req, "budgets", (items, auth) => {
     const current = target(items, req.params.id, Number(req.body.expectedRevision)); if (isFailure(current)) return current;
-    if (auth.role !== "admin" && !sameBranch(current, auth)) return forbidden("You cannot delete a budget from another branch");
+    if (auth.role !== "admin" && !sameBranch(current, auth) && !canEditOwned(current, auth)) return forbidden("You cannot delete a budget from another branch");
     if (auth.role === "admin") return { item: current, deleted: true };
     const originator = MANAGERS.has(auth.role) && canEditOwned(current, auth)
       && ["draft", "rejected"].includes(String(current.status));

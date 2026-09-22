@@ -1580,7 +1580,7 @@ describe('delivery returned and approved permissions', () => {
     });
     const delivery = app().deliveries[0];
     await act(async () => {
-      expect(await app().login('mgr', 'Another Manager', 5, 'branch-1')).toBe(true);
+      expect(await app().login('mgr', 'Another Manager', 5, 'branch-2')).toBe(true);
     });
 
     let updated = true;

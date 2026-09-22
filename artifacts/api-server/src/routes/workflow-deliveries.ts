@@ -53,7 +53,8 @@ async function canonicalBranch(branchId: string): Promise<{ branchId: string; br
   return branch && branchName ? { branchId, branchName } : null;
 }
 function isOriginator(item: JsonRecord, auth: NonNullable<Request["auth"]>): boolean {
-  return item.receivedByUsername === auth.username
+  return (auth.role === "mgr" && isBranchAllowed(item, auth))
+    || item.receivedByUsername === auth.username
     || item.receivedBy === auth.username
     || (!!auth.empName && item.receivedBy === auth.empName);
 }

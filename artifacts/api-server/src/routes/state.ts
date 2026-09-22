@@ -26,6 +26,12 @@ import {
   mergeWorkflowTombstones,
   workflowTombstones,
 } from "./workflow-record-merge";
+import {
+  branchPumpMeters,
+  branchScopedStateForBranchUser,
+  inferDeliveryEvidenceBranches,
+  isBranchScopedArrayKey,
+} from "./branch-state-policy";
 
 const router: IRouter = Router();
 
@@ -49,6 +55,7 @@ const COMMAND_OWNED_WORKFLOW_KEYS = new Set([
   "expenses",
   "budgets",
   "dips",
+  "deliveries",
   "priceProposals",
 ]);
 const MY_FOLDER_WRITE_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
@@ -111,7 +118,7 @@ function budgetStateForIdentity(
       return branchId && branchName ? { ...budget, branchId, branchName } : budget;
     });
 
-  if (auth?.role !== "mgr") return budgets;
+  if (auth?.role !== "mgr" && auth?.role !== "att") return budgets;
   const managerBranchId = auth.branchId?.trim() ?? "";
   if (!managerBranchId) return [];
   return budgets.filter(budget => String(budget.branchId ?? "") === managerBranchId);
@@ -169,7 +176,7 @@ function expenseStateForIdentity(
       return branchId && branchName ? { ...expense, branchId, branchName } : expense;
     });
 
-  if (auth?.role !== "mgr") return expenses;
+  if (auth?.role !== "mgr" && auth?.role !== "att") return expenses;
   const managerBranchId = auth.branchId?.trim() ?? "";
   if (!managerBranchId) return [];
   return expenses.filter(expense => String(expense.branchId ?? "") === managerBranchId);
@@ -189,38 +196,6 @@ function isJsonRecord(value: unknown): value is JsonRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-const MANAGER_BRANCH_ARRAY_KEYS = new Set([
-  "tanks", "lpgTanks", "pumps", "expenses", "sales", "dips", "deliveries",
-  "maintenance", "inventoryLog", "stockLogs", "startupStocks", "companyAssets",
-  "priceHistory", "priceProposals",
-]);
-
-function branchScopedStateForManager(key: string, data: unknown, branchId: string | null): unknown {
-  if (!branchId) {
-    if (key === "branches" || MANAGER_BRANCH_ARRAY_KEYS.has(key)) return [];
-    return data;
-  }
-  if (key === "branches") {
-    return Array.isArray(data)
-      ? data.filter(value => isJsonRecord(value) && String(value.id ?? "") === branchId)
-      : [];
-  }
-  if (MANAGER_BRANCH_ARRAY_KEYS.has(key)) {
-    return Array.isArray(data)
-      ? data.filter(value => isJsonRecord(value) && String(value.branchId ?? "") === branchId)
-      : [];
-  }
-  if (key === "prices" && isJsonRecord(data)) {
-    const branchPrices = isJsonRecord(data.branchPrices) ? data.branchPrices : {};
-    return {
-      ...data,
-      branchPrices: branchPrices[branchId] === undefined
-        ? {}
-        : { [branchId]: branchPrices[branchId] },
-    };
-  }
-  return data;
-}
 
 function inferDipBranchIds(data: unknown, tanksData: unknown, lpgTanksData: unknown): unknown {
   if (!Array.isArray(data)) return data;
@@ -505,7 +480,7 @@ function canMutatePumpReport(
     || (!!auth.empName && candidate.submittedBy === auth.empName);
   if (auth.role === "admin") return true;
   if (
-    auth.role === "mgr"
+    (auth.role === "mgr" || auth.role === "att")
     && (
       !auth.branchId
       || candidate.branchId !== auth.branchId
@@ -518,7 +493,7 @@ function canMutatePumpReport(
     return auth.role === "att"
       && candidate.status === "pending_manager"
       && isSubmittingAttendant
-      && (!auth.branchId || candidate.branchId === auth.branchId);
+      && candidate.branchId === auth.branchId;
   }
   // JSONB may return object keys in a different order from the request body,
   // so compare the records structurally rather than by JSON serialization.
@@ -918,7 +893,7 @@ router.get("/state", async (req, res): Promise<void> => {
   const deletedPumpReportIds = pumpReportDeletionIds(
     rows.find(row => row.key === PUMP_REPORT_DELETIONS_KEY)?.data,
   );
-  const managerBranchId = req.auth?.role === "mgr"
+  const branchUserId = req.auth?.role === "mgr" || req.auth?.role === "att"
     ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
     : null;
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
@@ -929,6 +904,11 @@ router.get("/state", async (req, res): Promise<void> => {
         row.data,
         rows.find(candidate => candidate.key === "tanks")?.data,
         rows.find(candidate => candidate.key === "lpgTanks")?.data,
+      )
+      : row.key === "deliveryEvidences"
+      ? inferDeliveryEvidenceBranches(
+        row.data,
+        rows.find(candidate => candidate.key === "deliveries")?.data,
       )
       : row.data;
     result[row.key] = row.key === "budgets"
@@ -955,9 +935,13 @@ router.get("/state", async (req, res): Promise<void> => {
       : row.key === "messages" && chatIdentity
       ? messagesForIdentity(row.data, chatIdentity)
       : visibleMyFolderState(row.key, visibleState, req.auth?.role);
-    if (req.auth?.role === "mgr") {
-      result[row.key] = branchScopedStateForManager(row.key, result[row.key], managerBranchId ?? null);
+    if (req.auth?.role === "mgr" || req.auth?.role === "att") {
+      result[row.key] = branchScopedStateForBranchUser(row.key, result[row.key], branchUserId ?? null);
     }
+  }
+  if (req.auth?.role === "mgr" || req.auth?.role === "att") {
+    result.pumpInitialMeters = branchPumpMeters(result.pumpInitialMeters, result.pumps);
+    result.pumpLockedMeters = branchPumpMeters(result.pumpLockedMeters, result.pumps);
   }
   result.companyAssetDeletedIds = Array.from(deletedCompanyAssetIds(
     rows.find(row => row.key === COMPANY_ASSET_DELETIONS_KEY)?.data,
@@ -970,7 +954,7 @@ router.get("/state", async (req, res): Promise<void> => {
         .map(row => row.data),
       req.auth?.role,
     ).filter(report => !deletedPumpReportIds.has(String(report.id ?? "")));
-    result.pumpDailyReports = pumpReportsForIdentity(result.pumpDailyReports, req.auth, managerBranchId);
+    result.pumpDailyReports = pumpReportsForIdentity(result.pumpDailyReports, req.auth, branchUserId);
   }
   res.json(result);
 });
@@ -1304,8 +1288,10 @@ router.post("/state/pump-reports/:id/delete", async (req, res): Promise<void> =>
     || (!!authEmpName && (report.submittedBy === authEmpName || report.submittedByName === authEmpName));
   const isApproved = report.status === "approved";
   const isReturned = report.status === "returned" || report.status === "returned_attendant";
+  const reportBranchId = String(report.branchId ?? "");
+  const isOwnBranch = !!req.auth.branchId && reportBranchId === req.auth.branchId;
   const mayDelete = (req.auth.role === "admin")
-    || (req.auth.role === "att" && isReturned && isOriginalAttendant);
+    || (req.auth.role === "att" && isReturned && isOriginalAttendant && isOwnBranch);
   if (!mayDelete) {
     res.status(403).json({ error: "Only Admin or the original attendant can delete this returned pump report" });
     return;
@@ -1635,10 +1621,17 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     return;
   }
   if (key === "pumpDailyReports") {
-    const managerBranchId = req.auth?.role === "mgr"
+    const managerBranchId = req.auth?.role === "mgr" || req.auth?.role === "att"
       ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
       : null;
     res.json(pumpReportsForIdentity(row.data, req.auth, managerBranchId));
+    return;
+  }
+  if ((key === "pumpInitialMeters" || key === "pumpLockedMeters") && (req.auth?.role === "mgr" || req.auth?.role === "att")) {
+    const [pumpsRow] = await db.select().from(appStateTable).where(eq(appStateTable.key, "pumps"));
+    const branchId = req.auth.branchId ?? await resolveManagerBranchId(req.auth.username);
+    const visiblePumps = branchScopedStateForBranchUser("pumps", pumpsRow?.data, branchId ?? null);
+    res.json(branchPumpMeters(row.data, visiblePumps));
     return;
   }
   let visibleData = row.data;
@@ -1649,10 +1642,14 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     ]);
     visibleData = inferDipBranchIds(row.data, tanksRow[0]?.data, lpgTanksRow[0]?.data);
   }
+  if (key === "deliveryEvidences") {
+    const [deliveriesRow] = await db.select().from(appStateTable).where(eq(appStateTable.key, "deliveries"));
+    visibleData = inferDeliveryEvidenceBranches(row.data, deliveriesRow?.data);
+  }
   const visible = visibleMyFolderState(key, visibleData, req.auth?.role);
-  if (req.auth?.role === "mgr") {
+  if (req.auth?.role === "mgr" || req.auth?.role === "att") {
     const managerBranchId = req.auth.branchId ?? await resolveManagerBranchId(req.auth.username);
-    res.json(branchScopedStateForManager(key, visible, managerBranchId ?? null));
+    res.json(branchScopedStateForBranchUser(key, visible, managerBranchId ?? null));
     return;
   }
   res.json(visible);
@@ -1706,10 +1703,10 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Deletion tombstones are managed by workflow commands" });
     return;
   }
-  const managerBranchIdForWrite = req.auth?.role === "mgr"
+  const managerBranchIdForWrite = req.auth?.role === "mgr" || req.auth?.role === "att"
     ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
     : null;
-  if (req.auth?.role === "mgr" && !managerBranchIdForWrite) {
+  if ((req.auth?.role === "mgr" || req.auth?.role === "att") && !managerBranchIdForWrite) {
     res.status(403).json({ error: "A branch assignment is required" });
     return;
   }
@@ -1726,7 +1723,7 @@ router.put("/state/:key", async (req, res): Promise<void> => {
         tx.select().from(appStateTable).where(eq(appStateTable.key, tombstoneKey)),
       ]);
       const tombstones = mergeWorkflowTombstones(tombstoneRow[0]?.data, []);
-      const incoming = req.auth?.role === "mgr"
+      const incoming = req.auth?.role === "mgr" || req.auth?.role === "att"
         ? (data as unknown[]).filter(value =>
             isJsonRecord(value)
             && String(value.branchId ?? "") === managerBranchIdForWrite
@@ -1741,17 +1738,17 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     });
     res.json({
       ok: true,
-      [key]: req.auth?.role === "mgr"
-        ? branchScopedStateForManager(key, result, managerBranchIdForWrite ?? null)
+      [key]: req.auth?.role === "mgr" || req.auth?.role === "att"
+        ? branchScopedStateForBranchUser(key, result, managerBranchIdForWrite ?? null)
         : result,
     });
     return;
   }
 
   if (
-    req.auth?.role === "mgr"
+    (req.auth?.role === "mgr" || req.auth?.role === "att")
     && managerBranchIdForWrite
-    && MANAGER_BRANCH_ARRAY_KEYS.has(key)
+    && isBranchScopedArrayKey(key)
     && Array.isArray(data)
     && key !== "companyAssets"
     && key !== "priceHistory"
@@ -1846,6 +1843,31 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     const incomingOwn = incomingHistory.filter(entry => entry.branchId === managerBranchId);
     const existingOtherBranches = existingHistory.filter(entry => entry.branchId !== managerBranchId);
     data = [...incomingOwn, ...existingOtherBranches];
+  }
+
+  // Pump meter maps are keyed by pump ID rather than carrying branchId on
+  // each value. Merge only keys belonging to pumps in the caller's branch.
+  if (
+    (key === "pumpInitialMeters" || key === "pumpLockedMeters")
+    && (req.auth?.role === "mgr" || req.auth?.role === "att")
+  ) {
+    const [existingRow, pumpsRow] = await Promise.all([
+      db.select().from(appStateTable).where(eq(appStateTable.key, key)),
+      db.select().from(appStateTable).where(eq(appStateTable.key, "pumps")),
+    ]);
+    const visiblePumps = branchScopedStateForBranchUser("pumps", pumpsRow[0]?.data, managerBranchIdForWrite ?? null);
+    const ownPumpIds = new Set(
+      (Array.isArray(visiblePumps) ? visiblePumps : [])
+        .filter(isJsonRecord)
+        .map(pump => String(pump.id ?? ""))
+        .filter(Boolean),
+    );
+    const existingMeters = isJsonRecord(existingRow[0]?.data) ? existingRow[0].data : {};
+    const incomingMeters = isJsonRecord(data) ? data : {};
+    data = {
+      ...Object.fromEntries(Object.entries(existingMeters).filter(([pumpId]) => !ownPumpIds.has(pumpId))),
+      ...Object.fromEntries(Object.entries(incomingMeters).filter(([pumpId]) => ownPumpIds.has(pumpId))),
+    };
   }
 
   // Reports are shared workflow records. Merge instead of replacing the full

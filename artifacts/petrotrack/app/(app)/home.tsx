@@ -608,7 +608,7 @@ export default function HomeScreen() {
 
   // ── Approval items ────────────────────────────────────────────────────
   const inApprovalScope = (item: { branchId?: string }) =>
-    isGlobalOverview || !scopedBranchId || !item.branchId || item.branchId === scopedBranchId;
+    isGlobalOverview || (!!scopedBranchId && item.branchId === scopedBranchId);
   const isAdmin = role === 'admin';
   const isExecutive = role === 'md' || role === 'ceo';
   const pendingDips = canOpen(SCREEN_ROUTES.tanks) && ['md', 'ceo', 'acc', 'csm'].includes(role ?? '')

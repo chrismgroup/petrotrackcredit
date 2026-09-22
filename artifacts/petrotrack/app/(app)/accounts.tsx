@@ -46,12 +46,12 @@ export default function AccountsScreen() {
   const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'admin';
   const scopedBranchId = isGlobal ? null : branchId;
   const currentMonthRange = calendarMonthBusinessDateRange();
-  const visibleBranches = isGlobal ? branches : branches.filter(b => !branchId || !b.id || b.id === branchId);
+  const visibleBranches = isGlobal ? branches : branches.filter(b => Boolean(branchId && b.id === branchId));
 
   // One branch scope applied to every input so branch-locked users never mix
   // local revenue with company-wide costs. Records without a branchId are
   // treated as company-level and only visible to global roles.
-  const inScope = (bid?: string) => isGlobal || !branchId || bid === branchId;
+  const inScope = (bid?: string) => isGlobal || (!!branchId && bid === branchId);
   const num = (n: number) => (Number.isFinite(n) ? n : 0);
   const inCurrentMonth = (value?: string) => {
     const businessDate = businessDateKey(value);

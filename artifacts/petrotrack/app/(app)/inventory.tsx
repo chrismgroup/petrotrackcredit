@@ -66,13 +66,13 @@ export default function InventoryScreen() {
     .map(branch => {
       const branchTanks = tanks.filter(tank => isGlobal
         ? tank.branchId === branch.id
-        : (!branchId || !tank.branchId || tank.branchId === branch.id));
+        : Boolean(branchId && tank.branchId === branch.id));
       const branchLpgTanks = lpgTanks.filter(tank => isGlobal
         ? tank.branchId === branch.id
-        : (!branchId || !tank.branchId || tank.branchId === branch.id));
+        : Boolean(branchId && tank.branchId === branch.id));
       const branchDeliveries = deliveries.filter(delivery => isGlobal
         ? delivery.branchId === branch.id
-        : (!branchId || !delivery.branchId || delivery.branchId === branch.id));
+        : Boolean(branchId && delivery.branchId === branch.id));
       const products: InventoryProduct[] = [];
 
       for (const product of PRODUCTS) {

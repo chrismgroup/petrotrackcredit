@@ -37,14 +37,14 @@ export default function TanksScreen() {
   const dipScrollRef = useRef<ScrollView>(null);
 
   const isMD = role === 'md';
-  const canViewWorkflow = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm';
+  const canViewWorkflow = role === 'admin' || role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm';
   // Pending dips are independent submissions. Do not block a manager from
   // recording a new reading because an earlier reading is still awaiting MD;
   // MD can review multiple pending records and the server remains the source
   // of truth for their statuses.
 
   const perms = role === 'mgr' ? (mgrPerms[branchId ?? ''] ?? DEFAULT_MGR_PERMS) : DEFAULT_MGR_PERMS;
-  const inMyBranch = (t: { branchId?: string }) => !branchId || !t.branchId || t.branchId === branchId;
+  const inMyBranch = (t: { branchId?: string }) => Boolean(branchId && t.branchId === branchId);
   const canSeeAllTanks = role === 'admin' || role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'mktg';
   const visibleTanks    = role === 'mgr' && !perms.canPetrolTanks ? [] : canSeeAllTanks ? tanks : tanks.filter(inMyBranch);
   const visibleLpgTanks = role === 'mgr' && !perms.canLpgTanks   ? [] : canSeeAllTanks ? lpgTanks : lpgTanks.filter(inMyBranch);
@@ -56,6 +56,9 @@ export default function TanksScreen() {
     Object.keys(dip.lpg ?? {}).some(tankId => visibleLpgTankIds.has(tankId));
   const canReviewDip = (dip: (typeof dips)[number]) =>
     canViewWorkflow || dipHasVisibleReading(dip);
+  const canManageDip = (dip: (typeof dips)[number]) =>
+    (dip.status === 'rejected' || dip.status === 'pending')
+    && (role === 'admin' || (role === 'mgr' && dipHasVisibleReading(dip)));
   const getDipBranch = (dip: (typeof dips)[number]) => {
     if (dip.branchId) {
       return {
@@ -79,8 +82,10 @@ export default function TanksScreen() {
   const visibleDipRecords = dips.filter(dip =>
     canReviewDip(dip)
     && (canEdit
-      ? (dip.status === 'rejected' || dip.status === 'pending') && dip.by === userName
-      : canViewWorkflow),
+      ? canManageDip(dip)
+      : role === 'admin'
+        ? canManageDip(dip)
+        : canViewWorkflow),
   );
   // Pending/awaiting-review reports surface first, then everything else by
   // most recent applies-on/submitted date and time.
@@ -525,7 +530,7 @@ export default function TanksScreen() {
                     {dip.status === 'approved' ? '✓' : '✗'} {dip.approvedBy} · {dip.approvedDt ? fmtDateTime(dip.approvedDt) : ''}
                   </Text>
                 )}
-                {canEdit && (dip.status === 'rejected' || dip.status === 'pending') && (
+                {canManageDip(dip) && (
                   <View style={[styles.mdActions, { marginTop: 8 }]}>
                     <TouchableOpacity
                       style={[styles.rejectBtn, { borderColor: roleColor, backgroundColor: roleColor + '12' }]}
@@ -548,7 +553,7 @@ export default function TanksScreen() {
                 {editingDipId === dip.id && (
                   <View style={[styles.dipCard, { backgroundColor: colors.background, borderColor: colors.border, marginTop: 8 }]}>
                     <Text style={[styles.formSection, { color: colors.text, marginBottom: 6 }]}>Edit Readings</Text>
-                    {visibleTanks.map(t => (
+                    {visibleTanks.filter(t => !dip.branchId || t.branchId === dip.branchId).map(t => (
                       <View key={t.id} style={{ marginBottom: 6 }}>
                         <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>{t.name} ({t.prod})</Text>
                         <TextInput
@@ -560,7 +565,7 @@ export default function TanksScreen() {
                         />
                       </View>
                     ))}
-                    {visibleLpgTanks.map(l => (
+                    {visibleLpgTanks.filter(l => !dip.branchId || l.branchId === dip.branchId).map(l => (
                       <View key={l.id} style={{ marginBottom: 6 }}>
                         <Text style={[styles.dipCapacity, { color: colors.textMuted }]}>{l.name} (LPG)</Text>
                         <TextInput
@@ -593,7 +598,7 @@ export default function TanksScreen() {
                         disabled={isSavingEditDip}
                         activeOpacity={0.85}
                       >
-                        <Text style={styles.submitBtnText}>{isSavingEditDip ? 'Saving\u2026' : 'Save'}</Text>
+                        <Text style={styles.submitBtnText}>{isSavingEditDip ? 'Saving\u2026' : dip.status === 'rejected' && role === 'mgr' ? 'Save & Resubmit' : 'Save'}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={[styles.cancelBtn, { flex: 1, borderColor: colors.border }]} onPress={cancelEditDip} disabled={isSavingEditDip}>
                         <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>

@@ -39,11 +39,16 @@ async function safeRow(row: typeof staffUsersTable.$inferSelect) {
 }
 
 // GET /users — list all (any authenticated user)
-router.get("/users", async (_req, res): Promise<void> => {
-  const rows = await db
-    .select()
-    .from(staffUsersTable)
-    .orderBy(asc(staffUsersTable.createdAt));
+router.get("/users", async (req, res): Promise<void> => {
+  const branchScoped = req.auth!.role === "mgr" || req.auth!.role === "att";
+  if (branchScoped && !req.auth!.branchId) {
+    res.json([]);
+    return;
+  }
+  const query = db.select().from(staffUsersTable);
+  const rows = branchScoped
+    ? await query.where(eq(staffUsersTable.branchId, req.auth!.branchId!)).orderBy(asc(staffUsersTable.createdAt))
+    : await query.orderBy(asc(staffUsersTable.createdAt));
   res.json(await Promise.all(rows.map(safeRow)));
 });
 

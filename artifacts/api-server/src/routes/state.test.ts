@@ -11,6 +11,47 @@ import {
   upsertCompanyAsset,
   validateCompanyAssetsPayload,
 } from "./company-assets-state";
+import {
+  branchPumpMeters,
+  branchScopedStateForBranchUser,
+  inferDeliveryEvidenceBranches,
+} from "./branch-state-policy";
+
+test("branch users receive only records from their assigned branch", () => {
+  const records = [
+    { id: "own", branchId: "B1" },
+    { id: "other", branchId: "B2" },
+    { id: "legacy-without-branch" },
+  ];
+  assert.deepEqual(branchScopedStateForBranchUser("sales", records, "B1"), [records[0]]);
+  assert.deepEqual(branchScopedStateForBranchUser("sales", records, null), []);
+  assert.deepEqual(branchScopedStateForBranchUser("branches", [
+    { id: "B1", name: "One" },
+    { id: "B2", name: "Two" },
+  ], "B1"), [{ id: "B1", name: "One" }]);
+});
+
+test("branch users cannot receive company-wide private state", () => {
+  assert.deepEqual(branchScopedStateForBranchUser("audit", [{ detail: "B2 sale" }], "B1"), []);
+  assert.deepEqual(branchScopedStateForBranchUser("financialEntry", { cashInHand: 10 }, "B1"), {});
+});
+
+test("pump meter maps are limited to pumps already scoped to the branch", () => {
+  assert.deepEqual(
+    branchPumpMeters({ "P-1": 100, "P-2": 200 }, [{ id: "P-1", branchId: "B1" }]),
+    { "P-1": 100 },
+  );
+});
+
+test("delivery evidence inherits its delivery branch before filtering", () => {
+  const evidence = inferDeliveryEvidenceBranches(
+    [{ id: 1, delivId: 10 }, { id: 2, delivId: 20 }],
+    [{ id: 10, branchId: "B1" }, { id: 20, branchId: "B2" }],
+  );
+  assert.deepEqual(branchScopedStateForBranchUser("deliveryEvidences", evidence, "B1"), [
+    { id: 1, delivId: 10, branchId: "B1" },
+  ]);
+});
 
 test("accepts valid price history records, including a zero baseline", () => {
   assert.equal(

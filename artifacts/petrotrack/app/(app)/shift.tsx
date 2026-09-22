@@ -373,7 +373,8 @@ export default function ShiftReportScreen() {
   const today = currentBusinessDateKey();
   const activePumps = pumps.filter(p => {
     if (!p.active) return false;
-    if (isGlobalOverview || !branchId || !p.branchId) return true;   // global overview or legacy pump — show all
+    if (isGlobalOverview) return true;
+    if (!branchId || !p.branchId) return false;
     return p.branchId === branchId;               // attendant/mgr — branch-scoped
   });
 

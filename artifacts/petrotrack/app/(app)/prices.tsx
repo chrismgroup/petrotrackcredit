@@ -49,7 +49,7 @@ export default function PricesScreen() {
   function lastCostPrice(prod: string): number | null {
     const approved = deliveries
       .filter(d => d.prod === prod
-        && (!branchId || !d.branchId || d.branchId === branchId)
+        && Boolean(branchId && d.branchId === branchId)
         && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved')
         && d.costPrice)
       .sort((a, b) => safeNum(b.id) - safeNum(a.id));
@@ -184,7 +184,7 @@ export default function PricesScreen() {
     return priceProposals.find(p => p.prod === prod
       && p.status === 'pending'
       && p.proposedBy === userName
-      && (!branchId || !p.branchId || p.branchId === branchId));
+      && Boolean(branchId && p.branchId === branchId));
   }
 
   /* ════════════════════════════════════════════════════════

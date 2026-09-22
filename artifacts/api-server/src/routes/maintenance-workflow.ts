@@ -24,6 +24,15 @@ function asMaintenanceRecords(value: unknown): JsonRecord[] {
   return Array.isArray(value) ? value.filter(isRecord).map(normalizeMaintenanceRecord) : [];
 }
 
+function isBranchUser(role: string): boolean {
+  return role === "mgr" || role === "att";
+}
+
+function mayAccessBranchRecord(item: JsonRecord, auth: NonNullable<Express.Request["auth"]>): boolean {
+  return !isBranchUser(auth.role)
+    || (!!auth.branchId && String(item.branchId ?? "") === auth.branchId);
+}
+
 
 function displayStatus(status: MaintenanceStatus): "Open" | "Done" {
   return status === "done" || status === "closed" ? "Done" : "Open";
@@ -81,9 +90,9 @@ function notification(username: string, title: string, body: string, taskId: str
   };
 }
 
-router.get("/maintenance", async (_req, res): Promise<void> => {
+router.get("/maintenance", async (req, res): Promise<void> => {
   const [row] = await db.select().from(appStateTable).where(eq(appStateTable.key, "maintenance"));
-  res.json(asMaintenanceRecords(row?.data));
+  res.json(asMaintenanceRecords(row?.data).filter(item => mayAccessBranchRecord(item, req.auth!)));
 });
 
 router.post("/maintenance", async (req, res): Promise<void> => {
@@ -94,6 +103,10 @@ router.post("/maintenance", async (req, res): Promise<void> => {
   }
   if (!["Urgent", "Medium", "Low"].includes(pri)) {
     res.status(400).json({ error: "Priority must be Urgent, Medium, or Low" });
+    return;
+  }
+  if (isBranchUser(req.auth!.role) && !req.auth!.branchId) {
+    res.status(403).json({ error: "A branch assignment is required" });
     return;
   }
 
@@ -114,6 +127,7 @@ router.post("/maintenance", async (req, res): Promise<void> => {
       submittedBy: req.auth!.username,
       submittedByName: req.auth!.username,
       submittedAt,
+      ...(req.auth!.branchId ? { branchId: req.auth!.branchId } : {}),
       status: "pending" as const,
       st: "Open" as const,
       history: [historyEntry("Request submitted", req.auth!.username)],
@@ -261,6 +275,7 @@ router.post("/maintenance/:taskId/status", async (req, res): Promise<void> => {
     const records = asMaintenanceRecords(row?.data);
     const found = findRecord(records, taskId);
     if (!found) return null;
+    if (!mayAccessBranchRecord(found.item, req.auth!)) return { error: "You cannot update maintenance for another branch" };
     if (found.item.assignedTo !== req.auth!.username) return { error: "Only the assigned staff member can update this task" };
     if (found.item.status === "closed") return { error: "Closed maintenance tasks cannot be updated" };
     const currentStatus = MAINTENANCE_STATUSES.includes(found.item.status as MaintenanceStatus)

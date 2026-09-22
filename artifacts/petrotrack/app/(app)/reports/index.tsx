@@ -577,7 +577,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
         }))}],
         tables: [{ heading: 'Price Change History', headers: ['Product','Old Price','New Price','Change','By','Date'],
           rows: [...safePriceHistory]
-            .filter(h => selBranch === null || !h.branchId || h.branchId === selBranch)
+            .filter(h => selBranch === null || h.branchId === selBranch)
             .sort((a,b) => b.id-a.id)
             .map(h => [h.prod, nfmt(h.oldPrice), nfmt(h.newPrice), `${h.newPrice>h.oldPrice?'+':''}${nfmt(h.newPrice-h.oldPrice)}`, h.by, fmtDate(h.dt)]) }],
         });
@@ -985,7 +985,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
               const price = getPriceForProduct(prices, prod, selBranch);
               const pc = PROD_COLORS[prod] || rc;
               const last = safePriceHistory
-                .filter(h => h.prod === prod && (selBranch === null || !h.branchId || h.branchId === selBranch))
+                .filter(h => h.prod === prod && (selBranch === null || h.branchId === selBranch))
                 .sort((a,b) => b.id-a.id)[0];
               return (
                 <View key={prod} style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>

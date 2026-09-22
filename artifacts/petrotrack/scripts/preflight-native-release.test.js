@@ -94,7 +94,7 @@ test("rejects missing native route entry points", () => {
           projectRoot: fixtureRoot,
           config: validConfig(fixtureRoot),
         }),
-      /required route entry point\(s\) are missing: app\/\(tabs\)\/index\.tsx/,
+      /required route entry point\(s\) are missing: app\/\(app\)\/home\.tsx/,
     );
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });

@@ -548,6 +548,7 @@ describe('screens tolerate incomplete synced records', () => {
     mockedUseApp.mockReturnValue({
       ...baseAppState(),
       role: 'mgr',
+      branchId: 'branch-1',
       tanks: [{
         id: 'tank-1',
         name: 'Tank with missing capacity',
@@ -557,6 +558,7 @@ describe('screens tolerate incomplete synced records', () => {
         op: undefined,
         rv: undefined,
         sl: undefined,
+        branchId: 'branch-1',
       }],
     } as any);
 
@@ -698,12 +700,79 @@ describe('screens tolerate incomplete synced records', () => {
       adminRenderer = create(<TanksScreen />);
     });
     const mountedAdmin = adminRenderer as unknown as ReactTestRenderer;
-    expect(renderedText(mountedAdmin)).not.toContain('Pending Dip Reports for Review');
+    expect(renderedText(mountedAdmin)).toContain('Pending Dip Reports for Review');
+    expect(renderedText(mountedAdmin)).toContain('No dip reports are awaiting MD approval.');
     expect(renderedText(mountedAdmin)).not.toContain('Edit');
     expect(renderedText(mountedAdmin)).not.toContain('Delete');
     expect(renderedText(mountedAdmin)).not.toContain('History');
     expect(renderedText(mountedAdmin)).not.toContain('Inventory');
     act(() => mountedAdmin.unmount());
+  });
+
+  it('lets the current branch manager correct rejected dips submitted by a previous manager', () => {
+    const updateDip = jest.fn(async () => ({ ok: true }));
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role: 'mgr',
+      userName: 'Utibe Jimmy',
+      branchId: 'uyo',
+      tanks: [{ id: 'uyo-pms', name: 'Uyo PMS Tank', prod: 'PMS', branchId: 'uyo', cap: 10_000, op: 0, rv: 0, sl: 0 }],
+      dips: [{
+        id: 91,
+        dt: '2026-09-20',
+        by: 'Previous Uyo Manager',
+        branchId: 'uyo',
+        rd: { 'uyo-pms': 2_400 },
+        lpg: {},
+        obs: 'Returned reading',
+        status: 'rejected',
+        workflowRevision: 1,
+      }],
+      updateDip,
+    } as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<TanksScreen />); });
+    expect(renderedText(renderer)).toContain('Returned reading');
+    expect(renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Edit',
+    )).toHaveLength(1);
+    expect(renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Delete',
+    )).toHaveLength(1);
+    act(() => renderer.unmount());
+  });
+
+  it('lets admin clean up rejected tank dips but keeps approved dips locked', () => {
+    mockedUseApp.mockReturnValue({
+      ...baseAppState(),
+      role: 'admin',
+      branchId: null,
+      tanks: [{ id: 'uyo-pms', name: 'Uyo PMS Tank', prod: 'PMS', branchId: 'uyo', cap: 10_000, op: 0, rv: 0, sl: 0 }],
+      branches: [{ id: 'uyo', name: 'Uyo Fuel Station' }],
+      dips: [{
+        id: 92,
+        dt: '2026-09-20',
+        by: 'Utibe Jimmy',
+        branchId: 'uyo',
+        rd: { 'uyo-pms': 2_400 },
+        lpg: {},
+        obs: 'Rejected cleanup record',
+        status: 'rejected',
+        workflowRevision: 1,
+      }],
+    } as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<TanksScreen />); });
+    expect(renderedText(renderer)).toContain('Rejected cleanup record');
+    expect(renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Edit',
+    )).toHaveLength(1);
+    expect(renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Delete',
+    )).toHaveLength(1);
+    act(() => renderer.unmount());
   });
 
   it.each(['ceo', 'acc', 'csm'] as const)(
@@ -816,35 +885,45 @@ describe('screens tolerate incomplete synced records', () => {
     expectScreenToRender(<HRScreen />, 'EMP-MISSING-FIELDS');
   });
 
-  it('renders sales with incomplete report fields', () => {
+  it('builds sales overview directly from submitted shift records without rendering shift reports', () => {
+    const today = [
+      new Date().getFullYear(),
+      String(new Date().getMonth() + 1).padStart(2, '0'),
+      String(new Date().getDate()).padStart(2, '0'),
+    ].join('-');
     mockedUseApp.mockReturnValue({
       ...baseAppState(),
+      branches: [{ id: 'uyo', name: 'Uyo Fuel Station' }],
+      pumps: [{ id: 'pump-1', branchId: 'uyo', lpgCategory: undefined }],
       pumpDailyReports: [{
         id: 1,
-        pumpName: undefined,
-        submittedByName: undefined,
-        submittedAt: undefined,
-        product: undefined,
-        status: 'approved',
-        openingMeter: undefined,
-        closingMeter: undefined,
-        liters: undefined,
-        grossAmount: undefined,
-        cashAmount: undefined,
-        posAmount: undefined,
-        transferAmount: undefined,
-        creditAmount: undefined,
-        variance: undefined,
+        pumpId: 'pump-1',
+        pumpName: 'PMS Pump 1',
+        submittedByName: 'Attendant',
+        submittedAt: `${today}T12:00:00.000Z`,
+        date: today,
+        product: 'PMS',
+        branchId: 'uyo',
+        status: 'pending_manager',
+        openingMeter: 1000,
+        closingMeter: 1125,
+        liters: 125,
+        grossAmount: 100000,
       }],
     } as any);
 
-    expect(safeStr(undefined)).toBe('—');
-    expect(safeNum(undefined)).toBe(0);
-    expectScreenToRender(<SalesScreen />, '—');
-    expectScreenToRender(
-      <SalesScreen />,
-      `${safeNum(undefined).toLocaleString()} L`,
-    );
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<SalesScreen />); });
+    const text = renderedText(renderer);
+    expect(text).toContain('Revenue & Volume by Product');
+    expect(text).toContain('Revenue & Volume by Branch');
+    expect(text).toContain('₦100,000');
+    expect(text).toContain('125 L');
+    expect(text).toContain('Uyo Fuel Station');
+    expect(text).not.toContain('Shift Reports');
+    expect(text).not.toContain('PMS Pump 1');
+    expect(text).not.toContain("Today's Payment Breakdown");
+    act(() => renderer.unmount());
   });
 
   it('renders prices with incomplete proposal and history fields', () => {

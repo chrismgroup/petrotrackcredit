@@ -30,7 +30,7 @@ function idFor(items: JsonRecord[]): number {
   return items.reduce((highest, item) => Math.max(highest, Number(item.id) || 0), 0) + 1;
 }
 function sameBranch(auth: NonNullable<Request["auth"]>, branchId: unknown): boolean {
-  return GLOBAL_ROLES.has(auth.role) || !auth.branchId || branchId === auth.branchId;
+  return GLOBAL_ROLES.has(auth.role) || (!!auth.branchId && branchId === auth.branchId);
 }
 function command(req: Request): { expectedRevision: number; idempotencyKey: string } | null {
   const expectedRevision = req.body?.expectedRevision;
@@ -214,9 +214,12 @@ router.patch("/workflows/dips/:id", async (req, res) => run(req, res, async (tx,
   const isAdmin = req.auth!.role === "admin";
   if (old.status === "approved") return { status: 409, body: { error: "Approved dips are permanently locked" } };
   if (!isAdmin && !["pending", "rejected"].includes(String(old.status))) {
-    return { status: 409, body: { error: "Approved dips are locked; rejected dips may only be corrected by the submitting manager" } };
+    return { status: 409, body: { error: "Approved dips are locked; rejected dips may be corrected by a manager assigned to the branch" } };
   }
-  if (!isAdmin && (req.auth!.role !== "mgr" || old.by !== req.auth!.username || !sameBranch(req.auth!, old.branchId))) return { status: 403, body: { error: "Only the submitting branch manager may edit this dip" } };
+  // A dip belongs to the branch, not permanently to the username that first
+  // submitted it. This lets a replacement/current station manager correct
+  // rejected legacy records for their assigned branch.
+  if (!isAdmin && (req.auth!.role !== "mgr" || !sameBranch(req.auth!, old.branchId))) return { status: 403, body: { error: "Only a manager assigned to this branch may edit this dip" } };
   const input = record(req.body?.dip) ? req.body.dip : {};
   if ((input.rd !== undefined && !record(input.rd)) || (input.lpg !== undefined && !record(input.lpg))) return { status: 400, body: { error: "Readings must be objects" } };
   const revisedRd = record(input.rd) ? input.rd : (record(old.rd) ? old.rd : {});
@@ -269,9 +272,9 @@ router.delete("/workflows/dips/:id", async (req, res) => run(req, res, async (tx
   const isAdmin = req.auth!.role === "admin";
   if (dip.status === "approved") return { status: 409, body: { error: "Approved dips are permanently locked" } };
   if (!isAdmin && !["pending", "rejected"].includes(String(dip.status))) {
-    return { status: 409, body: { error: "Approved dips are locked; rejected dips may be deleted by the submitting manager" } };
+    return { status: 409, body: { error: "Approved dips are locked; rejected dips may be deleted by a manager assigned to the branch" } };
   }
-  if (!isAdmin && (req.auth!.role !== "mgr" || dip.by !== req.auth!.username || !sameBranch(req.auth!, dip.branchId))) return { status: 403, body: { error: "Only the submitting branch manager may delete this dip" } };
+  if (!isAdmin && (req.auth!.role !== "mgr" || !sameBranch(req.auth!, dip.branchId))) return { status: 403, body: { error: "Only a manager assigned to this branch may delete this dip" } };
   dips.splice(index, 1);
   await save(tx, "dips", dips);
   await audit(tx, "Dip deleted", req.auth!.username, `Dip ${dip.id} deleted`, now);

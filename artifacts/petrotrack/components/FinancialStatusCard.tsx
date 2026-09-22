@@ -204,9 +204,9 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     return businessDate >= currentMonthRange.from && businessDate <= currentMonthRange.to;
   };
   const inRevenueScope = (recordBranchId?: string) =>
-    !scopedBranchId || recordBranchId === scopedBranchId || !recordBranchId;
+    isGlobal || (!!scopedBranchId && recordBranchId === scopedBranchId);
   const inFinancialScope = (recordBranchId?: string) =>
-    isGlobal || !branchId || recordBranchId === branchId;
+    isGlobal || (!!branchId && recordBranchId === branchId);
 
   /* ── last known cost price per product from approved deliveries ── */
   const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;

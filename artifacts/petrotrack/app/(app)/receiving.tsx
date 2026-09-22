@@ -226,7 +226,7 @@ export default function ReceivingScreen() {
     .filter(d => {
       if (isGlobalViewer) return true;
       // branch-scope first
-      const inBranch = !branchId || !d.branchId || d.branchId === branchId;
+      const inBranch = Boolean(branchId && d.branchId === branchId);
       if (!inBranch) return false;
       // station managers see only their own submissions
       if (role === 'mgr') return d.receivedBy === userName;
@@ -465,11 +465,11 @@ export default function ReceivingScreen() {
   const canMgrEdit = (d: Delivery) =>
     isMgr &&
     (d.approvalStatus === 'draft' || !d.approvalStatus || d.approvalStatus === 'returned') &&
-    (!d.receivedBy || d.receivedBy === userName);
+    Boolean(branchId && d.branchId === branchId);
   const canMgrSubmit = (d: Delivery) =>
     isMgr &&
     (d.approvalStatus === 'draft' || !d.approvalStatus || d.approvalStatus === 'returned') &&
-    (!d.receivedBy || d.receivedBy === userName);
+    Boolean(branchId && d.branchId === branchId);
   const canAccSet = (d: Delivery) =>
     isAcc && (d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending');
   const canAccRecall = (d: Delivery) =>

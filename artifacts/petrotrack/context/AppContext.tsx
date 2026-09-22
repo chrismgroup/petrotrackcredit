@@ -3058,41 +3058,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!existing) return { ok: false, error: 'This delivery no longer exists.' };
     const isApproved = existing.approvalStatus === 'md_approved' || existing.approvalStatus === 'approved';
     const isReturnedToOriginator = existing.approvalStatus === 'returned';
-    if (isApproved || (isReturnedToOriginator && role !== 'admin' && (role !== 'mgr' || existing.receivedBy !== userName))) {
-      return { ok: false, error: 'Only the original delivery manager can edit a returned delivery, and approved deliveries are locked.' };
+    const isCrossBranchManager = role === 'mgr' && (!branchId || existing.branchId !== branchId);
+    if (isApproved || isCrossBranchManager || (isReturnedToOriginator && role !== 'admin' && role !== 'mgr')) {
+      return { ok: false, error: 'Only a manager assigned to this branch can edit a returned delivery, and approved deliveries are locked.' };
     }
     const result = await workflowApi.deliveries.update(id, updates, workflowMeta(existing.workflowVersion ?? 0));
     if (!result?.delivery) return { ok: false, error: result?.error ?? 'The server could not update this delivery.' };
     applyDelivery(result.delivery as Delivery);
     return { ok: true };
-  }, [deliveries, role, userName]);
+  }, [applyDelivery, branchId, deliveries, role]);
 
   const updateDelivery = useCallback((id: number, updates: Partial<Omit<Delivery, 'id'>>) => {
     const existing = deliveries.find(d => d.id === id);
     if (!existing) return false;
     const isApproved = existing.approvalStatus === 'md_approved' || existing.approvalStatus === 'approved';
     const isReturnedToOriginator = existing.approvalStatus === 'returned';
-    if (isApproved || (isReturnedToOriginator && role !== 'admin' && (role !== 'mgr' || existing.receivedBy !== userName))) {
+    const isCrossBranchManager = role === 'mgr' && (!branchId || existing.branchId !== branchId);
+    if (isApproved || isCrossBranchManager || (isReturnedToOriginator && role !== 'admin' && role !== 'mgr')) {
       return false;
     }
     void updateDeliveryConfirmed(id, updates)
       .then(result => { if (!result.ok) workflowFailure('Delivery update', result.error); });
     return true;
-  }, [deliveries, role, updateDeliveryConfirmed, userName]);
+  }, [branchId, deliveries, role, updateDeliveryConfirmed]);
 
   const deleteDelivery = useCallback((id: number) => {
     const delivery = deliveries.find(d => d.id === id);
     if (!delivery) return false;
     const isApproved = delivery.approvalStatus === 'md_approved' || delivery.approvalStatus === 'approved';
     const isReturnedToOriginator = delivery.approvalStatus === 'returned';
+    const isCrossBranchManager = role === 'mgr' && (!branchId || delivery.branchId !== branchId);
     if (
       (isApproved && role !== 'admin') ||
-      (isReturnedToOriginator && role !== 'admin' && (role !== 'mgr' || delivery.receivedBy !== userName))
+      isCrossBranchManager ||
+      (isReturnedToOriginator && role !== 'admin' && role !== 'mgr')
     ) return false;
     void workflowApi.deliveries.remove(id, workflowMeta(delivery.workflowVersion ?? 0))
       .then(result => result?.delivery ? applyDelivery(result.delivery as Delivery, true) : workflowFailure('Delivery deletion'));
     return true;
-  }, [deliveries, role, userName]);
+  }, [applyDelivery, branchId, deliveries, role]);
 
   const submitDeliveryForApprovalConfirmed = useCallback(async (id: number) => {
     const d = deliveries.find(d => d.id === id);

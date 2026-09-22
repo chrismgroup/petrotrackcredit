@@ -11,15 +11,13 @@ const EXPECTED_IOS_BUNDLE_IDENTIFIER = "app.replit.petrotrack";
 const EXPECTED_ANDROID_PACKAGE = "petrotrack.replit.app";
 
 // These are the route entry points that make up the native app shell. Checking
-// the shell and both route groups catches an accidental app-root move before
+// the shell and authenticated route group catches an accidental app-root move before
 // EAS starts a remote build.
 const REQUIRED_ROUTE_ENTRIES = [
   "app/_layout.tsx",
   "app/index.tsx",
   "app/(app)/_layout.tsx",
   "app/(app)/home.tsx",
-  "app/(tabs)/_layout.tsx",
-  "app/(tabs)/index.tsx",
 ];
 
 function fail(message) {

@@ -3,31 +3,9 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
+import { ROLE_COLORS, fmt, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum, safeStr } from '@/lib/report-helpers';
-
-const SHIFT_STATUS_LABEL: Record<string, string> = {
-  pending_manager:     'Pending Manager',
-  pending_accountant:  'Pending Accountant',
-  returned:            'Returned',
-  returned_attendant:  'With Attendant',
-  approved:            'Approved',
-};
-const SHIFT_STATUS_COLOR: Record<string, string> = {
-  pending_manager:     '#71805B',
-  pending_accountant:  '#286247',
-  returned:            '#365A47',
-  returned_attendant:  '#526B3F',
-  approved:            '#174D36',
-};
-const SHIFT_STATUS_ICON: Record<string, string> = {
-  pending_manager:     'time-outline',
-  pending_accountant:  'hourglass-outline',
-  returned:            'return-down-back-outline',
-  returned_attendant:  'return-down-back-outline',
-  approved:            'checkmark-circle',
-};
 
 type SalesFeedEntry = {
   branchId?: string;
@@ -35,10 +13,6 @@ type SalesFeedEntry = {
   lpgCategory?: 'single' | 'distributor';
   volume: number;
   revenue: number;
-  cash: number;
-  pos: number;
-  transfer: number;
-  credit: number;
 };
 
 function localDateKey(date: Date): string {
@@ -53,42 +27,26 @@ function businessDateKey(value: unknown): string {
   return safeStr(value, '').slice(0, 10);
 }
 
-function saleProductFromPump(pumpName: unknown): string {
-  const safePumpName = safeStr(pumpName, '');
-  if (safePumpName.includes('LPG')) return 'LPG';
-  if (safePumpName.includes('PMS')) return 'PMS';
-  if (safePumpName.includes('AGO')) return 'AGO';
-  if (safePumpName.includes('DPK')) return 'DPK';
-  if (safePumpName.includes('Lube Oil')) return 'Lube Oil';
-  return safeStr(safePumpName);
-}
-
 export default function SalesScreen() {
-  const { role, branchId, branches, sales, pumpDailyReports, pumps } = useApp();
+  const { role, branchId, branches, pumpDailyReports, pumps } = useApp();
   const colors    = useColors();
   const roleColor = ROLE_COLORS[role || 'att'] || colors.primary;
 
   const isGlobal   = role === 'admin' || role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm';
-  const inMyBranch = (bId?: string) => isGlobal || !branchId || !bId || bId === branchId;
+  const inMyBranch = (bId?: string) => isGlobal || (!!branchId && bId === branchId);
 
   const today = localDateKey(new Date());
   const reportBranchId = (report: typeof pumpDailyReports[number]) =>
     report.branchId || pumps.find(pump => pump.id === report.pumpId)?.branchId;
   const liveTodayReports = pumpDailyReports.filter(report =>
     businessDateKey(report.date) === today &&
-    (report.status === 'pending_accountant' || report.status === 'approved') &&
+    (report.status === 'pending_manager' || report.status === 'pending_accountant' || report.status === 'approved') &&
     inMyBranch(reportBranchId(report)),
   );
-  // Approved shift reports also create SalesEntry records. Keep manual sales
-  // entries, but use the report itself for every shift-report sale so pending
-  // submissions are visible before the approval workflow completes.
-  const manualTodaySales = sales.filter(sale =>
-    !sale.shiftReportId &&
-    businessDateKey(sale.dt) === today &&
-    inMyBranch(sale.branchId),
-  );
-  const todayFeed: SalesFeedEntry[] = [
-    ...liveTodayReports.map(report => ({
+  // Sales Overview is a projection of shift reports, not a second report
+  // ledger. Include a shift as soon as it is submitted, and exclude it while
+  // it is returned for correction so stale/rejected figures never contribute.
+  const todayFeed: SalesFeedEntry[] = liveTodayReports.map(report => ({
       branchId: reportBranchId(report),
       product: safeStr(report.product),
       lpgCategory: report.product === 'LPG'
@@ -96,34 +54,7 @@ export default function SalesScreen() {
         : undefined,
       volume: safeNum(report.liters),
       revenue: safeNum(report.grossAmount),
-      cash: safeNum(report.cashAmount),
-      pos: safeNum(report.posAmount),
-      transfer: safeNum(report.transferAmount),
-      credit: safeNum(report.creditAmount),
-    })),
-    ...manualTodaySales.map(sale => {
-      const volume = safeNum(sale.L);
-      const revenue = safeNum(volume * safeNum(sale.price));
-      const pos = safeNum(sale.pos);
-      return {
-        branchId: sale.branchId,
-        product: saleProductFromPump(sale.pump),
-        lpgCategory: sale.lpgCategory,
-        volume,
-        revenue,
-        cash: Math.max(0, revenue - pos),
-        pos,
-        transfer: 0,
-        credit: 0,
-      };
-    }),
-  ];
-  const totalL = todayFeed.reduce((sum, entry) => sum + entry.volume, 0);
-  const totalAmt = todayFeed.reduce((sum, entry) => sum + entry.revenue, 0);
-  const totalPOS = todayFeed.reduce((sum, entry) => sum + entry.pos + entry.transfer, 0);
-  const totalCash = todayFeed.reduce((sum, entry) => sum + entry.cash, 0);
-  const totalCredit = todayFeed.reduce((sum, entry) => sum + entry.credit, 0);
-  const paymentTotal = totalCash + totalPOS + totalCredit;
+    }));
 
   const PROD_DEF = [
     { key: 'PMS',             color: '#286247', unit: 'L', label: 'PMS' },
@@ -147,7 +78,7 @@ export default function SalesScreen() {
 
   const branchBreakdown = [
     ...branches
-      .filter(branch => isGlobal || !branchId || branch.id === branchId)
+      .filter(branch => isGlobal || (!!branchId && branch.id === branchId))
       .map(branch => {
         const entries = todayFeed.filter(entry => entry.branchId === branch.id);
         return {
@@ -167,69 +98,13 @@ export default function SalesScreen() {
       : []),
   ].sort((a, b) => b.revenue - a.revenue);
 
-  const sortedReports = [...pumpDailyReports]
-    .filter(r => inMyBranch(r.branchId))
-    .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-
   return (
     <ScreenLayout title="Sales">
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-        <View style={styles.metricsRow}>
-          <View style={[styles.metricCard, { backgroundColor: roleColor + '12', borderColor: roleColor + '33' }]}>
-            <Text style={[styles.metricValue, { color: roleColor }]}>{fmt(totalAmt)}</Text>
-            <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Today's Revenue</Text>
-          </View>
-          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.metricValue, { color: colors.text }]}>{totalL.toLocaleString()} L/kg</Text>
-            <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Volume Sold</Text>
-          </View>
-          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.metricValue, { color: colors.text }]}>{liveTodayReports.length}</Text>
-            <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Reports</Text>
-          </View>
-        </View>
-
-        {totalAmt > 0 && (
-          <View style={[styles.cashPosCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.cashPosTitle, { color: colors.text }]}>Today's Payment Breakdown</Text>
-            <View style={styles.cashPosRow}>
-              <View style={[styles.cashPosItem, { backgroundColor: '#1F684812', borderColor: '#1F684833' }]}>
-                <Ionicons name="cash-outline" size={16} color="#1F6848" />
-                <Text style={[styles.cashPosValue, { color: '#1F6848' }]}>{fmt(totalCash)}</Text>
-                <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>Cash</Text>
-              </View>
-              <View style={[styles.cashPosItem, { backgroundColor: '#28624712', borderColor: '#28624733' }]}>
-                <Ionicons name="card-outline" size={16} color="#286247" />
-                <Text style={[styles.cashPosValue, { color: '#286247' }]}>{fmt(totalPOS)}</Text>
-                <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>POS / Transfer</Text>
-              </View>
-              {totalCredit > 0 && (
-                <View style={[styles.cashPosItem, { backgroundColor: '#62754D12', borderColor: '#62754D33' }]}>
-                  <Ionicons name="time-outline" size={16} color="#62754D" />
-                  <Text style={[styles.cashPosValue, { color: '#62754D' }]}>{fmt(totalCredit)}</Text>
-                  <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>Credit</Text>
-                </View>
-              )}
-            </View>
-            {paymentTotal > 0 && (
-              <>
-                <View style={[styles.posBar, { backgroundColor: colors.border }]}>
-                  {totalCash > 0 && <View style={[styles.posBarFill, { flex: totalCash, backgroundColor: '#1F6848' }]} />}
-                  {totalPOS > 0 && <View style={[styles.posBarFill, { flex: totalPOS, backgroundColor: '#286247' }]} />}
-                  {totalCredit > 0 && <View style={[styles.posBarFill, { flex: totalCredit, backgroundColor: '#62754D' }]} />}
-                </View>
-                <Text style={[styles.posBarLabel, { color: colors.textSubtle }]}>
-                  Cash {Math.round((totalCash / paymentTotal) * 100)}% · POS/Transfer {Math.round((totalPOS / paymentTotal) * 100)}% · Credit {Math.round((totalCredit / paymentTotal) * 100)}%
-                </Text>
-              </>
-            )}
-          </View>
-        )}
-
         <View style={styles.prodSectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>Revenue & Volume by Product</Text>
-          <Text style={[styles.prodSectionSub, { color: colors.textMuted }]}>Sum = Today's Revenue above</Text>
+          <Text style={[styles.prodSectionSub, { color: colors.textMuted }]}>Today · from submitted shift records</Text>
         </View>
         <View style={styles.prodGrid}>
           {prodBreakdown.map(p => (
@@ -255,101 +130,6 @@ export default function SalesScreen() {
             </View>
           ))}
         </View>
-
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Shift Reports</Text>
-
-        {sortedReports.length === 0 && (
-          <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="document-outline" size={32} color={colors.textMuted} />
-            <Text style={[styles.emptyText, { color: colors.textMuted }]}>No shift reports yet</Text>
-          <Text style={[styles.emptyHint, { color: colors.textSubtle }]}>Submitted shift reports appear here while they move through review</Text>
-          </View>
-        )}
-
-        {sortedReports.map(r => {
-          const sc         = SHIFT_STATUS_COLOR[r.status] || '#888';
-           const isApproved = r.status === 'approved';
-          const isReturned = r.status === 'returned' || r.status === 'returned_attendant';
-           const hasLiveDetails = !isReturned;
-          return (
-            <View
-              key={safeStr(r.id, `report-${safeStr(r.pumpName)}`)}
-              style={[
-                styles.reportCard,
-                { backgroundColor: colors.surface, borderColor: isApproved ? sc + '55' : colors.border, borderWidth: isApproved ? 1.5 : 1 },
-              ]}
-            >
-              <View style={styles.reportHeader}>
-                <View style={{ flex: 1 }}>
-                    <Text style={[styles.reportPump, { color: colors.text }]}>{safeStr(r.pumpName)}</Text>
-                  <Text style={[styles.reportMeta, { color: colors.textMuted }]}>
-                     by {safeStr(r.submittedByName)} · {fmtDateTime(safeStr(r.submittedAt, ''))}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                  <View style={[styles.statusBadge, { backgroundColor: sc + '18' }]}>
-                     <Ionicons name={(SHIFT_STATUS_ICON[r.status] || 'help-circle-outline') as any} size={10} color={sc} />
-                     <Text style={[styles.statusText, { color: sc }]}>{safeStr(SHIFT_STATUS_LABEL[r.status])}</Text>
-                  </View>
-                  <View style={[styles.prodBadge, { backgroundColor: roleColor + '18' }]}>
-                     <Text style={[styles.prodBadgeText, { color: roleColor }]}>{safeStr(r.product)}</Text>
-                  </View>
-                </View>
-              </View>
-
-              {hasLiveDetails && (
-                <View style={[styles.reportDetails, { borderTopColor: colors.border }]}>
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Opening → Closing</Text>
-                    <Text style={[styles.detailVal, { color: colors.text }]}>
-                       {safeNum(r.openingMeter).toLocaleString()} → {safeNum(r.closingMeter).toLocaleString()}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Volume Dispensed</Text>
-                     <Text style={[styles.detailVal, { color: colors.text }]}>{safeNum(r.liters).toLocaleString()} L</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Gross Amount</Text>
-                      <Text style={[styles.detailVal, { color: roleColor, fontWeight: '700' }]}>{fmt(safeNum(r.grossAmount))}</Text>
-                  </View>
-                  <View style={[styles.paymentRow, { borderTopColor: colors.border }]}>
-                    <View style={[styles.payChip, { backgroundColor: '#1F684812', borderColor: '#1F684833' }]}>
-                      <Ionicons name="cash-outline" size={11} color="#1F6848" />
-                       <Text style={[styles.payChipText, { color: '#1F6848' }]}>Cash {fmt(safeNum(r.cashAmount))}</Text>
-                    </View>
-                     {safeNum(r.posAmount) > 0 && (
-                      <View style={[styles.payChip, { backgroundColor: '#28624712', borderColor: '#28624733' }]}>
-                        <Ionicons name="card-outline" size={11} color="#286247" />
-                       <Text style={[styles.payChipText, { color: '#286247' }]}>POS {fmt(safeNum(r.posAmount))}</Text>
-                      </View>
-                    )}
-                     {safeNum(r.transferAmount) > 0 && (
-                      <View style={[styles.payChip, { backgroundColor: '#315F4912', borderColor: '#315F4933' }]}>
-                        <Ionicons name="swap-horizontal-outline" size={11} color="#315F49" />
-                       <Text style={[styles.payChipText, { color: '#315F49' }]}>Transfer {fmt(safeNum(r.transferAmount))}</Text>
-                      </View>
-                    )}
-                  </View>
-                   {safeNum(r.variance) !== 0 && (
-                    <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Variance</Text>
-                       <Text style={[styles.detailVal, { color: safeNum(r.variance) > 0 ? '#1F6848' : '#365A47', fontWeight: '700' }]}>
-                         {safeNum(r.variance) > 0 ? '+' : ''}{fmt(safeNum(r.variance))}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {isReturned && r.rejectionReason && (
-                <View style={[styles.returnedNote, { backgroundColor: '#365A470F', borderColor: '#365A4733' }]}>
-                  <Text style={[styles.returnedText, { color: '#365A47' }]}>⚠ Returned: {safeStr(r.rejectionReason)}</Text>
-                </View>
-              )}
-            </View>
-          );
-        })}
 
         <View style={{ height: 16 }} />
       </ScrollView>

@@ -448,9 +448,13 @@ export default function BudgetScreen() {
   }
 
   const mgrCanEdit   = (b: Budget) =>
-    isMgr && !b.archivedAt && (b.status === 'draft' || b.status === 'rejected') && (b.by === role || b.byName === userName);
-  const accCanEdit   = (b: Budget) => isAcc && !b.archivedAt && (b.status === 'submitted' || b.status === 'rejected');
-  const accCanDelete = (b: Budget) => isAcc && !b.archivedAt && (b.status === 'submitted' || b.status === 'rejected');
+    isMgr && !b.archivedAt && (b.status === 'draft' || b.status === 'rejected')
+    && Boolean(branchId && b.branchId === branchId);
+  const accCanEdit   = (b: Budget) => !b.archivedAt && (
+    (role === 'acc' && (b.status === 'submitted' || b.status === 'rejected'))
+    || (role === 'admin' && b.status === 'rejected')
+  );
+  const accCanDelete = accCanEdit;
 
   const TABS_MGR = [{ key: 'mine', label: 'My Budgets' }];
   const TABS_ACC = [
@@ -472,7 +476,7 @@ export default function BudgetScreen() {
   /* Detail-modal performance (computed once when selected changes) */
   // mgr only sees their own branch's expenses
   const visibleExpenses = role === 'mgr' && branchId
-    ? expenses.filter(e => !e.branchId || e.branchId === branchId)
+    ? expenses.filter(e => Boolean(branchId && e.branchId === branchId))
     : expenses;
 
   const selPerf = selected ? calcPerf(selected, visibleExpenses, branchMap) : null;
