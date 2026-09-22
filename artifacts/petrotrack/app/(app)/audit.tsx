@@ -22,16 +22,16 @@ const ACTION_ICONS: Record<string, string> = {
 };
 
 const ACTION_COLORS: Record<string, string> = {
-  'User login': '#185FA5',
-  'Price update': '#4527a0',
-  'Dip submitted': '#1a6e3c',
-  'Short delivery': '#A32D2D',
-  'Delivery recorded': '#0F6E56',
-  'Sales entry': '#1a6e3c',
-  'Message sent': '#185FA5',
-  'Maintenance request': '#BA7517',
-  'User created': '#0F6E56',
-  'Expense approved': '#27500A',
+  'User login': '#286247',
+  'Price update': '#315F49',
+  'Dip submitted': '#174D36',
+  'Short delivery': '#365A47',
+  'Delivery recorded': '#1F6848',
+  'Sales entry': '#174D36',
+  'Message sent': '#286247',
+  'Maintenance request': '#71805B',
+  'User created': '#1F6848',
+  'Expense approved': '#1F6848',
 };
 
 export default function AuditScreen() {

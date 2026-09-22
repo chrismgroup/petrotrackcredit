@@ -21,15 +21,15 @@ type AppColors = {
 };
 
 const URGENCY_META: Record<ActionItemUrgency, { label: string; color: string; bg: string }> = {
-  overdue: { label: 'Overdue', color: '#B42318', bg: '#FCEBEB' },
+  overdue: { label: 'Overdue', color: '#B42318', bg: '#E9F0EB' },
   'due-soon': { label: 'Due within 2 weeks', color: '#9A6700', bg: '#FFF4CC' },
   'on-track': { label: 'More than 2 weeks', color: '#137333', bg: '#EAF5EA' },
 };
 
 const STATUS_META: Record<ActionItemStatus, { label: string; color: string; bg: string }> = {
-  open: { label: 'Open', color: '#185FA5', bg: '#E6F1FB' },
-  'on-going': { label: 'On-going', color: '#BA7517', bg: '#FAEEDA' },
-  closed: { label: 'Closed', color: '#27500A', bg: '#EAF3DE' },
+  open: { label: 'Open', color: '#286247', bg: '#EAF2ED' },
+  'on-going': { label: 'On-going', color: '#71805B', bg: '#EEF2E4' },
+  closed: { label: 'Closed', color: '#1F6848', bg: '#E5F1E9' },
 };
 
 export function actionItemUrgencyMeta(targetDate: string) {

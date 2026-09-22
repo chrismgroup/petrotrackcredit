@@ -16,23 +16,23 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const YEARS  = [2024, 2025, 2026, 2027];
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  draft:          { label: 'Draft',               color: '#555',    bg: '#F0F0F0' },
-  submitted:      { label: 'With Accountant',      color: '#0C447C', bg: '#E6F1FB' },
-  acc_forwarded:  { label: 'With MD',              color: '#BA7517', bg: '#FAEEDA' },
-  fully_approved: { label: 'Approved',             color: '#27500A', bg: '#EAF3DE' },
-  rejected:       { label: 'Rejected',             color: '#791F1F', bg: '#FCEBEB' },
+  draft:          { label: 'Draft',               color: '#555',    bg: '#F1F5EF' },
+  submitted:      { label: 'With Accountant',      color: '#225B40', bg: '#EAF2ED' },
+  acc_forwarded:  { label: 'With MD',              color: '#71805B', bg: '#EEF2E4' },
+  fully_approved: { label: 'Approved',             color: '#1F6848', bg: '#E5F1E9' },
+  rejected:       { label: 'Rejected',             color: '#365A47', bg: '#E9F0EB' },
 };
 
 const STEP_ICON:  Record<string, string> = { submit: 'send', forward: 'share-social', approve: 'checkmark-circle', reject: 'close-circle', classify_branch: 'business' };
-const STEP_COLOR: Record<string, string> = { submit: '#185FA5', forward: '#0C447C', approve: '#27500A', reject: '#791F1F', classify_branch: '#6B4F1D' };
-const STEP_BG:    Record<string, string> = { submit: '#E6F1FB', forward: '#E8F0FB', approve: '#EAF3DE', reject: '#FCEBEB', classify_branch: '#FFF4D6' };
+const STEP_COLOR: Record<string, string> = { submit: '#286247', forward: '#225B40', approve: '#1F6848', reject: '#365A47', classify_branch: '#49614F' };
+const STEP_BG:    Record<string, string> = { submit: '#EAF2ED', forward: '#E8F0FB', approve: '#E5F1E9', reject: '#E9F0EB', classify_branch: '#FFF4D6' };
 
-const OVER_COLOR  = '#791F1F';
-const OVER_BG     = '#FCEBEB';
-const SAFE_COLOR  = '#27500A';
-const SAFE_BG     = '#EAF3DE';
-const WARN_COLOR  = '#BA7517';
-const WARN_BG     = '#FAEEDA';
+const OVER_COLOR  = '#365A47';
+const OVER_BG     = '#E9F0EB';
+const SAFE_COLOR  = '#1F6848';
+const SAFE_BG     = '#E5F1E9';
+const WARN_COLOR  = '#71805B';
+const WARN_BG     = '#EEF2E4';
 const PERFORMANCE_WARNING_RATIO = 0.85;
 
 type LineItem = { cat: string; amt: string };
@@ -94,7 +94,7 @@ function ItemEditor({ items, setItems, roleColor }: ItemEditorProps) {
             />
             {items.length > 1 ? (
               <TouchableOpacity onPress={() => setItems(p => p.filter((_, j) => j !== i))} style={styles.removeBtn}>
-                <Ionicons name="trash-outline" size={17} color="#791F1F" />
+                <Ionicons name="trash-outline" size={17} color="#365A47" />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -627,8 +627,8 @@ export default function BudgetScreen() {
             <TouchableOpacity key={b.id} onPress={() => setSelected(b)} activeOpacity={0.85}
               style={[styles.card, {
                 backgroundColor: colors.surface,
-                borderColor: b.status === 'submitted' ? '#0C447C'
-                  : b.status === 'acc_forwarded' ? '#BA7517'
+                borderColor: b.status === 'submitted' ? '#225B40'
+                  : b.status === 'acc_forwarded' ? '#71805B'
                   : b.status === 'fully_approved' ? (perf && perf.isOver ? OVER_COLOR : SAFE_COLOR)
                   : colors.border,
                 borderWidth: b.status === 'submitted' || b.status === 'acc_forwarded' || locked ? 1.5 : 1,
@@ -639,7 +639,7 @@ export default function BudgetScreen() {
                   <Text style={[styles.cardTitle, { color: colors.text }]}>{b.label}{' Budget'}</Text>
                   <Text style={[styles.cardSub, { color: colors.textMuted }]}>{b.branchName || branchMap[b.branchId] || 'Branch not assigned'}{' · By '}{b.byName}{' · '}{b.items.length}{' items'}</Text>
                 </View>
-                 <View style={[styles.statusBadge, { backgroundColor: archived ? '#F0F0F0' : st.bg }]}>
+                 <View style={[styles.statusBadge, { backgroundColor: archived ? '#F1F5EF' : st.bg }]}>
                    <Text style={[styles.statusText, { color: archived ? '#555' : st.color }]}>{archived ? 'Archived' : st.label}</Text>
                 </View>
               </View>
@@ -694,14 +694,14 @@ export default function BudgetScreen() {
               {canMgrEdit ? (
                 <View style={styles.cardActions}>
                   <TouchableOpacity onPress={e => { e.stopPropagation?.(); openEdit(b); }}
-                    style={[styles.cardActionBtn, { borderColor: '#185FA5' }]}>
-                    <Ionicons name="create-outline" size={13} color="#185FA5" />
-                    <Text style={[styles.cardActionText, { color: '#185FA5' }]}>Edit</Text>
+                    style={[styles.cardActionBtn, { borderColor: '#286247' }]}>
+                    <Ionicons name="create-outline" size={13} color="#286247" />
+                    <Text style={[styles.cardActionText, { color: '#286247' }]}>Edit</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={e => { e.stopPropagation?.(); handleDeleteBudget(b); }}
-                    style={[styles.cardActionBtn, { borderColor: '#791F1F' }]}>
-                    <Ionicons name="trash-outline" size={13} color="#791F1F" />
-                    <Text style={[styles.cardActionText, { color: '#791F1F' }]}>Delete</Text>
+                    style={[styles.cardActionBtn, { borderColor: '#365A47' }]}>
+                    <Ionicons name="trash-outline" size={13} color="#365A47" />
+                    <Text style={[styles.cardActionText, { color: '#365A47' }]}>Delete</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     disabled={submittingBudgetIds.has(b.id)}
@@ -718,17 +718,17 @@ export default function BudgetScreen() {
               {canAccEdit ? (
                 <View style={styles.cardActions}>
                   <TouchableOpacity onPress={e => { e.stopPropagation?.(); openEdit(b); }}
-                    style={[styles.cardActionBtn, { borderColor: '#0C447C' }]}>
-                    <Ionicons name="create-outline" size={13} color="#0C447C" />
-                    <Text style={[styles.cardActionText, { color: '#0C447C' }]}>Edit</Text>
+                    style={[styles.cardActionBtn, { borderColor: '#225B40' }]}>
+                    <Ionicons name="create-outline" size={13} color="#225B40" />
+                    <Text style={[styles.cardActionText, { color: '#225B40' }]}>Edit</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={e => { e.stopPropagation?.(); handleDeleteBudget(b); }}
-                    style={[styles.cardActionBtn, { borderColor: '#791F1F' }]}>
-                    <Ionicons name="trash-outline" size={13} color="#791F1F" />
-                    <Text style={[styles.cardActionText, { color: '#791F1F' }]}>Delete</Text>
+                    style={[styles.cardActionBtn, { borderColor: '#365A47' }]}>
+                    <Ionicons name="trash-outline" size={13} color="#365A47" />
+                    <Text style={[styles.cardActionText, { color: '#365A47' }]}>Delete</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => setSelected(b)}
-                    style={[styles.cardSubmitBtn, { backgroundColor: '#0C447C' }]}>
+                    style={[styles.cardSubmitBtn, { backgroundColor: '#225B40' }]}>
                     <Ionicons name="share-social" size={13} color="#fff" />
                     <Text style={styles.cardSubmitText}>Forward to MD</Text>
                   </TouchableOpacity>
@@ -737,15 +737,15 @@ export default function BudgetScreen() {
 
               {/* Lock indicators */}
               {b.status === 'submitted' && !isAcc ? (
-                <View style={[styles.lockRow, { borderColor: '#0C447C' }]}>
-                  <Ionicons name="lock-closed-outline" size={11} color="#0C447C" />
-                  <Text style={[styles.lockText, { color: '#0C447C' }]}>Under accountant review</Text>
+                <View style={[styles.lockRow, { borderColor: '#225B40' }]}>
+                  <Ionicons name="lock-closed-outline" size={11} color="#225B40" />
+                  <Text style={[styles.lockText, { color: '#225B40' }]}>Under accountant review</Text>
                 </View>
               ) : null}
               {b.status === 'acc_forwarded' && !isMD ? (
-                <View style={[styles.lockRow, { borderColor: '#BA7517' }]}>
-                  <Ionicons name="lock-closed-outline" size={11} color="#BA7517" />
-                  <Text style={[styles.lockText, { color: '#BA7517' }]}>Awaiting MD approval</Text>
+                <View style={[styles.lockRow, { borderColor: '#71805B' }]}>
+                  <Ionicons name="lock-closed-outline" size={11} color="#71805B" />
+                  <Text style={[styles.lockText, { color: '#71805B' }]}>Awaiting MD approval</Text>
                 </View>
               ) : null}
             </TouchableOpacity>
@@ -901,8 +901,8 @@ export default function BudgetScreen() {
 
                 {canClassifyHistoricalBudget && !selected.branchId ? (
                   <View style={[styles.actionBox, { backgroundColor: '#FFF8E8', borderColor: '#E2C46D' }]}>
-                    <Ionicons name="business" size={18} color="#6B4F1D" />
-                    <Text style={[styles.actionTitle, { color: '#6B4F1D' }]}>Classify Historical Budget</Text>
+                    <Ionicons name="business" size={18} color="#49614F" />
+                    <Text style={[styles.actionTitle, { color: '#49614F' }]}>Classify Historical Budget</Text>
                     <Text style={[styles.actionSub, { color: colors.textMuted }]}>
                       Select the station this historical budget belongs to. This is audited and cannot be changed after confirmation.
                     </Text>
@@ -912,8 +912,8 @@ export default function BudgetScreen() {
                           key={branch.id}
                           onPress={() => setClassificationBranchId(branch.id)}
                           style={[styles.chip, {
-                            backgroundColor: classificationBranchId === branch.id ? '#6B4F1D' : colors.surface,
-                            borderColor: classificationBranchId === branch.id ? '#6B4F1D' : colors.border,
+                            backgroundColor: classificationBranchId === branch.id ? '#49614F' : colors.surface,
+                            borderColor: classificationBranchId === branch.id ? '#49614F' : colors.border,
                           }]}
                         >
                           <Text style={[styles.chipText, { color: classificationBranchId === branch.id ? '#fff' : colors.text }]}>
@@ -926,7 +926,7 @@ export default function BudgetScreen() {
                       disabled={!classificationBranchId || classificationBusy}
                       onPress={handleClassifyBranch}
                       style={[styles.primaryBtn, {
-                        backgroundColor: '#6B4F1D',
+                        backgroundColor: '#49614F',
                         opacity: !classificationBranchId || classificationBusy ? 0.5 : 1,
                       }]}
                     >
@@ -954,19 +954,19 @@ export default function BudgetScreen() {
 
                 {/* Acc: forward to MD */}
                 {isAcc && selected.status === 'submitted' && !actionType ? (
-                  <View style={[styles.actionBox, { backgroundColor: '#E6F1FB', borderColor: '#BCD4EF' }]}>
-                    <Ionicons name="search" size={18} color="#0C447C" />
-                    <Text style={[styles.actionTitle, { color: '#0C447C' }]}>Accountant Review</Text>
+                  <View style={[styles.actionBox, { backgroundColor: '#EAF2ED', borderColor: '#BCD4EF' }]}>
+                    <Ionicons name="search" size={18} color="#225B40" />
+                    <Text style={[styles.actionTitle, { color: '#225B40' }]}>Accountant Review</Text>
                     <Text style={[styles.actionSub, { color: colors.textMuted }]}>Verify all line items and amounts. You may edit the budget before forwarding it to the MD.</Text>
                     <View style={styles.actionBtns}>
                       <TouchableOpacity onPress={() => setActionType('forward')}
-                        style={[styles.primaryBtn, { backgroundColor: '#0C447C' }]}>
+                        style={[styles.primaryBtn, { backgroundColor: '#225B40' }]}>
                         <Ionicons name="share-social" size={15} color="#fff" />
                         <Text style={styles.primaryBtnText}>Forward to MD</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => setActionType('reject')}
-                        style={[styles.outlineBtn, { borderColor: '#791F1F' }]}>
-                        <Text style={[styles.outlineBtnText, { color: '#791F1F' }]}>Reject</Text>
+                        style={[styles.outlineBtn, { borderColor: '#365A47' }]}>
+                        <Text style={[styles.outlineBtnText, { color: '#365A47' }]}>Reject</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -974,19 +974,19 @@ export default function BudgetScreen() {
 
                 {/* MD: approve/reject */}
                 {isMD && selected.status === 'acc_forwarded' && !actionType ? (
-                  <View style={[styles.actionBox, { backgroundColor: '#EAF3DE', borderColor: '#C2DDB3' }]}>
-                    <Ionicons name="checkmark-done" size={18} color="#27500A" />
-                    <Text style={[styles.actionTitle, { color: '#27500A' }]}>MD Final Approval</Text>
+                  <View style={[styles.actionBox, { backgroundColor: '#E5F1E9', borderColor: '#C2DDB3' }]}>
+                    <Ionicons name="checkmark-done" size={18} color="#1F6848" />
+                    <Text style={[styles.actionTitle, { color: '#1F6848' }]}>MD Final Approval</Text>
                     <Text style={[styles.actionSub, { color: colors.textMuted }]}>This budget has been reviewed and verified by the Accountant.</Text>
                     <View style={styles.actionBtns}>
                       <TouchableOpacity onPress={() => setActionType('approve')}
-                        style={[styles.primaryBtn, { backgroundColor: '#1a6e3c' }]}>
+                        style={[styles.primaryBtn, { backgroundColor: '#174D36' }]}>
                         <Ionicons name="checkmark" size={15} color="#fff" />
                         <Text style={styles.primaryBtnText}>Approve</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => setActionType('reject')}
-                        style={[styles.outlineBtn, { borderColor: '#791F1F' }]}>
-                        <Text style={[styles.outlineBtnText, { color: '#791F1F' }]}>Reject</Text>
+                        style={[styles.outlineBtn, { borderColor: '#365A47' }]}>
+                        <Text style={[styles.outlineBtnText, { color: '#365A47' }]}>Reject</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1009,7 +1009,7 @@ export default function BudgetScreen() {
                         disabled={reviewingBudgetIds.has(selected.id)}
                         onPress={handleAction}
                         style={[styles.primaryBtn, {
-                          backgroundColor: actionType === 'reject' ? '#791F1F' : actionType === 'forward' ? '#0C447C' : '#1a6e3c',
+                          backgroundColor: actionType === 'reject' ? '#365A47' : actionType === 'forward' ? '#225B40' : '#174D36',
                           opacity: reviewingBudgetIds.has(selected.id) ? 0.5 : 1,
                         }]}>
                         <Text style={styles.primaryBtnText}>

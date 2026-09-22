@@ -244,10 +244,8 @@ function buttonWithText(renderer: ReactTestRenderer, text: string): ReactTestIns
   return matches[0];
 }
 
-// My Jobs groups tools into collapsible department tiles; expand the
-// department tile whose accessibilityLabel starts with `deptTitle` before
-// looking for one of its job cards.
-function expandDept(renderer: ReactTestRenderer, deptTitle: string) {
+// My Jobs opens every department in a dedicated page.
+function openDept(renderer: ReactTestRenderer, deptTitle: string) {
   const tile = buttons(renderer).find(button =>
     typeof button.props.accessibilityLabel === 'string' && button.props.accessibilityLabel.startsWith(`${deptTitle} department`),
   );
@@ -408,8 +406,8 @@ describe('dashboard and workspace navigation', () => {
 
     let jobsRenderer!: ReactTestRenderer;
     act(() => { jobsRenderer = create(<JobsScreen />); });
-    expandDept(jobsRenderer, 'Finance');
-    expect(jobsRenderer.root.findAll(node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Expenses'))).toHaveLength(1);
+    openDept(jobsRenderer, 'Finance');
+    expect(mockPush).toHaveBeenCalledWith('/(app)/job-department?department=finance');
     act(() => jobsRenderer.unmount());
   });
 
@@ -717,19 +715,16 @@ describe('dashboard and workspace navigation', () => {
 
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<JobsScreen />); });
-    expandDept(renderer, 'Finance');
-    act(() => { buttonWithText(renderer, 'Daily Business-Date Revenue Log').props.onPress(); });
-    expect(mockPush).toHaveBeenCalledWith('/(app)/daily-revenue-log');
+    openDept(renderer, 'Finance');
+    expect(mockPush).toHaveBeenCalledWith('/(app)/job-department?department=finance');
 
     mockPush.mockClear();
-    expandDept(renderer, 'Operations');
-    act(() => { buttonWithText(renderer, 'Stock snapshot').props.onPress(); });
-    expect(mockPush).toHaveBeenCalledWith('/(app)/stock-snapshot');
+    openDept(renderer, 'Operations');
+    expect(mockPush).toHaveBeenCalledWith('/(app)/job-department?department=operations');
 
     mockPush.mockClear();
-    expandDept(renderer, 'Administration');
-    act(() => { buttonWithText(renderer, 'Users').props.onPress(); });
-    expect(mockPush).toHaveBeenCalledWith('/(app)/users');
+    openDept(renderer, 'Administration');
+    expect(mockPush).toHaveBeenCalledWith('/(app)/job-department?department=admin');
     act(() => renderer.unmount());
   });
 });
@@ -803,15 +798,13 @@ describe('role-aware route access and stale notification links', () => {
 
     let jobsRenderer!: ReactTestRenderer;
     act(() => { jobsRenderer = create(<JobsScreen />); });
-    expandDept(jobsRenderer, deptFor[label]);
-    expect(buttons(jobsRenderer).some(button => nodeText(button).includes(label))).toBe(true);
+    expect(buttons(jobsRenderer).some(button => nodeText(button).includes(deptFor[label]))).toBe(true);
     expect(canAccessWorkspaceRoute(route, 'att', navItems)).toBe(true);
     act(() => jobsRenderer.unmount());
 
     mockUseApp.mockReturnValue(baseAppState({ role: 'att', navItems: [] }));
     act(() => { jobsRenderer = create(<JobsScreen />); });
-    expandDept(jobsRenderer, deptFor[label]);
-    expect(buttons(jobsRenderer).some(button => nodeText(button).includes(label))).toBe(false);
+    expect(buttons(jobsRenderer).some(button => nodeText(button).includes(deptFor[label]))).toBe(false);
     expect(canAccessWorkspaceRoute(route, 'att', [])).toBe(false);
     act(() => jobsRenderer.unmount());
   });
@@ -821,9 +814,7 @@ describe('role-aware route access and stale notification links', () => {
 
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<JobsScreen />); });
-    expandDept(renderer, 'Administration');
-
-    expect(buttons(renderer).some(button => nodeText(button).includes('System settings'))).toBe(true);
+    expect(buttons(renderer).some(button => nodeText(button).includes('Administration'))).toBe(true);
     expect(canAccessWorkspaceRoute('/(app)/system-settings', 'admin', [])).toBe(true);
     act(() => renderer.unmount());
   });

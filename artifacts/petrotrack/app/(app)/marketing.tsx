@@ -19,7 +19,7 @@ const PROD_UNIT: Record<Product, string> = {
 };
 
 const PROD_COLOR: Record<Product, string> = {
-  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56',
+  PMS: '#174D36', AGO: '#286247', DPK: '#71805B', LPG: '#1F6848',
 };
 
 interface Competitor {
@@ -70,9 +70,9 @@ function DiffBadge({ ours, theirs }: { ours: number; theirs: number }) {
   );
   const above = diff > 0;
   return (
-    <View style={[styles.diffBadge, { backgroundColor: above ? '#e5393522' : '#1a6e3c22' }]}>
-      <Ionicons name={above ? 'arrow-up' : 'arrow-down'} size={10} color={above ? '#e53935' : '#1a6e3c'} />
-      <Text style={[styles.diffText, { color: above ? '#e53935' : '#1a6e3c' }]}>{pct}%</Text>
+    <View style={[styles.diffBadge, { backgroundColor: above ? '#365A4722' : '#174D3622' }]}>
+      <Ionicons name={above ? 'arrow-up' : 'arrow-down'} size={10} color={above ? '#365A47' : '#174D36'} />
+      <Text style={[styles.diffText, { color: above ? '#365A47' : '#174D36' }]}>{pct}%</Text>
     </View>
   );
 }
@@ -179,19 +179,19 @@ function SuggestionCard({
   let icon: string, bg: string, border: string, textColor: string, title: string, body: string;
 
   if (ourPrice <= minP) {
-    icon = 'trophy-outline'; bg = '#1a6e3c18'; border = '#1a6e3c44'; textColor = '#1a6e3c';
+    icon = 'trophy-outline'; bg = '#174D3618'; border = '#174D3644'; textColor = '#174D36';
     title = 'Best Price in Market!';
     body  = `We offer the lowest ${prod} price at ${priceStr} — ₦${(minP - ourPrice).toLocaleString()} cheaper than the next competitor. Broadcast this to attract fleet buyers and retail customers now!`;
   } else if (diffAvg <= 0) {
-    icon = 'thumbs-up-outline'; bg = '#185FA518'; border = '#185FA544'; textColor = '#185FA5';
+    icon = 'thumbs-up-outline'; bg = '#28624718'; border = '#28624744'; textColor = '#286247';
     title = 'Competitive Positioning';
     body  = `Our ${prod} price (${priceStr}) is ₦${Math.abs(diffAvg).toLocaleString()} below market average (₦${avg.toLocaleString()}). Well-positioned — push targeted promotions for fleet, corporate, and bulk accounts.`;
   } else if (diffAvg / avg <= 0.03) {
-    icon = 'information-circle-outline'; bg = '#BA751718'; border = '#BA751744'; textColor = '#BA7517';
+    icon = 'information-circle-outline'; bg = '#71805B18'; border = '#71805B44'; textColor = '#71805B';
     title = 'Slight Premium';
     body  = `Our ${prod} price is ₦${diffAvg.toLocaleString()} above market average. Emphasise service quality, fast dispensing, genuine product, and loyalty rewards to justify the premium.`;
   } else {
-    icon = 'warning-outline'; bg = '#e5393518'; border = '#e5393544'; textColor = '#e53935';
+    icon = 'warning-outline'; bg = '#365A4718'; border = '#365A4744'; textColor = '#365A47';
     title = 'Above Market — Action Needed';
     body  = `We're ₦${diffAvg.toLocaleString()} above the ${prod} market average (₦${avg.toLocaleString()}${unit}). Consider a price review, bundle promotion, or loyalty programme to retain customers.`;
   }
@@ -202,9 +202,9 @@ function SuggestionCard({
       <View style={[styles.statsBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {[
           { label: 'Our Price', val: `₦${ourPrice.toLocaleString()}`, color: roleColor },
-          { label: 'Mkt Min',   val: `₦${minP.toLocaleString()}`,    color: '#1a6e3c' },
+          { label: 'Mkt Min',   val: `₦${minP.toLocaleString()}`,    color: '#174D36' },
           { label: 'Mkt Avg',   val: `₦${avg.toLocaleString()}`,     color: colors.text },
-          { label: 'Mkt Max',   val: `₦${maxP.toLocaleString()}`,    color: '#e53935' },
+          { label: 'Mkt Max',   val: `₦${maxP.toLocaleString()}`,    color: '#365A47' },
         ].map((s, i) => (
           <View
             key={s.label}

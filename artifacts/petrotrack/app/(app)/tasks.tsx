@@ -12,22 +12,22 @@ type TabId = 'mine' | 'assigned' | 'kpis';
 type CadenceFilter = 'all' | TaskCadence;
 
 const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string; icon: string }> = {
-  commenced:   { label: 'Commenced',   color: '#185FA5', bg: '#E6F1FB', icon: 'play-circle'      },
-  progressing: { label: 'Progressing', color: '#BA7517', bg: '#FAEEDA', icon: 'time'             },
-  completed:   { label: 'Completed',   color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle' },
+  commenced:   { label: 'Commenced',   color: '#286247', bg: '#EAF2ED', icon: 'play-circle'      },
+  progressing: { label: 'Progressing', color: '#71805B', bg: '#EEF2E4', icon: 'time'             },
+  completed:   { label: 'Completed',   color: '#1F6848', bg: '#E5F1E9', icon: 'checkmark-circle' },
 };
 
 const PRI_META: Record<TaskPriority, { color: string; bg: string }> = {
-  High:   { color: '#791F1F', bg: '#FCEBEB' },
-  Medium: { color: '#BA7517', bg: '#FAEEDA' },
-  Low:    { color: '#27500A', bg: '#EAF3DE' },
+  High:   { color: '#365A47', bg: '#E9F0EB' },
+  Medium: { color: '#71805B', bg: '#EEF2E4' },
+  Low:    { color: '#1F6848', bg: '#E5F1E9' },
 };
 
 const CADENCE_META: Record<TaskCadence, { label: string; icon: string; color: string; bg: string }> = {
-  daily:     { label: 'Daily',     icon: 'sunny-outline',    color: '#D85A30', bg: '#FAECE7' },
-  weekly:    { label: 'Weekly',    icon: 'calendar-outline', color: '#185FA5', bg: '#E6F1FB' },
-  monthly:   { label: 'Monthly',   icon: 'calendar',         color: '#4527a0', bg: '#EEEDFE' },
-  quarterly: { label: 'Quarterly', icon: 'layers-outline',   color: '#0F6E56', bg: '#E1F5EE' },
+  daily:     { label: 'Daily',     icon: 'sunny-outline',    color: '#52705D', bg: '#EDF3EE' },
+  weekly:    { label: 'Weekly',    icon: 'calendar-outline', color: '#286247', bg: '#EAF2ED' },
+  monthly:   { label: 'Monthly',   icon: 'calendar',         color: '#315F49', bg: '#EDF3EE' },
+  quarterly: { label: 'Quarterly', icon: 'layers-outline',   color: '#1F6848', bg: '#E1F5EE' },
 };
 
 const CADENCE_FILTERS: { id: CadenceFilter; label: string }[] = [

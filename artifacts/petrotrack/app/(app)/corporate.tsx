@@ -26,22 +26,22 @@ function daysLeft(exp: string) {
   return Math.ceil((new Date(exp).getTime() - Date.now()) / 86400000);
 }
 function getDocStatus(days: number) {
-  if (days < 0)  return { label: 'Expired',       color: '#791F1F', bg: '#FCEBEB' };
-  if (days < 14) return { label: `${days}d left`,  color: '#791F1F', bg: '#FCEBEB' };
-  if (days < 30) return { label: `${days}d left`,  color: '#BA7517', bg: '#FAEEDA' };
-  return             { label: `${days}d left`,  color: '#27500A', bg: '#EAF3DE' };
+  if (days < 0)  return { label: 'Expired',       color: '#365A47', bg: '#E9F0EB' };
+  if (days < 14) return { label: `${days}d left`,  color: '#365A47', bg: '#E9F0EB' };
+  if (days < 30) return { label: `${days}d left`,  color: '#71805B', bg: '#EEF2E4' };
+  return             { label: `${days}d left`,  color: '#1F6848', bg: '#E5F1E9' };
 }
 
 // ── File-type helpers ───────────────────────────────────────────────────────
 const ATT_FILE_TYPES = [
-  { key: 'pdf',   label: 'PDF',   icon: 'document-text', color: '#E74C3C' },
-  { key: 'docx',  label: 'DOCX',  icon: 'document',      color: '#2980B9' },
-  { key: 'xlsx',  label: 'XLSX',  icon: 'grid',          color: '#27AE60' },
-  { key: 'pptx',  label: 'PPTX',  icon: 'easel',         color: '#E67E22' },
-  { key: 'img',   label: 'Image', icon: 'image',         color: '#8E44AD' },
-  { key: 'mp4',   label: 'Video', icon: 'videocam',      color: '#D85A30' },
-  { key: 'audio', label: 'Audio', icon: 'musical-notes', color: '#0F6E56' },
-  { key: 'zip',   label: 'ZIP',   icon: 'archive',       color: '#4527a0' },
+  { key: 'pdf',   label: 'PDF',   icon: 'document-text', color: '#365A47' },
+  { key: 'docx',  label: 'DOCX',  icon: 'document',      color: '#286247' },
+  { key: 'xlsx',  label: 'XLSX',  icon: 'grid',          color: '#1F6848' },
+  { key: 'pptx',  label: 'PPTX',  icon: 'easel',         color: '#71805B' },
+  { key: 'img',   label: 'Image', icon: 'image',         color: '#315F49' },
+  { key: 'mp4',   label: 'Video', icon: 'videocam',      color: '#52705D' },
+  { key: 'audio', label: 'Audio', icon: 'musical-notes', color: '#1F6848' },
+  { key: 'zip',   label: 'ZIP',   icon: 'archive',       color: '#315F49' },
   { key: 'other', label: 'Other', icon: 'attach',        color: '#7F8C8D' },
 ] as const;
 const FILE_TYPE_MAP: Record<string, { icon: string; color: string }> = Object.fromEntries(
@@ -629,30 +629,30 @@ export function FolderWorkspacePanel({
 // ── Legal / Project status helpers ──────────────────────────────────────────
 const LEGAL_TYPES: LegalMatter['type'][] = ['Contract','Dispute','Regulatory','Advisory','Other'];
 const LEGAL_STATUS_META: Record<LegalMatter['status'], { color: string; bg: string }> = {
-  Active:   { color: '#185FA5', bg: '#DCF0FF' },
-  Pending:  { color: '#BA7517', bg: '#FAEEDA' },
-  Resolved: { color: '#27500A', bg: '#EAF3DE' },
-  Closed:   { color: '#7F8C8D', bg: '#F4F4F2' },
+  Active:   { color: '#286247', bg: '#EAF2ED' },
+  Pending:  { color: '#71805B', bg: '#EEF2E4' },
+  Resolved: { color: '#1F6848', bg: '#E5F1E9' },
+  Closed:   { color: '#7F8C8D', bg: '#F6F8F3' },
 };
 const LEGAL_PRI_META: Record<LegalMatter['priority'], { color: string; bg: string }> = {
-  High:   { color: '#791F1F', bg: '#FCEBEB' },
-  Medium: { color: '#BA7517', bg: '#FAEEDA' },
-  Low:    { color: '#27500A', bg: '#EAF3DE' },
+  High:   { color: '#365A47', bg: '#E9F0EB' },
+  Medium: { color: '#71805B', bg: '#EEF2E4' },
+  Low:    { color: '#1F6848', bg: '#E5F1E9' },
 };
 const PROJ_STATUS_META: Record<CorpProject['status'], { color: string; bg: string; icon: string }> = {
-  Planning:   { color: '#185FA5', bg: '#DCF0FF',  icon: 'compass'          },
-  Active:     { color: '#27500A', bg: '#EAF3DE',  icon: 'play-circle'      },
-  'On Hold':  { color: '#BA7517', bg: '#FAEEDA',  icon: 'pause-circle'     },
-  Completed:  { color: '#0F6E56', bg: '#D6F5EC',  icon: 'checkmark-circle' },
-  Cancelled:  { color: '#7F8C8D', bg: '#F4F4F2',  icon: 'close-circle'     },
+  Planning:   { color: '#286247', bg: '#EAF2ED',  icon: 'compass'          },
+  Active:     { color: '#1F6848', bg: '#E5F1E9',  icon: 'play-circle'      },
+  'On Hold':  { color: '#71805B', bg: '#EEF2E4',  icon: 'pause-circle'     },
+  Completed:  { color: '#1F6848', bg: '#D6F5EC',  icon: 'checkmark-circle' },
+  Cancelled:  { color: '#7F8C8D', bg: '#F6F8F3',  icon: 'close-circle'     },
 };
 
 // ── Approval status helpers ─────────────────────────────────────────────────
 const APPROVAL_META: Record<CorpApproval['status'], { label: string; color: string; bg: string; icon: string }> = {
-  draft:     { label: 'Draft',     color: '#7F8C8D', bg: '#F4F4F2', icon: 'create-outline'        },
-  submitted: { label: 'Submitted', color: '#185FA5', bg: '#DCF0FF', icon: 'paper-plane-outline'   },
-  approved:  { label: 'Approved',  color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle'      },
-  rejected:  { label: 'Rejected',  color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle-outline'  },
+  draft:     { label: 'Draft',     color: '#7F8C8D', bg: '#F6F8F3', icon: 'create-outline'        },
+  submitted: { label: 'Submitted', color: '#286247', bg: '#EAF2ED', icon: 'paper-plane-outline'   },
+  approved:  { label: 'Approved',  color: '#1F6848', bg: '#E5F1E9', icon: 'checkmark-circle'      },
+  rejected:  { label: 'Rejected',  color: '#365A47', bg: '#E9F0EB', icon: 'close-circle-outline'  },
 };
 
 // ── Tab definition ──────────────────────────────────────────────────────────
@@ -916,8 +916,8 @@ export default function CorporateScreen() {
 
         {/* Rejection reason */}
         {approval.status === 'rejected' && approval.rejectionReason && (
-          <View style={[sty.rejectionBox, { backgroundColor: '#FCEBEB', borderColor: '#791F1F40' }]}>
-            <Ionicons name="alert-circle" size={14} color="#791F1F" />
+          <View style={[sty.rejectionBox, { backgroundColor: '#E9F0EB', borderColor: '#365A4740' }]}>
+            <Ionicons name="alert-circle" size={14} color="#365A47" />
             <View style={{ flex: 1 }}>
               <Text style={sty.rejectionLabel}>Rejection Reason</Text>
               <Text style={sty.rejectionText}>{approval.rejectionReason}</Text>
@@ -930,14 +930,14 @@ export default function CorporateScreen() {
 
         {/* Approved banner */}
         {locked && (
-          <Text style={[sty.approvedBy, { color: '#27500A' }]}>
+          <Text style={[sty.approvedBy, { color: '#1F6848' }]}>
             Approved by {approval.reviewedBy} · {fmtDate(approval.reviewedAt ?? '')}
           </Text>
         )}
 
         {/* Submitted info */}
         {approval.status === 'submitted' && approval.submittedBy && (
-          <Text style={[sty.approvedBy, { color: '#185FA5' }]}>
+          <Text style={[sty.approvedBy, { color: '#286247' }]}>
             Submitted by {approval.submittedBy} · {fmtDate(approval.submittedAt ?? '')}
           </Text>
         )}
@@ -954,21 +954,21 @@ export default function CorporateScreen() {
           {canAct && approval.status === 'submitted' && (
             <>
               <TouchableOpacity onPress={() => handleApprove(type, id)}
-                style={[sty.actionBtn, { backgroundColor: '#27500A' }]}>
+                style={[sty.actionBtn, { backgroundColor: '#1F6848' }]}>
                 <Ionicons name="checkmark-circle" size={13} color="#fff" />
                 <Text style={sty.actionBtnTxt}>Approve</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setRejectTarget({ type, id })}
-                style={[sty.actionBtn, { backgroundColor: '#791F1F' }]}>
+                style={[sty.actionBtn, { backgroundColor: '#365A47' }]}>
                 <Ionicons name="close-circle" size={13} color="#fff" />
                 <Text style={sty.actionBtnTxt}>Reject</Text>
               </TouchableOpacity>
             </>
           )}
           {locked && (
-            <View style={[sty.lockedTag, { borderColor: '#27500A40' }]}>
-              <Ionicons name="lock-closed" size={12} color="#27500A" />
-              <Text style={[sty.lockedTxt, { color: '#27500A' }]}>Locked — Approved</Text>
+            <View style={[sty.lockedTag, { borderColor: '#1F684840' }]}>
+              <Ionicons name="lock-closed" size={12} color="#1F6848" />
+              <Text style={[sty.lockedTxt, { color: '#1F6848' }]}>Locked — Approved</Text>
             </View>
           )}
         </View>
@@ -1266,8 +1266,8 @@ export default function CorporateScreen() {
             return (
               <View key={m.id} style={[sty.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <TouchableOpacity style={sty.cardHeader} onPress={() => setExpandedId(expanded ? null : m.id)} activeOpacity={0.7}>
-                  <View style={[sty.cardIcon, { backgroundColor: '#8E44AD18' }]}>
-                    <Ionicons name="scale" size={18} color="#8E44AD" />
+                  <View style={[sty.cardIcon, { backgroundColor: '#315F4918' }]}>
+                    <Ionicons name="scale" size={18} color="#315F49" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[sty.cardTitle, { color: colors.text }]}>{m.title}</Text>
@@ -1498,9 +1498,9 @@ export default function CorporateScreen() {
         /* ── Staff-only view: read-only shared minutes ── */
         if (isStaffOnly) return (
           <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
-            <View style={[sty.sharedBanner, { backgroundColor: '#DCF0FF', borderColor: '#185FA540' }]}>
-              <Ionicons name="share-social" size={16} color="#185FA5" />
-              <Text style={[sty.sharedBannerTxt, { color: '#185FA5' }]}>
+            <View style={[sty.sharedBanner, { backgroundColor: '#EAF2ED', borderColor: '#28624740' }]}>
+              <Ionicons name="share-social" size={16} color="#286247" />
+              <Text style={[sty.sharedBannerTxt, { color: '#286247' }]}>
                 Minutes shared with you by Corporate Services
               </Text>
             </View>
@@ -1508,18 +1508,18 @@ export default function CorporateScreen() {
             {sharedMinutes.map(m => {
               const expanded = expandedId === m.id;
               return (
-                <View key={m.id} style={[sty.card, { backgroundColor: colors.surface, borderColor: '#185FA540' }]}>
+                <View key={m.id} style={[sty.card, { backgroundColor: colors.surface, borderColor: '#28624740' }]}>
                   <TouchableOpacity style={sty.cardHeader} onPress={() => setExpandedId(expanded ? null : m.id)} activeOpacity={0.7}>
-                    <View style={[sty.cardIcon, { backgroundColor: '#185FA518' }]}>
-                      <Ionicons name="reader" size={18} color="#185FA5" />
+                    <View style={[sty.cardIcon, { backgroundColor: '#28624718' }]}>
+                      <Ionicons name="reader" size={18} color="#286247" />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[sty.cardTitle, { color: colors.text }]}>{m.title}</Text>
                       <Text style={[sty.cardSub, { color: colors.textMuted }]}>{fmtDate(m.date)} · {m.venue}</Text>
                     </View>
-                    <View style={[sty.sharedPill, { backgroundColor: '#DCF0FF' }]}>
-                      <Ionicons name="share-social" size={10} color="#185FA5" />
-                      <Text style={[sty.sharedPillTxt, { color: '#185FA5' }]}>Shared</Text>
+                    <View style={[sty.sharedPill, { backgroundColor: '#EAF2ED' }]}>
+                      <Ionicons name="share-social" size={10} color="#286247" />
+                      <Text style={[sty.sharedPillTxt, { color: '#286247' }]}>Shared</Text>
                     </View>
                     <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color={colors.textMuted} style={{ marginLeft: 6 }} />
                   </TouchableOpacity>
@@ -1583,9 +1583,9 @@ export default function CorporateScreen() {
           <KeyboardAwareScrollViewCompat contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={24}>
             {/* Sharing summary */}
             {sharedMinutes.length > 0 && (
-              <View style={[sty.sharedBanner, { backgroundColor: '#EAF3DE', borderColor: '#27500A40' }]}>
-                <Ionicons name="share-social" size={15} color="#27500A" />
-                <Text style={[sty.sharedBannerTxt, { color: '#27500A' }]}>
+              <View style={[sty.sharedBanner, { backgroundColor: '#E5F1E9', borderColor: '#1F684840' }]}>
+                <Ionicons name="share-social" size={15} color="#1F6848" />
+                <Text style={[sty.sharedBannerTxt, { color: '#1F6848' }]}>
                   {sharedMinutes.length} {sharedMinutes.length === 1 ? 'record' : 'records'} shared with all staff
                 </Text>
               </View>
@@ -1646,7 +1646,7 @@ export default function CorporateScreen() {
               const locked   = m.approval.status === 'approved';
               const expanded = expandedId === m.id;
               return (
-                <View key={m.id} style={[sty.card, { backgroundColor: colors.surface, borderColor: m.shared ? '#185FA540' : colors.border }]}>
+                <View key={m.id} style={[sty.card, { backgroundColor: colors.surface, borderColor: m.shared ? '#28624740' : colors.border }]}>
                   <TouchableOpacity style={sty.cardHeader} onPress={() => setExpandedId(expanded ? null : m.id)} activeOpacity={0.7}>
                     <View style={[sty.cardIcon, { backgroundColor: roleColor + '18' }]}>
                       <Ionicons name="reader" size={18} color={roleColor} />
@@ -1658,9 +1658,9 @@ export default function CorporateScreen() {
                     <View style={{ alignItems: 'flex-end', gap: 4 }}>
                       <Pill label={m.approval.status} color={am.color} bg={am.bg} />
                       {m.shared && (
-                        <View style={[sty.sharedPill, { backgroundColor: '#DCF0FF' }]}>
-                          <Ionicons name="share-social" size={10} color="#185FA5" />
-                          <Text style={[sty.sharedPillTxt, { color: '#185FA5' }]}>Shared</Text>
+                        <View style={[sty.sharedPill, { backgroundColor: '#EAF2ED' }]}>
+                          <Ionicons name="share-social" size={10} color="#286247" />
+                          <Text style={[sty.sharedPillTxt, { color: '#286247' }]}>Shared</Text>
                         </View>
                       )}
                     </View>
@@ -1716,11 +1716,11 @@ export default function CorporateScreen() {
                               }
                             }}
                             style={[sty.shareBtn, {
-                              backgroundColor: m.shared ? '#DCF0FF' : colors.background,
-                              borderColor: m.shared ? '#185FA5' : colors.border,
+                              backgroundColor: m.shared ? '#EAF2ED' : colors.background,
+                              borderColor: m.shared ? '#286247' : colors.border,
                             }]}>
-                            <Ionicons name={m.shared ? 'share-social' : 'share-social-outline'} size={13} color={m.shared ? '#185FA5' : colors.textMuted} />
-                            <Text style={[sty.shareBtnTxt, { color: m.shared ? '#185FA5' : colors.textMuted }]}>
+                            <Ionicons name={m.shared ? 'share-social' : 'share-social-outline'} size={13} color={m.shared ? '#286247' : colors.textMuted} />
+                            <Text style={[sty.shareBtnTxt, { color: m.shared ? '#286247' : colors.textMuted }]}>
                               {m.shared ? 'Shared' : 'Share with Staff'}
                             </Text>
                           </TouchableOpacity>
@@ -1850,7 +1850,7 @@ export default function CorporateScreen() {
               <TouchableOpacity onPress={() => { setRejectTarget(null); setRejectReason(''); }} style={[sty.modalCancelBtn, { borderColor: colors.border }]}>
                 <Text style={[sty.modalCancelTxt, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleReject} style={[sty.modalConfirmBtn, { backgroundColor: '#791F1F' }]}>
+              <TouchableOpacity onPress={handleReject} style={[sty.modalConfirmBtn, { backgroundColor: '#365A47' }]}>
                 <Ionicons name="close-circle" size={14} color="#fff" />
                 <Text style={sty.modalConfirmTxt}>Reject</Text>
               </TouchableOpacity>
@@ -1998,9 +1998,9 @@ const sty = StyleSheet.create({
   approvalStatus:   { fontSize: 13, fontWeight: '700' },
   approvalSub:      { fontSize: 11, opacity: 0.8 },
   rejectionBox:     { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 8, borderWidth: 1 },
-  rejectionLabel:   { fontSize: 10, fontWeight: '700', color: '#791F1F', marginBottom: 2 },
-  rejectionText:    { fontSize: 12, lineHeight: 17, color: '#791F1F' },
-  rejectionBy:      { fontSize: 10, color: '#791F1F', marginTop: 4, fontStyle: 'italic' },
+  rejectionLabel:   { fontSize: 10, fontWeight: '700', color: '#365A47', marginBottom: 2 },
+  rejectionText:    { fontSize: 12, lineHeight: 17, color: '#365A47' },
+  rejectionBy:      { fontSize: 10, color: '#365A47', marginTop: 4, fontStyle: 'italic' },
   approvedBy:       { fontSize: 11, fontWeight: '600' },
   approvalActions:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },

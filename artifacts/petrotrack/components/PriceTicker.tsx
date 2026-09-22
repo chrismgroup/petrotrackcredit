@@ -5,10 +5,10 @@ import { useRouter } from 'expo-router';
 import { getPriceForProduct, useApp } from '@/context/AppContext';
 
 const PRODS = [
-  { key: 'PMS' as const, color: '#1a6e3c' },
-  { key: 'AGO' as const, color: '#185FA5' },
-  { key: 'DPK' as const, color: '#BA7517' },
-  { key: 'LPG' as const, color: '#633806' },
+  { key: 'PMS' as const, color: '#174D36' },
+  { key: 'AGO' as const, color: '#286247' },
+  { key: 'DPK' as const, color: '#71805B' },
+  { key: 'LPG' as const, color: '#49614F' },
 ];
 
 export function PriceTicker() {
@@ -56,8 +56,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a1a12', borderBottomWidth: 1, borderBottomColor: '#1a3a22', gap: 14,
   },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#4CAF50' },
-  liveText: { color: '#4CAF50', fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#1F6848' },
+  liveText: { color: '#1F6848', fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
   pricesRow: { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },
   priceItem: { alignItems: 'center', gap: 1 },
   prodKey: { fontSize: 8, fontWeight: '700', letterSpacing: 0.3 },

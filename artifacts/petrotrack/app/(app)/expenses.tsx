@@ -22,10 +22,10 @@ const EXPENSE_CATS = [
 ];
 
 const ST_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  pending:      { label: 'With Accountant', color: '#0C447C', bg: '#E6F1FB', icon: 'time-outline' },
-  acc_forwarded:{ label: 'With MD',         color: '#854F0B', bg: '#FAEEDA', icon: 'time-outline' },
-  approved:     { label: 'Approved',        color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle' },
-  rejected:     { label: 'With Manager',    color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle' },
+  pending:      { label: 'With Accountant', color: '#225B40', bg: '#EAF2ED', icon: 'time-outline' },
+  acc_forwarded:{ label: 'With MD',         color: '#526B3F', bg: '#EEF2E4', icon: 'time-outline' },
+  approved:     { label: 'Approved',        color: '#1F6848', bg: '#E5F1E9', icon: 'checkmark-circle' },
+  rejected:     { label: 'With Manager',    color: '#365A47', bg: '#E9F0EB', icon: 'close-circle' },
 };
 
 type FormState = { cat: string; desc: string; amt: string; ref: string; budgetId: number; dt: string };
@@ -39,31 +39,6 @@ function blankForm(): FormState {
   return { cat: EXPENSE_CATS[0], desc: '', amt: '', ref: '', budgetId: 0, dt: localDateKey() };
 }
 function expToForm(e: Expense): FormState { return { cat: e.cat, desc: e.desc, amt: String(e.amt), ref: e.ref ?? '', budgetId: e.budgetId, dt: e.dt.slice(0, 10) }; }
-type BranchExpenseTotal = { key: string; name: string; amount: number; count: number };
-
-function groupApprovedExpensesByBranch(
-  expenses: Expense[],
-  branchNames: Record<string, string>,
-  matchesPeriod: (businessDate: string) => boolean,
-): BranchExpenseTotal[] {
-  const totals = new Map<string, BranchExpenseTotal>();
-  expenses
-    .filter(expense => expense.status === 'approved' && matchesPeriod(expense.dt.slice(0, 10)))
-    .forEach(expense => {
-      const key = expense.branchId || expense.branchName || 'unassigned';
-      const current = totals.get(key) ?? {
-        key,
-        name: expense.branchName || branchNames[expense.branchId] || 'Branch not assigned',
-        amount: 0,
-        count: 0,
-      };
-      current.amount += safeNum(expense.amt);
-      current.count += 1;
-      totals.set(key, current);
-    });
-  return [...totals.values()].sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
-}
-
 type FormSheetProps = {
   f: FormState;
   setF: React.Dispatch<React.SetStateAction<FormState>>;
@@ -165,11 +140,6 @@ export default function ExpensesScreen() {
   const [budgetRefreshError, setBudgetRefreshError] = useState('');
   const [formBusy, setFormBusy]     = useState(false);
   const [repairingBranches, setRepairingBranches] = useState(false);
-  const [selectedReportKey, setSelectedReportKey] = useState<string | null>(null);
-
-  const [filterDate, setFilterDate] = useState('');
-  const [periodStart, setPeriodStart] = useState(() => `${localDateKey().slice(0, 4)}-01-01`);
-  const [periodEnd, setPeriodEnd] = useState(() => localDateKey());
   const [reviewingExpenseIds, setReviewingExpenseIds] = useState<Set<number>>(() => new Set());
   const reviewingExpenseIdsRef = useRef<Set<number>>(new Set());
 
@@ -180,61 +150,6 @@ export default function ExpensesScreen() {
 
   const pendingAmt  = expenses.filter(e => e.status === 'pending').reduce((s, e) => s + e.amt, 0);
   const approvedAmt = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + e.amt, 0);
-  const reportDate = filterDate || today;
-  const reportMonth = reportDate.slice(0, 7);
-  const reportYear = reportDate.slice(0, 4);
-  const canViewExpenseScorecards = ['mgr', 'acc', 'csm', 'mktg', 'md', 'ceo'].includes(role ?? '');
-  const reportExpenses = role === 'mgr'
-    ? expenses.filter(expense => !!branchId && expense.branchId === branchId)
-    : expenses;
-  const validCustomPeriod = !!periodStart && !!periodEnd && periodStart <= periodEnd;
-  const dailyMatches = (date: string) => date === reportDate;
-  const monthlyMatches = (date: string) => date.startsWith(reportMonth);
-  const ytdMatches = (date: string) => date.startsWith(reportYear) && date <= reportDate;
-  const periodMatches = (date: string) => validCustomPeriod && date >= periodStart && date <= periodEnd;
-  const expenseReports = [
-    {
-      key: 'daily',
-      title: 'Daily expenses',
-      period: reportDate,
-      icon: 'today-outline' as const,
-      matches: dailyMatches,
-      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, dailyMatches),
-    },
-    {
-      key: 'monthly',
-      title: 'Monthly expenses',
-      period: reportMonth,
-      icon: 'calendar-outline' as const,
-      matches: monthlyMatches,
-      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, monthlyMatches),
-    },
-    {
-      key: 'ytd',
-      title: 'Year-to-date expenses',
-      period: `${reportYear} YTD`,
-      icon: 'analytics-outline' as const,
-      matches: ytdMatches,
-      totals: groupApprovedExpensesByBranch(reportExpenses, branchNames, ytdMatches),
-    },
-    {
-      key: 'period',
-      title: 'Expenses for a period',
-      period: validCustomPeriod ? `${periodStart} – ${periodEnd}` : 'Choose a valid period',
-      icon: 'options-outline' as const,
-      matches: periodMatches,
-      totals: validCustomPeriod
-        ? groupApprovedExpensesByBranch(reportExpenses, branchNames, periodMatches)
-        : [],
-    },
-  ];
-  const selectedReport = expenseReports.find(report => report.key === selectedReportKey);
-  const selectedReportItems = selectedReport
-    ? reportExpenses
-        .filter(expense => expense.status === 'approved' && selectedReport.matches(expense.dt.slice(0, 10)))
-        .slice()
-        .sort((a, b) => b.dt.localeCompare(a.dt) || b.id - a.id)
-    : [];
 
   const pendingForAcc = expenses.filter(e => e.status === 'pending');
   const pendingForMd = expenses.filter(e => e.status === 'acc_forwarded');
@@ -253,10 +168,7 @@ export default function ExpensesScreen() {
     : isAcc
     ? (tab === 0 ? pendingForAcc : expenses)
     : (tab === 0 ? myExpenses : expenses);
-  const displayedExpenses = (filterDate
-    ? displayedExpensesBase.filter(expense => expense.dt.slice(0, 10) === filterDate)
-    : displayedExpensesBase
-  ).slice().sort((a, b) => {
+  const displayedExpenses = displayedExpensesBase.slice().sort((a, b) => {
     const businessDateOrder = b.dt.localeCompare(a.dt);
     if (businessDateOrder !== 0) return businessDateOrder;
     const submittedOrder = Date.parse(b.submittedAt ?? b.dt) - Date.parse(a.submittedAt ?? a.dt);
@@ -479,89 +391,6 @@ export default function ExpensesScreen() {
         </View>
       </View>
 
-      <AppliedDateField
-        value={filterDate}
-        onChange={setFilterDate}
-        label={canViewExpenseScorecards ? 'Reporting business date' : 'View expenses for a business date'}
-        accent={roleColor}
-        helper={canViewExpenseScorecards
-          ? 'Choose a business date to update the daily, monthly, and year-to-date scorecards and filter the expense list.'
-          : 'Filter expenses by the date they apply to.'}
-      />
-
-      {canViewExpenseScorecards ? (
-        <View style={styles.reportSection}>
-          <Text style={[styles.reportSectionTitle, { color: colors.text }]}>Approved expense scorecards</Text>
-          <Text style={[styles.reportScope, { color: colors.textMuted }]}>
-            {role === 'mgr' ? 'Your assigned branch only' : 'All branches'}
-          </Text>
-          <View style={styles.periodFields}>
-            <View style={{ flex: 1 }}>
-              <AppliedDateField
-                value={periodStart}
-                onChange={setPeriodStart}
-                label="Period start"
-                accent={roleColor}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppliedDateField
-                value={periodEnd}
-                onChange={setPeriodEnd}
-                label="Period end"
-                accent={roleColor}
-              />
-            </View>
-          </View>
-          {!validCustomPeriod ? (
-            <Text style={[styles.periodError, { color: colors.error }]}>Period start must be on or before period end.</Text>
-          ) : null}
-          <View style={styles.reportTiles}>
-            {expenseReports.map(report => {
-              const total = report.totals.reduce((sum, branch) => sum + branch.amount, 0);
-              return (
-                <TouchableOpacity
-                  key={report.key}
-                  accessibilityLabel={`${report.title} scorecard`}
-                  accessibilityRole="button"
-                  onPress={() => setSelectedReportKey(report.key)}
-                  disabled={report.key === 'period' && !validCustomPeriod}
-                  style={[styles.reportTile, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                >
-                  <View style={styles.reportTileHeader}>
-                    <View style={[styles.reportIcon, { backgroundColor: colors.infoBg }]}>
-                      <Ionicons name={report.icon} size={17} color={colors.info} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.reportTileTitle, { color: colors.text }]}>{report.title}</Text>
-                      <Text style={[styles.reportPeriod, { color: colors.textMuted }]}>{report.period}</Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.reportTotal, { color: roleColor }]}>{fmt(total)}</Text>
-                  <Text style={[styles.reportTotalLabel, { color: colors.textSubtle }]}>Approved total</Text>
-                  <View style={[styles.reportDivider, { backgroundColor: colors.border }]} />
-                  {report.totals.length > 0 ? report.totals.map(branch => (
-                    <View key={branch.key} style={styles.branchReportRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.branchReportName, { color: colors.text }]} numberOfLines={1}>{branch.name}</Text>
-                        <Text style={[styles.branchReportCount, { color: colors.textSubtle }]}>{branch.count} item{branch.count === 1 ? '' : 's'}</Text>
-                      </View>
-                      <Text style={[styles.branchReportAmount, { color: colors.text }]}>{fmt(branch.amount)}</Text>
-                    </View>
-                  )) : (
-                    <Text style={[styles.reportEmpty, { color: colors.textMuted }]}>No approved expenses for this period.</Text>
-                  )}
-                  <View style={styles.reportDetailsLink}>
-                    <Text style={[styles.reportDetailsText, { color: roleColor }]}>View expense items</Text>
-                    <Ionicons name="chevron-forward" size={14} color={roleColor} />
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
-
       {role === 'admin' ? (
         <TouchableOpacity
           accessibilityLabel="Repair legacy expense branches"
@@ -586,23 +415,22 @@ export default function ExpensesScreen() {
       ) : null}
 
       {/* Pending badge banner for acc/md — tapping jumps straight to the
-          pending-review tab (and clears any date filter) so a report never
-          stays buried behind whatever tab or filter was previously active. */}
+          pending-review tab so a report never stays buried. */}
       {pendingCount > 0 ? (
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel={`View ${pendingCount} expense${pendingCount > 1 ? 's' : ''} ${isAcc ? 'awaiting your review' : 'pending approval'}`}
           activeOpacity={0.75}
-          onPress={() => { setTab(0); setFilterDate(''); }}
+          onPress={() => setTab(0)}
           style={[styles.pendingBanner, {
-           backgroundColor: isAcc ? '#E6F1FB' : '#F1F5F9',
-           borderColor: isAcc ? '#0C447C' : '#64748B',
+           backgroundColor: isAcc ? '#EAF2ED' : '#F1F5F9',
+           borderColor: isAcc ? '#225B40' : '#587063',
         }]}>
-          <Ionicons name="time" size={15} color={isAcc ? '#0C447C' : '#64748B'} />
-          <Text style={[styles.pendingBannerText, { color: isAcc ? '#0C447C' : '#64748B', flex: 1 }]}>
+          <Ionicons name="time" size={15} color={isAcc ? '#225B40' : '#587063'} />
+          <Text style={[styles.pendingBannerText, { color: isAcc ? '#225B40' : '#587063', flex: 1 }]}>
             {pendingCount}{' expense'}{pendingCount > 1 ? 's' : ''}{isAcc ? ' awaiting your review' : ' pending approval'}
           </Text>
-          <Ionicons name="chevron-forward" size={16} color={isAcc ? '#0C447C' : '#64748B'} />
+          <Ionicons name="chevron-forward" size={16} color={isAcc ? '#225B40' : '#587063'} />
         </TouchableOpacity>
       ) : null}
 
@@ -623,7 +451,7 @@ export default function ExpensesScreen() {
           return (
             <View key={exp.id} style={[styles.expCard, {
               backgroundColor: colors.surface,
-              borderColor: (exp.status === 'pending' || exp.status === 'acc_forwarded') && isAcc ? '#0C447C'
+              borderColor: (exp.status === 'pending' || exp.status === 'acc_forwarded') && isAcc ? '#225B40'
                 : colors.border,
               borderWidth: (exp.status === 'pending' || exp.status === 'acc_forwarded') && isAcc ? 1.5 : 1,
             }]}>
@@ -644,9 +472,9 @@ export default function ExpensesScreen() {
               </View>
 
               {exp.approvedBy ? (
-                <View style={[styles.approvedRow, { backgroundColor: '#EAF3DE', borderColor: '#27500A20' }]}>
-                  <Ionicons name="checkmark-circle" size={12} color="#27500A" />
-                  <Text style={[styles.approvedText, { color: '#27500A' }]}>
+                <View style={[styles.approvedRow, { backgroundColor: '#E5F1E9', borderColor: '#1F684820' }]}>
+                  <Ionicons name="checkmark-circle" size={12} color="#1F6848" />
+                  <Text style={[styles.approvedText, { color: '#1F6848' }]}>
                     {'Approved by '}{exp.approvedBy}
                     {exp.approvedDt ? ' · ' + fmtDateTime(exp.approvedDt) : ''}
                   </Text>
@@ -656,13 +484,13 @@ export default function ExpensesScreen() {
               {/* Mgr: edit + delete own pending/rejected */}
               {mgrCanEdit(exp) ? (
                 <View style={styles.actionRow}>
-                  <TouchableOpacity onPress={() => openEdit(exp)} style={[styles.actionBtn, { borderColor: '#185FA5' }]}>
-                    <Ionicons name="create-outline" size={13} color="#185FA5" />
-                    <Text style={[styles.actionBtnText, { color: '#185FA5' }]}>Edit</Text>
+                  <TouchableOpacity onPress={() => openEdit(exp)} style={[styles.actionBtn, { borderColor: '#286247' }]}>
+                    <Ionicons name="create-outline" size={13} color="#286247" />
+                    <Text style={[styles.actionBtnText, { color: '#286247' }]}>Edit</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(exp)} style={[styles.actionBtn, { borderColor: '#791F1F' }]}>
-                    <Ionicons name="trash-outline" size={13} color="#791F1F" />
-                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Delete</Text>
+                  <TouchableOpacity onPress={() => handleDelete(exp)} style={[styles.actionBtn, { borderColor: '#365A47' }]}>
+                    <Ionicons name="trash-outline" size={13} color="#365A47" />
+                    <Text style={[styles.actionBtnText, { color: '#365A47' }]}>Delete</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
@@ -670,14 +498,14 @@ export default function ExpensesScreen() {
                {/* Accountant: edit/delete before forwarding */}
               {accCanEdit(exp) ? (
                 <View style={styles.actionRow}>
-                  <TouchableOpacity onPress={() => openEdit(exp)} style={[styles.actionBtn, { borderColor: '#0C447C' }]}>
-                    <Ionicons name="create-outline" size={13} color="#0C447C" />
-                    <Text style={[styles.actionBtnText, { color: '#0C447C' }]}>Edit</Text>
+                  <TouchableOpacity onPress={() => openEdit(exp)} style={[styles.actionBtn, { borderColor: '#225B40' }]}>
+                    <Ionicons name="create-outline" size={13} color="#225B40" />
+                    <Text style={[styles.actionBtnText, { color: '#225B40' }]}>Edit</Text>
                   </TouchableOpacity>
                   {accCanDelete(exp) ? (
-                    <TouchableOpacity onPress={() => handleDelete(exp)} style={[styles.actionBtn, { borderColor: '#791F1F' }]}>
-                      <Ionicons name="trash-outline" size={13} color="#791F1F" />
-                      <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Delete</Text>
+                    <TouchableOpacity onPress={() => handleDelete(exp)} style={[styles.actionBtn, { borderColor: '#365A47' }]}>
+                      <Ionicons name="trash-outline" size={13} color="#365A47" />
+                      <Text style={[styles.actionBtnText, { color: '#365A47' }]}>Delete</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -689,9 +517,9 @@ export default function ExpensesScreen() {
                   <TouchableOpacity
                     disabled={reviewingExpenseIds.has(exp.id)}
                     onPress={() => handleExpenseDecision(exp.id, 'reject')}
-                    style={[styles.actionBtn, { borderColor: '#791F1F', flex: 1, opacity: reviewingExpenseIds.has(exp.id) ? 0.5 : 1 }]}>
-                    <Ionicons name="close" size={13} color="#791F1F" />
-                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Reject</Text>
+                    style={[styles.actionBtn, { borderColor: '#365A47', flex: 1, opacity: reviewingExpenseIds.has(exp.id) ? 0.5 : 1 }]}>
+                    <Ionicons name="close" size={13} color="#365A47" />
+                    <Text style={[styles.actionBtnText, { color: '#365A47' }]}>Reject</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     disabled={reviewingExpenseIds.has(exp.id)}
@@ -709,9 +537,9 @@ export default function ExpensesScreen() {
                   <TouchableOpacity
                     disabled={reviewingExpenseIds.has(exp.id)}
                     onPress={() => handleExpenseDecision(exp.id, 'reject')}
-                    style={[styles.actionBtn, { borderColor: '#791F1F', flex: 1, opacity: reviewingExpenseIds.has(exp.id) ? 0.5 : 1 }]}>
-                    <Ionicons name="close" size={13} color="#791F1F" />
-                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Reject</Text>
+                    style={[styles.actionBtn, { borderColor: '#365A47', flex: 1, opacity: reviewingExpenseIds.has(exp.id) ? 0.5 : 1 }]}>
+                    <Ionicons name="close" size={13} color="#365A47" />
+                    <Text style={[styles.actionBtnText, { color: '#365A47' }]}>Reject</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     disabled={reviewingExpenseIds.has(exp.id)}
@@ -725,27 +553,27 @@ export default function ExpensesScreen() {
 
               {/* Status lock indicators */}
               {exp.status === 'pending' && !isAcc ? (
-                <View style={[styles.lockRow, { borderColor: '#0C447C' }]}>
-                  <Ionicons name="lock-closed-outline" size={11} color="#0C447C" />
-                  <Text style={[styles.lockText, { color: '#0C447C' }]}>Under accountant review</Text>
+                <View style={[styles.lockRow, { borderColor: '#225B40' }]}>
+                  <Ionicons name="lock-closed-outline" size={11} color="#225B40" />
+                  <Text style={[styles.lockText, { color: '#225B40' }]}>Under accountant review</Text>
                 </View>
               ) : null}
                {exp.status === 'acc_forwarded' && !isMD ? (
-                <View style={[styles.lockRow, { borderColor: '#BA7517' }]}>
-                  <Ionicons name="lock-closed-outline" size={11} color="#BA7517" />
-                    <Text style={[styles.lockText, { color: '#854F0B' }]}>With MD for final approval</Text>
+                <View style={[styles.lockRow, { borderColor: '#71805B' }]}>
+                  <Ionicons name="lock-closed-outline" size={11} color="#71805B" />
+                    <Text style={[styles.lockText, { color: '#526B3F' }]}>With MD for final approval</Text>
                 </View>
               ) : null}
                {exp.status === 'rejected' ? (
-                 <View style={[styles.lockRow, { borderColor: '#791F1F' }]}>
-                   <Ionicons name="arrow-undo-outline" size={11} color="#791F1F" />
-                   <Text style={[styles.lockText, { color: '#791F1F' }]}>Returned to manager for correction</Text>
+                 <View style={[styles.lockRow, { borderColor: '#365A47' }]}>
+                   <Ionicons name="arrow-undo-outline" size={11} color="#365A47" />
+                   <Text style={[styles.lockText, { color: '#365A47' }]}>Returned to manager for correction</Text>
                  </View>
                ) : null}
               {locked ? (
-                <View style={[styles.lockRow, { borderColor: '#27500A' }]}>
-                  <Ionicons name="lock-closed" size={11} color="#27500A" />
-                  <Text style={[styles.lockText, { color: '#27500A' }]}>Approved — record locked</Text>
+                <View style={[styles.lockRow, { borderColor: '#1F6848' }]}>
+                  <Ionicons name="lock-closed" size={11} color="#1F6848" />
+                  <Text style={[styles.lockText, { color: '#1F6848' }]}>Approved — record locked</Text>
                 </View>
               ) : null}
             </View>
@@ -754,59 +582,6 @@ export default function ExpensesScreen() {
         <View style={{ height: 20 }} />
       </View>
       </ScrollView>
-
-      <ModalSheet visible={!!selectedReport} onClose={() => setSelectedReportKey(null)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
-          <View style={styles.reportDetailHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 2 }]}>
-                {selectedReport?.title ?? 'Expense details'}
-              </Text>
-              <Text style={[styles.reportPeriod, { color: colors.textMuted }]}>{selectedReport?.period}</Text>
-            </View>
-            <TouchableOpacity
-              accessibilityLabel="Close expense scorecard details"
-              onPress={() => setSelectedReportKey(null)}
-              style={[styles.detailCloseBtn, { borderColor: colors.border }]}
-            >
-              <Ionicons name="close" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.detailSummary, { backgroundColor: colors.infoBg, borderColor: colors.border }]}>
-            <Text style={[styles.reportTotalLabel, { color: colors.textMuted }]}>Approved expenditure</Text>
-            <Text style={[styles.detailSummaryTotal, { color: roleColor }]}>
-              {fmt(selectedReportItems.reduce((sum, expense) => sum + expense.amt, 0))}
-            </Text>
-            <Text style={[styles.reportTotalLabel, { color: colors.textSubtle }]}>
-              {selectedReportItems.length} expense item{selectedReportItems.length === 1 ? '' : 's'}
-            </Text>
-          </View>
-          {selectedReportItems.length > 0 ? selectedReportItems.map(expense => (
-            <View key={expense.id} style={[styles.detailExpenseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={styles.detailExpenseHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.expCat, { color: colors.text }]}>{expense.cat}</Text>
-                  <Text style={[styles.expDesc, { color: colors.textMuted }]}>{expense.desc}</Text>
-                </View>
-                <Text style={[styles.detailExpenseAmount, { color: roleColor }]}>{fmt(expense.amt)}</Text>
-              </View>
-              <Text style={[styles.expMeta, { color: colors.textSubtle }]}>
-                {expense.branchName || branchNames[expense.branchId] || 'Branch not assigned'}
-                {' · '}{expense.dt.slice(0, 10)}{' · '}{expense.byName}
-              </Text>
-              {expense.ref ? (
-                <Text style={[styles.expMeta, { color: colors.textSubtle }]}>{'Ref: '}{expense.ref}</Text>
-              ) : null}
-            </View>
-          )) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="receipt-outline" size={36} color={colors.border} />
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No approved expense items in this scorecard.</Text>
-            </View>
-          )}
-          <View style={{ height: 24 }} />
-        </ScrollView>
-      </ModalSheet>
 
       {/* Add / Edit Modal */}
       <ModalSheet visible={showForm} onClose={() => { setShowForm(false); setFormError(''); }}>
@@ -923,9 +698,9 @@ const styles = StyleSheet.create({
   actionRow:    { flexDirection: 'row', gap: 8 },
   actionBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1.5 },
   actionBtnText:{ fontSize: 13, fontWeight: '600' },
-  forwardBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: '#0C447C' },
+  forwardBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: '#225B40' },
   forwardBtnText:{ color: '#fff', fontSize: 13, fontWeight: '700' },
-  approveBtn:   { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: '#27500A' },
+  approveBtn:   { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: '#1F6848' },
   approveBtnText:{ color: '#fff', fontSize: 13, fontWeight: '700' },
   lockRow:      { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   lockText:     { fontSize: 11, fontWeight: '600' },

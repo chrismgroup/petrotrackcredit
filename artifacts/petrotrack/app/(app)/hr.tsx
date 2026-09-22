@@ -19,49 +19,49 @@ import { storageApi } from '@/lib/api';
 import { safeStr } from '@/lib/report-helpers';
 
 const REQUIRED_DOCS: { type: HRDocType; label: string; icon: string; color: string }[] = [
-  { type: 'biodata',        label: 'Bio-Data Form',         icon: 'person',            color: '#27AE60' },
-  { type: 'contract',       label: 'Appointment Letter',    icon: 'document-text',     color: '#2980B9' },
-  { type: 'guarantor',      label: 'Guarantor Form',        icon: 'people',            color: '#E67E22' },
-  { type: 'nin',            label: 'NIN / National ID',     icon: 'card',              color: '#8E44AD' },
-  { type: 'passport_photo', label: 'Passport Photograph',  icon: 'image',             color: '#D85A30' },
-  { type: 'certificate',    label: 'Academic Certificate', icon: 'school',            color: '#0F6E56' },
-  { type: 'nysc',           label: 'NYSC Certificate',     icon: 'ribbon',            color: '#185FA5' },
-  { type: 'medical',        label: 'Medical Certificate',  icon: 'medkit',            color: '#E74C3C' },
-  { type: 'reference',      label: 'Reference Letter',     icon: 'mail',              color: '#4527a0' },
-  { type: 'bank_details',   label: 'Bank Details / Cheque',icon: 'wallet',            color: '#BA7517' },
-  { type: 'tin',            label: 'Tax ID Number (TIN)',   icon: 'receipt',           color: '#633806' },
-  { type: 'pension',        label: 'Pension Form (RSA)',    icon: 'shield-checkmark',  color: '#1a6e3c' },
+  { type: 'biodata',        label: 'Bio-Data Form',         icon: 'person',            color: '#1F6848' },
+  { type: 'contract',       label: 'Appointment Letter',    icon: 'document-text',     color: '#286247' },
+  { type: 'guarantor',      label: 'Guarantor Form',        icon: 'people',            color: '#71805B' },
+  { type: 'nin',            label: 'NIN / National ID',     icon: 'card',              color: '#315F49' },
+  { type: 'passport_photo', label: 'Passport Photograph',  icon: 'image',             color: '#52705D' },
+  { type: 'certificate',    label: 'Academic Certificate', icon: 'school',            color: '#1F6848' },
+  { type: 'nysc',           label: 'NYSC Certificate',     icon: 'ribbon',            color: '#286247' },
+  { type: 'medical',        label: 'Medical Certificate',  icon: 'medkit',            color: '#365A47' },
+  { type: 'reference',      label: 'Reference Letter',     icon: 'mail',              color: '#315F49' },
+  { type: 'bank_details',   label: 'Bank Details / Cheque',icon: 'wallet',            color: '#71805B' },
+  { type: 'tin',            label: 'Tax ID Number (TIN)',   icon: 'receipt',           color: '#49614F' },
+  { type: 'pension',        label: 'Pension Form (RSA)',    icon: 'shield-checkmark',  color: '#174D36' },
 ];
 
 const DOC_STATUS_META: Record<HRDocStatus, { label: string; color: string; bg: string; icon: string }> = {
-  approved:  { label: 'Approved',  color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle'  },
-  submitted: { label: 'Uploaded',  color: '#185FA5', bg: '#DCF0FF', icon: 'cloud-done'        },
-  pending:   { label: 'Missing',   color: '#BA7517', bg: '#FAEEDA', icon: 'alert-circle'      },
-  'n/a':     { label: 'N/A',       color: '#7F8C8D', bg: '#F4F4F2', icon: 'remove-circle'     },
+  approved:  { label: 'Approved',  color: '#1F6848', bg: '#E5F1E9', icon: 'checkmark-circle'  },
+  submitted: { label: 'Uploaded',  color: '#286247', bg: '#EAF2ED', icon: 'cloud-done'        },
+  pending:   { label: 'Missing',   color: '#71805B', bg: '#EEF2E4', icon: 'alert-circle'      },
+  'n/a':     { label: 'N/A',       color: '#7F8C8D', bg: '#F6F8F3', icon: 'remove-circle'     },
 };
 
 const ONBOARD_META: Record<OnboardingStatus, { label: string; color: string; bg: string; step: number }> = {
-  draft:        { label: 'Draft',            color: '#7F8C8D', bg: '#F4F4F2', step: 0 },
-  forwarded:    { label: 'Pending Admin',    color: '#BA7517', bg: '#FAEEDA', step: 1 },
-  md_approved:  { label: 'Admin Review',     color: '#185FA5', bg: '#DCF0FF', step: 2 },
-  ceo_approved: { label: 'Admin Approved',   color: '#27500A', bg: '#EAF3DE', step: 3 },
+  draft:        { label: 'Draft',            color: '#7F8C8D', bg: '#F6F8F3', step: 0 },
+  forwarded:    { label: 'Pending Admin',    color: '#71805B', bg: '#EEF2E4', step: 1 },
+  md_approved:  { label: 'Admin Review',     color: '#286247', bg: '#EAF2ED', step: 2 },
+  ceo_approved: { label: 'Admin Approved',   color: '#1F6848', bg: '#E5F1E9', step: 3 },
 };
 
 const DEPARTMENTS = ['Operations', 'Finance', 'Marketing', 'Administration', 'Management', 'IT', 'Legal', 'HR'];
 const DEPT_COLORS: Record<string, string> = {
-  Operations: '#27ae60', Finance: '#185FA5', Marketing: '#D85A30',
-  Administration: '#0F6E56', Management: '#4527a0', IT: '#2980B9', Legal: '#8E44AD', HR: '#E67E22',
+  Operations: '#27ae60', Finance: '#286247', Marketing: '#52705D',
+  Administration: '#1F6848', Management: '#315F49', IT: '#286247', Legal: '#315F49', HR: '#71805B',
 };
 const HANDBOOK_CATS = ['Handbook', 'Policy', 'Procedure', 'Circular', 'Notice', 'Other'];
 const REC_META = {
-  suspend:    { label: 'Suspension',           color: '#BA7517', bg: '#FAEEDA', icon: 'pause-circle'  },
-  deactivate: { label: 'Account Deactivation', color: '#E74C3C', bg: '#FCEBEB', icon: 'close-circle'  },
-  delete:     { label: 'Account Deletion',     color: '#7B1818', bg: '#FCEBEB', icon: 'trash'         },
+  suspend:    { label: 'Suspension',           color: '#71805B', bg: '#EEF2E4', icon: 'pause-circle'  },
+  deactivate: { label: 'Account Deactivation', color: '#365A47', bg: '#E9F0EB', icon: 'close-circle'  },
+  delete:     { label: 'Account Deletion',     color: '#365A47', bg: '#E9F0EB', icon: 'trash'         },
 };
 const REC_STATUS_META = {
-  pending:  { label: 'Pending Review', color: '#BA7517', bg: '#FAEEDA' },
-  approved: { label: 'Approved',       color: '#27500A', bg: '#EAF3DE' },
-  rejected: { label: 'Rejected',       color: '#7B1818', bg: '#FCEBEB' },
+  pending:  { label: 'Pending Review', color: '#71805B', bg: '#EEF2E4' },
+  approved: { label: 'Approved',       color: '#1F6848', bg: '#E5F1E9' },
+  rejected: { label: 'Rejected',       color: '#365A47', bg: '#E9F0EB' },
 };
 
 const ROLE_OPTS: Role[] = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'];
@@ -614,17 +614,17 @@ export default function HRScreen() {
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
             <TouchableOpacity
               onPress={() => { setLetterEmpId(emp.id); setLetterModal('appointment'); }}
-              style={[styles.letterBtn, { backgroundColor: '#2980B9' + '18', borderColor: '#2980B9' + '44' }]}
+              style={[styles.letterBtn, { backgroundColor: '#286247' + '18', borderColor: '#286247' + '44' }]}
             >
-              <Ionicons name="document-text-outline" size={13} color="#2980B9" />
-              <Text style={[styles.letterBtnText, { color: '#2980B9' }]}>Appointment Letter</Text>
+              <Ionicons name="document-text-outline" size={13} color="#286247" />
+              <Text style={[styles.letterBtnText, { color: '#286247' }]}>Appointment Letter</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => { setLetterEmpId(emp.id); setLetterModal('promotion'); }}
-              style={[styles.letterBtn, { backgroundColor: '#8E44AD' + '18', borderColor: '#8E44AD' + '44' }]}
+              style={[styles.letterBtn, { backgroundColor: '#315F49' + '18', borderColor: '#315F49' + '44' }]}
             >
-              <Ionicons name="ribbon-outline" size={13} color="#8E44AD" />
-              <Text style={[styles.letterBtnText, { color: '#8E44AD' }]}>Promotion Letter</Text>
+              <Ionicons name="ribbon-outline" size={13} color="#315F49" />
+              <Text style={[styles.letterBtnText, { color: '#315F49' }]}>Promotion Letter</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -633,7 +633,7 @@ export default function HRScreen() {
         ) : (emp.letters ?? []).map(l => (
           <TouchableOpacity key={l.id} onPress={() => setViewLetter(l)}
             style={[styles.letterCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name={l.type === 'promotion' ? 'ribbon' : 'document-text'} size={16} color={l.type === 'promotion' ? '#8E44AD' : '#2980B9'} />
+            <Ionicons name={l.type === 'promotion' ? 'ribbon' : 'document-text'} size={16} color={l.type === 'promotion' ? '#315F49' : '#286247'} />
             <View style={{ flex: 1 }}>
               <Text style={[styles.letterCardTitle, { color: colors.text }]} numberOfLines={1}>{l.title}</Text>
               <Text style={[styles.letterCardMeta, { color: colors.textMuted }]}>By {l.generatedBy} · {fmtDateTime(l.generatedAt)}</Text>
@@ -668,7 +668,7 @@ export default function HRScreen() {
           )}
           {isAdmin && (ob.status === 'forwarded' || ob.status === 'md_approved') && (
             <TouchableOpacity onPress={() => handleApprove(emp.id, 'ceo')}
-              style={[styles.forwardBtn, { backgroundColor: '#1a6e3c' }]}>
+              style={[styles.forwardBtn, { backgroundColor: '#174D36' }]}>
               <Ionicons name="checkmark-circle" size={12} color="#fff" />
               <Text style={styles.forwardBtnText}>Approve Onboarding</Text>
             </TouchableOpacity>
@@ -678,14 +678,14 @@ export default function HRScreen() {
           {steps.map((s, i) => (
             <React.Fragment key={s.label}>
               <View style={{ alignItems: 'center', flex: 1 }}>
-                <View style={[styles.stepDot, { backgroundColor: s.done ? '#27500A' : colors.border, borderColor: s.done ? '#27500A' : colors.border }]}>
+                <View style={[styles.stepDot, { backgroundColor: s.done ? '#1F6848' : colors.border, borderColor: s.done ? '#1F6848' : colors.border }]}>
                   <Ionicons name={s.done ? 'checkmark' : 'ellipse-outline'} size={10} color={s.done ? '#fff' : colors.textSubtle} />
                 </View>
-                <Text style={[styles.stepLabel, { color: s.done ? '#27500A' : colors.textSubtle }]}>{s.label}</Text>
+                <Text style={[styles.stepLabel, { color: s.done ? '#1F6848' : colors.textSubtle }]}>{s.label}</Text>
                 {s.done && s.by && <Text style={[styles.stepBy, { color: colors.textSubtle }]}>{s.by}</Text>}
               </View>
               {i < steps.length - 1 && (
-                <View style={[styles.stepLine, { backgroundColor: steps[i + 1].done ? '#27500A' : colors.border }]} />
+                <View style={[styles.stepLine, { backgroundColor: steps[i + 1].done ? '#1F6848' : colors.border }]} />
               )}
             </React.Fragment>
           ))}
@@ -695,7 +695,7 @@ export default function HRScreen() {
   }
 
   function renderEnrollmentCard(acc: UserAccount) {
-    const deptColor = DEPT_COLORS[acc.dept ?? ''] ?? '#4527a0';
+    const deptColor = DEPT_COLORS[acc.dept ?? ''] ?? '#315F49';
     const salaryMeta = (acc.employmentDocs ?? []).find((d: string) => d.startsWith('SALARY:'));
     const gradeMeta  = (acc.employmentDocs ?? []).find((d: string) => d.startsWith('GRADE:'));
     const fileDocs   = (acc.employmentDocs ?? []).filter((d: string) =>
@@ -714,8 +714,8 @@ export default function HRScreen() {
             <Text style={[styles.empSub, { color: colors.textMuted }]}>{acc.jobTitle ?? '—'} · {acc.dept ?? '—'}</Text>
             <Text style={[styles.empSub, { color: colors.textSubtle }]}>{acc.empId}</Text>
           </View>
-          <View style={[styles.pill, { backgroundColor: '#FAEEDA' }]}>
-            <Text style={[styles.pillText, { color: '#BA7517' }]}>Pending Admin</Text>
+          <View style={[styles.pill, { backgroundColor: '#EEF2E4' }]}>
+            <Text style={[styles.pillText, { color: '#71805B' }]}>Pending Admin</Text>
           </View>
         </View>
 
@@ -755,13 +755,13 @@ export default function HRScreen() {
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingVertical: 4 }}>
             <View style={{
               width: 22, height: 22, borderRadius: 6, borderWidth: 2,
-              borderColor: selectedIds.has(acc.id) ? '#E74C3C' : colors.border,
-              backgroundColor: selectedIds.has(acc.id) ? '#E74C3C' : colors.background,
+              borderColor: selectedIds.has(acc.id) ? '#365A47' : colors.border,
+              backgroundColor: selectedIds.has(acc.id) ? '#365A47' : colors.background,
               alignItems: 'center', justifyContent: 'center',
             }}>
               {selectedIds.has(acc.id) && <Ionicons name="checkmark" size={14} color="#fff" />}
             </View>
-            <Text style={{ fontSize: 13, color: selectedIds.has(acc.id) ? '#E74C3C' : colors.textMuted, fontWeight: '500' }}>
+            <Text style={{ fontSize: 13, color: selectedIds.has(acc.id) ? '#365A47' : colors.textMuted, fontWeight: '500' }}>
               {selectedIds.has(acc.id) ? 'Selected for deletion' : 'Tap to select'}
             </Text>
           </TouchableOpacity>
@@ -773,17 +773,17 @@ export default function HRScreen() {
               <Text style={[styles.enrollActionText, { color: colors.text }]}>Edit</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => handleRejectEnrollment(acc)}
-              style={[styles.enrollActionBtn, { backgroundColor: '#FAEEDA', borderColor: '#BA7517', borderWidth: 1 }]}>
-              <Ionicons name="close-circle-outline" size={14} color="#BA7517" />
-              <Text style={[styles.enrollActionText, { color: '#BA7517' }]}>Reject</Text>
+              style={[styles.enrollActionBtn, { backgroundColor: '#EEF2E4', borderColor: '#71805B', borderWidth: 1 }]}>
+              <Ionicons name="close-circle-outline" size={14} color="#71805B" />
+              <Text style={[styles.enrollActionText, { color: '#71805B' }]}>Reject</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => handleDeleteEnrollment(acc)}
-              style={[styles.enrollActionBtn, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C', borderWidth: 1 }]}>
-              <Ionicons name="trash-outline" size={14} color="#E74C3C" />
-              <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Delete</Text>
+              style={[styles.enrollActionBtn, { backgroundColor: '#E9F0EB', borderColor: '#365A47', borderWidth: 1 }]}>
+              <Ionicons name="trash-outline" size={14} color="#365A47" />
+              <Text style={[styles.enrollActionText, { color: '#365A47' }]}>Delete</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => openApproveModal(acc)}
-              style={[styles.enrollApproveBtn, { backgroundColor: '#1a6e3c' }]}>
+              style={[styles.enrollApproveBtn, { backgroundColor: '#174D36' }]}>
               <Ionicons name="checkmark-circle" size={14} color="#fff" />
               <Text style={styles.enrollApproveBtnText}>Activate Account</Text>
             </TouchableOpacity>
@@ -794,29 +794,29 @@ export default function HRScreen() {
   }
 
   function renderRejectedAdminCard(acc: UserAccount) {
-    const deptColor = DEPT_COLORS[acc.dept ?? ''] ?? '#7B1818';
+    const deptColor = DEPT_COLORS[acc.dept ?? ''] ?? '#365A47';
     return (
-      <View key={acc.id} style={[styles.rejectedCard, { backgroundColor: colors.surface, borderColor: '#E74C3C44' }]}>
+      <View key={acc.id} style={[styles.rejectedCard, { backgroundColor: colors.surface, borderColor: '#365A4744' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <View style={[styles.miniAvatar, { backgroundColor: '#FCEBEB' }]}>
-            <Text style={[styles.miniAvatarText, { color: '#E74C3C' }]}>{initials(acc.empName)}</Text>
+          <View style={[styles.miniAvatar, { backgroundColor: '#E9F0EB' }]}>
+            <Text style={[styles.miniAvatarText, { color: '#365A47' }]}>{initials(acc.empName)}</Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{acc.empName}</Text>
             <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>{acc.jobTitle ?? '—'} · {acc.dept ?? '—'}</Text>
             <Text style={{ fontSize: 11, color: colors.textSubtle, marginTop: 1 }}>{acc.empId ?? 'No company ID'}</Text>
           </View>
-          <View style={[styles.pill, { backgroundColor: '#FCEBEB' }]}>
-            <Text style={[styles.pillText, { color: '#E74C3C' }]}>Rejected</Text>
+          <View style={[styles.pill, { backgroundColor: '#E9F0EB' }]}>
+            <Text style={[styles.pillText, { color: '#365A47' }]}>Rejected</Text>
           </View>
         </View>
 
         {acc.rejectionReason ? (
-          <View style={[styles.rejectionReasonBox, { backgroundColor: '#FFF0F0', borderColor: '#E74C3C44' }]}>
-            <Ionicons name="alert-circle" size={14} color="#E74C3C" style={{ marginTop: 1 }} />
+          <View style={[styles.rejectionReasonBox, { backgroundColor: '#F1F5EF', borderColor: '#365A4744' }]}>
+            <Ionicons name="alert-circle" size={14} color="#365A47" style={{ marginTop: 1 }} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#7B1818', marginBottom: 2 }}>Reason for rejection</Text>
-              <Text style={{ fontSize: 12, color: '#7B1818', lineHeight: 17 }}>{acc.rejectionReason}</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#365A47', marginBottom: 2 }}>Reason for rejection</Text>
+              <Text style={{ fontSize: 12, color: '#365A47', lineHeight: 17 }}>{acc.rejectionReason}</Text>
             </View>
           </View>
         ) : null}
@@ -832,9 +832,9 @@ export default function HRScreen() {
             <Text style={[styles.enrollActionText, { color: colors.text }]}>Edit</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => handleDeleteEnrollment(acc)}
-            style={[styles.enrollActionBtn, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C', borderWidth: 1, flex: 1, justifyContent: 'center' }]}>
-            <Ionicons name="trash-outline" size={14} color="#E74C3C" />
-            <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Delete</Text>
+            style={[styles.enrollActionBtn, { backgroundColor: '#E9F0EB', borderColor: '#365A47', borderWidth: 1, flex: 1, justifyContent: 'center' }]}>
+            <Ionicons name="trash-outline" size={14} color="#365A47" />
+            <Text style={[styles.enrollActionText, { color: '#365A47' }]}>Delete</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -844,9 +844,9 @@ export default function HRScreen() {
   function renderEmployeeCard(emp: HREmployee) {
     const deptColor  = DEPT_COLORS[emp.dept] ?? roleColor;
     const isExpanded = expandedId === emp.id;
-    const stCol = emp.status === 'active' ? { col: '#27500A', bg: '#EAF3DE' }
-      : emp.status === 'suspended' ? { col: '#BA7517', bg: '#FAEEDA' }
-      : { col: '#7B1818', bg: '#FCEBEB' };
+    const stCol = emp.status === 'active' ? { col: '#1F6848', bg: '#E5F1E9' }
+      : emp.status === 'suspended' ? { col: '#71805B', bg: '#EEF2E4' }
+      : { col: '#365A47', bg: '#E9F0EB' };
     const { submitted, total, pct } = docProgress(emp);
     const ob = emp.onboarding ?? { status: 'draft' };
     const obMeta = ONBOARD_META[ob.status];
@@ -876,10 +876,10 @@ export default function HRScreen() {
             {isAdmin && emp.status !== 'active' && (
               <TouchableOpacity
                 onPress={event => { event.stopPropagation(); handleDeleteInactiveEmployee(emp); }}
-                style={[styles.iconBtn, { borderColor: '#E74C3C55', backgroundColor: '#FCEBEB' }]}
+                style={[styles.iconBtn, { borderColor: '#365A4755', backgroundColor: '#E9F0EB' }]}
                 accessibilityLabel={`Delete ${emp.name}`}
               >
-                <Ionicons name="trash-outline" size={14} color="#E74C3C" />
+                <Ionicons name="trash-outline" size={14} color="#365A47" />
               </TouchableOpacity>
             )}
             <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
@@ -893,7 +893,7 @@ export default function HRScreen() {
               <Text style={[styles.progLabel, { color: colors.textMuted }]}>{submitted}/{total}</Text>
             </View>
             <View style={[styles.progBar, { backgroundColor: colors.border }]}>
-              <View style={[styles.progFill, { width: `${pct * 100}%` as any, backgroundColor: pct === 1 ? '#27500A' : roleColor }]} />
+              <View style={[styles.progFill, { width: `${pct * 100}%` as any, backgroundColor: pct === 1 ? '#1F6848' : roleColor }]} />
             </View>
           </View>
         )}
@@ -929,14 +929,14 @@ export default function HRScreen() {
             {isHR && emp.status === 'active' && (
               <>
                 <TouchableOpacity onPress={() => setRecEmpId(recEmpId === emp.id ? null : emp.id)}
-                  style={[styles.sectionToggle, { borderColor: '#E74C3C55', backgroundColor: '#E74C3C0a' }]}>
-                  <Ionicons name="alert-circle-outline" size={14} color="#E74C3C" />
-                  <Text style={[styles.sectionToggleText, { color: '#E74C3C' }]}>
+                  style={[styles.sectionToggle, { borderColor: '#365A4755', backgroundColor: '#365A470a' }]}>
+                  <Ionicons name="alert-circle-outline" size={14} color="#365A47" />
+                  <Text style={[styles.sectionToggleText, { color: '#365A47' }]}>
                     {recEmpId === emp.id ? 'Close' : 'Recommend Action'}
                   </Text>
                 </TouchableOpacity>
                 {recEmpId === emp.id && (
-                  <View style={[styles.panel, { backgroundColor: colors.background, borderColor: '#E74C3C44' }]}>
+                  <View style={[styles.panel, { backgroundColor: colors.background, borderColor: '#365A4744' }]}>
                     <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Action Type</Text>
                     <View style={styles.chipRow}>
                       {(['suspend', 'deactivate', 'delete'] as const).map(t => {
@@ -956,7 +956,7 @@ export default function HRScreen() {
                       multiline numberOfLines={3}
                       style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
                     <TouchableOpacity onPress={() => handleRecommend(emp.id)}
-                      style={[styles.submitBtn, { backgroundColor: '#E74C3C' }]}>
+                      style={[styles.submitBtn, { backgroundColor: '#365A47' }]}>
                       <Ionicons name="send" size={13} color="#fff" />
                       <Text style={styles.submitBtnText}>Send to Admin</Text>
                     </TouchableOpacity>
@@ -984,7 +984,7 @@ export default function HRScreen() {
                 {t.label}
               </Text>
               {!!t.badge && (
-                <View style={[styles.tabBadge, { backgroundColor: '#E74C3C' }]}>
+                <View style={[styles.tabBadge, { backgroundColor: '#365A47' }]}>
                   <Text style={styles.tabBadgeText}>{t.badge}</Text>
                 </View>
               )}
@@ -1021,7 +1021,7 @@ export default function HRScreen() {
                   </TouchableOpacity>
                   {selectedIds.size > 0 && (
                     <TouchableOpacity onPress={handleDeleteSelected} disabled={isDeleting}
-                      style={[styles.enrollActionBtn, { backgroundColor: '#E74C3C', flex: 1, justifyContent: 'center' }]}>
+                      style={[styles.enrollActionBtn, { backgroundColor: '#365A47', flex: 1, justifyContent: 'center' }]}>
                       <Ionicons name={isDeleting ? 'hourglass' : 'trash'} size={14} color="#fff" />
                       <Text style={[styles.enrollActionText, { color: '#fff' }]}>
                         {isDeleting ? 'Deleting…' : `Delete ${selectedIds.size} Selected`}
@@ -1031,16 +1031,16 @@ export default function HRScreen() {
                 </>
               ) : (
                 <>
-                  <View style={[styles.infoBox, { flex: 1, marginBottom: 0, backgroundColor: '#DCF0FF', borderColor: '#185FA5' + '44' }]}>
-                    <Ionicons name="information-circle" size={14} color="#185FA5" />
-                    <Text style={[styles.infoText, { color: '#185FA5' }]}>
+                  <View style={[styles.infoBox, { flex: 1, marginBottom: 0, backgroundColor: '#EAF2ED', borderColor: '#286247' + '44' }]}>
+                    <Ionicons name="information-circle" size={14} color="#286247" />
+                    <Text style={[styles.infoText, { color: '#286247' }]}>
                       Verify details then tap <Text style={{ fontWeight: '700' }}>Activate Account</Text> to create login instantly.
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => { setSelectMode(true); setSelectedIds(new Set()); }}
-                    style={[styles.enrollActionBtn, { borderWidth: 1, borderColor: '#E74C3C44', backgroundColor: '#FFF5F5' }]}>
-                    <Ionicons name="trash-outline" size={14} color="#E74C3C" />
-                    <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Select</Text>
+                    style={[styles.enrollActionBtn, { borderWidth: 1, borderColor: '#365A4744', backgroundColor: '#FFF5F5' }]}>
+                    <Ionicons name="trash-outline" size={14} color="#365A47" />
+                    <Text style={[styles.enrollActionText, { color: '#365A47' }]}>Select</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -1059,9 +1059,9 @@ export default function HRScreen() {
 
           {rejectedEnrollments.length > 0 && (
             <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E74C3C44', marginTop: 12, marginBottom: 4 }}>
-                <Ionicons name="close-circle" size={15} color="#E74C3C" />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#E74C3C', flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#365A4744', marginTop: 12, marginBottom: 4 }}>
+                <Ionicons name="close-circle" size={15} color="#365A47" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#365A47', flex: 1 }}>
                   Rejected Enrollments ({rejectedEnrollments.length})
                 </Text>
               </View>
@@ -1081,9 +1081,9 @@ export default function HRScreen() {
           <View style={styles.statsRow}>
             {[
               { n: hrEmployees.length,                                       label: 'Total',     col: roleColor,    bg: roleColor + '12' },
-              { n: hrEmployees.filter(e => e.status === 'active').length,    label: 'Active',    col: '#27500A',    bg: '#EAF3DE' },
-              { n: hrEmployees.filter(e => e.status === 'suspended').length, label: 'Suspended', col: '#BA7517',    bg: '#FAEEDA' },
-              { n: hrEmployees.filter(e => e.onboarding?.status === 'ceo_approved').length, label: 'Approved', col: '#185FA5', bg: '#DCF0FF' },
+              { n: hrEmployees.filter(e => e.status === 'active').length,    label: 'Active',    col: '#1F6848',    bg: '#E5F1E9' },
+              { n: hrEmployees.filter(e => e.status === 'suspended').length, label: 'Suspended', col: '#71805B',    bg: '#EEF2E4' },
+              { n: hrEmployees.filter(e => e.onboarding?.status === 'ceo_approved').length, label: 'Approved', col: '#286247', bg: '#EAF2ED' },
             ].map(s => (
               <View key={s.label} style={[styles.statCard, { backgroundColor: s.bg }]}>
                 <Text style={[styles.statNum, { color: s.col }]}>{s.n}</Text>
@@ -1190,23 +1190,23 @@ export default function HRScreen() {
                 <View style={{ marginTop: 6 }}>
                   {enrollDocs.map((d, i) => (
                     <View key={i} style={[styles.enrollDocRow, {
-                      borderColor: d.uploading ? roleColor + '88' : d.objectPath ? '#1a6e3c44' : colors.border,
-                      backgroundColor: d.uploading ? roleColor + '08' : d.objectPath ? '#EAF3DE' : colors.background,
+                      borderColor: d.uploading ? roleColor + '88' : d.objectPath ? '#174D3644' : colors.border,
+                      backgroundColor: d.uploading ? roleColor + '08' : d.objectPath ? '#E5F1E9' : colors.background,
                     }]}>
                       <Ionicons
                         name={d.uploading ? 'cloud-upload-outline' : d.objectPath ? 'checkmark-circle' : 'document-attach-outline'}
                         size={13}
-                        color={d.uploading ? roleColor : d.objectPath ? '#1a6e3c' : colors.textMuted}
+                        color={d.uploading ? roleColor : d.objectPath ? '#174D36' : colors.textMuted}
                       />
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.enrollDocName, { color: colors.text }]} numberOfLines={1}>{d.name}</Text>
                         {d.uploading && <Text style={{ fontSize: 10, color: roleColor, marginTop: 1 }}>Uploading…</Text>}
-                        {d.objectPath && !d.uploading && <Text style={{ fontSize: 10, color: '#1a6e3c', marginTop: 1 }}>Uploaded ✓</Text>}
+                        {d.objectPath && !d.uploading && <Text style={{ fontSize: 10, color: '#174D36', marginTop: 1 }}>Uploaded ✓</Text>}
                         {!d.objectPath && !d.uploading && <Text style={{ fontSize: 10, color: colors.textSubtle, marginTop: 1 }}>Attached locally</Text>}
                       </View>
                       {!d.uploading && (
                         <TouchableOpacity onPress={() => setEnrollDocs(prev => prev.filter((_, j) => j !== i))}>
-                          <Ionicons name="close-circle" size={15} color="#E74C3C" />
+                          <Ionicons name="close-circle" size={15} color="#365A47" />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1227,9 +1227,9 @@ export default function HRScreen() {
           {/* ── Rejected Enrollments (HR only) ── */}
           {isHR && rejectedEnrollments.length > 0 && (
             <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E74C3C44', marginTop: 12, marginBottom: 4 }}>
-                <Ionicons name="close-circle" size={15} color="#E74C3C" />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#E74C3C', flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#365A4744', marginTop: 12, marginBottom: 4 }}>
+                <Ionicons name="close-circle" size={15} color="#365A47" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#365A47', flex: 1 }}>
                   Returned Enrollments ({rejectedEnrollments.length})
                 </Text>
               </View>
@@ -1237,26 +1237,26 @@ export default function HRScreen() {
                 Admin returned these enrollments. Review the reason, correct the details, and re-submit.
               </Text>
               {rejectedEnrollments.map(acc => (
-                <View key={acc.id} style={[styles.rejectedCard, { backgroundColor: colors.surface, borderColor: '#E74C3C44' }]}>
+                <View key={acc.id} style={[styles.rejectedCard, { backgroundColor: colors.surface, borderColor: '#365A4744' }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <View style={[styles.miniAvatar, { backgroundColor: '#FCEBEB' }]}>
-                      <Text style={[styles.miniAvatarText, { color: '#E74C3C' }]}>{initials(acc.empName)}</Text>
+                    <View style={[styles.miniAvatar, { backgroundColor: '#E9F0EB' }]}>
+                      <Text style={[styles.miniAvatarText, { color: '#365A47' }]}>{initials(acc.empName)}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{acc.empName}</Text>
                       <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>{acc.jobTitle ?? '—'}</Text>
                     </View>
-                    <View style={[styles.pill, { backgroundColor: '#FCEBEB' }]}>
-                      <Text style={[styles.pillText, { color: '#E74C3C' }]}>Returned</Text>
+                    <View style={[styles.pill, { backgroundColor: '#E9F0EB' }]}>
+                      <Text style={[styles.pillText, { color: '#365A47' }]}>Returned</Text>
                     </View>
                   </View>
 
                   {acc.rejectionReason ? (
-                    <View style={[styles.rejectionReasonBox, { backgroundColor: '#FFF0F0', borderColor: '#E74C3C44' }]}>
-                      <Ionicons name="alert-circle" size={14} color="#E74C3C" style={{ marginTop: 1 }} />
+                    <View style={[styles.rejectionReasonBox, { backgroundColor: '#F1F5EF', borderColor: '#365A4744' }]}>
+                      <Ionicons name="alert-circle" size={14} color="#365A47" style={{ marginTop: 1 }} />
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#7B1818', marginBottom: 2 }}>Admin Note</Text>
-                        <Text style={{ fontSize: 12, color: '#7B1818', lineHeight: 17 }}>{acc.rejectionReason}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#365A47', marginBottom: 2 }}>Admin Note</Text>
+                        <Text style={{ fontSize: 12, color: '#365A47', lineHeight: 17 }}>{acc.rejectionReason}</Text>
                       </View>
                     </View>
                   ) : null}
@@ -1267,14 +1267,14 @@ export default function HRScreen() {
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity onPress={() => openResubmitModal(acc)}
-                      style={[styles.enrollActionBtn, { backgroundColor: '#DCF0FF', borderColor: '#185FA5', borderWidth: 1, flex: 1, justifyContent: 'center' }]}>
-                      <Ionicons name="refresh-circle-outline" size={14} color="#185FA5" />
-                      <Text style={[styles.enrollActionText, { color: '#185FA5' }]}>Edit & Re-submit</Text>
+                      style={[styles.enrollActionBtn, { backgroundColor: '#EAF2ED', borderColor: '#286247', borderWidth: 1, flex: 1, justifyContent: 'center' }]}>
+                      <Ionicons name="refresh-circle-outline" size={14} color="#286247" />
+                      <Text style={[styles.enrollActionText, { color: '#286247' }]}>Edit & Re-submit</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleDeleteEnrollment(acc)}
-                      style={[styles.enrollActionBtn, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C', borderWidth: 1 }]}>
-                      <Ionicons name="trash-outline" size={14} color="#E74C3C" />
-                      <Text style={[styles.enrollActionText, { color: '#E74C3C' }]}>Delete</Text>
+                      style={[styles.enrollActionBtn, { backgroundColor: '#E9F0EB', borderColor: '#365A47', borderWidth: 1 }]}>
+                      <Ionicons name="trash-outline" size={14} color="#365A47" />
+                      <Text style={[styles.enrollActionText, { color: '#365A47' }]}>Delete</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1320,18 +1320,18 @@ export default function HRScreen() {
           )}
           {hrHandbooks.map(doc => (
             <View key={doc.id} style={[styles.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.fileIconWrap, { backgroundColor: '#185FA5' + '18' }]}>
-                <Ionicons name="document-attach" size={20} color="#185FA5" />
+              <View style={[styles.fileIconWrap, { backgroundColor: '#286247' + '18' }]}>
+                <Ionicons name="document-attach" size={20} color="#286247" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>{doc.name}</Text>
                 <Text style={[styles.fileMeta, { color: colors.textMuted }]}>{doc.cat} · by {doc.uploadedBy}</Text>
                 <Text style={[styles.fileDate, { color: colors.textSubtle }]}>{fmtDateTime(doc.dt)}</Text>
-                {doc.approved && <Text style={[styles.approvedBy, { color: '#27500A' }]}>✓ Approved by {doc.approvedBy}</Text>}
+                {doc.approved && <Text style={[styles.approvedBy, { color: '#1F6848' }]}>✓ Approved by {doc.approvedBy}</Text>}
               </View>
               {doc.approved ? (
-                <View style={[styles.pill, { backgroundColor: '#EAF3DE' }]}>
-                  <Text style={[styles.pillText, { color: '#27500A' }]}>Live</Text>
+                <View style={[styles.pill, { backgroundColor: '#E5F1E9' }]}>
+                  <Text style={[styles.pillText, { color: '#1F6848' }]}>Live</Text>
                 </View>
               ) : isAdmin ? (
                 <TouchableOpacity onPress={() => approveHRHandbook(doc.id, userName || 'Admin')}
@@ -1339,8 +1339,8 @@ export default function HRScreen() {
                   <Text style={styles.approveBtnText}>Approve</Text>
                 </TouchableOpacity>
               ) : (
-                <View style={[styles.pill, { backgroundColor: '#FAEEDA' }]}>
-                  <Text style={[styles.pillText, { color: '#BA7517' }]}>Pending</Text>
+                <View style={[styles.pill, { backgroundColor: '#EEF2E4' }]}>
+                  <Text style={[styles.pillText, { color: '#71805B' }]}>Pending</Text>
                 </View>
               )}
             </View>
@@ -1398,7 +1398,7 @@ export default function HRScreen() {
                         { text: 'Cancel', style: 'cancel' },
                         { text: 'Approve', style: 'destructive', onPress: () => resolveHRRecommendation(rec.id, 'approved', userName || 'Admin') },
                       ]);
-                    }} style={[styles.recActionBtn, { backgroundColor: '#E74C3C' }]}>
+                    }} style={[styles.recActionBtn, { backgroundColor: '#365A47' }]}>
                       <Ionicons name="checkmark" size={13} color="#fff" />
                       <Text style={styles.recActionText}>Approve</Text>
                     </TouchableOpacity>
@@ -1425,7 +1425,7 @@ export default function HRScreen() {
         <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]}
           keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Ionicons name="checkmark-circle" size={20} color="#1a6e3c" />
+            <Ionicons name="checkmark-circle" size={20} color="#174D36" />
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Approve Enrollment</Text>
           </View>
           <Text style={[styles.formHint, { color: colors.textMuted, marginBottom: 12 }]}>
@@ -1487,16 +1487,16 @@ export default function HRScreen() {
             {branches.map(b => (
               <TouchableOpacity key={b.id} onPress={() => setABranch(b.id)}
                 style={[styles.chip, {
-                  backgroundColor: b.id === aBranch ? '#1a6e3c22' : colors.surface,
-                  borderColor: b.id === aBranch ? '#1a6e3c' : colors.border,
+                  backgroundColor: b.id === aBranch ? '#174D3622' : colors.surface,
+                  borderColor: b.id === aBranch ? '#174D36' : colors.border,
                 }]}>
-                <Text style={[styles.chipText, { color: b.id === aBranch ? '#1a6e3c' : colors.textMuted }]}>{b.name}</Text>
+                <Text style={[styles.chipText, { color: b.id === aBranch ? '#174D36' : colors.textMuted }]}>{b.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
           <TouchableOpacity onPress={handleConfirmApprove} disabled={isApproving}
-            style={[styles.submitBtn, { backgroundColor: isApproving ? '#555' : '#1a6e3c' }]}>
+            style={[styles.submitBtn, { backgroundColor: isApproving ? '#555' : '#174D36' }]}>
             <Ionicons name={isApproving ? 'hourglass' : 'flash'} size={16} color="#fff" />
             <Text style={styles.submitBtnText}>{isApproving ? 'Activating…' : 'Activate Account Now'}</Text>
           </TouchableOpacity>
@@ -1557,16 +1557,16 @@ export default function HRScreen() {
       <ModalSheet visible={!!rejectingEnrollment} onClose={() => setRejectingEnrollment(null)}>
         <KeyboardAwareScrollViewCompat contentContainerStyle={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Ionicons name="close-circle" size={20} color="#E74C3C" />
+            <Ionicons name="close-circle" size={20} color="#365A47" />
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Reject Enrollment</Text>
           </View>
           <Text style={[styles.formHint, { color: colors.textMuted, marginBottom: 12 }]}>
             Provide a clear reason so HR can correct and re-submit the enrollment for {rejectingEnrollment?.empName}.
           </Text>
 
-          <View style={[styles.infoBox, { backgroundColor: '#FFF0F0', borderColor: '#E74C3C44', marginBottom: 12 }]}>
-            <Ionicons name="information-circle" size={14} color="#E74C3C" />
-            <Text style={[styles.infoText, { color: '#7B1818' }]}>
+          <View style={[styles.infoBox, { backgroundColor: '#F1F5EF', borderColor: '#365A4744', marginBottom: 12 }]}>
+            <Ionicons name="information-circle" size={14} color="#365A47" />
+            <Text style={[styles.infoText, { color: '#365A47' }]}>
               HR will be notified immediately. The enrollment form will be returned to them with your note pre-displayed.
             </Text>
           </View>
@@ -1588,7 +1588,7 @@ export default function HRScreen() {
               <Text style={[styles.enrollActionText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleConfirmReject}
-              style={[styles.submitBtn, { flex: 2, backgroundColor: '#E74C3C' }]}>
+              style={[styles.submitBtn, { flex: 2, backgroundColor: '#365A47' }]}>
               <Ionicons name="close-circle" size={15} color="#fff" />
               <Text style={styles.submitBtnText}>Reject & Notify HR</Text>
             </TouchableOpacity>
@@ -1602,7 +1602,7 @@ export default function HRScreen() {
         <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]}
           keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Ionicons name="refresh-circle" size={20} color="#185FA5" />
+            <Ionicons name="refresh-circle" size={20} color="#286247" />
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Edit & Re-submit</Text>
           </View>
           <Text style={[styles.formHint, { color: colors.textMuted, marginBottom: 8 }]}>
@@ -1610,16 +1610,16 @@ export default function HRScreen() {
           </Text>
 
           {resubmittingEnrollment?.rejectionReason ? (
-            <View style={[styles.rejectionReasonBox, { backgroundColor: '#FFF0F0', borderColor: '#E74C3C44', marginBottom: 12 }]}>
-              <Ionicons name="alert-circle" size={14} color="#E74C3C" style={{ marginTop: 1 }} />
+            <View style={[styles.rejectionReasonBox, { backgroundColor: '#F1F5EF', borderColor: '#365A4744', marginBottom: 12 }]}>
+              <Ionicons name="alert-circle" size={14} color="#365A47" style={{ marginTop: 1 }} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#7B1818', marginBottom: 2 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#365A47', marginBottom: 2 }}>
                   Admin Note — Reason for Return
                 </Text>
-                <Text style={{ fontSize: 13, color: '#7B1818', lineHeight: 18 }}>
+                <Text style={{ fontSize: 13, color: '#365A47', lineHeight: 18 }}>
                   {resubmittingEnrollment.rejectionReason}
                 </Text>
-                <Text style={{ fontSize: 11, color: '#BA7517', marginTop: 4 }}>
+                <Text style={{ fontSize: 11, color: '#71805B', marginTop: 4 }}>
                   Returned by {resubmittingEnrollment.rejectedBy ?? 'Admin'}
                 </Text>
               </View>
@@ -1648,14 +1648,14 @@ export default function HRScreen() {
           <View style={styles.chipRow}>
             {DEPARTMENTS.map(d => (
               <TouchableOpacity key={d} onPress={() => setEDept(d)}
-                style={[styles.chip, { backgroundColor: d === eDept ? '#185FA5' : colors.background, borderColor: d === eDept ? '#185FA5' : colors.border }]}>
+                style={[styles.chip, { backgroundColor: d === eDept ? '#286247' : colors.background, borderColor: d === eDept ? '#286247' : colors.border }]}>
                 <Text style={[styles.chipText, { color: d === eDept ? '#fff' : colors.textMuted }]}>{d}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
           <TouchableOpacity onPress={handleResubmitSave}
-            style={[styles.submitBtn, { backgroundColor: '#185FA5', marginTop: 12 }]}>
+            style={[styles.submitBtn, { backgroundColor: '#286247', marginTop: 12 }]}>
             <Ionicons name="send" size={15} color="#fff" />
             <Text style={styles.submitBtnText}>Re-submit to Admin</Text>
           </TouchableOpacity>
@@ -1719,7 +1719,7 @@ export default function HRScreen() {
             ))}
           </ScrollView>
           <TouchableOpacity onPress={handleGenerateLetter}
-            style={[styles.submitBtn, { backgroundColor: letterModal === 'promotion' ? '#8E44AD' : '#2980B9', marginTop: 12 }]}>
+            style={[styles.submitBtn, { backgroundColor: letterModal === 'promotion' ? '#315F49' : '#286247', marginTop: 12 }]}>
             <Ionicons name="document-text" size={15} color="#fff" />
             <Text style={styles.submitBtnText}>Generate & Save Letter</Text>
           </TouchableOpacity>

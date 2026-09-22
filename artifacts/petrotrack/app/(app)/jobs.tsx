@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
-import { REPORT_META, getPerms, ReportType } from '@/lib/report-helpers';
+import { getPerms } from '@/lib/report-helpers';
 import { ROLE_COLORS, SCREEN_ROUTES, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { canAccessWorkspaceRoute, workspaceRouteAccess } from '@/lib/workspace-access';
@@ -125,7 +125,6 @@ export default function JobsScreen() {
   const { role, navItems, maintenance, dips, deliveries, expenses, budgets, tasks } = useApp();
   const colors = useColors();
   const router = useRouter();
-  const [expandedDept, setExpandedDept] = useState<DeptKey | null>(null);
   if (!role) return null;
 
   const allowed = new Set(navItems.map(item => item.id));
@@ -197,23 +196,9 @@ export default function JobsScreen() {
     if (canOpenMaintenance) router.push(SCREEN_ROUTES.maint as never);
   }
 
-  function openJob(item: JobItem) {
-    if (item.id === 'stock-log') {
-      router.push(`${SCREEN_ROUTES.ops}?tab=stock` as never);
-      return;
-    }
-    router.push(item.route as never);
+  function openDepartment(key: DeptKey) {
+    router.push(`/(app)/job-department?department=${key}` as never);
   }
-
-  function openReport(type: ReportType) {
-    router.push(`${SCREEN_ROUTES.exprpt}/view?type=${type}` as never);
-  }
-
-  function toggleDept(key: DeptKey) {
-    setExpandedDept(current => current === key ? null : key);
-  }
-
-  const activeDept = departments.find(dept => dept.key === expandedDept);
 
   return (
     <ScreenLayout title="My Jobs">
@@ -275,9 +260,8 @@ export default function JobsScreen() {
           </View>
         </View>
 
-        {/* Department grid — tapping a tile expands its tool list below,
-            so the workspace stays uncluttered instead of dumping every
-            item from every department onto the screen at once. */}
+        {/* Each department opens as its own page, keeping My Jobs a clean
+            launchpad and giving every tool list a dedicated navigation view. */}
         <View style={styles.deptGrid}>
           {departments.map(dept => (
             <DepartmentTile
@@ -288,8 +272,8 @@ export default function JobsScreen() {
               accent={dept.accent}
               count={dept.items.length}
               badge={dept.badge}
-              expanded={expandedDept === dept.key}
-              onPress={() => toggleDept(dept.key)}
+              expanded={false}
+              onPress={() => openDepartment(dept.key)}
               colors={colors}
             />
           ))}
@@ -300,76 +284,17 @@ export default function JobsScreen() {
               subtitle="Focused reports & exports"
               accent={colors.purple}
               count={visibleReportTypes.length}
-              expanded={expandedDept === 'reports'}
-              onPress={() => toggleDept('reports')}
+              expanded={false}
+              onPress={() => openDepartment('reports')}
               colors={colors}
             />
           )}
         </View>
 
-        {activeDept && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={[styles.sectionIcon, { backgroundColor: activeDept.accent + '16' }]}>
-                <Ionicons name={activeDept.icon as any} size={18} color={activeDept.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>{activeDept.title}</Text>
-                <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>{activeDept.subtitle}</Text>
-              </View>
-            </View>
-            <View style={styles.jobList}>
-              {activeDept.items.map(item => (
-                <JobCard key={item.id} item={item} accent={activeDept.accent} onPress={() => openJob(item)} colors={colors} />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {expandedDept === 'reports' && canSeeReports && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={[styles.sectionIcon, { backgroundColor: colors.purple + '16' }]}>
-                <Ionicons name="document-text-outline" size={18} color={colors.purple} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Reports</Text>
-                <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>Open a focused report or export the full picture</Text>
-              </View>
-            </View>
-            <View style={styles.jobList}>
-              {visibleReportTypes.map(type => {
-                const meta = REPORT_META[type];
-                return (
-                  <TouchableOpacity
-                    key={type}
-                    style={[styles.jobCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                    onPress={() => openReport(type)}
-                    activeOpacity={0.78}
-                  >
-                    <View style={[styles.jobIcon, { backgroundColor: colors.purple + '16' }]}>
-                      <Ionicons name={meta.icon as any} size={19} color={colors.purple} />
-                    </View>
-                    <View style={styles.jobCopy}>
-                      <Text style={[styles.jobTitle, { color: colors.text }]}>{meta.label}</Text>
-                      <Text style={[styles.jobDescription, { color: colors.textMuted }]}>{meta.desc}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={17} color={colors.textSubtle} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {!expandedDept && (
-          <View style={[styles.hintCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
-            <Text style={[styles.hintText, { color: colors.textMuted }]}>
-              Tap any department above to see its tools.
-            </Text>
-          </View>
-        )}
+        <View style={[styles.hintCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
+          <Text style={[styles.hintText, { color: colors.textMuted }]}>Tap any department to open its tools on a new page.</Text>
+        </View>
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -392,7 +317,7 @@ const styles = StyleSheet.create({
   deptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   deptTile: {
     width: '48%', borderRadius: 18, borderWidth: 1, padding: 14, gap: 2,
-    shadowColor: '#0F172A', shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
+    shadowColor: '#14271D', shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
   },
   deptIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   deptTitle: { fontSize: 14.5, fontWeight: '800' },
@@ -408,7 +333,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '800' },
   sectionSubtitle: { fontSize: 11, marginTop: 2 },
   jobList: { gap: 9 },
-  jobCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 17, padding: 13, shadowColor: '#0F172A', shadowOpacity: 0.03, shadowRadius: 8, elevation: 1 },
+  jobCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 17, padding: 13, shadowColor: '#14271D', shadowOpacity: 0.03, shadowRadius: 8, elevation: 1 },
   jobIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   jobCopy: { flex: 1 },
   jobTitle: { fontSize: 14, fontWeight: '700' },

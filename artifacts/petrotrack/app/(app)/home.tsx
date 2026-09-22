@@ -109,7 +109,7 @@ function folderExpiryDays(expiresAt?: string): number | null {
 }
 
 function folderExpiryState(days: number): { label: string; color: string; background: string; icon: keyof typeof Ionicons.glyphMap } {
-  if (days < 0) return { label: 'Expired', color: '#B91C1C', background: '#FEE2E2', icon: 'alert-circle' };
+  if (days < 0) return { label: 'Expired', color: '#B91C1C', background: '#E9F0EB', icon: 'alert-circle' };
   if (days <= 90) return { label: 'Due within 3 months', color: '#92400E', background: '#FEF3C7', icon: 'time' };
   return { label: 'Valid', color: '#166534', background: '#DCFCE7', icon: 'checkmark-circle' };
 }

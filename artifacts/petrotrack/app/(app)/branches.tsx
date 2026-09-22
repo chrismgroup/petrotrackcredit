@@ -12,9 +12,9 @@ import { LPGTank, Pump, ROLE_COLORS, Tank, fmt, salesRevenueByBranch, useApp } f
 import { useColors } from '@/hooks/useColors';
 
 const ST_STYLES: Record<string, { color: string; bg: string }> = {
-  Active:    { color: '#27500A', bg: '#EAF3DE' },
-  Pending:   { color: '#BA7517', bg: '#FAEEDA' },
-  Suspended: { color: '#791F1F', bg: '#FCEBEB' },
+  Active:    { color: '#1F6848', bg: '#E5F1E9' },
+  Pending:   { color: '#71805B', bg: '#EEF2E4' },
+  Suspended: { color: '#365A47', bg: '#E9F0EB' },
 };
 
 /* ── module-level chip picker (iOS keyboard rule: no sub-components in render) ── */
@@ -313,9 +313,9 @@ export default function BranchesScreen() {
                       </View>
                     ))}
                     {assignedLpg.map(l => (
-                      <View key={l.id} style={[styles.assetChip, { backgroundColor: '#0F6E5612', borderColor: '#0F6E5630' }]}>
-                        <Text style={[styles.assetChipText, { color: '#0F6E56' }]}>{l.name}</Text>
-                        <Text style={[styles.assetChipSub, { color: '#0F6E56BB' }]}>LPG</Text>
+                      <View key={l.id} style={[styles.assetChip, { backgroundColor: '#1F684812', borderColor: '#1F684830' }]}>
+                        <Text style={[styles.assetChipText, { color: '#1F6848' }]}>{l.name}</Text>
+                        <Text style={[styles.assetChipSub, { color: '#1F6848BB' }]}>LPG</Text>
                       </View>
                     ))}
                   </View>
@@ -446,7 +446,7 @@ export default function BranchesScreen() {
               items={lpgItems}
               selected={addForm.lpgIds}
               onToggle={id => setAddForm(f => ({ ...f, lpgIds: toggle(f.lpgIds, id) }))}
-              accent="#0F6E56"
+              accent="#1F6848"
               colors={colors}
             />
             <AssetPicker
@@ -517,7 +517,7 @@ export default function BranchesScreen() {
               items={lpgItems}
               selected={editForm.lpgIds}
               onToggle={id => setEditForm(f => ({ ...f, lpgIds: toggle(f.lpgIds, id) }))}
-              accent="#0F6E56"
+              accent="#1F6848"
               colors={colors}
             />
             <AssetPicker

@@ -31,7 +31,7 @@ jest.mock('@/hooks/useColors', () => ({
     textMuted: '#666',
     textSubtle: '#999',
     warning: '#a65c00',
-    warningBg: '#fff3d6',
+    warningBg: '#EEF2E4',
   }),
 }));
 

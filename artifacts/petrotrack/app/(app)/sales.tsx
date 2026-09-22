@@ -15,11 +15,11 @@ const SHIFT_STATUS_LABEL: Record<string, string> = {
   approved:            'Approved',
 };
 const SHIFT_STATUS_COLOR: Record<string, string> = {
-  pending_manager:     '#BA7517',
-  pending_accountant:  '#185FA5',
-  returned:            '#A32D2D',
-  returned_attendant:  '#8A3B0F',
-  approved:            '#1a6e3c',
+  pending_manager:     '#71805B',
+  pending_accountant:  '#286247',
+  returned:            '#365A47',
+  returned_attendant:  '#526B3F',
+  approved:            '#174D36',
 };
 const SHIFT_STATUS_ICON: Record<string, string> = {
   pending_manager:     'time-outline',
@@ -126,12 +126,12 @@ export default function SalesScreen() {
   const paymentTotal = totalCash + totalPOS + totalCredit;
 
   const PROD_DEF = [
-    { key: 'PMS',             color: '#185FA5', unit: 'L', label: 'PMS' },
-    { key: 'AGO',             color: '#BA7517', unit: 'L', label: 'AGO' },
-    { key: 'DPK',             color: '#6B4F9E', unit: 'L', label: 'DPK' },
-    { key: 'LPG_Single',      color: '#1a6e3c', unit: 'kg', label: 'LPG Single Buyers' },
+    { key: 'PMS',             color: '#286247', unit: 'L', label: 'PMS' },
+    { key: 'AGO',             color: '#71805B', unit: 'L', label: 'AGO' },
+    { key: 'DPK',             color: '#315F49', unit: 'L', label: 'DPK' },
+    { key: 'LPG_Single',      color: '#174D36', unit: 'kg', label: 'LPG Single Buyers' },
     { key: 'LPG_Distributor', color: '#0B4D3E', unit: 'kg', label: 'LPG Distributors' },
-    { key: 'Lube Oil',        color: '#A32D2D', unit: 'L', label: 'Lube Oil' },
+    { key: 'Lube Oil',        color: '#365A47', unit: 'L', label: 'Lube Oil' },
   ] as const;
 
   const prodBreakdown = PROD_DEF.map(({ key, color, unit, label }) => {
@@ -194,20 +194,20 @@ export default function SalesScreen() {
           <View style={[styles.cashPosCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.cashPosTitle, { color: colors.text }]}>Today's Payment Breakdown</Text>
             <View style={styles.cashPosRow}>
-              <View style={[styles.cashPosItem, { backgroundColor: '#27500A12', borderColor: '#27500A33' }]}>
-                <Ionicons name="cash-outline" size={16} color="#27500A" />
-                <Text style={[styles.cashPosValue, { color: '#27500A' }]}>{fmt(totalCash)}</Text>
+              <View style={[styles.cashPosItem, { backgroundColor: '#1F684812', borderColor: '#1F684833' }]}>
+                <Ionicons name="cash-outline" size={16} color="#1F6848" />
+                <Text style={[styles.cashPosValue, { color: '#1F6848' }]}>{fmt(totalCash)}</Text>
                 <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>Cash</Text>
               </View>
-              <View style={[styles.cashPosItem, { backgroundColor: '#185FA512', borderColor: '#185FA533' }]}>
-                <Ionicons name="card-outline" size={16} color="#185FA5" />
-                <Text style={[styles.cashPosValue, { color: '#185FA5' }]}>{fmt(totalPOS)}</Text>
+              <View style={[styles.cashPosItem, { backgroundColor: '#28624712', borderColor: '#28624733' }]}>
+                <Ionicons name="card-outline" size={16} color="#286247" />
+                <Text style={[styles.cashPosValue, { color: '#286247' }]}>{fmt(totalPOS)}</Text>
                 <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>POS / Transfer</Text>
               </View>
               {totalCredit > 0 && (
-                <View style={[styles.cashPosItem, { backgroundColor: '#A85E1A12', borderColor: '#A85E1A33' }]}>
-                  <Ionicons name="time-outline" size={16} color="#A85E1A" />
-                  <Text style={[styles.cashPosValue, { color: '#A85E1A' }]}>{fmt(totalCredit)}</Text>
+                <View style={[styles.cashPosItem, { backgroundColor: '#62754D12', borderColor: '#62754D33' }]}>
+                  <Ionicons name="time-outline" size={16} color="#62754D" />
+                  <Text style={[styles.cashPosValue, { color: '#62754D' }]}>{fmt(totalCredit)}</Text>
                   <Text style={[styles.cashPosLabel, { color: colors.textMuted }]}>Credit</Text>
                 </View>
               )}
@@ -215,9 +215,9 @@ export default function SalesScreen() {
             {paymentTotal > 0 && (
               <>
                 <View style={[styles.posBar, { backgroundColor: colors.border }]}>
-                  {totalCash > 0 && <View style={[styles.posBarFill, { flex: totalCash, backgroundColor: '#27500A' }]} />}
-                  {totalPOS > 0 && <View style={[styles.posBarFill, { flex: totalPOS, backgroundColor: '#185FA5' }]} />}
-                  {totalCredit > 0 && <View style={[styles.posBarFill, { flex: totalCredit, backgroundColor: '#A85E1A' }]} />}
+                  {totalCash > 0 && <View style={[styles.posBarFill, { flex: totalCash, backgroundColor: '#1F6848' }]} />}
+                  {totalPOS > 0 && <View style={[styles.posBarFill, { flex: totalPOS, backgroundColor: '#286247' }]} />}
+                  {totalCredit > 0 && <View style={[styles.posBarFill, { flex: totalCredit, backgroundColor: '#62754D' }]} />}
                 </View>
                 <Text style={[styles.posBarLabel, { color: colors.textSubtle }]}>
                   Cash {Math.round((totalCash / paymentTotal) * 100)}% · POS/Transfer {Math.round((totalPOS / paymentTotal) * 100)}% · Credit {Math.round((totalCredit / paymentTotal) * 100)}%
@@ -314,27 +314,27 @@ export default function SalesScreen() {
                       <Text style={[styles.detailVal, { color: roleColor, fontWeight: '700' }]}>{fmt(safeNum(r.grossAmount))}</Text>
                   </View>
                   <View style={[styles.paymentRow, { borderTopColor: colors.border }]}>
-                    <View style={[styles.payChip, { backgroundColor: '#27500A12', borderColor: '#27500A33' }]}>
-                      <Ionicons name="cash-outline" size={11} color="#27500A" />
-                       <Text style={[styles.payChipText, { color: '#27500A' }]}>Cash {fmt(safeNum(r.cashAmount))}</Text>
+                    <View style={[styles.payChip, { backgroundColor: '#1F684812', borderColor: '#1F684833' }]}>
+                      <Ionicons name="cash-outline" size={11} color="#1F6848" />
+                       <Text style={[styles.payChipText, { color: '#1F6848' }]}>Cash {fmt(safeNum(r.cashAmount))}</Text>
                     </View>
                      {safeNum(r.posAmount) > 0 && (
-                      <View style={[styles.payChip, { backgroundColor: '#185FA512', borderColor: '#185FA533' }]}>
-                        <Ionicons name="card-outline" size={11} color="#185FA5" />
-                       <Text style={[styles.payChipText, { color: '#185FA5' }]}>POS {fmt(safeNum(r.posAmount))}</Text>
+                      <View style={[styles.payChip, { backgroundColor: '#28624712', borderColor: '#28624733' }]}>
+                        <Ionicons name="card-outline" size={11} color="#286247" />
+                       <Text style={[styles.payChipText, { color: '#286247' }]}>POS {fmt(safeNum(r.posAmount))}</Text>
                       </View>
                     )}
                      {safeNum(r.transferAmount) > 0 && (
-                      <View style={[styles.payChip, { backgroundColor: '#4527a012', borderColor: '#4527a033' }]}>
-                        <Ionicons name="swap-horizontal-outline" size={11} color="#4527a0" />
-                       <Text style={[styles.payChipText, { color: '#4527a0' }]}>Transfer {fmt(safeNum(r.transferAmount))}</Text>
+                      <View style={[styles.payChip, { backgroundColor: '#315F4912', borderColor: '#315F4933' }]}>
+                        <Ionicons name="swap-horizontal-outline" size={11} color="#315F49" />
+                       <Text style={[styles.payChipText, { color: '#315F49' }]}>Transfer {fmt(safeNum(r.transferAmount))}</Text>
                       </View>
                     )}
                   </View>
                    {safeNum(r.variance) !== 0 && (
                     <View style={styles.detailRow}>
                       <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Variance</Text>
-                       <Text style={[styles.detailVal, { color: safeNum(r.variance) > 0 ? '#27500A' : '#A32D2D', fontWeight: '700' }]}>
+                       <Text style={[styles.detailVal, { color: safeNum(r.variance) > 0 ? '#1F6848' : '#365A47', fontWeight: '700' }]}>
                          {safeNum(r.variance) > 0 ? '+' : ''}{fmt(safeNum(r.variance))}
                       </Text>
                     </View>
@@ -343,8 +343,8 @@ export default function SalesScreen() {
               )}
 
               {isReturned && r.rejectionReason && (
-                <View style={[styles.returnedNote, { backgroundColor: '#A32D2D0F', borderColor: '#A32D2D33' }]}>
-                  <Text style={[styles.returnedText, { color: '#A32D2D' }]}>⚠ Returned: {safeStr(r.rejectionReason)}</Text>
+                <View style={[styles.returnedNote, { backgroundColor: '#365A470F', borderColor: '#365A4733' }]}>
+                  <Text style={[styles.returnedText, { color: '#365A47' }]}>⚠ Returned: {safeStr(r.rejectionReason)}</Text>
                 </View>
               )}
             </View>

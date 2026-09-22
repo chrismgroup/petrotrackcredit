@@ -1078,8 +1078,8 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 export const ROLE_COLORS: Record<string, string> = {
-  admin: '#0C1E14', ceo: '#0D5C2E', md: '#4C1D95', mktg: '#B45309',
-  csm: '#0D6E56', acc: '#1E3A8A', mgr: '#1D5FA5', att: '#374151',
+  admin: '#103A28', ceo: '#174D36', md: '#225B40', mktg: '#3F684F',
+  csm: '#1F6848', acc: '#286247', mgr: '#315F49', att: '#49614F',
 };
 
 // Sensitive My Folder sections are limited to approved corporate roles.
@@ -1098,14 +1098,14 @@ export const TASK_CAN_ASSIGN: Record<string, Role[]> = {
 };
 
 export const UINFO: Record<string, UserInfo> = {
-  admin: { name: 'System Admin', color: '#0a2318', initials: 'SA', role: 'Admin', online: true },
-  ceo: { name: 'CEO', color: '#1a6e3c', initials: 'CE', role: 'CEO', online: true },
-  md: { name: 'MD', color: '#4C1D95', initials: 'MD', role: 'MD', online: true },
-  mktg: { name: 'Marketing', color: '#D85A30', initials: 'MK', role: 'Mktg', online: false },
-  csm: { name: 'CSM', color: '#0F6E56', initials: 'CS', role: 'CSM', online: true },
-  acc: { name: 'Accountant', color: '#185FA5', initials: 'AC', role: 'Acct', online: true },
-  mgr: { name: 'Manager', color: '#BA7517', initials: 'MG', role: 'Mgr', online: true },
-  att: { name: 'Attendant', color: '#633806', initials: 'AT', role: 'Att', online: true },
+  admin: { name: 'System Admin', color: '#103A28', initials: 'SA', role: 'Admin', online: true },
+  ceo: { name: 'CEO', color: '#174D36', initials: 'CE', role: 'CEO', online: true },
+  md: { name: 'MD', color: '#225B40', initials: 'MD', role: 'MD', online: true },
+  mktg: { name: 'Marketing', color: '#3F684F', initials: 'MK', role: 'Mktg', online: false },
+  csm: { name: 'CSM', color: '#1F6848', initials: 'CS', role: 'CSM', online: true },
+  acc: { name: 'Accountant', color: '#286247', initials: 'AC', role: 'Acct', online: true },
+  mgr: { name: 'Manager', color: '#315F49', initials: 'MG', role: 'Mgr', online: true },
+  att: { name: 'Attendant', color: '#49614F', initials: 'AT', role: 'Att', online: true },
 };
 
 /** Resolve a real display name + initials for any role, using live userAccounts first. */

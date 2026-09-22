@@ -176,7 +176,7 @@ export function Header({ title, rightAction }: Props) {
                 <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={[styles.menuItem, { backgroundColor: '#FEE2E2' }]} onPress={handleLogout}>
+            <TouchableOpacity style={[styles.menuItem, { backgroundColor: '#E9F0EB' }]} onPress={handleLogout}>
               <View style={[styles.menuItemIcon, { backgroundColor: '#FCA5A5' }]}>
                 <Ionicons name="log-out-outline" size={16} color={colors.error} />
               </View>

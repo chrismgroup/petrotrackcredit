@@ -117,17 +117,17 @@ function ProgressRow({ label, pct, colors }: { label: string; pct: number; color
     <View style={[s.marginRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <Text style={[s.marginLabel, { color: colors.textMuted }]}>{label}</Text>
       <View style={[s.progBg, { flex: 1, backgroundColor: colors.border, marginHorizontal: 10 }]}>
-        <View style={[s.progBar, { width: `${Math.max(0, Math.min(Math.abs(pct), 100))}%` as any, backgroundColor: pos ? '#27500A' : '#791F1F' }]} />
+        <View style={[s.progBar, { width: `${Math.max(0, Math.min(Math.abs(pct), 100))}%` as any, backgroundColor: pos ? '#1F6848' : '#365A47' }]} />
       </View>
-      <Text style={[s.marginPct, { color: pos ? '#27500A' : '#791F1F' }]}>{pct}%</Text>
+      <Text style={[s.marginPct, { color: pos ? '#1F6848' : '#365A47' }]}>{pct}%</Text>
     </View>
   );
 }
 function DiffBadge({ diff }: { diff: number }) {
   const pos = diff >= 0;
   return (
-    <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, backgroundColor: pos ? '#EAF3DE' : '#FCEBEB' }}>
-      <Text style={{ fontSize: 11, fontWeight: '700', color: pos ? '#27500A' : '#791F1F' }}>
+    <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, backgroundColor: pos ? '#E5F1E9' : '#E9F0EB' }}>
+      <Text style={{ fontSize: 11, fontWeight: '700', color: pos ? '#1F6848' : '#365A47' }}>
         {pos ? '+' : ''}₦{Math.abs(diff).toLocaleString()}
       </Text>
     </View>
@@ -139,9 +139,9 @@ function IncompleteBadge() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4,
       paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6,
-      backgroundColor: '#fff8e1', borderWidth: 1, borderColor: '#f0c040', alignSelf: 'flex-start' }}>
-      <Ionicons name="warning-outline" size={10} color="#7a5c00" />
-      <Text style={{ fontSize: 10, fontWeight: '700', color: '#7a5c00' }}>Incomplete record</Text>
+      backgroundColor: '#F6F8F3', borderWidth: 1, borderColor: '#A8B991', alignSelf: 'flex-start' }}>
+      <Ionicons name="warning-outline" size={10} color="#62754D" />
+      <Text style={{ fontSize: 10, fontWeight: '700', color: '#62754D' }}>Incomplete record</Text>
     </View>
   );
 }
@@ -837,10 +837,10 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
         {reportType === 'summary' || reportType === 'full' ? (
           <>
             <KpiCards colors={colors} items={[
-              { label:'Revenue',  value: fmt(scaledRev),   color:'#27500A', icon:'trending-up-outline'  },
-              { label:'Sales',    value: fmt(scaledSales), color:'#185FA5', icon:'bar-chart-outline'     },
-              { label:'Expenses', value: fmt(scaledExp),   color:'#791F1F', icon:'trending-down-outline' },
-              { label:'Net',      value: fmt(scaledNet),   color: scaledNet >= 0 ? '#27500A' : '#791F1F', icon:'wallet-outline' },
+              { label:'Revenue',  value: fmt(scaledRev),   color:'#1F6848', icon:'trending-up-outline'  },
+              { label:'Sales',    value: fmt(scaledSales), color:'#286247', icon:'bar-chart-outline'     },
+              { label:'Expenses', value: fmt(scaledExp),   color:'#365A47', icon:'trending-down-outline' },
+              { label:'Net',      value: fmt(scaledNet),   color: scaledNet >= 0 ? '#1F6848' : '#365A47', icon:'wallet-outline' },
             ]} />
             <ProgressRow label="Net Margin" pct={margin} colors={colors} />
             {branchBD.length > 0 ? (
@@ -853,7 +853,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                       <Text style={[s.rowCardSub, { color: colors.textMuted }]}>Rev {fmt(b.rev)} · Sales {fmt(b.salesRev)}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 15, fontWeight: '800', color: b.net >= 0 ? '#27500A' : '#791F1F' }}>{fmt(b.net)}</Text>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: b.net >= 0 ? '#1F6848' : '#365A47' }}>{fmt(b.net)}</Text>
                       <Text style={{ fontSize: 10, color: colors.textMuted }}>Exp {fmt(b.exp)}</Text>
                     </View>
                   </View>
@@ -917,26 +917,26 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
         {reportType === 'sales' ? (
           <>
             {/* Net Sales pill */}
-            <View style={[s.totalPill, { backgroundColor: (netSalesFigure >= 0 ? '#27500A' : '#791F1F') + '18', borderColor: (netSalesFigure >= 0 ? '#27500A' : '#791F1F') + '33' }]}>
-              <Text style={[s.totalPillLabel, { color: netSalesFigure >= 0 ? '#27500A' : '#791F1F' }]}>Net Sales</Text>
-              <Text style={[s.totalPillValue, { color: netSalesFigure >= 0 ? '#27500A' : '#791F1F' }]}>{fmt(netSalesFigure)}</Text>
+            <View style={[s.totalPill, { backgroundColor: (netSalesFigure >= 0 ? '#1F6848' : '#365A47') + '18', borderColor: (netSalesFigure >= 0 ? '#1F6848' : '#365A47') + '33' }]}>
+              <Text style={[s.totalPillLabel, { color: netSalesFigure >= 0 ? '#1F6848' : '#365A47' }]}>Net Sales</Text>
+              <Text style={[s.totalPillValue, { color: netSalesFigure >= 0 ? '#1F6848' : '#365A47' }]}>{fmt(netSalesFigure)}</Text>
             </View>
 
             {/* Breakdown card */}
             <View style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 4 }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
                 <Text style={{ fontSize: 13, color: colors.text }}>Gross Sales (shift reports)</Text>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#185FA5' }}>{fmt(shiftGross)}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#286247' }}>{fmt(shiftGross)}</Text>
               </View>
               <View style={{ height: 1, backgroundColor: colors.border }} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
                 <Text style={{ fontSize: 13, color: colors.text }}>Less: Manager Expenses</Text>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#791F1F' }}>({fmt(mgrExpScaled)})</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#365A47' }}>({fmt(mgrExpScaled)})</Text>
               </View>
               <View style={{ height: 1, backgroundColor: colors.border }} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Net Sales</Text>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: netSalesFigure >= 0 ? '#27500A' : '#791F1F' }}>{fmt(netSalesFigure)}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: netSalesFigure >= 0 ? '#1F6848' : '#365A47' }}>{fmt(netSalesFigure)}</Text>
               </View>
             </View>
 
@@ -952,7 +952,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                       <Text style={{ fontSize: 10, marginTop: 3, color: colors.textSubtle }}>by {e.byName} · Approved by {e.approvedBy}</Text>
                       {e._amtMissing && <IncompleteBadge />}
                     </View>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#791F1F' }}>{fmt(e.amt)}</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#365A47' }}>{fmt(e.amt)}</Text>
                   </View>
                 ))}
               </>
@@ -1015,7 +1015,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                   <View style={{ flex: 1, gap: 3 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={{ fontSize: 13, textDecorationLine: 'line-through', color: colors.textMuted }}>₦{h.oldPrice.toLocaleString()}</Text>
-                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
+                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#1F6848' : '#365A47'} />
                       <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>₦{h.newPrice.toLocaleString()}</Text>
                       <DiffBadge diff={h.newPrice - h.oldPrice} />
                     </View>
@@ -1031,10 +1031,10 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
         {reportType === 'maintenance' ? (
           <>
             <KpiCards colors={colors} items={[
-              { label:'Open',   value: maintOpen,          color:'#791F1F', icon:'alert-circle-outline'   },
-              { label:'Done',   value: maintDone,          color:'#27500A', icon:'checkmark-circle-outline'},
-              { label:'Urgent', value: maintUrgent,        color:'#BA7517', icon:'warning-outline'         },
-              { label:'Cost',   value: fmt(maintCost),     color:'#633806', icon:'cash-outline'            },
+              { label:'Open',   value: maintOpen,          color:'#365A47', icon:'alert-circle-outline'   },
+              { label:'Done',   value: maintDone,          color:'#1F6848', icon:'checkmark-circle-outline'},
+              { label:'Urgent', value: maintUrgent,        color:'#71805B', icon:'warning-outline'         },
+              { label:'Cost',   value: fmt(maintCost),     color:'#49614F', icon:'cash-outline'            },
             ]} />
             {safeMaintenance.length === 0 ? <EmptyState icon="construct-outline" label="No maintenance records" colors={colors} /> : null}
             {safeMaintenance.map((m: any) => (
@@ -1047,10 +1047,10 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                   <Text style={[s.rowCardSub, { color: colors.textMuted }]}>by {m.by} · {fmtDate(m.date)}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 3 }}>
-                  <View style={[s.stBadge, { backgroundColor: m.st === 'Open' ? '#FCEBEB' : '#EAF3DE' }]}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: m.st === 'Open' ? '#791F1F' : '#27500A' }}>{m.st}</Text>
+                  <View style={[s.stBadge, { backgroundColor: m.st === 'Open' ? '#E9F0EB' : '#E5F1E9' }]}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: m.st === 'Open' ? '#365A47' : '#1F6848' }}>{m.st}</Text>
                   </View>
-                  {m.cost ? <Text style={{ fontSize: 12, fontWeight: '700', color: '#633806' }}>{fmt(m.cost)}</Text> : null}
+                  {m.cost ? <Text style={{ fontSize: 12, fontWeight: '700', color: '#49614F' }}>{fmt(m.cost)}</Text> : null}
                 </View>
               </View>
             ))}
@@ -1061,10 +1061,10 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
         {reportType === 'operations' ? (
           <>
             <KpiCards colors={colors} items={[
-              { label:'Total Dips',  value: safeDips.length,       color:'#185FA5', icon:'layers-outline'       },
-              { label:'Approved',    value: dipApproved,           color:'#27500A', icon:'checkmark-done-outline'},
-              { label:'Pending',     value: dipPending,            color:'#BA7517', icon:'time-outline'          },
-              { label:'Deliveries',  value: safeDeliveries.length, color:'#633806', icon:'cube-outline'          },
+              { label:'Total Dips',  value: safeDips.length,       color:'#286247', icon:'layers-outline'       },
+              { label:'Approved',    value: dipApproved,           color:'#1F6848', icon:'checkmark-done-outline'},
+              { label:'Pending',     value: dipPending,            color:'#71805B', icon:'time-outline'          },
+              { label:'Deliveries',  value: safeDeliveries.length, color:'#49614F', icon:'cube-outline'          },
             ]} />
             <SecTitle label="Recent Dip Records" colors={colors} />
             {safeDips.length === 0 ? <EmptyState icon="speedometer-outline" label="No dip records yet" colors={colors} /> : null}
@@ -1074,8 +1074,8 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                   <Text style={[s.rowCardTitle, { color: colors.text }]}>{fmtDate(d.dt)}</Text>
                   <Text style={[s.rowCardSub, { color: colors.textMuted }]}>by {d.by}{d.obs ? ` · ${d.obs}` : ''}</Text>
                 </View>
-                <View style={[s.stBadge, { backgroundColor: d.status === 'approved' ? '#EAF3DE' : d.status === 'rejected' ? '#FCEBEB' : '#FAEEDA' }]}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: d.status === 'approved' ? '#27500A' : d.status === 'rejected' ? '#791F1F' : '#BA7517', textTransform: 'capitalize' }}>{d.status}</Text>
+                <View style={[s.stBadge, { backgroundColor: d.status === 'approved' ? '#E5F1E9' : d.status === 'rejected' ? '#E9F0EB' : '#EEF2E4' }]}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: d.status === 'approved' ? '#1F6848' : d.status === 'rejected' ? '#365A47' : '#71805B', textTransform: 'capitalize' }}>{d.status}</Text>
                 </View>
               </View>
             ))}
@@ -1086,9 +1086,9 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
         {reportType === 'hr' ? (
           <>
             <KpiCards colors={colors} items={[
-              { label:'Total',     value: safeHrEmployees.length, color:'#7B3FA8', icon:'people-outline'       },
-              { label:'Active',    value: hrActive,               color:'#27500A', icon:'person-outline'       },
-              { label:'Suspended', value: hrSuspended,            color:'#791F1F', icon:'person-remove-outline'},
+              { label:'Total',     value: safeHrEmployees.length, color:'#315F49', icon:'people-outline'       },
+              { label:'Active',    value: hrActive,               color:'#1F6848', icon:'person-outline'       },
+              { label:'Suspended', value: hrSuspended,            color:'#365A47', icon:'person-remove-outline'},
               { label:'Inactive',  value: hrInactive,             color:'#999',    icon:'person-outline'       },
             ]} />
             {Object.keys(deptMap).length > 0 ? (
@@ -1098,10 +1098,10 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                   <View key={dept} style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
                       <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{dept}</Text>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#7B3FA8' }}>{count} {count === 1 ? 'person' : 'people'}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#315F49' }}>{count} {count === 1 ? 'person' : 'people'}</Text>
                     </View>
                     <View style={[s.progBg, { backgroundColor: colors.border }]}>
-                      <View style={[s.progBar, { width: `${safeHrEmployees.length > 0 ? Math.round((count / safeHrEmployees.length) * 100) : 0}%` as any, backgroundColor: '#7B3FA8' }]} />
+                      <View style={[s.progBar, { width: `${safeHrEmployees.length > 0 ? Math.round((count / safeHrEmployees.length) * 100) : 0}%` as any, backgroundColor: '#315F49' }]} />
                     </View>
                   </View>
                 ))}
@@ -1116,7 +1116,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                   <Text style={[s.rowCardSub, { color: colors.textMuted }]}>{e.role} · {e.dept}</Text>
                   <Text style={{ fontSize: 10, marginTop: 2, color: colors.textSubtle }}>Joined {fmtDate(e.joinDate)}</Text>
                 </View>
-                <View style={[s.stBadge, { backgroundColor: e.status === 'active' ? '#EAF3DE' : e.status === 'suspended' ? '#FCEBEB' : '#f5f5f3' }]}>
+                <View style={[s.stBadge, { backgroundColor: e.status === 'active' ? '#E5F1E9' : e.status === 'suspended' ? '#E9F0EB' : '#f5f5f3' }]}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: stColor(e.status), textTransform: 'capitalize' }}>{e.status}</Text>
                 </View>
               </View>
@@ -1129,17 +1129,17 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
           <>
             <KpiCards colors={colors} items={[
               { label:'Proposals', value: safeProposals.length, color:'#C45C1A', icon:'megaphone-outline'},
-              { label:'Pending',   value: propPending,          color:'#BA7517', icon:'time-outline'     },
-              { label:'Approved',  value: propApproved,         color:'#27500A', icon:'checkmark-outline'},
-              { label:'Rejected',  value: propRejected,         color:'#791F1F', icon:'close-outline'    },
+              { label:'Pending',   value: propPending,          color:'#71805B', icon:'time-outline'     },
+              { label:'Approved',  value: propApproved,         color:'#1F6848', icon:'checkmark-outline'},
+              { label:'Rejected',  value: propRejected,         color:'#365A47', icon:'close-outline'    },
             ]} />
             <SecTitle label="Price Proposals" colors={colors} />
             {safeProposals.length === 0 ? <EmptyState icon="megaphone-outline" label="No proposals yet" colors={colors} /> : null}
             {[...safeProposals].sort((a: any,b: any) => b.id-a.id).map((p: any) => {
               const pc = PROD_COLORS[p.prod] || rc;
               const up = p.proposedPrice > p.currentPrice;
-              const sc = p.status==='approved' ? '#27500A' : p.status==='rejected' ? '#791F1F' : '#BA7517';
-              const sb = p.status==='approved' ? '#EAF3DE' : p.status==='rejected' ? '#FCEBEB' : '#FAEEDA';
+              const sc = p.status==='approved' ? '#1F6848' : p.status==='rejected' ? '#365A47' : '#71805B';
+              const sb = p.status==='approved' ? '#E5F1E9' : p.status==='rejected' ? '#E9F0EB' : '#EEF2E4';
               return (
                 <View key={p.id} style={[s.histRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={[s.histTag, { backgroundColor: pc + '18' }]}>
@@ -1148,7 +1148,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                   <View style={{ flex: 1, gap: 3 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={{ fontSize: 13, textDecorationLine: 'line-through', color: colors.textMuted }}>₦{p.currentPrice.toLocaleString()}</Text>
-                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
+                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#1F6848' : '#365A47'} />
                       <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>₦{p.proposedPrice.toLocaleString()}</Text>
                       <DiffBadge diff={p.proposedPrice - p.currentPrice} />
                     </View>
@@ -1172,7 +1172,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                   <View style={{ flex: 1, gap: 3 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={{ fontSize: 13, textDecorationLine: 'line-through', color: colors.textMuted }}>₦{h.oldPrice.toLocaleString()}</Text>
-                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
+                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#1F6848' : '#365A47'} />
                       <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>₦{h.newPrice.toLocaleString()}</Text>
                       <DiffBadge diff={h.newPrice - h.oldPrice} />
                     </View>
@@ -1201,7 +1201,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
 function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scaledExp, depreciation, bankCharges, loanInterest, citaRate, citaProvision, catScaled, colors, rc }: any) {
   return (
     <>
-      <View style={[s.plHeader, { backgroundColor: netPnl >= 0 ? '#0a2318' : '#791F1F' }]}>
+      <View style={[s.plHeader, { backgroundColor: netPnl >= 0 ? '#103A28' : '#365A47' }]}>
         <Text style={s.plHeaderLabel}>Profit & Loss</Text>
         <Text style={s.plHeaderNet}>{fmt(netPnl)}</Text>
         <Text style={s.plHeaderSub}>{netPnl >= 0 ? 'Net Profit' : 'Net Loss'} · {nmPct}% net margin</Text>
@@ -1214,7 +1214,7 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
           ].map(it => (
             <View key={it.label} style={{ flex: 1, alignItems: 'center' }}>
               <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9, marginBottom: 3 }}>{it.label}</Text>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: it.label === 'Cost of Goods' ? '#ffb3b3' : '#fff' }}>{fmt(it.value)}</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: it.label === 'Cost of Goods' ? '#B8CBBE' : '#fff' }}>{fmt(it.value)}</Text>
             </View>
           ))}
         </View>
@@ -1232,9 +1232,9 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
               </View>
               <View style={{ flex: 1 }} />
               {p.grossMargin !== null ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: profitable ? '#EAF3DE' : '#FCEBEB' }}>
-                  <Ionicons name={profitable ? 'trending-up' : 'trending-down'} size={11} color={profitable ? '#27500A' : '#791F1F'} />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: profitable ? '#27500A' : '#791F1F' }}>{p.grossMargin}% gross margin</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: profitable ? '#E5F1E9' : '#E9F0EB' }}>
+                  <Ionicons name={profitable ? 'trending-up' : 'trending-down'} size={11} color={profitable ? '#1F6848' : '#365A47'} />
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: profitable ? '#1F6848' : '#365A47' }}>{p.grossMargin}% gross margin</Text>
                 </View>
               ) : null}
             </View>
@@ -1252,9 +1252,9 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
               ))}
             </View>
             {[
-              { label: 'Sales Revenue', value: p.salesRevenue, color: '#185FA5', icon: 'cash-outline' },
-              { label: 'COGS',          value: p.scaledCOGS,   color: '#791F1F', icon: 'pricetag-outline' },
-              { label: 'Gross Profit',  value: p.grossProfit,  color: profitable ? '#27500A' : '#791F1F', icon: profitable ? 'trending-up' : 'trending-down' },
+              { label: 'Sales Revenue', value: p.salesRevenue, color: '#286247', icon: 'cash-outline' },
+              { label: 'COGS',          value: p.scaledCOGS,   color: '#365A47', icon: 'pricetag-outline' },
+              { label: 'Gross Profit',  value: p.grossProfit,  color: profitable ? '#1F6848' : '#365A47', icon: profitable ? 'trending-up' : 'trending-down' },
             ].map(row => (
               <View key={row.label} style={[s.plRow, { borderTopColor: colors.border }]}>
                 <Ionicons name={row.icon as any} size={13} color={row.color} />
@@ -1270,37 +1270,37 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
         {catScaled.slice(0, 5).map((c: any) => (
           <View key={c.cat} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
             <Text style={{ fontSize: 12, color: colors.textMuted }}>{c.cat}</Text>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#791F1F' }}>{fmt(c.total)}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#365A47' }}>{fmt(c.total)}</Text>
           </View>
         ))}
         {catScaled.length > 5 ? <Text style={{ fontSize: 11, color: colors.textSubtle }}>+ {catScaled.length - 5} more</Text> : null}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Total</Text>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: '#791F1F' }}>{fmt(scaledExp)}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: '#365A47' }}>{fmt(scaledExp)}</Text>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Asset Depreciation</Text>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: '#791F1F' }}>{fmt(depreciation)}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: '#365A47' }}>{fmt(depreciation)}</Text>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Bank Charges</Text>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: '#791F1F' }}>{fmt(bankCharges)}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: '#365A47' }}>{fmt(bankCharges)}</Text>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Interest Paid on Loans</Text>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: '#791F1F' }}>{fmt(loanInterest)}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: '#365A47' }}>{fmt(loanInterest)}</Text>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>CITA ({(citaRate * 100).toFixed(0)}%)</Text>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: '#BA7517' }}>{fmt(citaProvision)}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: '#71805B' }}>{fmt(citaProvision)}</Text>
         </View>
       </View>
-      <View style={[s.plFinal, { backgroundColor: netPnl >= 0 ? '#EAF3DE' : '#FCEBEB', borderColor: netPnl >= 0 ? '#27500A33' : '#791F1F33' }]}>
+      <View style={[s.plFinal, { backgroundColor: netPnl >= 0 ? '#E5F1E9' : '#E9F0EB', borderColor: netPnl >= 0 ? '#1F684833' : '#365A4733' }]}>
         <View style={s.plFinalCopy}>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: netPnl >= 0 ? '#27500A' : '#791F1F' }}>{netPnl >= 0 ? 'Net Profit' : 'Net Loss'}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: netPnl >= 0 ? '#1F6848' : '#365A47' }}>{netPnl >= 0 ? 'Net Profit' : 'Net Loss'}</Text>
           <Text style={{ fontSize: 10, marginTop: 3, color: netPnl >= 0 ? '#3a6e1c' : '#aa2222' }}>Gross Profit − Expenses − Depreciation − Finance Costs − CITA</Text>
         </View>
-        <Text style={[s.plFinalValue, { color: netPnl >= 0 ? '#27500A' : '#791F1F' }]}>{fmt(netPnl)}</Text>
+        <Text style={[s.plFinalValue, { color: netPnl >= 0 ? '#1F6848' : '#365A47' }]}>{fmt(netPnl)}</Text>
       </View>
     </>
   );

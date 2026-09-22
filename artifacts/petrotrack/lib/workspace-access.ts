@@ -10,6 +10,7 @@ export type WorkspaceRouteAccess = {
 export const WORKSPACE_ROUTE_ACCESS: readonly WorkspaceRouteAccess[] = [
   { path: '/home', permission: 'home' },
   { path: '/jobs', permission: 'jobs' },
+  { path: '/job-department', permission: 'jobs' },
   { path: '/messages', permission: 'messages' },
   { path: '/notifications', permission: 'notifications' },
   { path: '/profile', permission: 'profile' },

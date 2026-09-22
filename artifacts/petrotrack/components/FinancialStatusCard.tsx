@@ -23,7 +23,7 @@ import { calculateNetProfit } from '@/lib/net-profit';
 import { useColors } from '@/hooks/useColors';
 
 const PROD_COLOR: Record<string, string> = {
-  PMS: '#185FA5', AGO: '#BA7517', DPK: '#6B4F9E', LPG: '#1a6e3c', 'Lube Oil': '#A32D2D',
+  PMS: '#286247', AGO: '#71805B', DPK: '#315F49', LPG: '#174D36', 'Lube Oil': '#365A47',
 };
 const PROD_UNIT: Record<string, string> = {
   PMS: 'L', AGO: 'L', DPK: 'L', LPG: 'kg', 'Lube Oil': 'L',
@@ -109,7 +109,7 @@ function EditModal({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <View style={[fStyles.modalHeader, { backgroundColor: '#0C447C', paddingTop: 52 }]}>
+        <View style={[fStyles.modalHeader, { backgroundColor: '#225B40', paddingTop: 52 }]}>
           <TouchableOpacity onPress={onClose} style={fStyles.headerBack}>
             <Ionicons name="close" size={22} color="#fff" />
           </TouchableOpacity>
@@ -160,18 +160,18 @@ function EditModal({
                 />
                 {loans.length > 1 && (
                   <TouchableOpacity onPress={() => removeLoan(i)}>
-                    <Ionicons name="trash-outline" size={16} color="#791F1F" />
+                    <Ionicons name="trash-outline" size={16} color="#365A47" />
                   </TouchableOpacity>
                 )}
               </View>
             </View>
           ))}
-          <TouchableOpacity onPress={addLoan} style={[fStyles.addLoanBtn, { borderColor: '#0C447C' }]}>
-            <Ionicons name="add" size={14} color="#0C447C" />
-            <Text style={[fStyles.addLoanText, { color: '#0C447C' }]}>Add Bank Loan</Text>
+          <TouchableOpacity onPress={addLoan} style={[fStyles.addLoanBtn, { borderColor: '#225B40' }]}>
+            <Ionicons name="add" size={14} color="#225B40" />
+            <Text style={[fStyles.addLoanText, { color: '#225B40' }]}>Add Bank Loan</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={handleSave} style={[fStyles.saveBtn, { backgroundColor: '#0C447C' }]}>
+          <TouchableOpacity onPress={handleSave} style={[fStyles.saveBtn, { backgroundColor: '#225B40' }]}>
             <Ionicons name="save" size={16} color="#fff" />
             <Text style={fStyles.saveBtnText}>Save Financial Data</Text>
           </TouchableOpacity>
@@ -333,7 +333,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const operatingCapital = startupCapital + netProfit + fe.capitalInjection;
   const isPositive = operatingCapital >= 0;
   const waterfallRows = [
-    { label: 'Value of Current Stock', amount: stockValue, color: '#185FA5' },
+    { label: 'Value of Current Stock', amount: stockValue, color: '#286247' },
     { label: 'Cash in Bank', amount: fe.cashInBank, color: colors.text },
     { label: 'Value of Goods on Transit', amount: fe.goodsOnTransit, color: colors.text },
     { label: 'Debts by Customers (Accounts Receivable)', amount: accountsReceivable, color: colors.text },
@@ -341,7 +341,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     {
       label: previousMonthNetProfit >= 0 ? 'Previous Month’s Net Profit' : 'Previous Month’s Net Loss',
       amount: previousMonthNetProfit,
-      color: previousMonthNetProfit >= 0 ? '#27500A' : '#791F1F',
+      color: previousMonthNetProfit >= 0 ? '#1F6848' : '#365A47',
     },
   ];
   let waterfallTotal = 0;
@@ -376,13 +376,13 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
         onPress={() => setExpanded(e => !e)}
         style={[fStyles.card, {
           backgroundColor: colors.surface,
-          borderColor: isPositive ? '#27500A44' : '#791F1F44',
+          borderColor: isPositive ? '#1F684844' : '#365A4744',
         }]}
       >
         {/* Header */}
         <View style={fStyles.cardHeader}>
-          <View style={[fStyles.cardIcon, { backgroundColor: isPositive ? '#EAF3DE' : '#FCEBEB' }]}>
-            <Ionicons name="stats-chart" size={18} color={isPositive ? '#27500A' : '#791F1F'} />
+          <View style={[fStyles.cardIcon, { backgroundColor: isPositive ? '#E5F1E9' : '#E9F0EB' }]}>
+            <Ionicons name="stats-chart" size={18} color={isPositive ? '#1F6848' : '#365A47'} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[fStyles.cardTitle, { color: colors.text }]}>Financial Status</Text>
@@ -393,36 +393,36 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
           {isAcc && (
             <TouchableOpacity
               onPress={e => { e.stopPropagation?.(); setShowEdit(true); }}
-              style={[fStyles.editBtn, { borderColor: '#0C447C' }]}
+              style={[fStyles.editBtn, { borderColor: '#225B40' }]}
             >
-              <Ionicons name="create-outline" size={13} color="#0C447C" />
-              <Text style={[fStyles.editBtnText, { color: '#0C447C' }]}>Edit</Text>
+              <Ionicons name="create-outline" size={13} color="#225B40" />
+              <Text style={[fStyles.editBtnText, { color: '#225B40' }]}>Edit</Text>
             </TouchableOpacity>
           )}
           <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
         </View>
 
         {/* Operating capital hero */}
-        <View style={[fStyles.heroBg, { backgroundColor: isPositive ? '#EAF3DE' : '#FCEBEB', borderColor: isPositive ? '#27500A55' : '#791F1F55' }]}>
-          <Text style={[fStyles.heroLabel, { color: isPositive ? '#27500A' : '#791F1F' }]}>Operating Capital</Text>
-          <Text style={[fStyles.heroAmt, { color: isPositive ? '#27500A' : '#791F1F' }]}>{fmt(operatingCapital)}</Text>
+        <View style={[fStyles.heroBg, { backgroundColor: isPositive ? '#E5F1E9' : '#E9F0EB', borderColor: isPositive ? '#1F684855' : '#365A4755' }]}>
+          <Text style={[fStyles.heroLabel, { color: isPositive ? '#1F6848' : '#365A47' }]}>Operating Capital</Text>
+          <Text style={[fStyles.heroAmt, { color: isPositive ? '#1F6848' : '#365A47' }]}>{fmt(operatingCapital)}</Text>
         </View>
 
         {/* Quick stats */}
         <View style={fStyles.quickRow}>
           <View style={fStyles.quickItem}>
             <Text style={[fStyles.quickLabel, { color: colors.textMuted }]}>Stock Value</Text>
-            <Text style={[fStyles.quickAmt, { color: '#185FA5' }]}>{fmt(stockValue)}</Text>
+            <Text style={[fStyles.quickAmt, { color: '#286247' }]}>{fmt(stockValue)}</Text>
           </View>
           <View style={[fStyles.quickDivider, { backgroundColor: colors.border }]} />
           <View style={fStyles.quickItem}>
             <Text style={[fStyles.quickLabel, { color: colors.textMuted }]}>Net Profit (mo.)</Text>
-            <Text style={[fStyles.quickAmt, { color: netProfit >= 0 ? '#27500A' : '#791F1F' }]}>{fmt(netProfit)}</Text>
+            <Text style={[fStyles.quickAmt, { color: netProfit >= 0 ? '#1F6848' : '#365A47' }]}>{fmt(netProfit)}</Text>
           </View>
           <View style={[fStyles.quickDivider, { backgroundColor: colors.border }]} />
           <View style={fStyles.quickItem}>
             <Text style={[fStyles.quickLabel, { color: colors.textMuted }]}>Bank Loans</Text>
-            <Text style={[fStyles.quickAmt, { color: totalLoans > 0 ? '#791F1F' : colors.textMuted }]}>{fmt(totalLoans)}</Text>
+            <Text style={[fStyles.quickAmt, { color: totalLoans > 0 ? '#365A47' : colors.textMuted }]}>{fmt(totalLoans)}</Text>
           </View>
         </View>
 
@@ -448,7 +448,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
               ))}
               <View style={[fStyles.waterfallTotal, { borderTopColor: colors.border }]}>
                 <Text style={[fStyles.totalLabel, { color: colors.text }]}>Waterfall Total</Text>
-                <Text style={[fStyles.totalAmt, { color: waterfallTotal >= 0 ? '#27500A' : '#791F1F' }]}>
+                <Text style={[fStyles.totalAmt, { color: waterfallTotal >= 0 ? '#1F6848' : '#365A47' }]}>
                   {fmt(waterfallTotal)}
                 </Text>
               </View>
@@ -460,7 +460,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
               <View key={bid} style={[fStyles.branchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={fStyles.branchBoxHeader}>
                   <Text style={[fStyles.branchBoxName, { color: colors.text }]}>{branchMap[bid] ?? bid}</Text>
-                  <Text style={[fStyles.branchBoxAmt, { color: '#185FA5' }]}>{fmt(data.value)}</Text>
+                  <Text style={[fStyles.branchBoxAmt, { color: '#286247' }]}>{fmt(data.value)}</Text>
                 </View>
                 {Object.entries(data.byProd).map(([prod, pd]) => (
                   pd.stock > 0 ? (
@@ -483,25 +483,25 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
             <Row
               label={`Start-up Capital (${startupCapitalSource === 'admin' ? 'admin seed' : 'rolled over'})`}
               value={fmt(startupCapital)}
-              color="#185FA5"
+              color="#286247"
             />
-            <Row label={netProfit >= 0 ? '+ Net Profit (month)' : '- Net Loss (month)'} value={fmt(Math.abs(netProfit))} color={netProfit >= 0 ? '#27500A' : '#791F1F'} />
-            <Row label="+ Capital Injected as Loan" value={fmt(fe.capitalInjection)} color="#185FA5" />
+            <Row label={netProfit >= 0 ? '+ Net Profit (month)' : '- Net Loss (month)'} value={fmt(Math.abs(netProfit))} color={netProfit >= 0 ? '#1F6848' : '#365A47'} />
+            <Row label="+ Capital Injected as Loan" value={fmt(fe.capitalInjection)} color="#286247" />
             <View style={[fStyles.totalRow, { borderTopColor: colors.border, borderTopWidth: 1.5 }]}>
               <Text style={[fStyles.totalLabel, { color: colors.text }]}>= Operating Capital</Text>
-              <Text style={[fStyles.totalAmt, { color: isPositive ? '#27500A' : '#791F1F' }]}>{fmt(operatingCapital)}</Text>
+              <Text style={[fStyles.totalAmt, { color: isPositive ? '#1F6848' : '#365A47' }]}>{fmt(operatingCapital)}</Text>
             </View>
 
             {/* Net profit breakdown */}
             <Text style={[fStyles.subSection, { color: colors.text, marginTop: 14 }]}>📈 Net Profit Breakdown</Text>
-            <Row label="Monthly Revenue" value={fmt(monthRevenue)} color="#27500A" />
-            <Row label="− Monthly Cost of Goods" value={fmt(monthCOGS)} color="#791F1F" />
-            <Row label="− Monthly Expenses" value={fmt(monthExpenses)} color="#791F1F" />
-            <Row label="− Monthly Asset Depreciation" value={fmt(monthDepreciation)} color="#791F1F" />
-            <Row label="− Bank Charges" value={fmt(bankCharges)} color="#791F1F" />
-            <Row label="− Interest Paid on Loans" value={fmt(loanInterest)} color="#791F1F" />
-            <Row label={`− CITA (${(citaRate * 100).toFixed(0)}%)`} value={fmt(monthCita)} color="#BA7517" />
-            <Row label="= Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? '#27500A' : '#791F1F'} bold />
+            <Row label="Monthly Revenue" value={fmt(monthRevenue)} color="#1F6848" />
+            <Row label="− Monthly Cost of Goods" value={fmt(monthCOGS)} color="#365A47" />
+            <Row label="− Monthly Expenses" value={fmt(monthExpenses)} color="#365A47" />
+            <Row label="− Monthly Asset Depreciation" value={fmt(monthDepreciation)} color="#365A47" />
+            <Row label="− Bank Charges" value={fmt(bankCharges)} color="#365A47" />
+            <Row label="− Interest Paid on Loans" value={fmt(loanInterest)} color="#365A47" />
+            <Row label={`− CITA (${(citaRate * 100).toFixed(0)}%)`} value={fmt(monthCita)} color="#71805B" />
+            <Row label="= Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? '#1F6848' : '#365A47'} bold />
           </View>
         )}
       </TouchableOpacity>

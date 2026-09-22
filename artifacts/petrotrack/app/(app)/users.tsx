@@ -16,8 +16,8 @@ type Tab = 'pending' | 'active' | 'staff';
 const ROLE_OPTS: Role[] = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'];
 
 const STATUS_COLORS: Record<string, string> = {
-  active: '#1a6e3c', pending: '#BA7517', suspended: '#c0392b', inactive: '#7f8c8d', rejected: '#888',
-  pending_md: '#7B3FA5', pending_admin: '#BA7517',
+  active: '#174D36', pending: '#71805B', suspended: '#365A47', inactive: '#7f8c8d', rejected: '#888',
+  pending_md: '#315F49', pending_admin: '#71805B',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -478,7 +478,7 @@ export default function UsersScreen() {
             <Text style={[styles.tabLabel, { color: tab === id ? roleColor : colors.textMuted, fontWeight: tab === id ? '700' : '400' }]}>
               {label}
             </Text>
-            <View style={[styles.tabBadge, { backgroundColor: id === 'pending' ? (cnt > 0 ? '#BA7517' : colors.border) : roleColor + '22' }]}>
+            <View style={[styles.tabBadge, { backgroundColor: id === 'pending' ? (cnt > 0 ? '#71805B' : colors.border) : roleColor + '22' }]}>
               <Text style={[styles.tabBadgeText, { color: id === 'pending' && cnt > 0 ? '#fff' : (id === 'pending' ? colors.textMuted : roleColor) }]}>{cnt}</Text>
             </View>
           </TouchableOpacity>
@@ -622,7 +622,7 @@ export default function UsersScreen() {
           <>
             <View style={styles.statsRow}>
               {[
-                { label: 'Active',    val: registeredUsers.filter(a => a.status === 'active').length,    color: '#1a6e3c' },
+                { label: 'Active',    val: registeredUsers.filter(a => a.status === 'active').length,    color: '#174D36' },
                 { label: 'Suspended', val: registeredUsers.filter(a => a.status === 'suspended').length, color: colors.error },
                 { label: 'Inactive',  val: registeredUsers.filter(a => a.status === 'inactive').length,  color: colors.textMuted },
                 { label: 'Rejected',  val: registeredUsers.filter(a => a.status === 'rejected').length,  color: '#888' },
@@ -708,7 +708,7 @@ export default function UsersScreen() {
           <>
             <View style={styles.statsRow}>
               {[
-                { label: 'Active', val: staff.filter(member => member.st === 'Active').length, color: '#1a6e3c' },
+                { label: 'Active', val: staff.filter(member => member.st === 'Active').length, color: '#174D36' },
                 { label: 'Suspended', val: staff.filter(member => member.st === 'Suspended').length, color: colors.error },
                 { label: 'Total', val: staff.length, color: colors.text },
               ].map(stat => (
@@ -741,7 +741,7 @@ export default function UsersScreen() {
                 <Text style={[styles.emptySub, { color: colors.textMuted }]}>Try a different search term.</Text>
               </View>
             ) : filteredStaff.map(member => {
-              const stCol = member.st === 'Active' ? '#1a6e3c' : colors.error;
+              const stCol = member.st === 'Active' ? '#174D36' : colors.error;
               const branchName = member.branchName ?? branches.find(branch => branch.id === member.branchId)?.name ?? 'Branch not assigned';
               return (
                 <View key={member.id} style={[styles.accCard, { backgroundColor: colors.surface, borderColor: member.st === 'Active' ? colors.border : colors.errorBorder }]}>
@@ -791,8 +791,8 @@ export default function UsersScreen() {
           <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             {/* Header */}
             <View style={styles.modalHeader}>
-              <View style={[styles.avatar, { width: 46, height: 46, borderRadius: 23, backgroundColor: (STATUS_COLORS[viewEnroll.status] || '#BA7517') + '18' }]}>
-                <Text style={[styles.avatarText, { color: STATUS_COLORS[viewEnroll.status] || '#BA7517', fontSize: 16 }]}>{initials(viewEnroll.empName)}</Text>
+              <View style={[styles.avatar, { width: 46, height: 46, borderRadius: 23, backgroundColor: (STATUS_COLORS[viewEnroll.status] || '#71805B') + '18' }]}>
+                <Text style={[styles.avatarText, { color: STATUS_COLORS[viewEnroll.status] || '#71805B', fontSize: 16 }]}>{initials(viewEnroll.empName)}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>{viewEnroll.empName}</Text>
@@ -800,8 +800,8 @@ export default function UsersScreen() {
                   {viewEnroll.empId && (
                     <Text style={[styles.modalSub, { color: colors.textSubtle }]}>{viewEnroll.empId}</Text>
                   )}
-                  <View style={[styles.stBadge, { backgroundColor: (STATUS_COLORS[viewEnroll.status] || '#BA7517') + '18' }]}>
-                    <Text style={[styles.stText, { color: STATUS_COLORS[viewEnroll.status] || '#BA7517' }]}>
+                  <View style={[styles.stBadge, { backgroundColor: (STATUS_COLORS[viewEnroll.status] || '#71805B') + '18' }]}>
+                    <Text style={[styles.stText, { color: STATUS_COLORS[viewEnroll.status] || '#71805B' }]}>
                       {STATUS_LABELS[viewEnroll.status] ?? viewEnroll.status}
                     </Text>
                   </View>
@@ -847,7 +847,7 @@ export default function UsersScreen() {
                     <View style={[styles.enrollMetaDivider, { backgroundColor: colors.border }]} />
                     <View style={styles.enrollMetaItem}>
                       <Text style={[styles.enrollMetaLabel, { color: colors.textMuted }]}>MD Approved</Text>
-                      <Text style={[styles.enrollMetaValue, { color: '#7B3FA5' }]}>{viewEnroll.mdApprovedBy}</Text>
+                      <Text style={[styles.enrollMetaValue, { color: '#315F49' }]}>{viewEnroll.mdApprovedBy}</Text>
                     </View>
                   </>
                 )}
@@ -904,8 +904,8 @@ export default function UsersScreen() {
               {/* ── Identity ── */}
               <View style={[styles.reviewSection, { borderColor: colors.border }]}>
                 <View style={styles.reviewSectionHeader}>
-                  <Ionicons name="card-outline" size={13} color='#8E44AD' />
-                  <Text style={[styles.reviewSectionTitle, { color: '#8E44AD' }]}>Identity & Address</Text>
+                  <Ionicons name="card-outline" size={13} color='#315F49' />
+                  <Text style={[styles.reviewSectionTitle, { color: '#315F49' }]}>Identity & Address</Text>
                 </View>
                 {editingEnroll ? (
                   <>
@@ -939,8 +939,8 @@ export default function UsersScreen() {
               {/* ── Guarantor ── */}
               <View style={[styles.reviewSection, { borderColor: colors.border }]}>
                 <View style={styles.reviewSectionHeader}>
-                  <Ionicons name="people-outline" size={13} color='#E67E22' />
-                  <Text style={[styles.reviewSectionTitle, { color: '#E67E22' }]}>Guarantor Details</Text>
+                  <Ionicons name="people-outline" size={13} color='#71805B' />
+                  <Text style={[styles.reviewSectionTitle, { color: '#71805B' }]}>Guarantor Details</Text>
                 </View>
                 {editingEnroll ? (
                   <>
@@ -981,8 +981,8 @@ export default function UsersScreen() {
               {(viewEnroll.employmentDocs ?? []).length > 0 && (
                 <View style={[styles.reviewSection, { borderColor: colors.border }]}>
                   <View style={styles.reviewSectionHeader}>
-                    <Ionicons name="document-text-outline" size={13} color='#185FA5' />
-                    <Text style={[styles.reviewSectionTitle, { color: '#185FA5' }]}>Documents Received</Text>
+                    <Ionicons name="document-text-outline" size={13} color='#286247' />
+                    <Text style={[styles.reviewSectionTitle, { color: '#286247' }]}>Documents Received</Text>
                   </View>
                   {(viewEnroll.employmentDocs ?? []).map(doc => (
                     <View key={doc} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 }}>
@@ -1008,10 +1008,10 @@ export default function UsersScreen() {
 
               {/* ── ACTIVATION PANEL (Admin only) ── */}
               {canManageUsers && !editingEnroll && (
-                <View style={[styles.activationPanel, { backgroundColor: colors.surface, borderColor: '#1a6e3c44' }]}>
+                <View style={[styles.activationPanel, { backgroundColor: colors.surface, borderColor: '#174D3644' }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                    <Ionicons name="person-add" size={16} color='#1a6e3c' />
-                    <Text style={[styles.reviewSectionTitle, { color: '#1a6e3c', fontSize: 13 }]}>Activate Account</Text>
+                    <Ionicons name="person-add" size={16} color='#174D36' />
+                    <Text style={[styles.reviewSectionTitle, { color: '#174D36', fontSize: 13 }]}>Activate Account</Text>
                   </View>
 
                   <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Role *</Text>
@@ -1077,7 +1077,7 @@ export default function UsersScreen() {
                   </View>
 
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-                    <TouchableOpacity onPress={handleActivateFromReview} style={[styles.confirmBtn, { backgroundColor: '#1a6e3c', flex: 1 }]} activeOpacity={0.85}>
+                    <TouchableOpacity onPress={handleActivateFromReview} style={[styles.confirmBtn, { backgroundColor: '#174D36', flex: 1 }]} activeOpacity={0.85}>
                       <Ionicons name="checkmark-circle" size={16} color="#fff" />
                       <Text style={styles.confirmBtnText}>Activate Account</Text>
                     </TouchableOpacity>
@@ -1091,7 +1091,7 @@ export default function UsersScreen() {
               {/* ── MD action buttons ── */}
               {isMD && viewEnroll.status === 'pending_md' && !editingEnroll && (
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 4 }}>
-                  <TouchableOpacity onPress={() => handleMdApprove(viewEnroll)} style={[styles.confirmBtn, { backgroundColor: '#7B3FA5', flex: 1 }]} activeOpacity={0.85}>
+                  <TouchableOpacity onPress={() => handleMdApprove(viewEnroll)} style={[styles.confirmBtn, { backgroundColor: '#315F49', flex: 1 }]} activeOpacity={0.85}>
                     <Ionicons name="checkmark-circle" size={16} color="#fff" />
                     <Text style={styles.confirmBtnText}>Approve → Admin</Text>
                   </TouchableOpacity>
@@ -1122,8 +1122,8 @@ export default function UsersScreen() {
       <ModalSheet visible={!!approving} onClose={() => setApproving(null)}>
         <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
           <View style={styles.modalHeader}>
-            <View style={[styles.modalIconBox, { backgroundColor: '#1a6e3c22' }]}>
-              <Ionicons name="person-add" size={20} color="#1a6e3c" />
+            <View style={[styles.modalIconBox, { backgroundColor: '#174D3622' }]}>
+              <Ionicons name="person-add" size={20} color="#174D36" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Approve Account</Text>
@@ -1171,7 +1171,7 @@ export default function UsersScreen() {
               </TouchableOpacity>
             </View>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-              <TouchableOpacity onPress={handleApprove} style={[styles.confirmBtn, { backgroundColor: '#1a6e3c', flex: 1, opacity: isApproving ? 0.6 : 1 }]} activeOpacity={0.85} disabled={isApproving}>
+              <TouchableOpacity onPress={handleApprove} style={[styles.confirmBtn, { backgroundColor: '#174D36', flex: 1, opacity: isApproving ? 0.6 : 1 }]} activeOpacity={0.85} disabled={isApproving}>
                 <Ionicons name="checkmark-circle" size={16} color="#fff" />
                 <Text style={styles.confirmBtnText}>{isApproving ? 'Approving\u2026' : 'Approve & Create'}</Text>
               </TouchableOpacity>
@@ -1446,8 +1446,8 @@ export default function UsersScreen() {
 
             {/* Identity */}
             <View style={[styles.enrollSectionHeader, { borderTopColor: colors.border }]}>
-              <Ionicons name="card-outline" size={13} color='#8E44AD' />
-              <Text style={[styles.enrollSectionTitle, { color: '#8E44AD' }]}>Identity & Address</Text>
+              <Ionicons name="card-outline" size={13} color='#315F49' />
+              <Text style={[styles.enrollSectionTitle, { color: '#315F49' }]}>Identity & Address</Text>
             </View>
 
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>NIN <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text> <Text style={{ fontWeight: '400' }}>(11-digit National ID)</Text></Text>
@@ -1465,8 +1465,8 @@ export default function UsersScreen() {
 
             {/* Guarantor */}
             <View style={[styles.enrollSectionHeader, { borderTopColor: colors.border }]}>
-              <Ionicons name="people-outline" size={13} color='#E67E22' />
-              <Text style={[styles.enrollSectionTitle, { color: '#E67E22' }]}>Guarantor Details</Text>
+              <Ionicons name="people-outline" size={13} color='#71805B' />
+              <Text style={[styles.enrollSectionTitle, { color: '#71805B' }]}>Guarantor Details</Text>
             </View>
 
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Guarantor Full Name <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text></Text>
@@ -1490,8 +1490,8 @@ export default function UsersScreen() {
 
             {/* Documents */}
             <View style={[styles.enrollSectionHeader, { borderTopColor: colors.border }]}>
-              <Ionicons name="document-text-outline" size={13} color='#185FA5' />
-              <Text style={[styles.enrollSectionTitle, { color: '#185FA5' }]}>Employment Documents</Text>
+              <Ionicons name="document-text-outline" size={13} color='#286247' />
+              <Text style={[styles.enrollSectionTitle, { color: '#286247' }]}>Employment Documents</Text>
             </View>
             <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 8 }]}>
               Tick each document physically received from the applicant. All required documents must be confirmed.

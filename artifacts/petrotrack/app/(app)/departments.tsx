@@ -18,14 +18,14 @@ const ICON_OPTIONS = [
 ];
 
 const COLOR_PRESETS: { bg: string; fg: string; label: string }[] = [
-  { bg: '#EAF3DE', fg: '#27500A', label: 'Green' },
-  { bg: '#E6F1FB', fg: '#0C447C', label: 'Blue' },
-  { bg: '#EEEDFE', fg: '#3C3489', label: 'Purple' },
-  { bg: '#FAECE7', fg: '#712B13', label: 'Orange' },
+  { bg: '#E5F1E9', fg: '#1F6848', label: 'Green' },
+  { bg: '#EAF2ED', fg: '#225B40', label: 'Blue' },
+  { bg: '#EDF3EE', fg: '#3C3489', label: 'Purple' },
+  { bg: '#EDF3EE', fg: '#712B13', label: 'Orange' },
   { bg: '#E1F5EE', fg: '#085041', label: 'Teal' },
-  { bg: '#FAEEDA', fg: '#633806', label: 'Amber' },
-  { bg: '#FCEBEB', fg: '#791F1F', label: 'Red' },
-  { bg: '#F0F0F0', fg: '#333333', label: 'Grey' },
+  { bg: '#EEF2E4', fg: '#49614F', label: 'Amber' },
+  { bg: '#E9F0EB', fg: '#365A47', label: 'Red' },
+  { bg: '#F1F5EF', fg: '#333333', label: 'Grey' },
 ];
 
 const ALL_ROLES = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'] as const;

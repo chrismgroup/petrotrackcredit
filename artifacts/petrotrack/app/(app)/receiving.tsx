@@ -15,23 +15,23 @@ import { safeNum } from '@/lib/report-helpers';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const ST_MAP = {
-  ok:    { label: 'OK',         color: '#27500A', bg: '#EAF3DE' },
-  short: { label: 'Short',      color: '#BA7517', bg: '#FAEEDA' },
-  spill: { label: 'Spill',      color: '#791F1F', bg: '#FCEBEB' },
-  seal:  { label: 'Seal Issue', color: '#4527a0', bg: '#EEEDFE' },
+  ok:    { label: 'OK',         color: '#1F6848', bg: '#E5F1E9' },
+  short: { label: 'Short',      color: '#71805B', bg: '#EEF2E4' },
+  spill: { label: 'Spill',      color: '#365A47', bg: '#E9F0EB' },
+  seal:  { label: 'Seal Issue', color: '#315F49', bg: '#EDF3EE' },
 };
 const APPR_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  draft:       { label: 'Draft',                color: '#555',    bg: '#F0F0F0',  icon: 'document-outline' },
-  pending:     { label: 'Awaiting Accountant',  color: '#185FA5', bg: '#E6F1FB',  icon: 'time-outline' },
-  pending_acc: { label: 'Awaiting Accountant',  color: '#185FA5', bg: '#E6F1FB',  icon: 'time-outline' },
-  pending_md:  { label: 'Awaiting MD Approval', color: '#BA7517', bg: '#FAEEDA',  icon: 'hourglass-outline' },
-  md_approved: { label: 'MD Approved',          color: '#27500A', bg: '#EAF3DE',  icon: 'checkmark-circle' },
-  approved:    { label: 'Approved',             color: '#27500A', bg: '#EAF3DE',  icon: 'checkmark-circle' },
-  returned:    { label: 'Returned for Correction', color: '#791F1F', bg: '#FCEBEB', icon: 'return-down-back' },
-  rejected:    { label: 'Rejected by MD',       color: '#791F1F', bg: '#FCEBEB',  icon: 'close-circle' },
+  draft:       { label: 'Draft',                color: '#555',    bg: '#F1F5EF',  icon: 'document-outline' },
+  pending:     { label: 'Awaiting Accountant',  color: '#286247', bg: '#EAF2ED',  icon: 'time-outline' },
+  pending_acc: { label: 'Awaiting Accountant',  color: '#286247', bg: '#EAF2ED',  icon: 'time-outline' },
+  pending_md:  { label: 'Awaiting MD Approval', color: '#71805B', bg: '#EEF2E4',  icon: 'hourglass-outline' },
+  md_approved: { label: 'MD Approved',          color: '#1F6848', bg: '#E5F1E9',  icon: 'checkmark-circle' },
+  approved:    { label: 'Approved',             color: '#1F6848', bg: '#E5F1E9',  icon: 'checkmark-circle' },
+  returned:    { label: 'Returned for Correction', color: '#365A47', bg: '#E9F0EB', icon: 'return-down-back' },
+  rejected:    { label: 'Rejected by MD',       color: '#365A47', bg: '#E9F0EB',  icon: 'close-circle' },
 };
 const PROD_COLORS: Record<string, string> = {
-  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#5c3d11',
+  PMS: '#174D36', AGO: '#286247', DPK: '#71805B', LPG: '#1F6848', 'Lube Oil': '#49614F',
 };
 
 type MgrFormState = {
@@ -123,9 +123,9 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
         const diff = recN - ordN;
         const short = diff < 0;
         return (
-          <View style={[styles.mismatchBox, { backgroundColor: short ? '#FAEEDA' : '#FCEBEB', borderColor: short ? '#BA7517' : '#791F1F' }]}>
-            <Ionicons name={short ? 'warning-outline' : 'alert-circle-outline'} size={15} color={short ? '#BA7517' : '#791F1F'} />
-            <Text style={[styles.mismatchText, { color: short ? '#BA7517' : '#791F1F' }]}>
+          <View style={[styles.mismatchBox, { backgroundColor: short ? '#EEF2E4' : '#E9F0EB', borderColor: short ? '#71805B' : '#365A47' }]}>
+            <Ionicons name={short ? 'warning-outline' : 'alert-circle-outline'} size={15} color={short ? '#71805B' : '#365A47'} />
+            <Text style={[styles.mismatchText, { color: short ? '#71805B' : '#365A47' }]}>
               {(() => {
                 const u = unitForProd(f.prod);
                 return short
@@ -636,7 +636,7 @@ export default function ReceivingScreen() {
           return (
             <View key={d.id} style={[styles.delivCard, {
               backgroundColor: colors.surface,
-              borderColor: apSt === 'pending_md' ? '#BA7517' : locked ? '#27500A' : apSt === 'pending_acc' || apSt === 'pending' ? '#185FA5' : colors.border,
+              borderColor: apSt === 'pending_md' ? '#71805B' : locked ? '#1F6848' : apSt === 'pending_acc' || apSt === 'pending' ? '#286247' : colors.border,
               borderWidth: apSt !== 'draft' ? 1.5 : 1,
             }]}>
               <View style={styles.delivHeader}>
@@ -666,14 +666,14 @@ export default function ReceivingScreen() {
                     </Text>
                     {safeNum(d.rec) !== safeNum(d.ord) ? (
                       <View style={[styles.mismatchBadge, {
-                        backgroundColor: safeNum(d.rec) < safeNum(d.ord) ? '#FAEEDA' : '#FCEBEB',
+                        backgroundColor: safeNum(d.rec) < safeNum(d.ord) ? '#EEF2E4' : '#E9F0EB',
                       }]}>
                         <Ionicons
                           name={safeNum(d.rec) < safeNum(d.ord) ? 'warning-outline' : 'alert-circle-outline'}
                           size={11}
-                          color={safeNum(d.rec) < safeNum(d.ord) ? '#BA7517' : '#791F1F'}
+                          color={safeNum(d.rec) < safeNum(d.ord) ? '#71805B' : '#365A47'}
                         />
-                        <Text style={[styles.mismatchBadgeText, { color: safeNum(d.rec) < safeNum(d.ord) ? '#BA7517' : '#791F1F' }]}>
+                        <Text style={[styles.mismatchBadgeText, { color: safeNum(d.rec) < safeNum(d.ord) ? '#71805B' : '#365A47' }]}>
                           {safeNum(d.rec) < safeNum(d.ord)
                             ? `Short ${(safeNum(d.ord) - safeNum(d.rec)).toLocaleString()} ${unitForProd(d.prod)}`
                             : `+${(safeNum(d.rec) - safeNum(d.ord)).toLocaleString()} ${unitForProd(d.prod)} over`}
@@ -683,7 +683,7 @@ export default function ReceivingScreen() {
                   </View>
                   {d.notes ? <Text style={[styles.delivNotes, { color: colors.textSubtle }]}>{d.notes}</Text> : null}
                    {(apSt === 'returned' || apSt === 'pending_acc' || apSt === 'pending') && d.rejectedNote ? (
-                     <Text style={[styles.delivNotes, { color: '#791F1F' }]}>
+                     <Text style={[styles.delivNotes, { color: '#365A47' }]}>
                        {apSt === 'returned' ? 'Returned by MD: ' : 'Returned for review: '}{d.rejectedNote}
                      </Text>
                   ) : null}
@@ -691,7 +691,7 @@ export default function ReceivingScreen() {
               </View>
 
               {hasCost ? (
-                <View style={[styles.costRow, { backgroundColor: '#0F6E5608', borderColor: '#0F6E5620' }]}>
+                <View style={[styles.costRow, { backgroundColor: '#1F684808', borderColor: '#1F684820' }]}>
                   <View style={styles.costItem}>
                     <Text style={[styles.costLabel, { color: colors.textMuted }]}>Cost/{unitForProd(d.prod)}</Text>
                     <Text style={[styles.costVal, { color: colors.text }]}>{'₦'}{safeNum(d.costPrice).toLocaleString()}</Text>
@@ -715,7 +715,7 @@ export default function ReceivingScreen() {
                       <View style={styles.costDivider} />
                       <View style={styles.costItem}>
                         <Text style={[styles.costLabel, { color: colors.textMuted }]}>Margin</Text>
-                        <Text style={[styles.costVal, { color: margin >= 0 ? '#27500A' : '#791F1F', fontWeight: '800' }]}>
+                        <Text style={[styles.costVal, { color: margin >= 0 ? '#1F6848' : '#365A47', fontWeight: '800' }]}>
                           {margin >= 0 ? '+' : ''}{margin}{'%'}
                         </Text>
                       </View>
@@ -725,9 +725,9 @@ export default function ReceivingScreen() {
               ) : null}
 
               {d.accBy ? (
-                <View style={[styles.trailRow, { backgroundColor: '#E6F1FB', borderColor: '#185FA520' }]}>
-                  <Ionicons name="pricetag" size={12} color="#185FA5" />
-                  <Text style={[styles.trailText, { color: '#185FA5' }]}>
+                <View style={[styles.trailRow, { backgroundColor: '#EAF2ED', borderColor: '#28624720' }]}>
+                  <Ionicons name="pricetag" size={12} color="#286247" />
+                  <Text style={[styles.trailText, { color: '#286247' }]}>
                     {'Cost set by '}{d.accBy}{d.accAt ? ' · ' + fmtDateTime(d.accAt) : ''}
                     {d.accNote ? ' — ' + d.accNote : ''}
                   </Text>
@@ -735,9 +735,9 @@ export default function ReceivingScreen() {
               ) : null}
 
               {locked && d.approvedBy ? (
-                <View style={[styles.trailRow, { backgroundColor: '#EAF3DE', borderColor: '#27500A20' }]}>
-                  <Ionicons name="checkmark-circle" size={12} color="#27500A" />
-                  <Text style={[styles.trailText, { color: '#27500A' }]}>
+                <View style={[styles.trailRow, { backgroundColor: '#E5F1E9', borderColor: '#1F684820' }]}>
+                  <Ionicons name="checkmark-circle" size={12} color="#1F6848" />
+                  <Text style={[styles.trailText, { color: '#1F6848' }]}>
                     {'MD Approved by '}{d.approvedBy}
                     {d.approvedAt ? ' · ' + fmtDateTime(d.approvedAt) : ''}
                     {' · Included in stock records'}
@@ -766,13 +766,13 @@ export default function ReceivingScreen() {
                       </Text>
                       {canAdd && (
                         <View style={styles.evBtns}>
-                          <TouchableOpacity onPress={() => pickFromGallery(d.id)} style={[styles.evBtn, { backgroundColor: '#2980B912', borderColor: '#2980B944' }]}>
-                            <Ionicons name="images-outline" size={12} color="#2980B9" />
-                            <Text style={[styles.evBtnText, { color: '#2980B9' }]}>Gallery</Text>
+                          <TouchableOpacity onPress={() => pickFromGallery(d.id)} style={[styles.evBtn, { backgroundColor: '#28624712', borderColor: '#28624744' }]}>
+                            <Ionicons name="images-outline" size={12} color="#286247" />
+                            <Text style={[styles.evBtnText, { color: '#286247' }]}>Gallery</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity onPress={() => pickDocument(d.id)} style={[styles.evBtn, { backgroundColor: '#8E44AD12', borderColor: '#8E44AD44' }]}>
-                            <Ionicons name="document-outline" size={12} color="#8E44AD" />
-                            <Text style={[styles.evBtnText, { color: '#8E44AD' }]}>File</Text>
+                          <TouchableOpacity onPress={() => pickDocument(d.id)} style={[styles.evBtn, { backgroundColor: '#315F4912', borderColor: '#315F4944' }]}>
+                            <Ionicons name="document-outline" size={12} color="#315F49" />
+                            <Text style={[styles.evBtnText, { color: '#315F49' }]}>File</Text>
                           </TouchableOpacity>
                         </View>
                       )}
@@ -786,7 +786,7 @@ export default function ReceivingScreen() {
                         const isImg = ev.mimeType?.startsWith('image/') || ev.type === 'photo';
                         const isVid = ev.mimeType?.startsWith('video/') || ev.type === 'video';
                         const ic    = isImg ? 'image-outline' : isVid ? 'videocam-outline' : 'document-text-outline';
-                        const ic2   = isImg ? roleColor : isVid ? '#2980B9' : '#8E44AD';
+                        const ic2   = isImg ? roleColor : isVid ? '#286247' : '#315F49';
                         const lbl   = isImg ? 'IMG' : isVid ? 'VID' : 'FILE';
                         return (
                           <View key={ev.id} style={[styles.evItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -817,13 +817,13 @@ export default function ReceivingScreen() {
 
               {canMgrEdit(d) ? (
                 <View style={styles.actionRow}>
-                  <TouchableOpacity onPress={() => openEdit(d)} style={[styles.actionBtn, { borderColor: '#185FA5' }]}>
-                    <Ionicons name="create-outline" size={14} color="#185FA5" />
-                    <Text style={[styles.actionBtnText, { color: '#185FA5' }]}>Edit</Text>
+                  <TouchableOpacity onPress={() => openEdit(d)} style={[styles.actionBtn, { borderColor: '#286247' }]}>
+                    <Ionicons name="create-outline" size={14} color="#286247" />
+                    <Text style={[styles.actionBtnText, { color: '#286247' }]}>Edit</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(d)} style={[styles.actionBtn, { borderColor: '#791F1F' }]}>
-                    <Ionicons name="trash-outline" size={14} color="#791F1F" />
-                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Delete</Text>
+                  <TouchableOpacity onPress={() => handleDelete(d)} style={[styles.actionBtn, { borderColor: '#365A47' }]}>
+                    <Ionicons name="trash-outline" size={14} color="#365A47" />
+                    <Text style={[styles.actionBtnText, { color: '#365A47' }]}>Delete</Text>
                   </TouchableOpacity>
                   {canMgrSubmit(d) ? (
                     <TouchableOpacity onPress={() => handleSubmitToAcc(d)} style={[styles.forwardBtn, { backgroundColor: roleColor }]}>
@@ -835,15 +835,15 @@ export default function ReceivingScreen() {
               ) : null}
               {isAdmin && !canMgrEdit(d) ? (
                 <View style={styles.actionRow}>
-                  <TouchableOpacity onPress={() => handleDelete(d)} style={[styles.actionBtn, { borderColor: '#791F1F' }]}>
-                    <Ionicons name="trash-outline" size={14} color="#791F1F" />
-                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Delete</Text>
+                  <TouchableOpacity onPress={() => handleDelete(d)} style={[styles.actionBtn, { borderColor: '#365A47' }]}>
+                    <Ionicons name="trash-outline" size={14} color="#365A47" />
+                    <Text style={[styles.actionBtnText, { color: '#365A47' }]}>Delete</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
 
               {canAccSet(d) ? (
-                <TouchableOpacity onPress={() => openAccModal(d)} style={[styles.fullBtn, { backgroundColor: '#185FA5' }]}>
+                <TouchableOpacity onPress={() => openAccModal(d)} style={[styles.fullBtn, { backgroundColor: '#286247' }]}>
                   <Ionicons name="pricetag-outline" size={14} color="#fff" />
                   <Text style={styles.fullBtnText}>Set Cost Price & Forward to MD</Text>
                 </TouchableOpacity>
@@ -852,7 +852,7 @@ export default function ReceivingScreen() {
               {canAccRecall(d) ? (
                 <TouchableOpacity
                   onPress={() => { accRecallDelivery(d.id); openAccModal(d); }}
-                  style={[styles.fullBtn, { backgroundColor: '#BA7517' }]}
+                  style={[styles.fullBtn, { backgroundColor: '#71805B' }]}
                 >
                   <Ionicons name="return-down-back-outline" size={14} color="#fff" />
                   <Text style={styles.fullBtnText}>Recall & Edit Cost Price</Text>
@@ -863,10 +863,10 @@ export default function ReceivingScreen() {
                 <View style={styles.actionRow}>
                   <TouchableOpacity
                     onPress={() => openMdModal(d, true)}
-                    style={[styles.actionBtn, { borderColor: '#791F1F', flex: 1 }]}
+                    style={[styles.actionBtn, { borderColor: '#365A47', flex: 1 }]}
                   >
-                    <Ionicons name="return-down-back-outline" size={14} color="#791F1F" />
-                    <Text style={[styles.actionBtnText, { color: '#791F1F' }]}>Return</Text>
+                    <Ionicons name="return-down-back-outline" size={14} color="#365A47" />
+                    <Text style={[styles.actionBtnText, { color: '#365A47' }]}>Return</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => openMdModal(d, false)}
@@ -879,9 +879,9 @@ export default function ReceivingScreen() {
               ) : null}
 
               {locked ? (
-                <View style={[styles.lockRow, { borderColor: '#27500A' }]}>
-                  <Ionicons name="lock-closed" size={12} color="#27500A" />
-                  <Text style={[styles.lockText, { color: '#27500A' }]}>Permanently locked — included in stock records</Text>
+                <View style={[styles.lockRow, { borderColor: '#1F6848' }]}>
+                  <Ionicons name="lock-closed" size={12} color="#1F6848" />
+                  <Text style={[styles.lockText, { color: '#1F6848' }]}>Permanently locked — included in stock records</Text>
                 </View>
               ) : null}
             </View>
@@ -898,9 +898,9 @@ export default function ReceivingScreen() {
         {hasPendingConfirmation ? confirmationContent : (
         <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <Text style={[styles.sheetTitle, { color: colors.text }]}>Record Product Receipt</Text>
-          <View style={[styles.infoBox, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
-            <Ionicons name="information-circle-outline" size={15} color="#185FA5" />
-            <Text style={[styles.infoText, { color: '#185FA5' }]}>
+          <View style={[styles.infoBox, { backgroundColor: '#EAF2ED', borderColor: '#286247' }]}>
+            <Ionicons name="information-circle-outline" size={15} color="#286247" />
+            <Text style={[styles.infoText, { color: '#286247' }]}>
               {'Record the physical delivery details and submit them to the accountant. The accountant sets cost price, then forwards the receipt to MD for selling-price approval.'}
             </Text>
           </View>
@@ -926,8 +926,8 @@ export default function ReceivingScreen() {
         {hasPendingConfirmation ? confirmationContent : (
         <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <View style={styles.editHeader}>
-            <View style={[styles.editIconBox, { backgroundColor: '#E8F0FC' }]}>
-              <Ionicons name="create" size={18} color="#185FA5" />
+            <View style={[styles.editIconBox, { backgroundColor: '#EAF2ED' }]}>
+              <Ionicons name="create" size={18} color="#286247" />
             </View>
             <View>
               <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Edit Delivery</Text>
@@ -937,7 +937,7 @@ export default function ReceivingScreen() {
           <MgrFormFields f={editForm} setF={setEditForm} roleColor={roleColor} />
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
             <TouchableOpacity
-              style={[styles.saveBtn, { flex: 1, backgroundColor: '#185FA5', opacity: isSavingDelivery ? 0.6 : 1 }]}
+              style={[styles.saveBtn, { flex: 1, backgroundColor: '#286247', opacity: isSavingDelivery ? 0.6 : 1 }]}
               onPress={handleUpdate}
               disabled={isSavingDelivery}
             >
@@ -956,8 +956,8 @@ export default function ReceivingScreen() {
       <ModalSheet visible={accTarget !== null} onClose={() => setAccTarget(null)}>
         <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <View style={styles.editHeader}>
-            <View style={[styles.editIconBox, { backgroundColor: '#E6F1FB' }]}>
-              <Ionicons name="pricetag" size={18} color="#185FA5" />
+            <View style={[styles.editIconBox, { backgroundColor: '#EAF2ED' }]}>
+              <Ionicons name="pricetag" size={18} color="#286247" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Set Cost Price</Text>
@@ -984,13 +984,13 @@ export default function ReceivingScreen() {
             </Text>
           </View>
 
-          <View style={[styles.costPriceBox, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
+          <View style={[styles.costPriceBox, { backgroundColor: '#EAF2ED', borderColor: '#286247' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <Ionicons name="pricetag-outline" size={15} color="#185FA5" />
-              <Text style={[styles.costPriceLabel, { color: '#185FA5' }]}>Cost Price (₦ per {accTarget ? unitForProd(accTarget.prod) : 'L'}) *</Text>
+              <Ionicons name="pricetag-outline" size={15} color="#286247" />
+              <Text style={[styles.costPriceLabel, { color: '#286247' }]}>Cost Price (₦ per {accTarget ? unitForProd(accTarget.prod) : 'L'}) *</Text>
             </View>
             <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: '#185FA550', color: colors.text, marginBottom: 0, fontSize: 18, fontWeight: '700' }]}
+              style={[styles.input, { backgroundColor: colors.background, borderColor: '#28624750', color: colors.text, marginBottom: 0, fontSize: 18, fontWeight: '700' }]}
               placeholder="e.g. 780"
               placeholderTextColor={colors.textSubtle}
               keyboardType="numeric"
@@ -1008,7 +1008,7 @@ export default function ReceivingScreen() {
                 {getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId) > 0 ? (
                   <Text style={[styles.costHint, { color: colors.textMuted }]}>
                     {'Sell: ₦'}{getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId).toLocaleString()}{`/${accTarget ? unitForProd(accTarget.prod) : 'L'}  ·  Margin: `}
-                    <Text style={{ fontWeight: '700', color: (getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId) - parseFloat(accCostPrice)) >= 0 ? '#27500A' : '#791F1F' }}>
+                    <Text style={{ fontWeight: '700', color: (getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId) - parseFloat(accCostPrice)) >= 0 ? '#1F6848' : '#365A47' }}>
                       {Math.round(((getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId) - parseFloat(accCostPrice)) / getPriceForProduct(prices, accTarget.prod, accTarget.branchId ?? branchId)) * 100)}{'%'}
                     </Text>
                   </Text>
@@ -1032,7 +1032,7 @@ export default function ReceivingScreen() {
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.saveBtn, { flex: 2, backgroundColor: '#185FA5', opacity: isSubmittingAccForward ? 0.6 : 1 }]}
+              style={[styles.saveBtn, { flex: 2, backgroundColor: '#286247', opacity: isSubmittingAccForward ? 0.6 : 1 }]}
               onPress={handleAccForward}
               disabled={isSubmittingAccForward}
             >
@@ -1047,8 +1047,8 @@ export default function ReceivingScreen() {
       <ModalSheet visible={mdTarget !== null && !mdRejectMode} onClose={() => { setMdTarget(null); setMdSellingPrice(''); setMdNote(''); }}>
         <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <View style={styles.editHeader}>
-            <View style={[styles.editIconBox, { backgroundColor: '#EAF3DE' }]}>
-              <Ionicons name="checkmark-circle" size={18} color="#27500A" />
+            <View style={[styles.editIconBox, { backgroundColor: '#E5F1E9' }]}>
+              <Ionicons name="checkmark-circle" size={18} color="#1F6848" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Set Selling Price & Approve</Text>
@@ -1077,13 +1077,13 @@ export default function ReceivingScreen() {
             ) : null}
           </View>
 
-          <View style={[styles.costPriceBox, { backgroundColor: '#EAF3DE', borderColor: '#27500A' }]}>
+          <View style={[styles.costPriceBox, { backgroundColor: '#E5F1E9', borderColor: '#1F6848' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <Ionicons name="cash-outline" size={15} color="#27500A" />
-              <Text style={[styles.costPriceLabel, { color: '#27500A' }]}>Selling Price (₦ per {mdTarget ? unitForProd(mdTarget.prod) : 'L'}) *</Text>
+              <Ionicons name="cash-outline" size={15} color="#1F6848" />
+              <Text style={[styles.costPriceLabel, { color: '#1F6848' }]}>Selling Price (₦ per {mdTarget ? unitForProd(mdTarget.prod) : 'L'}) *</Text>
             </View>
             <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: '#27500A50', color: colors.text, marginBottom: 0, fontSize: 18, fontWeight: '700' }]}
+              style={[styles.input, { backgroundColor: colors.background, borderColor: '#1F684850', color: colors.text, marginBottom: 0, fontSize: 18, fontWeight: '700' }]}
               placeholder="e.g. 950"
               placeholderTextColor={colors.textSubtle}
               keyboardType="numeric"
@@ -1100,7 +1100,7 @@ export default function ReceivingScreen() {
                 </Text>
                 <Text style={[styles.costHint, { color: colors.textMuted }]}>
                   {'Margin: '}
-                  <Text style={{ fontWeight: '700', color: (parseFloat(mdSellingPrice) - safeNum(mdTarget.costPrice)) >= 0 ? '#27500A' : '#791F1F' }}>
+                  <Text style={{ fontWeight: '700', color: (parseFloat(mdSellingPrice) - safeNum(mdTarget.costPrice)) >= 0 ? '#1F6848' : '#365A47' }}>
                     {Math.round(((parseFloat(mdSellingPrice) - safeNum(mdTarget.costPrice)) / parseFloat(mdSellingPrice)) * 100)}{'%'}
                     {'  ·  ₦'}{(parseFloat(mdSellingPrice) - safeNum(mdTarget.costPrice)).toLocaleString()}{`/${mdTarget ? unitForProd(mdTarget.prod) : 'L'} profit`}
                   </Text>
@@ -1119,9 +1119,9 @@ export default function ReceivingScreen() {
             onChangeText={setMdNote}
           />
 
-          <View style={[{ backgroundColor: '#FAEEDA', borderRadius: 10, padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }]}>
-            <Ionicons name="information-circle-outline" size={16} color="#BA7517" />
-            <Text style={{ fontSize: 12, color: '#BA7517', flex: 1, fontWeight: '500' }}>
+          <View style={[{ backgroundColor: '#EEF2E4', borderRadius: 10, padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }]}>
+            <Ionicons name="information-circle-outline" size={16} color="#71805B" />
+            <Text style={{ fontSize: 12, color: '#71805B', flex: 1, fontWeight: '500' }}>
               {'Approving will permanently lock this record and update the selling price for '}{mdTarget?.prod}{' at this branch only.'}
             </Text>
           </View>
@@ -1131,7 +1131,7 @@ export default function ReceivingScreen() {
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.saveBtn, { flex: 2, backgroundColor: '#27500A', opacity: isSubmittingMdAction ? 0.6 : 1 }]}
+              style={[styles.saveBtn, { flex: 2, backgroundColor: '#1F6848', opacity: isSubmittingMdAction ? 0.6 : 1 }]}
               onPress={handleMdApprove}
               disabled={isSubmittingMdAction}
             >
@@ -1146,8 +1146,8 @@ export default function ReceivingScreen() {
       <ModalSheet visible={mdTarget !== null && mdRejectMode} onClose={() => { setMdTarget(null); setMdNote(''); }}>
         <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
           <View style={styles.editHeader}>
-            <View style={[styles.editIconBox, { backgroundColor: '#FCEBEB' }]}>
-              <Ionicons name="return-down-back" size={18} color="#791F1F" />
+            <View style={[styles.editIconBox, { backgroundColor: '#E9F0EB' }]}>
+              <Ionicons name="return-down-back" size={18} color="#365A47" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: 0 }]}>Return to Accountant</Text>
@@ -1171,7 +1171,7 @@ export default function ReceivingScreen() {
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.saveBtn, { flex: 2, backgroundColor: '#791F1F', opacity: isSubmittingMdAction ? 0.6 : 1 }]}
+              style={[styles.saveBtn, { flex: 2, backgroundColor: '#365A47', opacity: isSubmittingMdAction ? 0.6 : 1 }]}
               onPress={handleMdRejectConfirm}
               disabled={isSubmittingMdAction}
             >
@@ -1226,7 +1226,7 @@ const styles = StyleSheet.create({
   forwardBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
   fullBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  approveBtn: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: '#27500A' },
+  approveBtn: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: '#1F6848' },
   approveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   lockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   lockText: { fontSize: 11, fontWeight: '600' },

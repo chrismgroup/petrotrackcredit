@@ -161,14 +161,6 @@ function touchableContaining(renderer: ReactTestRenderer, label: string): ReactT
   return match;
 }
 
-function scorecardText(renderer: ReactTestRenderer, title: string): string {
-  const tile = renderer.root.findAll(node =>
-    node.props.accessibilityLabel === `${title} scorecard`,
-  )[0];
-  if (!tile) throw new Error(`Could not find scorecard "${title}"`);
-  return nodeText(tile);
-}
-
 function press(renderer: ReactTestRenderer, label: string, index = 0) {
   act(() => {
     touchable(renderer, label, index).props.onPress();
@@ -253,86 +245,15 @@ afterEach(() => {
 });
 
 describe('expense approval controls', () => {
-  it('reports approved daily, monthly, year-to-date, and period expenses by branch', () => {
-    const now = new Date();
-    const year = String(now.getFullYear());
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const today = `${year}-${month}-${day}`;
-
-    mockedUseApp.mockReturnValue(appState({
-      expenses: [
-        expense({ id: 1, dt: today, desc: 'Maitama daily expense', status: 'approved', amt: 100, branchId: 'branch-a', branchName: 'Maitama Branch' }),
-        expense({ id: 2, dt: today, desc: 'Wuse daily expense', status: 'approved', amt: 200, branchId: 'branch-b', branchName: 'Wuse Branch' }),
-        expense({ id: 3, dt: `${year}-${month}-01`, desc: 'Earlier monthly expense', status: 'approved', amt: 50, branchId: 'branch-a', branchName: 'Maitama Branch' }),
-        expense({ id: 4, dt: `${year}-01-01`, desc: 'Earlier annual expense', status: 'approved', amt: 25, branchId: 'branch-b', branchName: 'Wuse Branch' }),
-        expense({ id: 5, dt: today, status: 'pending', amt: 10_000, branchId: 'branch-a', branchName: 'Maitama Branch' }),
-      ],
-    }) as any);
-
+  it('does not show the removed expense reporting and scorecard sections', () => {
+    mockedUseApp.mockReturnValue(appState() as any);
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<ExpensesScreen />); });
     const text = nodeText(renderer.root);
-    expect(text).toContain('Daily expenses');
-    expect(text).toContain('Monthly expenses');
-    expect(text).toContain('Year-to-date expenses');
-    expect(text).toContain('Expenses for a period');
-    expect(text).toContain('₦300');
-    expect(text).toContain('₦350');
-    expect(text).toContain('₦375');
-    expect(text).toContain('Maitama Branch');
-    expect(text).toContain('Wuse Branch');
-    const dailyScorecard = renderer.root.findByProps({ accessibilityLabel: 'Daily expenses scorecard' });
-    act(() => dailyScorecard.props.onPress());
-    const detailText = nodeText(renderer.root);
-    expect(detailText).toContain('Approved expenditure');
-    expect(detailText).toContain('Maitama daily expense');
-    expect(detailText).toContain('Wuse daily expense');
-    expect(detailText).not.toContain('Earlier annual expense');
-    expect(renderer.root.findByProps({ accessibilityLabel: 'Close expense scorecard details' })).toBeTruthy();
-    act(() => renderer.unmount());
-  });
-
-  it('limits Station Manager expense scorecards to the authenticated branch', () => {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    mockedUseApp.mockReturnValue(appState({
-      role: 'mgr',
-      branchId: 'branch-a',
-      expenses: [
-        expense({ id: 11, dt: today, status: 'approved', amt: 100, branchId: 'branch-a', branchName: 'Maitama Branch' }),
-        expense({ id: 12, dt: today, status: 'approved', amt: 900, branchId: 'branch-b', branchName: 'Wuse Branch' }),
-      ],
-    }) as any);
-
-    let renderer!: ReactTestRenderer;
-    act(() => { renderer = create(<ExpensesScreen />); });
-    const daily = scorecardText(renderer, 'Daily expenses');
-    expect(nodeText(renderer.root)).toContain('Your assigned branch only');
-    expect(daily).toContain('₦100');
-    expect(daily).toContain('Maitama Branch');
-    expect(daily).not.toContain('₦900');
-    expect(daily).not.toContain('Wuse Branch');
-    act(() => renderer.unmount());
-  });
-
-  it.each(['ceo', 'md', 'acc', 'csm', 'mktg'] as const)(
-    'shows all-branch expense scorecards to %s',
-    role => {
-      mockedUseApp.mockReturnValue(appState({ role }) as any);
-      let renderer!: ReactTestRenderer;
-      act(() => { renderer = create(<ExpensesScreen />); });
-      expect(nodeText(renderer.root)).toContain('Approved expense scorecards');
-      expect(nodeText(renderer.root)).toContain('All branches');
-      act(() => renderer.unmount());
-    },
-  );
-
-  it('hides expense scorecards from roles outside the reporting audience', () => {
-    mockedUseApp.mockReturnValue(appState({ role: 'att' }) as any);
-    let renderer!: ReactTestRenderer;
-    act(() => { renderer = create(<ExpensesScreen />); });
-    expect(nodeText(renderer.root)).not.toContain('Approved expense scorecards');
+    expect(text).not.toContain('Reporting business date');
+    expect(text).not.toContain('Expenses for a period');
+    expect(text).not.toContain('Daily expenses');
+    expect(text).not.toContain('Approved expense scorecards');
     act(() => renderer.unmount());
   });
 

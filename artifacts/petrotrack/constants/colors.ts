@@ -1,61 +1,61 @@
 const colors = {
   light: {
     // ── Brand ────────────────────────────────────────────────
-    primary:            '#0D5C2E',   // deep forest green
-    primaryDark:        '#0A4824',   // pressed / active
+    primary:            '#174D36',   // forest green
+    primaryDark:        '#103A28',   // pressed / active
     primaryForeground:  '#ffffff',
 
     // ── Accent spectrum ───────────────────────────────────────
-    purple:             '#4C1D95',
-    blue:               '#1D4ED8',
-    amber:              '#D97706',
-    coral:              '#DC4E22',
-    red:                '#B91C1C',
-    teal:               '#0D6E56',
-    brown:              '#7C3F0E',
+    purple:             '#315F49',
+    blue:               '#286247',
+    amber:              '#71805B',
+    coral:              '#52705D',
+    red:                '#365A47',
+    teal:               '#1F6848',
+    brown:              '#49614F',
 
     // ── Surfaces ─────────────────────────────────────────────
-    background:         '#EFF4F1',   // warm off-white with green cast
-    surface:            '#FFFFFF',   // card / elevated surface
-    card:               '#FFFFFF',
+    background:         '#F6F8F3',   // pale white with a soft green cast
+    surface:            '#FCFDF9',   // card / elevated surface
+    card:               '#FCFDF9',
 
     // ── Typography ───────────────────────────────────────────
-    text:               '#0F172A',
-    textMuted:          '#64748B',
-    textSubtle:         '#94A3B8',
+    text:               '#14271D',
+    textMuted:          '#587063',
+    textSubtle:         '#829389',
 
     // ── Borders / inputs ─────────────────────────────────────
-    border:             '#DDE5E0',
-    inputBorder:        '#C8D5CD',
+    border:             '#DCE6DE',
+    inputBorder:        '#C7D6CC',
 
     // ── Navigation tints ─────────────────────────────────────
-    tint:               '#0D5C2E',
-    tabIconDefault:     '#94A3B8',
-    tabIconSelected:    '#0D5C2E',
+    tint:               '#174D36',
+    tabIconDefault:     '#829389',
+    tabIconSelected:    '#174D36',
 
     // ── Semantic: success ─────────────────────────────────────
-    success:            '#166534',
-    successBg:          '#DCFCE7',
-    successBorder:      '#86EFAC',
+    success:            '#1F6848',
+    successBg:          '#E5F1E9',
+    successBorder:      '#A8C9B3',
 
     // ── Semantic: warning ─────────────────────────────────────
-    warning:            '#92400E',
-    warningBg:          '#FEF3C7',
-    warningBorder:      '#FCD34D',
+    warning:            '#526B3F',
+    warningBg:          '#EEF2E4',
+    warningBorder:      '#C6D1AE',
 
     // ── Semantic: error ───────────────────────────────────────
-    error:              '#991B1B',
-    errorBg:            '#FEE2E2',
-    errorBorder:        '#FCA5A5',
+    error:              '#365A47',
+    errorBg:            '#E9F0EB',
+    errorBorder:        '#B8CBBE',
 
     // ── Semantic: info ────────────────────────────────────────
-    info:               '#1D4ED8',
-    infoBg:             '#EFF6FF',
-    infoBorder:         '#93C5FD',
+    info:               '#286247',
+    infoBg:             '#EAF2ED',
+    infoBorder:         '#B1CDBB',
 
     // ── Chat ─────────────────────────────────────────────────
-    messageMine:        '#0D5C2E',
-    messageOther:       '#EFF4F1',
+    messageMine:        '#174D36',
+    messageOther:       '#F1F5EF',
   },
   radius: 14,
 };

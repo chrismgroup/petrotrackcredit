@@ -36,7 +36,7 @@ const MGR_PERM_LABELS: { key: keyof MgrPermissions; label: string; icon: string;
 
 const PROD_OPTS: Tank['prod'][] = ['PMS', 'AGO', 'DPK'];
 const PROD_COLORS: Record<string, string> = {
-  PMS: '#1a6e3c', AGO: '#185FA5', DPK: '#BA7517', LPG: '#0F6E56', 'Lube Oil': '#7B3FA5',
+  PMS: '#174D36', AGO: '#286247', DPK: '#71805B', LPG: '#1F6848', 'Lube Oil': '#315F49',
 };
 const STARTUP_PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const STOCK_METRIC_LABELS: Record<(typeof STOCK_SNAPSHOT_METRICS)[number], { label: string; description: string }> = {
@@ -487,8 +487,8 @@ export default function SystemSettingsScreen() {
           {/* ── COMPANY ── */}
           {activeTab === 'company' && (
             <>
-              <View style={[styles.banner, { backgroundColor: '#0a2318' }]}>
-                <Ionicons name="business" size={22} color="#4CAF50" />
+              <View style={[styles.banner, { backgroundColor: '#103A28' }]}>
+                <Ionicons name="business" size={22} color="#1F6848" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.bannerTitle}>
                     {companyInfo.name || 'Company Profile'}
@@ -633,22 +633,22 @@ export default function SystemSettingsScreen() {
               </View>
 
               {isAdmin && hasUnsaved && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, backgroundColor: '#BA751714', borderWidth: 1, borderColor: '#BA751740', marginBottom: 2 }}>
-                  <Ionicons name="alert-circle-outline" size={15} color="#BA7517" />
-                  <Text style={{ color: '#BA7517', fontSize: 12, flex: 1 }}>You have unsaved changes — tap Save to apply them.</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, backgroundColor: '#71805B14', borderWidth: 1, borderColor: '#71805B40', marginBottom: 2 }}>
+                  <Ionicons name="alert-circle-outline" size={15} color="#71805B" />
+                  <Text style={{ color: '#71805B', fontSize: 12, flex: 1 }}>You have unsaved changes — tap Save to apply them.</Text>
                 </View>
               )}
               {isAdmin && cSaved && !hasUnsaved && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, backgroundColor: '#1a6e3c14', borderWidth: 1, borderColor: '#1a6e3c40', marginBottom: 2 }}>
-                  <Ionicons name="checkmark-circle" size={15} color="#1a6e3c" />
-                  <Text style={{ color: '#1a6e3c', fontSize: 12, flex: 1 }}>Company information saved — changes are active across the app.</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, backgroundColor: '#174D3614', borderWidth: 1, borderColor: '#174D3640', marginBottom: 2 }}>
+                  <Ionicons name="checkmark-circle" size={15} color="#174D36" />
+                  <Text style={{ color: '#174D36', fontSize: 12, flex: 1 }}>Company information saved — changes are active across the app.</Text>
                 </View>
               )}
               {isAdmin && (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <SaveBtn
                     label={hasUnsaved ? 'Save Company Settings' : 'Settings Saved ✓'}
-                    roleColor={hasUnsaved ? roleColor : '#1a6e3c'}
+                    roleColor={hasUnsaved ? roleColor : '#174D36'}
                     onPress={() => {
                       if (!cDraft.name.trim()) { Alert.alert('Required', 'Company name cannot be empty.'); return; }
                       updateCompanyInfo(cDraft);
@@ -787,15 +787,15 @@ export default function SystemSettingsScreen() {
                 return (
                   <View key={tank.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={styles.itemHeader}>
-                      <View style={[styles.idBadge, { backgroundColor: '#0F6E5618' }]}>
-                        <Text style={[styles.idText, { color: '#0F6E56' }]}>{tank.id}</Text>
+                      <View style={[styles.idBadge, { backgroundColor: '#1F684818' }]}>
+                        <Text style={[styles.idText, { color: '#1F6848' }]}>{tank.id}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.itemCurrent, { color: colors.textMuted }]}>Current: {tank.name}</Text>
                         <Text style={[styles.itemSub, { color: colors.textSubtle }]}>{tank.cap.toLocaleString()} kg</Text>
                       </View>
-                      <View style={[styles.prodPill, { backgroundColor: '#0F6E5622', borderColor: '#0F6E5655' }]}>
-                        <Text style={[styles.prodPillText, { color: '#0F6E56' }]}>LPG</Text>
+                      <View style={[styles.prodPill, { backgroundColor: '#1F684822', borderColor: '#1F684855' }]}>
+                        <Text style={[styles.prodPillText, { color: '#1F6848' }]}>LPG</Text>
                       </View>
                       {canManageStaff && (
                         <TouchableOpacity
@@ -816,13 +816,13 @@ export default function SystemSettingsScreen() {
                         <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment</Text>
                         <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
                           <TouchableOpacity onPress={() => isAdmin && setLpgEdits(l => ({ ...l, [tank.id]: { ...e, branchId: '' } }))}
-                            style={[styles.roleChip, { borderColor: !e.branchId ? '#0F6E56' : colors.border, backgroundColor: !e.branchId ? '#0F6E5618' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
-                            <Text style={[styles.roleChipText, { color: !e.branchId ? '#0F6E56' : colors.textMuted }]}>All Branches</Text>
+                            style={[styles.roleChip, { borderColor: !e.branchId ? '#1F6848' : colors.border, backgroundColor: !e.branchId ? '#1F684818' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
+                            <Text style={[styles.roleChipText, { color: !e.branchId ? '#1F6848' : colors.textMuted }]}>All Branches</Text>
                           </TouchableOpacity>
                           {branches.map(b => (
                             <TouchableOpacity key={b.id} onPress={() => isAdmin && setLpgEdits(l => ({ ...l, [tank.id]: { ...e, branchId: b.id } }))}
-                              style={[styles.roleChip, { borderColor: e.branchId === b.id ? '#0F6E56' : colors.border, backgroundColor: e.branchId === b.id ? '#0F6E5618' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
-                              <Text style={[styles.roleChipText, { color: e.branchId === b.id ? '#0F6E56' : colors.textMuted }]}>{b.name}</Text>
+                              style={[styles.roleChip, { borderColor: e.branchId === b.id ? '#1F6848' : colors.border, backgroundColor: e.branchId === b.id ? '#1F684818' : colors.surface, opacity: isAdmin ? 1 : 0.6 }]}>
+                              <Text style={[styles.roleChipText, { color: e.branchId === b.id ? '#1F6848' : colors.textMuted }]}>{b.name}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
@@ -835,10 +835,10 @@ export default function SystemSettingsScreen() {
               {/* Add new LPG tank */}
               {isAdmin && !showNewLpg && <AddBtn roleColor={roleColor} colors={colors} label="Add New LPG Tank" onPress={() => { setShowNewLpg(true); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200); }} />}
               {isAdmin && showNewLpg && (
-                <View style={[styles.newCard, { backgroundColor: colors.infoBg, borderColor: '#0F6E5655' }]}>
+                <View style={[styles.newCard, { backgroundColor: colors.infoBg, borderColor: '#1F684855' }]}>
                   <View style={styles.newCardHeader}>
-                    <View style={[styles.idBadge, { backgroundColor: '#0F6E5618' }]}>
-                      <Ionicons name="add" size={16} color="#0F6E56" />
+                    <View style={[styles.idBadge, { backgroundColor: '#1F684818' }]}>
+                      <Ionicons name="add" size={16} color="#1F6848" />
                     </View>
                     <Text style={[styles.cardTitle, { color: colors.text }]}>New LPG Tank</Text>
                     <TouchableOpacity onPress={() => { setShowNewLpg(false); setNewLpg(BLANK_LPG); }}>
@@ -853,19 +853,19 @@ export default function SystemSettingsScreen() {
                       ? <Text style={[{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginTop: 4 }]}>No branches yet — add a branch first.</Text>
                       : <View style={[styles.rolePickerRow, { flexWrap: 'wrap', gap: 6 }]}>
                           <TouchableOpacity onPress={() => setNewLpg(n => ({ ...n, branchId: '' }))}
-                            style={[styles.roleChip, { borderColor: !newLpg.branchId ? '#0F6E56' : colors.border, backgroundColor: !newLpg.branchId ? '#0F6E5618' : colors.surface }]}>
-                            <Text style={[styles.roleChipText, { color: !newLpg.branchId ? '#0F6E56' : colors.textMuted }]}>All Branches</Text>
+                            style={[styles.roleChip, { borderColor: !newLpg.branchId ? '#1F6848' : colors.border, backgroundColor: !newLpg.branchId ? '#1F684818' : colors.surface }]}>
+                            <Text style={[styles.roleChipText, { color: !newLpg.branchId ? '#1F6848' : colors.textMuted }]}>All Branches</Text>
                           </TouchableOpacity>
                           {branches.map(b => (
                             <TouchableOpacity key={b.id} onPress={() => setNewLpg(n => ({ ...n, branchId: b.id }))}
-                              style={[styles.roleChip, { borderColor: newLpg.branchId === b.id ? '#0F6E56' : colors.border, backgroundColor: newLpg.branchId === b.id ? '#0F6E5618' : colors.surface }]}>
-                              <Text style={[styles.roleChipText, { color: newLpg.branchId === b.id ? '#0F6E56' : colors.textMuted }]}>{b.name}</Text>
+                              style={[styles.roleChip, { borderColor: newLpg.branchId === b.id ? '#1F6848' : colors.border, backgroundColor: newLpg.branchId === b.id ? '#1F684818' : colors.surface }]}>
+                              <Text style={[styles.roleChipText, { color: newLpg.branchId === b.id ? '#1F6848' : colors.textMuted }]}>{b.name}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
                     }
                   </View>
-                  <TouchableOpacity style={[styles.createBtn, { backgroundColor: '#0F6E56' }]} onPress={createLpgTank} activeOpacity={0.85}>
+                  <TouchableOpacity style={[styles.createBtn, { backgroundColor: '#1F6848' }]} onPress={createLpgTank} activeOpacity={0.85}>
                     <Ionicons name="checkmark-circle" size={16} color="#fff" />
                     <Text style={styles.createBtnText}>Create LPG Tank</Text>
                   </TouchableOpacity>
@@ -913,9 +913,9 @@ export default function SystemSettingsScreen() {
                         <Text style={[styles.cardTitle, { color: colors.text }]}>{stock.product}</Text>
                         <Text style={[styles.itemSub, { color: colors.textMuted }]}>{branchName} · set by {stock.setBy}</Text>
                       </View>
-                      <View style={[styles.stBadge, { backgroundColor: '#0F6E5618' }]}>
-                        <Ionicons name="lock-closed" size={11} color="#0F6E56" />
-                        <Text style={[styles.stText, { color: '#0F6E56' }]}>LOCKED</Text>
+                      <View style={[styles.stBadge, { backgroundColor: '#1F684818' }]}>
+                        <Ionicons name="lock-closed" size={11} color="#1F6848" />
+                        <Text style={[styles.stText, { color: '#1F6848' }]}>LOCKED</Text>
                       </View>
                     </View>
                     <FieldInput
@@ -1648,14 +1648,14 @@ export default function SystemSettingsScreen() {
           {activeTab === 'cleanup' && (
             <>
               <View style={[styles.banner, { backgroundColor: '#4a1515' }]}>
-                <Ionicons name="trash" size={22} color="#fecaca" />
+                <Ionicons name="trash" size={22} color="#B8CBBE" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.bannerTitle}>Admin Data Cleanup</Text>
                   <Text style={styles.bannerSub}>Remove budgets or records explicitly marked as errors</Text>
                 </View>
               </View>
 
-              <View style={[styles.card, { backgroundColor: '#fff7ed', borderColor: '#f9731644' }]}>
+              <View style={[styles.card, { backgroundColor: '#F6F8F3', borderColor: '#62754D44' }]}>
                 <Text style={{ color: '#9a3412', fontSize: 13, lineHeight: 19 }}>
                   Deletions are permanent and audited. Budget deletion is available for every workflow state and branch.
                   Other records appear here only when the server or sync process marked them with an explicit error.
@@ -1746,8 +1746,8 @@ export default function SystemSettingsScreen() {
           {/* ── SYSTEM ── */}
           {activeTab === 'system' && (
             <>
-              <View style={[styles.banner, { backgroundColor: '#0a2318' }]}>
-                <Ionicons name="server" size={22} color="#4CAF50" />
+              <View style={[styles.banner, { backgroundColor: '#103A28' }]}>
+                <Ionicons name="server" size={22} color="#1F6848" />
                 <View>
                   <Text style={styles.bannerTitle}>System Information</Text>
                   <Text style={styles.bannerSub}>Read-only diagnostic data</Text>
@@ -1783,16 +1783,16 @@ export default function SystemSettingsScreen() {
 
                   <View style={{ marginTop: 20 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <Ionicons name="warning" size={16} color="#C0392B" />
-                      <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.5, color: '#C0392B', textTransform: 'uppercase' }}>Production Reset</Text>
+                      <Ionicons name="warning" size={16} color="#365A47" />
+                      <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.5, color: '#365A47', textTransform: 'uppercase' }}>Production Reset</Text>
                     </View>
-                    <View style={[styles.card, { backgroundColor: '#FDF2F0', borderColor: '#C0392B33', marginBottom: 0 }]}>
-                      <Text style={{ fontSize: 13, color: '#C0392B', lineHeight: 20, marginBottom: 12 }}>
+                    <View style={[styles.card, { backgroundColor: '#FDF2F0', borderColor: '#365A4733', marginBottom: 0 }]}>
+                      <Text style={{ fontSize: 13, color: '#365A47', lineHeight: 20, marginBottom: 12 }}>
                         Clears all test/operational data — shift reports, sales, expenses, deliveries, messages, HR records, and more.{'\n\n'}
                         <Text style={{ fontWeight: '700' }}>Admin settings are preserved:</Text> pumps, tanks, staff, branches, prices, user accounts, and role permissions stay intact.
                       </Text>
                       <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#C0392B', paddingVertical: 13, borderRadius: 12 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#365A47', paddingVertical: 13, borderRadius: 12 }}
                         activeOpacity={0.85}
                         onPress={() => {
                           const runReset = async () => {

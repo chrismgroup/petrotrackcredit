@@ -14,11 +14,11 @@ import { useColors } from '@/hooks/useColors';
 const PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const GLOBAL_ROLES = new Set(['admin', 'ceo', 'md', 'acc', 'csm', 'mktg']);
 const PRODUCT_COLORS: Record<string, string> = {
-  PMS: '#1a6e3c',
-  AGO: '#185FA5',
-  DPK: '#BA7517',
-  LPG: '#0F6E56',
-  'Lube Oil': '#5c3d11',
+  PMS: '#174D36',
+  AGO: '#286247',
+  DPK: '#71805B',
+  LPG: '#1F6848',
+  'Lube Oil': '#49614F',
 };
 const UNITS: Record<string, string> = { PMS: 'L', AGO: 'L', DPK: 'L', LPG: 'kg', 'Lube Oil': 'L' };
 
@@ -144,7 +144,7 @@ export default function InventoryScreen() {
               const percentage = product.capacity > 0 ? Math.min(100, Math.round((product.stock / product.capacity) * 100)) : null;
               const low = percentage !== null && percentage < 20;
               return (
-                <View key={product.product} style={[styles.inventoryCard, { backgroundColor: colors.surface, borderColor: low ? '#BA7517' : colors.border }]}>
+                <View key={product.product} style={[styles.inventoryCard, { backgroundColor: colors.surface, borderColor: low ? '#71805B' : colors.border }]}>
                   <View style={styles.cardTop}>
                     <View style={[styles.productPill, { backgroundColor: productColor + '18' }]}>
                       <Ionicons name="cube-outline" size={13} color={productColor} />
@@ -152,13 +152,13 @@ export default function InventoryScreen() {
                     </View>
                     {!product.dipBased ? <Text style={styles.sourceLabel}>Delivery-based</Text> : null}
                   </View>
-                  <Text style={[styles.stockValue, { color: low ? '#BA7517' : '#27500A' }]}>
+                  <Text style={[styles.stockValue, { color: low ? '#71805B' : '#1F6848' }]}>
                     {product.stock.toLocaleString()} <Text style={[styles.stockUnit, { color: colors.textMuted }]}>{product.unit}</Text>
                   </Text>
                   {percentage !== null ? (
                     <>
                       <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-                        <View style={[styles.progressFill, { width: `${percentage}%` as never, backgroundColor: low ? '#BA7517' : productColor }]} />
+                        <View style={[styles.progressFill, { width: `${percentage}%` as never, backgroundColor: low ? '#71805B' : productColor }]} />
                       </View>
                       <Text style={[styles.cardMeta, { color: colors.textSubtle }]}>{percentage}% of {product.capacity.toLocaleString()} {product.unit} capacity</Text>
                     </>
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
   tankName: { flex: 1, fontSize: 11 },
   tankStock: { fontSize: 11, fontWeight: '700' },
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  lowLabel: { color: '#BA7517', backgroundColor: '#FAEEDA', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, fontSize: 10, fontWeight: '800' },
+  lowLabel: { color: '#71805B', backgroundColor: '#EEF2E4', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, fontSize: 10, fontWeight: '800' },
   emptyBox: { alignItems: 'center', gap: 8, borderRadius: 15, borderWidth: 1, borderStyle: 'dashed', padding: 28 },
   emptyText: { fontSize: 13, textAlign: 'center' },
 });

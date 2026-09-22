@@ -26,9 +26,9 @@ type ActionView = 'active' | 'archived';
 
 const ACTION_PARTY_ROLES: Exclude<keyof typeof ROLE_LABELS, 'admin'>[] = ['ceo', 'md', 'mktg', 'csm', 'acc', 'mgr', 'att'];
 const ACTION_STATUS_META: Record<ActionItemStatus, { label: string; color: string; icon: string }> = {
-  open: { label: 'Open', color: '#185FA5', icon: 'ellipse-outline' },
-  'on-going': { label: 'On-going', color: '#BA7517', icon: 'time-outline' },
-  closed: { label: 'Closed', color: '#27500A', icon: 'checkmark-circle' },
+  open: { label: 'Open', color: '#286247', icon: 'ellipse-outline' },
+  'on-going': { label: 'On-going', color: '#71805B', icon: 'time-outline' },
+  closed: { label: 'Closed', color: '#1F6848', icon: 'checkmark-circle' },
 };
 const ACTION_URGENCY_LABELS = {
   overdue: 'Overdue',

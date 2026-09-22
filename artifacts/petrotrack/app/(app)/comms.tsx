@@ -45,12 +45,12 @@ function formatBytes(bytes?: number): string {
 }
 
 function mediaIcon(mimeType: string): { name: string; color: string } {
-  if (mimeType.startsWith('image/'))       return { name: 'image-outline',        color: '#185FA5' };
+  if (mimeType.startsWith('image/'))       return { name: 'image-outline',        color: '#286247' };
   if (mimeType.startsWith('video/'))       return { name: 'videocam-outline',      color: '#8e44ad' };
-  if (mimeType === 'application/pdf')      return { name: 'document-text-outline', color: '#e53935' };
-  if (mimeType.includes('word'))           return { name: 'document-outline',      color: '#185FA5' };
+  if (mimeType === 'application/pdf')      return { name: 'document-text-outline', color: '#365A47' };
+  if (mimeType.includes('word'))           return { name: 'document-outline',      color: '#286247' };
   if (mimeType.includes('sheet') || mimeType.includes('excel'))
-                                           return { name: 'grid-outline',          color: '#1a6e3c' };
+                                           return { name: 'grid-outline',          color: '#174D36' };
   return { name: 'attach-outline', color: '#888' };
 }
 

@@ -15,18 +15,18 @@ import { safeNum, safeStr } from '@/lib/report-helpers';
 const PRODUCTS: PriceProduct[] = ['PMS', 'AGO', 'DPK', 'LPG_Single', 'LPG_Distributor', 'Lube Oil'];
 
 const PROD_META: Record<string, { color: string; icon: string; unit: string; label: string }> = {
-  PMS:             { color: '#1a6e3c', icon: 'flame',       unit: '/L', label: 'PMS' },
-  AGO:             { color: '#185FA5', icon: 'car',         unit: '/L', label: 'AGO' },
-  DPK:             { color: '#BA7517', icon: 'bulb-outline',unit: '/L', label: 'DPK' },
-  LPG_Single:      { color: '#0F6E56', icon: 'thermometer', unit: '/kg', label: 'LPG (Single Buyers)' },
+  PMS:             { color: '#174D36', icon: 'flame',       unit: '/L', label: 'PMS' },
+  AGO:             { color: '#286247', icon: 'car',         unit: '/L', label: 'AGO' },
+  DPK:             { color: '#71805B', icon: 'bulb-outline',unit: '/L', label: 'DPK' },
+  LPG_Single:      { color: '#1F6848', icon: 'thermometer', unit: '/kg', label: 'LPG (Single Buyers)' },
   LPG_Distributor: { color: '#0B4D3E', icon: 'thermometer', unit: '/kg', label: 'LPG (Distributors)' },
-  'Lube Oil':      { color: '#5c3d11', icon: 'settings',    unit: '/L', label: 'Lube Oil' },
+  'Lube Oil':      { color: '#49614F', icon: 'settings',    unit: '/L', label: 'Lube Oil' },
 };
 
 const STATUS_CFG = {
-  pending:  { label: 'Pending', color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline'           },
-  approved: { label: 'Approved', color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle-outline'},
-  rejected: { label: 'Rejected', color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle-outline'  },
+  pending:  { label: 'Pending', color: '#71805B', bg: '#EEF2E4', icon: 'time-outline'           },
+  approved: { label: 'Approved', color: '#1F6848', bg: '#E5F1E9', icon: 'checkmark-circle-outline'},
+  rejected: { label: 'Rejected', color: '#365A47', bg: '#E9F0EB', icon: 'close-circle-outline'  },
 } as const;
 
 /* ─── Modal shell — thin wrapper around ModalSheet ─────── */
@@ -229,7 +229,7 @@ export default function PricesScreen() {
           const meta  = PROD_META[prod];
           const mp    = myPending(prod);
           return (
-            <View key={prod} style={[s.priceRow, { backgroundColor: colors.surface, borderColor: mp ? '#BA7517' : colors.border }]}>
+            <View key={prod} style={[s.priceRow, { backgroundColor: colors.surface, borderColor: mp ? '#71805B' : colors.border }]}>
               <View style={[s.prodIconWrap, { backgroundColor: meta.color + '18' }]}>
                 <Ionicons name={meta.icon as any} size={20} color={meta.color} />
               </View>
@@ -265,9 +265,9 @@ export default function PricesScreen() {
                 ) : null}
                 {/* Other roles: pending badge */}
                 {canPropose && mp ? (
-                  <View style={[s.pendingBadge, { backgroundColor: '#FAEEDA' }]}>
-                    <Ionicons name="time-outline" size={11} color="#BA7517" />
-                    <Text style={[s.pendingTxt, { color: '#BA7517' }]}>₦{safeNum(mp.proposedPrice).toLocaleString()} pending</Text>
+                  <View style={[s.pendingBadge, { backgroundColor: '#EEF2E4' }]}>
+                    <Ionicons name="time-outline" size={11} color="#71805B" />
+                    <Text style={[s.pendingTxt, { color: '#71805B' }]}>₦{safeNum(mp.proposedPrice).toLocaleString()} pending</Text>
                   </View>
                 ) : null}
               </View>
@@ -290,7 +290,7 @@ export default function PricesScreen() {
               const proposedPrice = safeNum(p.proposedPrice);
               const up   = proposedPrice > currentPrice;
               return (
-                <View key={safeStr(p.id, `pending-${safeStr(p.prod)}`)} style={[s.proposalCard, { backgroundColor: colors.surface, borderColor: '#BA7517' }]}>
+                <View key={safeStr(p.id, `pending-${safeStr(p.prod)}`)} style={[s.proposalCard, { backgroundColor: colors.surface, borderColor: '#71805B' }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <View style={[s.prodIconWrap, { backgroundColor: meta.color + '18' }]}>
                       <Ionicons name={meta.icon as any} size={18} color={meta.color} />
@@ -302,11 +302,11 @@ export default function PricesScreen() {
                     <View style={{ alignItems: 'flex-end', gap: 2 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                         <Text style={[s.strikePrice, { color: colors.textMuted }]}>₦{currentPrice.toLocaleString()}</Text>
-                        <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={13} color={up ? '#27500A' : '#791F1F'} />
+                        <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={13} color={up ? '#1F6848' : '#365A47'} />
                         <Text style={[s.propNew, { color: colors.text }]}>₦{proposedPrice.toLocaleString()}</Text>
                       </View>
-                      <View style={[s.diffBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB' }]}>
-                        <Text style={[s.diffTxt, { color: up ? '#27500A' : '#791F1F' }]}>
+                      <View style={[s.diffBadge, { backgroundColor: up ? '#E5F1E9' : '#E9F0EB' }]}>
+                        <Text style={[s.diffTxt, { color: up ? '#1F6848' : '#365A47' }]}>
                           {up ? '+' : ''}₦{(proposedPrice - currentPrice).toLocaleString()}
                         </Text>
                       </View>
@@ -314,23 +314,23 @@ export default function PricesScreen() {
                   </View>
                   <View style={s.proposalBtns}>
                     <TouchableOpacity
-                      style={[s.propBtn, { borderColor: '#791F1F' }]}
+                      style={[s.propBtn, { borderColor: '#365A47' }]}
                       onPress={() => { setRejectTarget(p); setRejectNote(''); }}
                       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                     >
-                      <Ionicons name="close" size={14} color="#791F1F" />
-                      <Text style={[s.propBtnTxt, { color: '#791F1F' }]}>Reject</Text>
+                      <Ionicons name="close" size={14} color="#365A47" />
+                      <Text style={[s.propBtnTxt, { color: '#365A47' }]}>Reject</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.propBtn, { borderColor: '#185FA5' }]}
+                      style={[s.propBtn, { borderColor: '#286247' }]}
                       onPress={() => openUpdate(p)}
                       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                     >
-                      <Ionicons name="create-outline" size={14} color="#185FA5" />
-                      <Text style={[s.propBtnTxt, { color: '#185FA5' }]}>Adjust</Text>
+                      <Ionicons name="create-outline" size={14} color="#286247" />
+                      <Text style={[s.propBtnTxt, { color: '#286247' }]}>Adjust</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.propBtnFill, { backgroundColor: '#27500A' }]}
+                      style={[s.propBtnFill, { backgroundColor: '#1F6848' }]}
                       onPress={() => handleApprove(p)}
                       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                     >
@@ -391,7 +391,7 @@ export default function PricesScreen() {
                   <View style={{ flex: 1, gap: 2 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={[s.strikePrice, { color: colors.textMuted }]}>₦{oldPrice.toLocaleString()}</Text>
-                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#27500A' : '#791F1F'} />
+                      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={up ? '#1F6848' : '#365A47'} />
                       <Text style={[s.propNew, { color: colors.text }]}>₦{newPrice.toLocaleString()}</Text>
                     </View>
                      <Text style={[s.prodUnit, { color: colors.textSubtle }]}>
@@ -399,8 +399,8 @@ export default function PricesScreen() {
                      </Text>
                      {h.reason ? <Text style={[s.prodUnit, { color: colors.textMuted, fontStyle: 'italic' }]}>{safeStr(h.reason)}</Text> : null}
                   </View>
-                  <View style={[s.diffBadge, { backgroundColor: up ? '#EAF3DE' : '#FCEBEB', borderWidth: 1, borderColor: up ? '#27500A30' : '#791F1F30' }]}>
-                    <Text style={[s.diffTxt, { color: up ? '#27500A' : '#791F1F' }]}>
+                  <View style={[s.diffBadge, { backgroundColor: up ? '#E5F1E9' : '#E9F0EB', borderWidth: 1, borderColor: up ? '#1F684830' : '#365A4730' }]}>
+                    <Text style={[s.diffTxt, { color: up ? '#1F6848' : '#365A47' }]}>
                       {up ? '+' : ''}₦{(newPrice - oldPrice).toLocaleString()}
                     </Text>
                   </View>
@@ -449,7 +449,7 @@ export default function PricesScreen() {
                     <View style={[s.contextDivider, { backgroundColor: colors.border }]} />
                     <View style={{ flex: 1, alignItems: 'center' }}>
                       <Text style={[s.contextLabel, { color: colors.textMuted }]}>Current Margin</Text>
-                      <Text style={[s.contextVal, { color: safeNum(currentPriceFor(setProd)) > safeNum(lastCostPrice(setProd)) ? '#27500A' : '#791F1F' }]}>
+                      <Text style={[s.contextVal, { color: safeNum(currentPriceFor(setProd)) > safeNum(lastCostPrice(setProd)) ? '#1F6848' : '#365A47' }]}>
                         {Math.round(((safeNum(currentPriceFor(setProd)) - safeNum(lastCostPrice(setProd))) / safeNum(currentPriceFor(setProd))) * 100)}{'%'}
                       </Text>
                     </View>
@@ -460,7 +460,7 @@ export default function PricesScreen() {
                     <View style={[s.contextDivider, { backgroundColor: colors.border }]} />
                     <View style={{ flex: 1, alignItems: 'center' }}>
                       <Text style={[s.contextLabel, { color: colors.textMuted }]}>New Margin</Text>
-                      <Text style={[s.contextVal, { color: parseFloat(setDraft) > lastCostPrice(setProd)! ? '#27500A' : '#791F1F' }]}>
+                      <Text style={[s.contextVal, { color: parseFloat(setDraft) > lastCostPrice(setProd)! ? '#1F6848' : '#365A47' }]}>
                         {Math.round(((parseFloat(setDraft) - lastCostPrice(setProd)!) / parseFloat(setDraft)) * 100)}{'%'}
                       </Text>
                     </View>
@@ -574,8 +574,8 @@ export default function PricesScreen() {
         <KeyboardAwareScrollViewCompat contentContainerStyle={[s.sheet, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={s.sheetHandle} />
           <View style={s.sheetHeader}>
-            <View style={[s.sheetIcon, { backgroundColor: '#E8F0FC' }]}>
-              <Ionicons name="create-outline" size={22} color="#185FA5" />
+            <View style={[s.sheetIcon, { backgroundColor: '#EAF2ED' }]}>
+              <Ionicons name="create-outline" size={22} color="#286247" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Adjust {updateTarget?.prod} Price</Text>
@@ -601,7 +601,7 @@ export default function PricesScreen() {
             <TouchableOpacity style={[s.btnOutline, { borderColor: colors.border }]} onPress={() => setUpdateTarget(null)}>
               <Text style={[s.btnOutlineTxt, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[s.btnFill, { backgroundColor: '#185FA5' }]} onPress={handleUpdate}>
+            <TouchableOpacity style={[s.btnFill, { backgroundColor: '#286247' }]} onPress={handleUpdate}>
               <Ionicons name="checkmark-circle" size={16} color="#fff" />
               <Text style={s.btnFillTxt}>Adjust & Approve</Text>
             </TouchableOpacity>
@@ -614,8 +614,8 @@ export default function PricesScreen() {
         <KeyboardAwareScrollViewCompat contentContainerStyle={[s.sheet, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={s.sheetHandle} />
           <View style={s.sheetHeader}>
-            <View style={[s.sheetIcon, { backgroundColor: '#FCEBEB' }]}>
-              <Ionicons name="close-circle-outline" size={22} color="#791F1F" />
+            <View style={[s.sheetIcon, { backgroundColor: '#E9F0EB' }]}>
+              <Ionicons name="close-circle-outline" size={22} color="#365A47" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[s.sheetTitle, { color: colors.text }]}>Reject Proposal</Text>
@@ -637,7 +637,7 @@ export default function PricesScreen() {
             <TouchableOpacity style={[s.btnOutline, { borderColor: colors.border }]} onPress={() => setRejectTarget(null)}>
               <Text style={[s.btnOutlineTxt, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[s.btnFill, { backgroundColor: '#791F1F' }]} onPress={handleReject}>
+            <TouchableOpacity style={[s.btnFill, { backgroundColor: '#365A47' }]} onPress={handleReject}>
               <Ionicons name="close" size={15} color="#fff" />
               <Text style={s.btnFillTxt}>Reject Proposal</Text>
             </TouchableOpacity>

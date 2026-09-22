@@ -20,11 +20,11 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 const fmtL = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  pending_manager:    { label: "Awaiting Manager's Approval",    color: '#BA7517', bg: '#FAEEDA', icon: 'time-outline' },
-  pending_accountant: { label: "Awaiting Accountant's Approval", color: '#185FA5', bg: '#E6F1FB', icon: 'hourglass-outline' },
-  returned:           { label: 'Rejected',             color: '#791F1F', bg: '#FCEBEB', icon: 'close-circle-outline' },
-  returned_attendant: { label: 'With Attendant',       color: '#8A3B0F', bg: '#FBEADD', icon: 'return-down-back-outline' },
-  approved:           { label: 'Approved',             color: '#27500A', bg: '#EAF3DE', icon: 'checkmark-circle-outline' },
+  pending_manager:    { label: "Awaiting Manager's Approval",    color: '#71805B', bg: '#EEF2E4', icon: 'time-outline' },
+  pending_accountant: { label: "Awaiting Accountant's Approval", color: '#286247', bg: '#EAF2ED', icon: 'hourglass-outline' },
+  returned:           { label: 'Rejected',             color: '#365A47', bg: '#E9F0EB', icon: 'close-circle-outline' },
+  returned_attendant: { label: 'With Attendant',       color: '#526B3F', bg: '#EEF2E4', icon: 'return-down-back-outline' },
+  approved:           { label: 'Approved',             color: '#1F6848', bg: '#E5F1E9', icon: 'checkmark-circle-outline' },
 };
 
 const REPORT_STATUS_GROUPS = ['pending_manager', 'pending_accountant', 'approved', 'returned', 'returned_attendant'] as const;
@@ -67,8 +67,8 @@ function StatusBadge({ status }: StatusBadgeProps) {
 
 function DeliveryBadge({ status }: { status?: PumpDailyReport['deliveryStatus'] }) {
   const queued = status === 'queued';
-  const color = queued ? '#8A3B0F' : '#27500A';
-  const backgroundColor = queued ? '#FBEADD' : '#EAF3DE';
+  const color = queued ? '#526B3F' : '#1F6848';
+  const backgroundColor = queued ? '#EEF2E4' : '#E5F1E9';
   return (
     <View style={[c.badge, { backgroundColor }]}>
       <Ionicons name={queued ? 'cloud-upload-outline' : 'cloud-done-outline'} size={10} color={color} />
@@ -84,7 +84,7 @@ interface ReportCardProps {
   colors: any;
 }
 function ReportCard({ report, onPress, roleColor, colors }: ReportCardProps) {
-  const varColor = report.variance === 0 ? '#27500A' : report.variance > 0 ? '#185FA5' : '#791F1F';
+  const varColor = report.variance === 0 ? '#1F6848' : report.variance > 0 ? '#286247' : '#365A47';
   return (
     <TouchableOpacity onPress={onPress} style={[c.card, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.75}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -259,8 +259,8 @@ function BranchGroupedReports({ reports, colors, onPress, searchQuery = '', bran
                   {group.list.length} approved report{group.list.length === 1 ? '' : 's'} · newest first
                 </Text>
               </View>
-              <View style={[c.folderCount, { backgroundColor: '#EAF3DE' }]}>
-                <Text style={[c.folderCountText, { color: '#27500A' }]}>{group.list.length}</Text>
+              <View style={[c.folderCount, { backgroundColor: '#E5F1E9' }]}>
+                <Text style={[c.folderCountText, { color: '#1F6848' }]}>{group.list.length}</Text>
               </View>
               <Ionicons name={(isOpen ? 'chevron-up' : 'chevron-down') as any} size={18} color={colors.textMuted} />
             </TouchableOpacity>
@@ -414,7 +414,7 @@ export default function ShiftReportScreen() {
   const creditVal = parseFloat(creditAmt.replace(/,/g, '')) || 0;
   const totalColl = posVal + cashVal + xferVal;
   const variance  = totalColl + creditVal - grossAmt;
-  const varColor  = variance === 0 ? '#27500A' : variance > 0 ? '#185FA5' : '#791F1F';
+  const varColor  = variance === 0 ? '#1F6848' : variance > 0 ? '#286247' : '#365A47';
 
   function handleSubmit() {
     if (!pump) { Alert.alert('Error', 'No active pump selected.'); return; }
@@ -867,7 +867,7 @@ export default function ShiftReportScreen() {
                 {t.label}
               </Text>
               {!!t.badge && t.badge > 0 && (
-                <View style={[c.tabBadge, { backgroundColor: '#E74C3C' }]}>
+                <View style={[c.tabBadge, { backgroundColor: '#365A47' }]}>
                   <Text style={c.tabBadgeTxt}>{t.badge}</Text>
                 </View>
               )}
@@ -882,30 +882,30 @@ export default function ShiftReportScreen() {
 
           {/* Returned alert banner */}
           {returnedReports.length > 0 && (
-            <View style={[c.alertBanner, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C55' }]}>
-              <Ionicons name="alert-circle" size={18} color="#791F1F" />
+            <View style={[c.alertBanner, { backgroundColor: '#E9F0EB', borderColor: '#365A4755' }]}>
+              <Ionicons name="alert-circle" size={18} color="#365A47" />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#791F1F' }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#365A47' }}>
                   {returnedReports.length} report{returnedReports.length > 1 ? 's' : ''} returned for correction
                 </Text>
                 {returnedReports.slice(0, 3).map(report => (
                   <View key={report.id} style={{ marginTop: 6 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#791F1F' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#365A47' }}>
                       {report.pumpName} · {fmtDate(report.date)}
                     </Text>
-                    <Text style={{ fontSize: 11, lineHeight: 16, color: '#791F1F', marginTop: 1 }}>
+                    <Text style={{ fontSize: 11, lineHeight: 16, color: '#365A47', marginTop: 1 }}>
                       {report.mgrNote?.trim() || 'Your manager did not add a correction note.'}
                     </Text>
                   </View>
                 ))}
                 {returnedReports.length > 3 && (
-                  <Text style={{ fontSize: 11, color: '#791F1F', marginTop: 5 }}>
+                  <Text style={{ fontSize: 11, color: '#365A47', marginTop: 5 }}>
                     +{returnedReports.length - 3} more correction{returnedReports.length - 3 === 1 ? '' : 's'} in My History
                   </Text>
                 )}
               </View>
               <TouchableOpacity onPress={() => setTab('history')}
-                style={{ backgroundColor: '#791F1F', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                style={{ backgroundColor: '#365A47', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
                 <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>View</Text>
               </TouchableOpacity>
             </View>
@@ -958,20 +958,20 @@ export default function ShiftReportScreen() {
           {/* Status counts */}
           <Text style={[c.sectionLabel, { color: colors.text, marginTop: 14 }]}>All-Time Summary</Text>
           <View style={c.statRow}>
-            <View style={[c.statTile, { backgroundColor: '#EAF3DE', borderColor: '#27500A22' }]}>
-              <Ionicons name="checkmark-circle" size={20} color="#27500A" />
-              <Text style={[c.statNum, { color: '#27500A' }]}>{statusCounts.approved}</Text>
-              <Text style={[c.statLbl, { color: '#27500A' }]}>Approved</Text>
+            <View style={[c.statTile, { backgroundColor: '#E5F1E9', borderColor: '#1F684822' }]}>
+              <Ionicons name="checkmark-circle" size={20} color="#1F6848" />
+              <Text style={[c.statNum, { color: '#1F6848' }]}>{statusCounts.approved}</Text>
+              <Text style={[c.statLbl, { color: '#1F6848' }]}>Approved</Text>
             </View>
-            <View style={[c.statTile, { backgroundColor: '#FAEEDA', borderColor: '#BA751722' }]}>
-              <Ionicons name="hourglass" size={20} color="#BA7517" />
-              <Text style={[c.statNum, { color: '#BA7517' }]}>{statusCounts.pending}</Text>
-              <Text style={[c.statLbl, { color: '#BA7517' }]}>In Review</Text>
+            <View style={[c.statTile, { backgroundColor: '#EEF2E4', borderColor: '#71805B22' }]}>
+              <Ionicons name="hourglass" size={20} color="#71805B" />
+              <Text style={[c.statNum, { color: '#71805B' }]}>{statusCounts.pending}</Text>
+              <Text style={[c.statLbl, { color: '#71805B' }]}>In Review</Text>
             </View>
-            <View style={[c.statTile, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C22' }]}>
-              <Ionicons name="return-down-back" size={20} color="#791F1F" />
-              <Text style={[c.statNum, { color: '#791F1F' }]}>{statusCounts.returned}</Text>
-              <Text style={[c.statLbl, { color: '#791F1F' }]}>Returned</Text>
+            <View style={[c.statTile, { backgroundColor: '#E9F0EB', borderColor: '#365A4722' }]}>
+              <Ionicons name="return-down-back" size={20} color="#365A47" />
+              <Text style={[c.statNum, { color: '#365A47' }]}>{statusCounts.returned}</Text>
+              <Text style={[c.statLbl, { color: '#365A47' }]}>Returned</Text>
             </View>
           </View>
 
@@ -1000,7 +1000,7 @@ export default function ShiftReportScreen() {
               <View style={[c.monthDivider, { backgroundColor: colors.border }]} />
               <View style={c.monthCol}>
                 {(() => {
-                  const vc = dashTotals.variance === 0 ? '#27500A' : dashTotals.variance > 0 ? '#185FA5' : '#791F1F';
+                  const vc = dashTotals.variance === 0 ? '#1F6848' : dashTotals.variance > 0 ? '#286247' : '#365A47';
                   return (
                     <>
                       <Text style={[c.monthVal, { color: vc }]}>
@@ -1128,10 +1128,10 @@ export default function ShiftReportScreen() {
                     <Text style={[c.formHint, { color: colors.textMuted }]}>Enter all amounts received. POS + Cash + Transfer + Credit must equal gross sales.</Text>
 
                     {[
-                      { label: 'POS Amount (₦)', val: posAmt, set: setPosAmt, icon: 'card-outline', color: '#185FA5' },
-                      { label: 'Cash Amount (₦)', val: cashAmt, set: setCashAmt, icon: 'cash-outline', color: '#27500A' },
-                      { label: 'Bank Transfer (₦)', val: xferAmt, set: setXferAmt, icon: 'swap-horizontal-outline', color: '#7B3FA8' },
-                      { label: 'Credit to Customer (₦)', val: creditAmt, set: setCreditAmt, icon: 'person-outline', color: '#A85E1A' },
+                      { label: 'POS Amount (₦)', val: posAmt, set: setPosAmt, icon: 'card-outline', color: '#286247' },
+                      { label: 'Cash Amount (₦)', val: cashAmt, set: setCashAmt, icon: 'cash-outline', color: '#1F6848' },
+                      { label: 'Bank Transfer (₦)', val: xferAmt, set: setXferAmt, icon: 'swap-horizontal-outline', color: '#315F49' },
+                      { label: 'Credit to Customer (₦)', val: creditAmt, set: setCreditAmt, icon: 'person-outline', color: '#62754D' },
                     ].map(f => (
                       <View key={f.label} style={{ marginBottom: 10 }}>
                         <Text style={[c.inputLabel, { color: colors.textMuted }]}>{f.label}</Text>
@@ -1160,8 +1160,8 @@ export default function ShiftReportScreen() {
                         </View>
                         {creditVal > 0 && (
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <Text style={{ fontSize: 12, color: '#A85E1A' }}>Credit to Customer</Text>
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: '#A85E1A' }}>{fmt(creditVal)}</Text>
+                            <Text style={{ fontSize: 12, color: '#62754D' }}>Credit to Customer</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: '#62754D' }}>{fmt(creditVal)}</Text>
                           </View>
                         )}
                         <View style={[c.divider, { backgroundColor: colors.border }]} />
@@ -1360,24 +1360,24 @@ export default function ShiftReportScreen() {
             const lastReport = [...pumpDailyReports].filter(r => r.pumpId === p.id).sort((a, b) => b.date.localeCompare(a.date))[0];
             const effectiveOpening = getOpeningMeter(p.id);
             return (
-              <View key={p.id} style={[c.initCard, { backgroundColor: colors.surface, borderColor: isLocked ? '#C0392B55' : colors.border }]}>
+              <View key={p.id} style={[c.initCard, { backgroundColor: colors.surface, borderColor: isLocked ? '#365A4755' : colors.border }]}>
                 {/* Header */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <View style={[c.pumpAvatar, { backgroundColor: isLocked ? '#FDECEA' : roleColor + '18' }]}>
-                    <Ionicons name={isLocked ? 'lock-closed' : 'speedometer-outline'} size={18} color={isLocked ? '#C0392B' : roleColor} />
+                  <View style={[c.pumpAvatar, { backgroundColor: isLocked ? '#E9F0EB' : roleColor + '18' }]}>
+                    <Ionicons name={isLocked ? 'lock-closed' : 'speedometer-outline'} size={18} color={isLocked ? '#365A47' : roleColor} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[c.cardTitle, { color: colors.text }]}>{p.name}</Text>
                     <Text style={[c.cardSub, { color: colors.textMuted }]}>{p.prod}</Text>
                   </View>
                   {isLocked ? (
-                    <View style={[c.badge, { backgroundColor: '#FDECEA' }]}>
-                      <Ionicons name="lock-closed" size={10} color="#C0392B" />
-                      <Text style={[c.badgeTxt, { color: '#C0392B' }]}>LOCKED</Text>
+                    <View style={[c.badge, { backgroundColor: '#E9F0EB' }]}>
+                      <Ionicons name="lock-closed" size={10} color="#365A47" />
+                      <Text style={[c.badgeTxt, { color: '#365A47' }]}>LOCKED</Text>
                     </View>
                   ) : current !== undefined ? (
-                    <View style={[c.badge, { backgroundColor: '#EAF3DE' }]}>
-                      <Text style={[c.badgeTxt, { color: '#27500A' }]}>Seed: {fmtL(current)}</Text>
+                    <View style={[c.badge, { backgroundColor: '#E5F1E9' }]}>
+                      <Text style={[c.badgeTxt, { color: '#1F6848' }]}>Seed: {fmtL(current)}</Text>
                     </View>
                   ) : null}
                 </View>
@@ -1385,7 +1385,7 @@ export default function ShiftReportScreen() {
                 {/* Current effective opening */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 2 }}>
                   <Text style={{ fontSize: 11, color: colors.textMuted }}>Current opening (attendant sees)</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: isLocked ? '#C0392B' : colors.text }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: isLocked ? '#365A47' : colors.text }}>
                     {fmtL(effectiveOpening)} {unitForProd(p.prod)}
                   </Text>
                 </View>
@@ -1398,13 +1398,13 @@ export default function ShiftReportScreen() {
 
                 {/* Unlock banner when locked */}
                 {isLocked && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FDECEA', borderRadius: 10, padding: 10, marginBottom: 8 }}>
-                    <Ionicons name="lock-closed" size={14} color="#C0392B" />
-                    <Text style={{ flex: 1, fontSize: 12, color: '#C0392B' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#E9F0EB', borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                    <Ionicons name="lock-closed" size={14} color="#365A47" />
+                    <Text style={{ flex: 1, fontSize: 12, color: '#365A47' }}>
                       Opening meter locked at {fmtL(locked)} {unitForProd(p.prod)}
                     </Text>
                     <TouchableOpacity onPress={() => handleUnlockMeter(p.id)}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#C0392B', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 }}>
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#365A47', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 }}>
                       <Ionicons name="lock-open-outline" size={13} color="#fff" />
                       <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Unlock</Text>
                     </TouchableOpacity>
@@ -1430,10 +1430,10 @@ export default function ShiftReportScreen() {
                 </View>
 
                 {/* Lock override row */}
-                <Text style={[c.inputLabel, { color: '#C0392B', marginBottom: 4 }]}>Override &amp; lock opening meter (L)</Text>
+                <Text style={[c.inputLabel, { color: '#365A47', marginBottom: 4 }]}>Override &amp; lock opening meter (L)</Text>
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                   <TextInput
-                    style={[c.textInput, { flex: 1, marginBottom: 0, backgroundColor: colors.background, borderColor: '#C0392B44', color: colors.text }]}
+                    style={[c.textInput, { flex: 1, marginBottom: 0, backgroundColor: colors.background, borderColor: '#365A4744', color: colors.text }]}
                     placeholder="Enter new opening meter to lock"
                     placeholderTextColor={colors.textSubtle}
                     keyboardType="decimal-pad"
@@ -1441,7 +1441,7 @@ export default function ShiftReportScreen() {
                     onChangeText={v => setLockInputs(m => ({ ...m, [p.id]: v }))}
                   />
                   <TouchableOpacity onPress={() => handleLockMeter(p.id)}
-                    style={[c.saveBtn, { backgroundColor: '#C0392B' }]}>
+                    style={[c.saveBtn, { backgroundColor: '#365A47' }]}>
                     <Ionicons name="lock-closed-outline" size={15} color="#fff" />
                     <Text style={c.saveBtnTxt}>Lock</Text>
                   </TouchableOpacity>
@@ -1492,7 +1492,7 @@ export default function ShiftReportScreen() {
                 ((isAdmin || isMd) && viewing.status !== 'approved') ||
                 (isAdmin && viewing.status === 'approved')) && !isEditing && !isCorrectingDate && (
                 <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10 }}>
-                  <Ionicons name="trash-outline" size={22} color="#E74C3C" />
+                  <Ionicons name="trash-outline" size={22} color="#365A47" />
                 </TouchableOpacity>
               )}
               {(isEditing || isCorrectingDate) && (
@@ -1510,37 +1510,37 @@ export default function ShiftReportScreen() {
               <DeliveryBadge status={viewing.deliveryStatus} />
             </View>
             {viewing.deliveryStatus === 'queued' && (
-              <View style={[c.lockedNotice, { backgroundColor: '#FBEADD', borderColor: '#BA751744' }]}>
-                <Ionicons name="cloud-upload-outline" size={14} color="#8A3B0F" />
-                <Text style={{ flex: 1, fontSize: 12, color: '#8A3B0F' }}>
+              <View style={[c.lockedNotice, { backgroundColor: '#EEF2E4', borderColor: '#71805B44' }]}>
+                <Ionicons name="cloud-upload-outline" size={14} color="#526B3F" />
+                <Text style={{ flex: 1, fontSize: 12, color: '#526B3F' }}>
                   Queued on this device. Petrotrack will retry after login, reconnect, or when the app returns to the foreground.
                 </Text>
               </View>
             )}
 
             {viewing.status === 'approved' && (
-              <View style={[c.lockedNotice, { backgroundColor: '#EAF3DE', borderColor: '#27500A44' }]}>
-                <Ionicons name="lock-closed-outline" size={14} color="#27500A" />
-                <Text style={{ flex: 1, fontSize: 12, color: '#27500A' }}>
+              <View style={[c.lockedNotice, { backgroundColor: '#E5F1E9', borderColor: '#1F684844' }]}>
+                <Ionicons name="lock-closed-outline" size={14} color="#1F6848" />
+                <Text style={{ flex: 1, fontSize: 12, color: '#1F6848' }}>
                   Approved by the accountant and locked. Admin can correct its business date, return it to the accountant for a correction workflow, or delete it only to re-enter a wrong-date report.
                 </Text>
               </View>
             )}
 
             {isCorrectingDate && (
-              <View style={[c.dateCorrectionCard, { backgroundColor: '#E6F1FB', borderColor: '#185FA544' }]}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#185FA5' }}>Correct business date</Text>
-                <Text style={{ fontSize: 12, color: '#185FA5', marginTop: 3 }}>
+              <View style={[c.dateCorrectionCard, { backgroundColor: '#EAF2ED', borderColor: '#28624744' }]}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#286247' }}>Correct business date</Text>
+                <Text style={{ fontSize: 12, color: '#286247', marginTop: 3 }}>
                   Use only when an approved report was submitted against the wrong operating day. This keeps approval locked and updates the linked sales date.
                 </Text>
                 <AppliedDateField
                   value={correctedDate}
                   onChange={setCorrectedDate}
                   label="Corrected applies-on date"
-                  accent="#185FA5"
+                  accent="#286247"
                   helper="The original date and this correction are retained in the audit trail."
                 />
-                <TouchableOpacity onPress={handleDateCorrection} style={[c.submitBtn, { backgroundColor: '#185FA5' }]}>
+                <TouchableOpacity onPress={handleDateCorrection} style={[c.submitBtn, { backgroundColor: '#286247' }]}>
                   <Ionicons name="calendar-outline" size={16} color="#fff" />
                   <Text style={c.submitBtnTxt}>Save corrected date</Text>
                 </TouchableOpacity>
@@ -1551,11 +1551,11 @@ export default function ShiftReportScreen() {
             )}
 
             {viewing.rejectionReason && (
-              <View style={[c.rejectionCard, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C44', marginTop: 12 }]}>
-                <Ionicons name="alert-circle" size={16} color="#791F1F" />
+              <View style={[c.rejectionCard, { backgroundColor: '#E9F0EB', borderColor: '#365A4744', marginTop: 12 }]}>
+                <Ionicons name="alert-circle" size={16} color="#365A47" />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#791F1F', marginBottom: 2 }}>Accountant Rejection Reason</Text>
-                  <Text style={{ fontSize: 13, color: '#791F1F' }}>{viewing.rejectionReason}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#365A47', marginBottom: 2 }}>Accountant Rejection Reason</Text>
+                  <Text style={{ fontSize: 13, color: '#365A47' }}>{viewing.rejectionReason}</Text>
                 </View>
               </View>
             )}
@@ -1613,12 +1613,12 @@ export default function ShiftReportScreen() {
                 <Field label="POS" value={fmt(viewing.posAmount)} colors={colors} />
                 <Field label="Cash" value={fmt(viewing.cashAmount)} colors={colors} />
                 <Field label="Bank Transfer" value={fmt(viewing.transferAmount)} colors={colors} />
-                <Field label="Credit to Customer" value={fmt(viewing.creditAmount ?? 0)} colors={colors} accent="#A85E1A" />
+                <Field label="Credit to Customer" value={fmt(viewing.creditAmount ?? 0)} colors={colors} accent="#62754D" />
               </>
             )}
             <Field label="Total Collected" value={fmt(viewing.totalCollected)} colors={colors} />
             {(() => {
-              const vc = viewing.variance === 0 ? '#27500A' : viewing.variance > 0 ? '#185FA5' : '#791F1F';
+              const vc = viewing.variance === 0 ? '#1F6848' : viewing.variance > 0 ? '#286247' : '#365A47';
               return (
                 <View style={[c.varCard, { backgroundColor: vc + '10', borderColor: vc + '33' }]}>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: vc }}>
@@ -1699,15 +1699,15 @@ export default function ShiftReportScreen() {
                   placeholder="Explain corrections made (required)…" placeholderTextColor={colors.textSubtle}
                   multiline numberOfLines={3} value={reviewNote} onChangeText={setReviewNote}
                 />
-                <TouchableOpacity onPress={handleMgrResubmit} style={[c.submitBtn, { backgroundColor: '#185FA5' }]}>
+                <TouchableOpacity onPress={handleMgrResubmit} style={[c.submitBtn, { backgroundColor: '#286247' }]}>
                   <Ionicons name="refresh-circle" size={16} color="#fff" />
                   <Text style={c.submitBtnTxt}>Re-submit to Accountant</Text>
                 </TouchableOpacity>
-                <Text style={[c.sectionLabel, { color: '#8A3B0F', marginTop: 14 }]}>Reject & Return to Attendant</Text>
+                <Text style={[c.sectionLabel, { color: '#526B3F', marginTop: 14 }]}>Reject & Return to Attendant</Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
                   Reject this returned report and send it back to {viewing.submittedByName} so they can correct the business date or figures before re-submitting it. The note above is required and will be shown to them.
                 </Text>
-                <TouchableOpacity onPress={handleMgrReturnToAttendant} style={[c.submitBtn, { backgroundColor: '#8A3B0F' }]}>
+                <TouchableOpacity onPress={handleMgrReturnToAttendant} style={[c.submitBtn, { backgroundColor: '#526B3F' }]}>
                   <Ionicons name="return-down-back" size={16} color="#fff" />
                   <Text style={c.submitBtnTxt}>Reject — Return to Attendant</Text>
                 </TouchableOpacity>
@@ -1736,7 +1736,7 @@ export default function ShiftReportScreen() {
 
             {isAdmin && viewing.status === 'approved' && (
               <>
-                <Text style={[c.sectionLabel, { color: '#8A3B0F', marginTop: 16 }]}>Return for Correction</Text>
+                <Text style={[c.sectionLabel, { color: '#526B3F', marginTop: 16 }]}>Return for Correction</Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
                   Return this approved report to the accountant when its date must be corrected through the full review chain.
                 </Text>
@@ -1745,7 +1745,7 @@ export default function ShiftReportScreen() {
                   placeholder="Explain why the report is being returned (required)…" placeholderTextColor={colors.textSubtle}
                   multiline numberOfLines={3} value={reviewNote} onChangeText={setReviewNote}
                 />
-                <TouchableOpacity onPress={handleAdminReturn} style={[c.submitBtn, { backgroundColor: '#8A3B0F' }]}>
+                <TouchableOpacity onPress={handleAdminReturn} style={[c.submitBtn, { backgroundColor: '#526B3F' }]}>
                   <Ionicons name="return-down-back" size={16} color="#fff" />
                   <Text style={c.submitBtnTxt}>Return to Accountant</Text>
                 </TouchableOpacity>
@@ -1761,17 +1761,17 @@ export default function ShiftReportScreen() {
                   placeholder="Approval note (optional)…" placeholderTextColor={colors.textSubtle}
                   multiline numberOfLines={2} value={reviewNote} onChangeText={setReviewNote}
                 />
-                <TouchableOpacity onPress={handleAccApprove} style={[c.submitBtn, { backgroundColor: '#27500A' }]}>
+                <TouchableOpacity onPress={handleAccApprove} style={[c.submitBtn, { backgroundColor: '#1F6848' }]}>
                   <Ionicons name="checkmark-circle" size={16} color="#fff" />
                   <Text style={c.submitBtnTxt}>Approve & Lock Report</Text>
                 </TouchableOpacity>
-                <Text style={[c.sectionLabel, { color: '#791F1F', marginTop: 14 }]}>Reject & Return to Manager</Text>
+                <Text style={[c.sectionLabel, { color: '#365A47', marginTop: 14 }]}>Reject & Return to Manager</Text>
                 <TextInput
-                  style={[c.textArea, { backgroundColor: '#FCEBEB', borderColor: '#E74C3C44', color: colors.text }]}
-                  placeholder="State the rejection reason (required)…" placeholderTextColor="#c0392b"
+                  style={[c.textArea, { backgroundColor: '#E9F0EB', borderColor: '#365A4744', color: colors.text }]}
+                  placeholder="State the rejection reason (required)…" placeholderTextColor="#365A47"
                   multiline numberOfLines={3} value={rejectReason} onChangeText={setRejectReason}
                 />
-                <TouchableOpacity onPress={handleAccReject} style={[c.submitBtn, { backgroundColor: '#791F1F' }]}>
+                <TouchableOpacity onPress={handleAccReject} style={[c.submitBtn, { backgroundColor: '#365A47' }]}>
                   <Ionicons name="return-down-back" size={16} color="#fff" />
                   <Text style={c.submitBtnTxt}>Reject — Return to Manager</Text>
                 </TouchableOpacity>
@@ -1786,7 +1786,7 @@ export default function ShiftReportScreen() {
       <ModalSheet visible={returnToAttendant !== null} onClose={() => setReturnToAttendant(null)}>
         <View style={[c.confirmSheet, { backgroundColor: colors.surface }]}>
           <View style={c.confirmIcon}>
-            <Ionicons name="return-down-back" size={22} color="#8A3B0F" />
+            <Ionicons name="return-down-back" size={22} color="#526B3F" />
           </View>
           <Text style={[c.confirmTitle, { color: colors.text }]}>Return to Attendant?</Text>
           <Text style={[c.confirmBody, { color: colors.textMuted }]}>
@@ -1823,12 +1823,12 @@ const c = StyleSheet.create({
   tabBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 2.5 },
   tabLabel:      { fontSize: 13 },
   confirmSheet:  { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 12 },
-  confirmIcon:   { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FBEADD' },
+  confirmIcon:   { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2E4' },
   confirmTitle:  { fontSize: 20, fontWeight: '800' },
   confirmBody:   { fontSize: 14, lineHeight: 20 },
   confirmActions:{ flexDirection: 'row', gap: 8, marginTop: 4 },
   confirmCancel: { flex: 1, borderWidth: 1, borderRadius: 11, paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
-  confirmReturn: { flex: 1.5, borderRadius: 11, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8A3B0F' },
+  confirmReturn: { flex: 1.5, borderRadius: 11, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#526B3F' },
   confirmCancelText: { fontSize: 14, fontWeight: '700' },
   confirmReturnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   tabBadge:      { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9, minWidth: 18, alignItems: 'center' },

@@ -32,9 +32,9 @@ function linReg(y: number[]): { slope: number; intercept: number } {
 }
 
 const PRODUCTS = [
-  { key: 'PMS', label: 'PMS', color: '#1a6e3c', volBase: 880,  price: 830  },
-  { key: 'AGO', label: 'AGO', color: '#185FA5', volBase: 520,  price: 1050 },
-  { key: 'DPK', label: 'DPK', color: '#BA7517', volBase: 150,  price: 695  },
+  { key: 'PMS', label: 'PMS', color: '#174D36', volBase: 880,  price: 830  },
+  { key: 'AGO', label: 'AGO', color: '#286247', volBase: 520,  price: 1050 },
+  { key: 'DPK', label: 'DPK', color: '#71805B', volBase: 150,  price: 695  },
 ];
 
 function fmt(n: number) {

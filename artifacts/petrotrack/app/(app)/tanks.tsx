@@ -12,7 +12,7 @@ import { DEFAULT_MGR_PERMS, ROLE_COLORS, SCREEN_ROUTES, businessDateKey, fmt, fm
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
 
-const DIP_STATUS_COLOR: Record<string, string> = { pending: '#BA7517', approved: '#1a6e3c', rejected: '#A32D2D' };
+const DIP_STATUS_COLOR: Record<string, string> = { pending: '#71805B', approved: '#174D36', rejected: '#365A47' };
 const DIP_STATUS_LABEL: Record<string, string> = { pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 const DIP_STATUS_ICON: Record<string, string> = { pending: 'time', approved: 'checkmark-circle', rejected: 'close-circle' };
 
@@ -313,7 +313,7 @@ export default function TanksScreen() {
                   editable={canEdit}
                 />
                 {pctFull !== null && (
-                  <Text style={[styles.calcResult, { color: pctFull < 20 ? '#A32D2D' : pctFull < 50 ? '#BA7517' : roleColor }]}>
+                  <Text style={[styles.calcResult, { color: pctFull < 20 ? '#365A47' : pctFull < 50 ? '#71805B' : roleColor }]}>
                     {enteredL.toLocaleString()}L — {pctFull}% full
                   </Text>
                 )}
@@ -350,7 +350,7 @@ export default function TanksScreen() {
                   editable={canEdit}
                 />
                 {pctFull !== null && (
-                  <Text style={[styles.calcResult, { color: pctFull < 20 ? '#A32D2D' : pctFull < 50 ? '#BA7517' : colors.teal }]}>
+                  <Text style={[styles.calcResult, { color: pctFull < 20 ? '#365A47' : pctFull < 50 ? '#71805B' : colors.teal }]}>
                     {enteredKg.toLocaleString()} kg — {pctFull}% full
                   </Text>
                 )}
@@ -424,7 +424,7 @@ export default function TanksScreen() {
               <Text style={[styles.mdBannerText, { color: colors.purple, flex: 1 }]}>
                 {dips.filter(d => d.status === 'pending').length} dip record{dips.filter(d => d.status === 'pending').length > 1 ? 's' : ''} awaiting your approval
               </Text>
-              <Ionicons name="chevron-forward" size={16} color="#4527a0" />
+              <Ionicons name="chevron-forward" size={16} color="#315F49" />
             </TouchableOpacity>
           )}
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -536,12 +536,12 @@ export default function TanksScreen() {
                       <Text style={[styles.mdActionText, { color: roleColor }]}>Edit</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.rejectBtn, { borderColor: '#A32D2D', backgroundColor: '#FCEBEB' }]}
+                      style={[styles.rejectBtn, { borderColor: '#365A47', backgroundColor: '#E9F0EB' }]}
                       onPress={() => handleDeleteDip(dip)}
                       activeOpacity={0.85}
                     >
-                      <Ionicons name="trash-outline" size={15} color="#A32D2D" />
-                      <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>{dip.status === 'pending' ? 'Withdraw' : 'Delete'}</Text>
+                      <Ionicons name="trash-outline" size={15} color="#365A47" />
+                      <Text style={[styles.mdActionText, { color: '#365A47' }]}>{dip.status === 'pending' ? 'Withdraw' : 'Delete'}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -604,7 +604,7 @@ export default function TanksScreen() {
                 {isMD && isPending && (
                   <View style={styles.mdActions}>
                     <TouchableOpacity
-                      style={[styles.approveBtn, { backgroundColor: '#1a6e3c', opacity: decidingDipId === dip.id ? 0.6 : 1 }]}
+                      style={[styles.approveBtn, { backgroundColor: '#174D36', opacity: decidingDipId === dip.id ? 0.6 : 1 }]}
                       onPress={() => handleApproveDip(dip.id)}
                       disabled={decidingDipId !== null}
                       activeOpacity={0.85}
@@ -613,13 +613,13 @@ export default function TanksScreen() {
                       <Text style={styles.mdActionText}>{decidingDipId === dip.id ? 'Approving\u2026' : 'Approve'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.rejectBtn, { borderColor: '#A32D2D', opacity: decidingDipId === dip.id ? 0.6 : 1 }]}
+                      style={[styles.rejectBtn, { borderColor: '#365A47', opacity: decidingDipId === dip.id ? 0.6 : 1 }]}
                       onPress={() => handleRejectDip(dip.id)}
                       disabled={decidingDipId !== null}
                       activeOpacity={0.85}
                     >
-                      <Ionicons name="close" size={15} color="#A32D2D" />
-                      <Text style={[styles.mdActionText, { color: '#A32D2D' }]}>{decidingDipId === dip.id ? 'Rejecting\u2026' : 'Reject'}</Text>
+                      <Ionicons name="close" size={15} color="#365A47" />
+                      <Text style={[styles.mdActionText, { color: '#365A47' }]}>{decidingDipId === dip.id ? 'Rejecting\u2026' : 'Reject'}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
