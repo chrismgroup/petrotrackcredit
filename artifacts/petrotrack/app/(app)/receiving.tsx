@@ -178,7 +178,13 @@ export default function ReceivingScreen() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
-  const { requestDateConfirmation, confirmationModal } = useBusinessDateConfirmation();
+  // NOTE: confirmationContent/hasPendingConfirmation are rendered *inside* the
+  // Add/Edit ModalSheet below (swapped in place of the form) rather than as a
+  // second stacked <Modal>. React Native cannot reliably show/touch a second
+  // native Modal window on Android while one is already open — that stacking
+  // is what made "Save as Draft" / "Save Changes" appear unresponsive: the
+  // date-confirmation dialog was opening behind the still-visible form modal.
+  const { requestDateConfirmation, confirmationContent, hasPendingConfirmation } = useBusinessDateConfirmation();
   const [filterDate, setFilterDate] = useState('');
 
   const isMgr        = role === 'mgr' || role === 'csm' || role === 'admin';
@@ -892,6 +898,7 @@ export default function ReceivingScreen() {
 
       {/* Manager: Add Modal */}
       <ModalSheet visible={showForm} onClose={() => setShowForm(false)}>
+        {hasPendingConfirmation ? confirmationContent : (
         <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <Text style={[styles.sheetTitle, { color: colors.text }]}>Record Product Receipt</Text>
           <View style={[styles.infoBox, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
@@ -914,10 +921,12 @@ export default function ReceivingScreen() {
             </TouchableOpacity>
           </View>
         </KeyboardAwareScrollViewCompat>
+        )}
       </ModalSheet>
 
       {/* Manager: Edit Modal */}
       <ModalSheet visible={editTarget !== null} onClose={() => setEditTarget(null)}>
+        {hasPendingConfirmation ? confirmationContent : (
         <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <View style={styles.editHeader}>
             <View style={[styles.editIconBox, { backgroundColor: '#E8F0FC' }]}>
@@ -943,6 +952,7 @@ export default function ReceivingScreen() {
             </TouchableOpacity>
           </View>
         </KeyboardAwareScrollViewCompat>
+        )}
       </ModalSheet>
 
       {/* Accountant: Set Cost Price Modal */}
@@ -1174,7 +1184,6 @@ export default function ReceivingScreen() {
           </View>
         </View>
       </ModalSheet>
-      {confirmationModal}
     </ScreenLayout>
   );
 
