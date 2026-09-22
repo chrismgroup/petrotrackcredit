@@ -9,7 +9,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import {
   calculateDailyOperationalStock, calculateDailyStockLogBalance, currentBusinessDateKey, dipReadingToLiters,
   startupStockSeedDate,
-  ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp, useBusinessDateKey,
+  ROLE_COLORS, StockLogEntry, StockLogOpeningSource, StockLogStatus, StockProduct, fmtDate, fmtDateTime, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { findLatestDipForProduct } from '@/lib/dip-helpers';
@@ -90,7 +90,6 @@ function StockLogPanel() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
-  const todayKey = useBusinessDateKey();
   const [businessDate, setBusinessDate] = useState(currentBusinessDateKey());
   const isGlobal = GLOBAL_ROLES.has(role ?? '');
 
@@ -197,12 +196,12 @@ function StockLogPanel() {
         const saved = savedEntries.find(candidate => candidate.branchId === entry.branchId && candidate.product === entry.product);
         return !saved || stockLogValueSignature(saved) !== stockLogValueSignature(entry);
       }));
-  // The current business date must always mirror Stock Snapshot's live feed —
-  // deliveries, sales, and tank dips recorded today have to show up
-  // immediately. Only a past date (already rolled over) falls back to the
-  // saved historical record, since its source data may no longer be live.
-  const isViewingCurrentDate = businessDate === todayKey;
-  const displayedEntries = isViewingCurrentDate || savedEntries.length === 0 ? buildEntries : savedEntries;
+  // Stock logs are derived records, not an immutable snapshot. A dip can be
+  // approved after its applied business date, so past dates must also be
+  // recalculated from the seed, deliveries, approved sales and dip records.
+  // Otherwise an approval made after midnight leaves the displayed dip and
+  // variance permanently stale.
+  const displayedEntries = buildEntries;
   const summaryEntries = displayedEntries;
   const discrepancyCount = summaryEntries.filter(entry => entry.status === 'shortage' || entry.status === 'excess').length;
   const balancedCount = summaryEntries.filter(entry => entry.status === 'balanced').length;

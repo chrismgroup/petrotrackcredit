@@ -220,11 +220,20 @@ router.post("/deliveries", async (req, res) => {
       receivedBy: req.auth!.empName ?? req.auth!.username,
       receivedByUsername: req.auth!.username,
       submittedAt: now,
-      approvalStatus: "draft",
+      // A station manager's completed receipt enters the accountant queue
+      // immediately. Drafts are retained only for legacy records and returned
+      // corrections; new deliveries cannot be stranded before cost review.
+      approvalStatus: "pending_acc",
       workflowVersion: 0,
       updatedAt: now,
     };
-    return { item, next: [item, ...items], sideEffects: (tx, canonical, at) => audit(tx, "Delivery recorded", req.auth!.username, `Delivery #${idOf(canonical)} recorded`, at) };
+    return { item, next: [item, ...items], sideEffects: (tx, canonical, at) => audit(tx, "Delivery submitted to accountant", req.auth!.username, `Delivery #${idOf(canonical)} submitted for cost entry`, at) };
+  });
+  if (!("error" in result)) await notify(result, {
+    target: "acc", branchId: String(result.item.branchId ?? ""), type: "operational",
+    title: "Delivery Awaiting Cost Entry",
+    body: `${result.item.prod} ${result.item.rec} from ${result.item.sup} (WB: ${result.item.wb})`,
+    data: { route: "/(app)/receiving", deliveryId: result.item.id },
   });
   if (!("error" in result)) broadcastRealtime({ type: "delivery.changed", deliveryId: idOf(result.item), branchId: result.item.branchId ?? null });
   respond(res, result);

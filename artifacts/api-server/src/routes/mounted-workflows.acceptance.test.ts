@@ -511,51 +511,34 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     };
     const deliveryCreated = await command(csm.token, "/deliveries", deliveryBody);
     assert.equal(deliveryCreated.status, 200);
-    assert.equal((deliveryCreated.body.delivery as JsonRecord).approvalStatus, "draft");
+    assert.equal((deliveryCreated.body.delivery as JsonRecord).approvalStatus, "pending_acc");
     assert.equal((deliveryCreated.body.delivery as JsonRecord).receivedByUsername, users.csm);
 
     const deliveryCreateReplay = await command(csm.token, "/deliveries", deliveryBody);
     assert.equal(deliveryCreateReplay.status, 200);
     assert.equal(deliveryCreateReplay.body.replayed, true);
 
-    const wrongOwnerSubmit = await command(manager.token, `/deliveries/${deliveryId}/submit`, {
-      expectedRevision: 0,
-      idempotencyKey: `${marker}-delivery-wrong-owner`,
-    });
-    assert.equal(wrongOwnerSubmit.status, 403);
-    const wrongBranchSubmit = await command(otherManager.token, `/deliveries/${deliveryId}/submit`, {
-      expectedRevision: 0,
-      idempotencyKey: `${marker}-delivery-wrong-branch`,
-    });
-    assert.equal(wrongBranchSubmit.status, 403);
-
-    const deliverySubmitted = await command(csm.token, `/deliveries/${deliveryId}/submit`, {
-      expectedRevision: 0,
-      idempotencyKey: `${marker}-delivery-submit`,
-    });
-    assert.equal(deliverySubmitted.status, 200);
-    assert.equal((deliverySubmitted.body.delivery as JsonRecord).approvalStatus, "pending_acc");
     const deliveryForwarded = await command(accountant.token, `/deliveries/${deliveryId}/forward`, {
-      expectedRevision: 1,
+      expectedRevision: 0,
       idempotencyKey: `${marker}-delivery-forward`,
       costPrice: 650,
     });
     assert.equal(deliveryForwarded.status, 200);
     assert.equal((deliveryForwarded.body.delivery as JsonRecord).approvalStatus, "pending_md");
     const ceoDeliveryApprovalBlocked = await command(ceo.token, `/deliveries/${deliveryId}/approve`, {
-      expectedRevision: 2,
+      expectedRevision: 1,
       idempotencyKey: `${marker}-ceo-delivery-approve-blocked`,
       sellingPrice: 700,
     });
     assert.equal(ceoDeliveryApprovalBlocked.status, 403);
     const ceoDeliveryReturnBlocked = await command(ceo.token, `/deliveries/${deliveryId}/reject`, {
-      expectedRevision: 2,
+      expectedRevision: 1,
       idempotencyKey: `${marker}-ceo-delivery-return-blocked`,
       note: "CEO must not decide delivery reports",
     });
     assert.equal(ceoDeliveryReturnBlocked.status, 403);
     const deliveryApproveBody = {
-      expectedRevision: 2,
+      expectedRevision: 1,
       idempotencyKey: `${marker}-delivery-approve`,
       sellingPrice: 700,
     };
@@ -594,19 +577,14 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       idempotencyKey: `${marker}-returned-delivery-create`,
     });
     assert.equal(returnedCreated.status, 200);
-    const returnedSubmitted = await command(csm.token, `/deliveries/${returnedDeliveryId}/submit`, {
-      expectedRevision: 0,
-      idempotencyKey: `${marker}-returned-delivery-submit`,
-    });
-    assert.equal(returnedSubmitted.status, 200);
     const returnedForwarded = await command(accountant.token, `/deliveries/${returnedDeliveryId}/forward`, {
-      expectedRevision: 1,
+      expectedRevision: 0,
       idempotencyKey: `${marker}-returned-delivery-forward`,
       costPrice: 640,
     });
     assert.equal(returnedForwarded.status, 200);
     const returned = await command(md.token, `/deliveries/${returnedDeliveryId}/reject`, {
-      expectedRevision: 2,
+      expectedRevision: 1,
       idempotencyKey: `${marker}-returned-delivery-reject`,
       note: "Correct the received quantity",
     });
@@ -614,11 +592,11 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal((returned.body.delivery as JsonRecord).approvalStatus, "returned");
     const returnedCorrection = await command(csm.token, `/deliveries/${returnedDeliveryId}`, {
       delivery: { rec: 390, notes: "Corrected after MD return" },
-      expectedRevision: 3,
+      expectedRevision: 2,
       idempotencyKey: `${marker}-returned-delivery-correction`,
     }, "PUT");
     assert.equal(returnedCorrection.status, 200);
-    assert.equal((returnedCorrection.body.delivery as JsonRecord).workflowVersion, 4);
+    assert.equal((returnedCorrection.body.delivery as JsonRecord).workflowVersion, 3);
     const staleReturnedWrite = await request<{ ok: boolean; deliveries: JsonRecord[] }>(
       "/state/deliveries",
       {
@@ -637,7 +615,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     assert.equal(deliveryApprovalReplay.status, 200);
     assert.equal(deliveryApprovalReplay.body.replayed, true);
     const staleDelivery = await command(md.token, `/deliveries/${deliveryId}/approve`, {
-      expectedRevision: 2,
+      expectedRevision: 1,
       idempotencyKey: `${marker}-delivery-stale`,
       sellingPrice: 700,
     });

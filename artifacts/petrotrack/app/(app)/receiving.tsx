@@ -178,12 +178,8 @@ export default function ReceivingScreen() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
-  // NOTE: confirmationContent/hasPendingConfirmation are rendered *inside* the
-  // Add/Edit ModalSheet below (swapped in place of the form) rather than as a
-  // second stacked <Modal>. React Native cannot reliably show/touch a second
-  // native Modal window on Android while one is already open — that stacking
-  // is what made "Save as Draft" / "Save Changes" appear unresponsive: the
-  // date-confirmation dialog was opening behind the still-visible form modal.
+  // Date confirmation is retained only for editing a returned receipt. New
+  // receipts submit directly to the accountant from their form.
   const { requestDateConfirmation, confirmationContent, hasPendingConfirmation } = useBusinessDateConfirmation();
   const [filterDate, setFilterDate] = useState('');
 
@@ -285,7 +281,7 @@ export default function ReceivingScreen() {
     return { ordN, recN };
   }
 
-  function handleAdd() {
+  async function handleAdd() {
     if (isSavingDelivery) return;
     const vals = validateMgrForm(form);
     if (!vals) return;
@@ -293,23 +289,24 @@ export default function ReceivingScreen() {
       Alert.alert('Branch assignment required', 'Assign this manager to a branch before recording a delivery so the stock is added to the correct inventory ledger.');
       return;
     }
-    requestDateConfirmation('delivery', form.dt, async () => {
-      setIsSavingDelivery(true);
-      const result = await addDeliveryConfirmed({
-        dt: form.dt,
-        sup: form.sup.trim(), prod: form.prod, wb: form.wb,
-        ord: vals.ordN, rec: vals.recN, st: form.st, notes: form.notes,
-        receivedBy: userName, approvalStatus: 'draft',
-        branchId: branchId ?? undefined,
-      });
-      setIsSavingDelivery(false);
-      if (!result.ok) {
-        Alert.alert('Delivery not saved', result.error ?? 'The server could not save this delivery. Your entries remain available so you can retry.');
-        return;
-      }
-      setForm(blankMgrForm());
-      setShowForm(false);
-    }, 'Confirm & save');
+    // A completed receipt goes straight to the accountant. There is no draft
+    // stage for new manager submissions, so stock receiving cannot stall on
+    // a second embedded confirmation action.
+    setIsSavingDelivery(true);
+    const result = await addDeliveryConfirmed({
+      dt: form.dt,
+      sup: form.sup.trim(), prod: form.prod, wb: form.wb,
+      ord: vals.ordN, rec: vals.recN, st: form.st, notes: form.notes,
+      receivedBy: userName, approvalStatus: 'draft',
+      branchId: branchId ?? undefined,
+    });
+    setIsSavingDelivery(false);
+    if (!result.ok) {
+      Alert.alert('Delivery not saved', result.error ?? 'The server could not save this delivery. Your entries remain available so you can retry.');
+      return;
+    }
+    setForm(blankMgrForm());
+    setShowForm(false);
   }
 
   function openEdit(d: Delivery) { setEditTarget(d); setEditForm(deliveryToMgrForm(d)); }
@@ -904,7 +901,7 @@ export default function ReceivingScreen() {
           <View style={[styles.infoBox, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
             <Ionicons name="information-circle-outline" size={15} color="#185FA5" />
             <Text style={[styles.infoText, { color: '#185FA5' }]}>
-              {'Record the physical delivery details. Cost price will be set by the accountant after you forward this record. You can attach evidence (photos, videos, documents) to saved records.'}
+              {'Record the physical delivery details and submit them to the accountant. The accountant sets cost price, then forwards the receipt to MD for selling-price approval.'}
             </Text>
           </View>
           <MgrFormFields f={form} setF={setForm} roleColor={roleColor} />
@@ -914,7 +911,7 @@ export default function ReceivingScreen() {
               onPress={handleAdd}
               disabled={isSavingDelivery}
             >
-              <Text style={styles.saveBtnText}>{isSavingDelivery ? 'Saving\u2026' : 'Save as Draft'}</Text>
+              <Text style={styles.saveBtnText}>{isSavingDelivery ? 'Submitting\u2026' : 'Submit to Accountant'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowForm(false)} disabled={isSavingDelivery}>
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
