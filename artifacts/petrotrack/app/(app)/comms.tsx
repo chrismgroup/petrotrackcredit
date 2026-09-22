@@ -632,6 +632,10 @@ export default function CommsScreen() {
         onRequestClose={() => setShowGroupCompose(false)}
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setShowGroupCompose(false)}>
+          <KeyboardAvoidingView
+            style={{ width: '100%' }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
           <Pressable
             style={[styles.contactPicker, { backgroundColor: colors.surface }]}
             onPress={() => undefined}
@@ -706,6 +710,7 @@ export default function CommsScreen() {
               <Text style={styles.sendGroupBtnText}>Send to selected users</Text>
             </TouchableOpacity>
           </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
 

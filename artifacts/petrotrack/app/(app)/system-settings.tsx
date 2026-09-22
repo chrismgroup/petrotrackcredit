@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ACTION_ITEMS_DASHBOARD_ACCESS_ID, ACTION_ITEMS_DASHBOARD_DEFAULT_ROLES, BLANK_COMPANY_INFO, CompanyInfo, DEFAULT_MGR_PERMS, GLOBAL_OVERVIEW_ROLES, MGR_BRANCH_NAMES, MgrPermissions, Pump, ROLE_COLORS, ROLE_FULL_NAV, ROLE_LABELS as ROLE_LABELS_CTX, STOCK_SNAPSHOT_METRICS, StockProduct, Tank, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -481,7 +482,7 @@ export default function SystemSettingsScreen() {
           </View>
         </View>
 
-        <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareScrollViewCompat ref={scrollRef} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={24}>
 
           {/* ── COMPANY ── */}
           {activeTab === 'company' && (
@@ -1858,7 +1859,7 @@ export default function SystemSettingsScreen() {
           )}
 
           <View style={{ height: 24 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
     </ScreenLayout>
   );
 }

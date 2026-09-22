@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -496,7 +497,7 @@ export default function MarketingScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none" showsVerticalScrollIndicator={false}>
+          <KeyboardAwareScrollViewCompat keyboardShouldPersistTaps="handled" keyboardDismissMode="none" showsVerticalScrollIndicator={false} bottomOffset={24}>
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Station Name *</Text>
             <TextInput
               style={[styles.fieldInput, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -546,7 +547,7 @@ export default function MarketingScreen() {
               </TouchableOpacity>
             </View>
             <View style={{ height: 16 }} />
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         </View>
       </ModalSheet>
     </ScreenLayout>

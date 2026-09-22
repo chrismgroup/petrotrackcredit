@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, ROLE_LABELS, UINFO, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -111,6 +112,7 @@ export default function ProfileScreen() {
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [activeInfoTopic, setActiveInfoTopic] = useState<InfoTopicKey | null>(null);
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
@@ -152,6 +154,7 @@ export default function ProfileScreen() {
   const initials = (userName || info?.initials || 'U').split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase();
 
   async function savePassword() {
+    if (isSavingPassword) return;
     if (!currentPw.trim() || !newPw.trim() || !confirmPw.trim()) {
       Alert.alert('Required', 'Complete all password fields.');
       return;
@@ -164,7 +167,9 @@ export default function ProfileScreen() {
       Alert.alert('Mismatch', 'New password and confirmation do not match.');
       return;
     }
+    setIsSavingPassword(true);
     const ok = await changeOwnPassword(currentPw.trim(), newPw.trim());
+    setIsSavingPassword(false);
     if (!ok) {
       Alert.alert('Incorrect password', 'Your current password is incorrect.');
       return;
@@ -339,17 +344,17 @@ export default function ProfileScreen() {
       </ScrollView>
 
       <ModalSheet visible={showPassword} onClose={() => setShowPassword(false)}>
-        <View style={[styles.passwordSheet, { backgroundColor: colors.background }]}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={[styles.passwordSheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={styles.sheetTitleRow}><View style={[styles.sheetIcon, { backgroundColor: roleColor + '18' }]}><Ionicons name="key-outline" size={20} color={roleColor} /></View><View style={{ flex: 1 }}><Text style={[styles.sheetTitle, { color: colors.text }]}>Change password</Text><Text style={[styles.sheetSubtitle, { color: colors.textMuted }]}>Keep your account protected</Text></View><TouchableOpacity onPress={() => setShowPassword(false)}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity></View>
           <PasswordField label="Current password" value={currentPw} onChangeText={setCurrentPw} colors={colors} />
           <PasswordField label="New password" value={newPw} onChangeText={setNewPw} colors={colors} />
           <PasswordField label="Confirm new password" value={confirmPw} onChangeText={setConfirmPw} colors={colors} />
-          <TouchableOpacity style={[styles.saveButton, { backgroundColor: roleColor }]} onPress={savePassword}><Text style={styles.saveButtonText}>Update password</Text><Ionicons name="arrow-forward" size={17} color="#fff" /></TouchableOpacity>
-        </View>
+          <TouchableOpacity style={[styles.saveButton, { backgroundColor: roleColor, opacity: isSavingPassword ? 0.65 : 1 }]} onPress={savePassword} disabled={isSavingPassword}><Text style={styles.saveButtonText}>{isSavingPassword ? 'Updating\u2026' : 'Update password'}</Text><Ionicons name="arrow-forward" size={17} color="#fff" /></TouchableOpacity>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       <ModalSheet visible={showBiometricPassword} onClose={() => { if (!biometricBusy) setShowBiometricPassword(false); }}>
-        <View style={[styles.passwordSheet, { backgroundColor: colors.background }]}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={[styles.passwordSheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={styles.sheetTitleRow}>
             <View style={[styles.sheetIcon, { backgroundColor: roleColor + '18' }]}>
               <Ionicons name={biometricType === 'face' ? 'scan-outline' : 'finger-print-outline'} size={20} color={roleColor} />
@@ -372,7 +377,7 @@ export default function ProfileScreen() {
             <Text style={styles.saveButtonText}>{biometricBusy ? 'Verifying…' : 'Continue'}</Text>
             <Ionicons name="arrow-forward" size={17} color="#fff" />
           </TouchableOpacity>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       <ModalSheet visible={Boolean(activeInfo)} onClose={() => setActiveInfoTopic(null)}>

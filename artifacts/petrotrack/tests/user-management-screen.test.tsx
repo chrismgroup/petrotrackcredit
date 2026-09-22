@@ -24,6 +24,13 @@ jest.mock('react-native', () => {
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@/components/FormSheet', () => ({ ModalSheet: () => null }));
+jest.mock('@/components/KeyboardAwareScrollViewCompat', () => {
+  const React = require('react');
+  return {
+    KeyboardAwareScrollViewCompat: ({ children, ...props }: any) =>
+      React.createElement('KeyboardAwareScrollViewCompat', props, children),
+  };
+});
 jest.mock('@/components/ScreenLayout', () => {
   const React = require('react');
   return {

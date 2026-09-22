@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
@@ -201,12 +202,24 @@ export default function ReceivingScreen() {
   const [mdSellingPrice, setMdSellingPrice] = useState('');
   const [isSubmittingMdAction, setIsSubmittingMdAction] = useState(false);
   const [isSubmittingAccForward, setIsSubmittingAccForward] = useState(false);
+  const [isSavingDelivery, setIsSavingDelivery] = useState(false);
+  const deliveryScrollRef = useRef<ScrollView>(null);
 
   /* ── branch + role scoping ─────────────────────────────────────────────
      - admin / ceo / md / mktg / acc / csm : see all delivery records
      - mgr                      : only their own submissions, branch-scoped
   ── */
   const isGlobalViewer = role === 'admin' || role === 'ceo' || role === 'md' || role === 'mktg' || role === 'acc' || role === 'csm';
+  // Deliveries still awaiting accountant/MD action surface first (most
+  // recently submitted of those on top), so a report can never be buried
+  // under already-resolved records further down the list.
+  const compareDeliveriesForReview = (a: Delivery, b: Delivery) => {
+    const isPending = (d: Delivery) => d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending' || d.approvalStatus === 'pending_md';
+    const rank = (d: Delivery) => isPending(d) ? 0 : 1;
+    const rankDiff = rank(a) - rank(b);
+    if (rankDiff !== 0) return rankDiff;
+    return b.id - a.id;
+  };
   const visibleDeliveries = [...deliveries]
     .filter(d => {
       if (isGlobalViewer) return true;
@@ -217,7 +230,7 @@ export default function ReceivingScreen() {
       if (role === 'mgr') return d.receivedBy === userName;
       return true; // acc and others see all branch deliveries
     })
-    .sort((a, b) => b.id - a.id);
+    .sort(compareDeliveriesForReview);
   const sortedDeliveries = filterDate
     ? visibleDeliveries.filter(d => d.dt.slice(0, 10) === filterDate)
     : visibleDeliveries;
@@ -267,6 +280,7 @@ export default function ReceivingScreen() {
   }
 
   function handleAdd() {
+    if (isSavingDelivery) return;
     const vals = validateMgrForm(form);
     if (!vals) return;
     if (!branchId) {
@@ -274,6 +288,7 @@ export default function ReceivingScreen() {
       return;
     }
     requestDateConfirmation('delivery', form.dt, async () => {
+      setIsSavingDelivery(true);
       const result = await addDeliveryConfirmed({
         dt: form.dt,
         sup: form.sup.trim(), prod: form.prod, wb: form.wb,
@@ -281,6 +296,7 @@ export default function ReceivingScreen() {
         receivedBy: userName, approvalStatus: 'draft',
         branchId: branchId ?? undefined,
       });
+      setIsSavingDelivery(false);
       if (!result.ok) {
         Alert.alert('Delivery not saved', result.error ?? 'The server could not save this delivery. Your entries remain available so you can retry.');
         return;
@@ -293,10 +309,12 @@ export default function ReceivingScreen() {
   function openEdit(d: Delivery) { setEditTarget(d); setEditForm(deliveryToMgrForm(d)); }
 
   function handleUpdate() {
+    if (isSavingDelivery) return;
     if (!editTarget) return;
     const vals = validateMgrForm(editForm);
     if (!vals) return;
     requestDateConfirmation('delivery', editForm.dt, async () => {
+      setIsSavingDelivery(true);
       const updated = await updateDeliveryConfirmed(editTarget.id, {
         dt: editForm.dt,
         sup: editForm.sup.trim(), prod: editForm.prod, wb: editForm.wb,
@@ -304,6 +322,7 @@ export default function ReceivingScreen() {
         receivedBy: editTarget.receivedBy,
         approvalStatus: 'draft',
       });
+      setIsSavingDelivery(false);
       if (!updated.ok) {
         Alert.alert('Unable to update', updated.error ?? 'The server could not update this delivery. Your changes remain available so you can retry.');
         return;
@@ -511,38 +530,38 @@ export default function ReceivingScreen() {
         ) : undefined
       }
     >
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={deliveryScrollRef} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
         {isAcc && pendingAccCount > 0 ? (
           <>
-            <View style={[styles.banner, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
-              <Ionicons name="pricetag" size={16} color="#185FA5" />
-              <Text style={[styles.bannerText, { color: '#185FA5' }]}>
+            <View style={[styles.banner, { backgroundColor: colors.infoBg, borderColor: colors.info }]}>
+              <Ionicons name="pricetag" size={16} color={colors.info} />
+              <Text style={[styles.bannerText, { color: colors.info }]}>
                 {pendingAccCount}{' record'}{pendingAccCount > 1 ? 's' : ''}{' awaiting your cost price entry'}
               </Text>
             </View>
 
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Pending Cost Entry</Text>
             {sortedDeliveries.filter(d => canAccSet(d)).map(d => {
-              const pc = PROD_COLORS[d.prod] || '#185FA5';
+              const pc = PROD_COLORS[d.prod] || colors.info;
               return (
-                <View key={d.id} style={[styles.accPendingCard, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
+                <View key={d.id} style={[styles.accPendingCard, { backgroundColor: colors.infoBg, borderColor: colors.info }]}>
                   <View style={styles.accPendingTop}>
                     <View style={[styles.accPendingProdBadge, { backgroundColor: pc + '22' }]}>
                       <Ionicons name="cube-outline" size={12} color={pc} />
                       <Text style={[styles.accPendingProd, { color: pc }]}>{d.prod}</Text>
                     </View>
-                    <Text style={[styles.accPendingMeta, { color: '#185FA5' }]}>
+                    <Text style={[styles.accPendingMeta, { color: colors.info }]}>
                       {safeNum(d.rec).toLocaleString()}{unitForProd(d.prod)}{'  ·  WB: '}{d.wb}
                     </Text>
-                    <Text style={[styles.accPendingDate, { color: '#185FA5' }]}>{fmtDate(d.dt)}</Text>
+                    <Text style={[styles.accPendingDate, { color: colors.info }]}>{fmtDate(d.dt)}</Text>
                   </View>
                   <Text style={[styles.accPendingSup, { color: colors.text }]}>
                     {d.sup}{d.notes ? '  —  ' + d.notes : ''}
                   </Text>
                   <TouchableOpacity
                     onPress={() => openAccModal(d)}
-                    style={[styles.accPendingBtn, { backgroundColor: '#185FA5' }]}
+                    style={[styles.accPendingBtn, { backgroundColor: colors.info }]}
                   >
                     <Ionicons name="pricetag-outline" size={14} color="#fff" />
                     <Text style={styles.accPendingBtnText}>Set Cost Price & Forward to MD</Text>
@@ -554,12 +573,22 @@ export default function ReceivingScreen() {
         ) : null}
 
         {isMd && pendingMdCount > 0 ? (
-          <View style={[styles.banner, { backgroundColor: '#FAEEDA', borderColor: '#BA7517' }]}>
-            <Ionicons name="checkmark-done" size={16} color="#BA7517" />
-            <Text style={[styles.bannerText, { color: '#BA7517' }]}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`View ${pendingMdCount} delivery record${pendingMdCount > 1 ? 's' : ''} awaiting your approval`}
+            activeOpacity={0.75}
+            onPress={() => {
+              setFilterDate('');
+              deliveryScrollRef.current?.scrollTo({ y: 0, animated: true });
+            }}
+            style={[styles.banner, { backgroundColor: colors.warning + '18', borderColor: colors.warning }]}
+          >
+            <Ionicons name="checkmark-done" size={16} color={colors.warning} />
+            <Text style={[styles.bannerText, { color: colors.warning, flex: 1 }]}>
               {pendingMdCount}{' delivery record'}{pendingMdCount > 1 ? 's' : ''}{' awaiting your approval'}
             </Text>
-          </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.warning} />
+          </TouchableOpacity>
         ) : null}
 
         <AppliedDateField
@@ -863,7 +892,7 @@ export default function ReceivingScreen() {
 
       {/* Manager: Add Modal */}
       <ModalSheet visible={showForm} onClose={() => setShowForm(false)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <Text style={[styles.sheetTitle, { color: colors.text }]}>Record Product Receipt</Text>
           <View style={[styles.infoBox, { backgroundColor: '#E6F1FB', borderColor: '#185FA5' }]}>
             <Ionicons name="information-circle-outline" size={15} color="#185FA5" />
@@ -873,19 +902,23 @@ export default function ReceivingScreen() {
           </View>
           <MgrFormFields f={form} setF={setForm} roleColor={roleColor} />
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
-            <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: roleColor }]} onPress={handleAdd}>
-              <Text style={styles.saveBtnText}>Save as Draft</Text>
+            <TouchableOpacity
+              style={[styles.saveBtn, { flex: 1, backgroundColor: roleColor, opacity: isSavingDelivery ? 0.6 : 1 }]}
+              onPress={handleAdd}
+              disabled={isSavingDelivery}
+            >
+              <Text style={styles.saveBtnText}>{isSavingDelivery ? 'Saving\u2026' : 'Save as Draft'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowForm(false)}>
+            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowForm(false)} disabled={isSavingDelivery}>
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* Manager: Edit Modal */}
       <ModalSheet visible={editTarget !== null} onClose={() => setEditTarget(null)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <View style={styles.editHeader}>
             <View style={[styles.editIconBox, { backgroundColor: '#E8F0FC' }]}>
               <Ionicons name="create" size={18} color="#185FA5" />
@@ -897,20 +930,24 @@ export default function ReceivingScreen() {
           </View>
           <MgrFormFields f={editForm} setF={setEditForm} roleColor={roleColor} />
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
-            <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: '#185FA5' }]} onPress={handleUpdate}>
+            <TouchableOpacity
+              style={[styles.saveBtn, { flex: 1, backgroundColor: '#185FA5', opacity: isSavingDelivery ? 0.6 : 1 }]}
+              onPress={handleUpdate}
+              disabled={isSavingDelivery}
+            >
               <Ionicons name="checkmark" size={16} color="#fff" />
-              <Text style={styles.saveBtnText}>Save Changes</Text>
+              <Text style={styles.saveBtnText}>{isSavingDelivery ? 'Saving\u2026' : 'Save Changes'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setEditTarget(null)}>
+            <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setEditTarget(null)} disabled={isSavingDelivery}>
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* Accountant: Set Cost Price Modal */}
       <ModalSheet visible={accTarget !== null} onClose={() => setAccTarget(null)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <View style={styles.editHeader}>
             <View style={[styles.editIconBox, { backgroundColor: '#E6F1FB' }]}>
               <Ionicons name="pricetag" size={18} color="#185FA5" />
@@ -996,12 +1033,12 @@ export default function ReceivingScreen() {
               <Text style={styles.saveBtnText}>{isSubmittingAccForward ? 'Forwarding…' : 'Forward to MD'}</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* MD: Set Selling Price & Approve Modal */}
       <ModalSheet visible={mdTarget !== null && !mdRejectMode} onClose={() => { setMdTarget(null); setMdSellingPrice(''); setMdNote(''); }}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <View style={styles.editHeader}>
             <View style={[styles.editIconBox, { backgroundColor: '#EAF3DE' }]}>
               <Ionicons name="checkmark-circle" size={18} color="#27500A" />
@@ -1095,7 +1132,7 @@ export default function ReceivingScreen() {
               <Text style={styles.saveBtnText}>{isSubmittingMdAction ? 'Approving…' : 'Approve & Lock'}</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* MD: Reject / Return Modal */}

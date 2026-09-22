@@ -1100,7 +1100,7 @@ export const TASK_CAN_ASSIGN: Record<string, Role[]> = {
 export const UINFO: Record<string, UserInfo> = {
   admin: { name: 'System Admin', color: '#0a2318', initials: 'SA', role: 'Admin', online: true },
   ceo: { name: 'CEO', color: '#1a6e3c', initials: 'CE', role: 'CEO', online: true },
-  md: { name: 'MD', color: '#4527a0', initials: 'MD', role: 'MD', online: true },
+  md: { name: 'MD', color: '#4C1D95', initials: 'MD', role: 'MD', online: true },
   mktg: { name: 'Marketing', color: '#D85A30', initials: 'MK', role: 'Mktg', online: false },
   csm: { name: 'CSM', color: '#0F6E56', initials: 'CS', role: 'CSM', online: true },
   acc: { name: 'Accountant', color: '#185FA5', initials: 'AC', role: 'Acct', online: true },

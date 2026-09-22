@@ -244,6 +244,16 @@ function buttonWithText(renderer: ReactTestRenderer, text: string): ReactTestIns
   return matches[0];
 }
 
+// My Jobs groups tools into collapsible department tiles; expand the
+// department tile whose accessibilityLabel starts with `deptTitle` before
+// looking for one of its job cards.
+function expandDept(renderer: ReactTestRenderer, deptTitle: string) {
+  const tile = buttons(renderer).find(button =>
+    typeof button.props.accessibilityLabel === 'string' && button.props.accessibilityLabel.startsWith(`${deptTitle} department`),
+  );
+  if (tile) act(() => { tile.props.onPress(); });
+}
+
 function baseAppState(overrides: Record<string, unknown> = {}) {
   return {
     role: 'admin',
@@ -398,6 +408,7 @@ describe('dashboard and workspace navigation', () => {
 
     let jobsRenderer!: ReactTestRenderer;
     act(() => { jobsRenderer = create(<JobsScreen />); });
+    expandDept(jobsRenderer, 'Finance');
     expect(jobsRenderer.root.findAll(node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Expenses'))).toHaveLength(1);
     act(() => jobsRenderer.unmount());
   });
@@ -706,14 +717,17 @@ describe('dashboard and workspace navigation', () => {
 
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<JobsScreen />); });
+    expandDept(renderer, 'Finance');
     act(() => { buttonWithText(renderer, 'Daily Business-Date Revenue Log').props.onPress(); });
     expect(mockPush).toHaveBeenCalledWith('/(app)/daily-revenue-log');
 
     mockPush.mockClear();
+    expandDept(renderer, 'Operations');
     act(() => { buttonWithText(renderer, 'Stock snapshot').props.onPress(); });
     expect(mockPush).toHaveBeenCalledWith('/(app)/stock-snapshot');
 
     mockPush.mockClear();
+    expandDept(renderer, 'Administration');
     act(() => { buttonWithText(renderer, 'Users').props.onPress(); });
     expect(mockPush).toHaveBeenCalledWith('/(app)/users');
     act(() => renderer.unmount());
@@ -779,17 +793,24 @@ describe('role-aware route access and stale notification links', () => {
     ['Daily Business-Date Revenue Log', '/(app)/daily-revenue-log', 'dailyRevenueLog'],
     ['Branches', '/(app)/branches', 'branches'],
   ])('keeps the %s card and direct route aligned for restricted roles', (label, route, permission) => {
+    const deptFor: Record<string, string> = {
+      'Stock snapshot': 'Operations',
+      'Daily Business-Date Revenue Log': 'Finance',
+      'Branches': 'Administration',
+    };
     const navItems = [{ id: permission }];
     mockUseApp.mockReturnValue(baseAppState({ role: 'att', navItems }));
 
     let jobsRenderer!: ReactTestRenderer;
     act(() => { jobsRenderer = create(<JobsScreen />); });
+    expandDept(jobsRenderer, deptFor[label]);
     expect(buttons(jobsRenderer).some(button => nodeText(button).includes(label))).toBe(true);
     expect(canAccessWorkspaceRoute(route, 'att', navItems)).toBe(true);
     act(() => jobsRenderer.unmount());
 
     mockUseApp.mockReturnValue(baseAppState({ role: 'att', navItems: [] }));
     act(() => { jobsRenderer = create(<JobsScreen />); });
+    expandDept(jobsRenderer, deptFor[label]);
     expect(buttons(jobsRenderer).some(button => nodeText(button).includes(label))).toBe(false);
     expect(canAccessWorkspaceRoute(route, 'att', [])).toBe(false);
     act(() => jobsRenderer.unmount());
@@ -800,6 +821,7 @@ describe('role-aware route access and stale notification links', () => {
 
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<JobsScreen />); });
+    expandDept(renderer, 'Administration');
 
     expect(buttons(renderer).some(button => nodeText(button).includes('System settings'))).toBe(true);
     expect(canAccessWorkspaceRoute('/(app)/system-settings', 'admin', [])).toBe(true);

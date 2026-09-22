@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -17,60 +17,53 @@ type JobItem = {
   description: string;
   icon: string;
   route: string;
-  accent?: string;
 };
 
+// Every item within a department shares one accent color drawn straight from
+// the app's shared design tokens (constants/colors.ts) rather than a
+// one-off hex per card. That keeps each department visually coherent and
+// keeps the whole workspace on one consistent palette.
 const operations: JobItem[] = [
-  { id: 'stock-log', label: 'Daily stock log', description: 'Trace opening stock, deliveries, sales and expected balance', icon: 'analytics-outline', route: SCREEN_ROUTES.ops, accent: '#0D6E56' },
-  { id: 'stock-snapshot', label: 'Stock snapshot', description: 'Compare book stock, tank dips and variance', icon: 'analytics-outline', route: SCREEN_ROUTES.stockSnapshot, accent: '#0F6E56' },
-  { id: 'maint', label: 'Maintenance', description: 'Log and follow up on station issues', icon: 'construct-outline', route: SCREEN_ROUTES.maint, accent: '#B45309' },
-  { id: 'dips', label: 'Tank dipping', description: 'Record physical tank readings and follow approval', icon: 'water-outline', route: SCREEN_ROUTES.tanks, accent: '#28698B' },
-  { id: 'receiving', label: 'Products receiving', description: 'Track deliveries, costs and variances', icon: 'car-outline', route: SCREEN_ROUTES.recv, accent: '#7C3AED' },
-  { id: 'inventory', label: 'Product inventory', description: 'View live stock by dip reading and branch balances', icon: 'layers-outline', route: SCREEN_ROUTES.inventory, accent: '#0F6E56' },
+  { id: 'stock-log', label: 'Daily stock log', description: 'Trace opening stock, deliveries, sales and expected balance', icon: 'analytics-outline', route: SCREEN_ROUTES.ops },
+  { id: 'stock-snapshot', label: 'Stock snapshot', description: 'Compare book stock, tank dips and variance', icon: 'layers-outline', route: SCREEN_ROUTES.stockSnapshot },
+  { id: 'maint', label: 'Maintenance', description: 'Log and follow up on station issues', icon: 'construct-outline', route: SCREEN_ROUTES.maint },
+  { id: 'dips', label: 'Tank dipping', description: 'Record physical tank readings and follow approval', icon: 'water-outline', route: SCREEN_ROUTES.tanks },
+  { id: 'receiving', label: 'Products receiving', description: 'Track deliveries, costs and variances', icon: 'car-outline', route: SCREEN_ROUTES.recv },
+  { id: 'inventory', label: 'Product inventory', description: 'View live stock by dip reading and branch balances', icon: 'cube-outline', route: SCREEN_ROUTES.inventory },
 ];
 
 const sales: JobItem[] = [
-  { id: 'shift', label: 'Shift reports', description: 'Review pump shifts and cashier handovers', icon: 'swap-horizontal-outline', route: SCREEN_ROUTES.shift, accent: '#0D6E56' },
-  { id: 'sales', label: 'Sales overview', description: 'See product performance and revenue', icon: 'trending-up-outline', route: SCREEN_ROUTES.sales, accent: '#1D4ED8' },
+  { id: 'shift', label: 'Shift reports', description: 'Review pump shifts and cashier handovers', icon: 'swap-horizontal-outline', route: SCREEN_ROUTES.shift },
+  { id: 'sales', label: 'Sales overview', description: 'See product performance and revenue', icon: 'trending-up-outline', route: SCREEN_ROUTES.sales },
+  { id: 'marketing', label: 'Marketing', description: 'Monitor market and competitor activity', icon: 'megaphone-outline', route: SCREEN_ROUTES.mktg },
 ];
 
 const finance: JobItem[] = [
-  { id: 'financial-status', label: 'Financial status', description: 'View cash, assets and business position', icon: 'pie-chart-outline', route: SCREEN_ROUTES.acct, accent: '#0D5C2E' },
-  { id: 'daily-revenue-log', label: 'Daily Business-Date Revenue Log', description: 'Review revenue grouped by the business date of each shift report', icon: 'calendar-outline', route: SCREEN_ROUTES.dailyRevenueLog, accent: '#1D4ED8' },
-  { id: 'branch-revenue-log', label: 'Branch Revenue by Business Date', description: 'Compare each branch’s revenue across recorded business dates', icon: 'business-outline', route: SCREEN_ROUTES.branchRevenueLog, accent: '#0D6E56' },
-  { id: 'assets', label: 'Asset Management', description: 'Track company assets and monthly depreciation by branch', icon: 'cube-outline', route: SCREEN_ROUTES.assets, accent: '#185FA5' },
-  { id: 'expenses', label: 'Expenses', description: 'Submit, review and approve expenses', icon: 'receipt-outline', route: SCREEN_ROUTES.exp, accent: '#B91C1C' },
-  { id: 'budgets', label: 'Budgets', description: 'Plan spend and monitor budget performance', icon: 'calculator-outline', route: SCREEN_ROUTES.budget, accent: '#92400E' },
+  { id: 'financial-status', label: 'Financial status', description: 'View cash, assets and business position', icon: 'pie-chart-outline', route: SCREEN_ROUTES.acct },
+  { id: 'daily-revenue-log', label: 'Daily Business-Date Revenue Log', description: 'Review revenue grouped by the business date of each shift report', icon: 'calendar-outline', route: SCREEN_ROUTES.dailyRevenueLog },
+  { id: 'branch-revenue-log', label: 'Branch Revenue by Business Date', description: 'Compare each branch’s revenue across recorded business dates', icon: 'business-outline', route: SCREEN_ROUTES.branchRevenueLog },
+  { id: 'assets', label: 'Asset management', description: 'Track company assets and monthly depreciation by branch', icon: 'briefcase-outline', route: SCREEN_ROUTES.assets },
+  { id: 'expenses', label: 'Expenses', description: 'Submit, review and approve expenses', icon: 'receipt-outline', route: SCREEN_ROUTES.exp },
+  { id: 'budgets', label: 'Budgets', description: 'Plan spend and monitor budget performance', icon: 'calculator-outline', route: SCREEN_ROUTES.budget },
+  { id: 'prices', label: 'Prices', description: 'Review product prices and proposals', icon: 'pricetag-outline', route: SCREEN_ROUTES.prices },
 ];
 
-const supportItems: JobItem[] = [
-  { id: 'users', label: 'Users', description: 'Manage user accounts and the complete staff directory', icon: 'people-outline', route: SCREEN_ROUTES.users, accent: '#0D6E56' },
-  { id: 'tasks', label: 'Tasks & KPIs', description: 'Keep assigned work and targets moving', icon: 'checkmark-circle-outline', route: SCREEN_ROUTES.tasks, accent: '#28698B' },
-  { id: 'actionItems', label: 'Action Items', description: 'Track ownership, close-out dates and branch accountability', icon: 'flash-outline', route: SCREEN_ROUTES.actionItems, accent: '#B45309' },
-  { id: 'prices', label: 'Prices', description: 'Review product prices and proposals', icon: 'pricetag-outline', route: SCREEN_ROUTES.prices, accent: '#7C3AED' },
-  { id: 'marketing', label: 'Marketing', description: 'Monitor market and competitor activity', icon: 'megaphone-outline', route: SCREEN_ROUTES.mktg, accent: '#C2410C' },
-  { id: 'people', label: 'People & HR', description: 'Staff, departments and employee records', icon: 'people-outline', route: SCREEN_ROUTES.hr, accent: '#0D6E56' },
-  { id: 'branches', label: 'Branches', description: 'Manage stations and branch performance', icon: 'business-outline', route: SCREEN_ROUTES.branches, accent: '#1D4ED8' },
-  { id: 'audit', label: 'Audit trail', description: 'Review activity across the business', icon: 'shield-checkmark-outline', route: SCREEN_ROUTES.audit, accent: '#64748B' },
-  { id: 'settings', label: 'System settings', description: 'Configure Petrotrack controls', icon: 'settings-outline', route: SCREEN_ROUTES.settings, accent: '#475569' },
+const humanResources: JobItem[] = [
+  { id: 'people', label: 'People & HR', description: 'Staff, departments and employee records', icon: 'people-outline', route: SCREEN_ROUTES.hr },
+  { id: 'tasks', label: 'Tasks & KPIs', description: 'Keep assigned work and targets moving', icon: 'checkmark-circle-outline', route: SCREEN_ROUTES.tasks },
+  { id: 'actionItems', label: 'Action items', description: 'Track ownership, close-out dates and branch accountability', icon: 'flash-outline', route: SCREEN_ROUTES.actionItems },
 ];
 
-function SectionHeader({ icon, title, subtitle, colors }: { icon: string; title: string; subtitle: string; colors: any }) {
-  return (
-    <View style={styles.sectionHeader}>
-      <View style={[styles.sectionIcon, { backgroundColor: colors.primary + '14' }]}>
-        <Ionicons name={icon as any} size={18} color={colors.primary} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
-        <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>{subtitle}</Text>
-      </View>
-    </View>
-  );
-}
+const administration: JobItem[] = [
+  { id: 'users', label: 'Users', description: 'Manage user accounts and the complete staff directory', icon: 'person-outline', route: SCREEN_ROUTES.users },
+  { id: 'branches', label: 'Branches', description: 'Manage stations and branch performance', icon: 'business-outline', route: SCREEN_ROUTES.branches },
+  { id: 'audit', label: 'Audit trail', description: 'Review activity across the business', icon: 'shield-checkmark-outline', route: SCREEN_ROUTES.audit },
+  { id: 'settings', label: 'System settings', description: 'Configure Petrotrack controls', icon: 'settings-outline', route: SCREEN_ROUTES.settings },
+];
 
-function JobCard({ item, onPress, colors }: { item: JobItem; onPress: () => void; colors: any }) {
-  const accent = item.accent || colors.primary;
+type DeptKey = 'operations' | 'sales' | 'finance' | 'reports' | 'hr' | 'admin';
+
+function JobCard({ item, accent, onPress, colors }: { item: JobItem; accent: string; onPress: () => void; colors: any }) {
   return (
     <TouchableOpacity
       style={[styles.jobCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -78,7 +71,7 @@ function JobCard({ item, onPress, colors }: { item: JobItem; onPress: () => void
       activeOpacity={0.78}
     >
       <View style={[styles.jobIcon, { backgroundColor: accent + '16' }]}>
-        <Ionicons name={item.icon as any} size={20} color={accent} />
+        <Ionicons name={item.icon as any} size={19} color={accent} />
       </View>
       <View style={styles.jobCopy}>
         <Text style={[styles.jobTitle, { color: colors.text }]}>{item.label}</Text>
@@ -89,17 +82,42 @@ function JobCard({ item, onPress, colors }: { item: JobItem; onPress: () => void
   );
 }
 
-function JobSection({ icon, title, subtitle, items, onPress, colors }: {
-  icon: string; title: string; subtitle: string; items: JobItem[]; onPress: (item: JobItem) => void; colors: any;
+function DepartmentTile({
+  icon, title, subtitle, accent, count, badge, expanded, onPress, colors,
+}: {
+  icon: string; title: string; subtitle: string; accent: string; count: number; badge?: number;
+  expanded: boolean; onPress: () => void; colors: any;
 }) {
-  if (!items.length) return null;
   return (
-    <View style={styles.section}>
-      <SectionHeader icon={icon} title={title} subtitle={subtitle} colors={colors} />
-      <View style={styles.jobList}>
-        {items.map(item => <JobCard key={item.id} item={item} onPress={() => onPress(item)} colors={colors} />)}
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={[
+        styles.deptTile,
+        {
+          backgroundColor: expanded ? accent : colors.surface,
+          borderColor: expanded ? accent : colors.border,
+        },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`${title} department, ${count} item${count === 1 ? '' : 's'}${badge ? `, ${badge} awaiting action` : ''}`}
+    >
+      <View style={[styles.deptIcon, { backgroundColor: expanded ? 'rgba(255,255,255,0.2)' : accent + '16' }]}>
+        <Ionicons name={icon as any} size={20} color={expanded ? '#fff' : accent} />
       </View>
-    </View>
+      <Text style={[styles.deptTitle, { color: expanded ? '#fff' : colors.text }]} numberOfLines={1}>{title}</Text>
+      <Text style={[styles.deptSubtitle, { color: expanded ? 'rgba(255,255,255,0.78)' : colors.textMuted }]} numberOfLines={2}>{subtitle}</Text>
+      <View style={styles.deptFooter}>
+        <Text style={[styles.deptCount, { color: expanded ? 'rgba(255,255,255,0.85)' : colors.textSubtle }]}>
+          {count} tool{count === 1 ? '' : 's'}
+        </Text>
+        {!!badge && badge > 0 && (
+          <View style={[styles.deptBadge, { backgroundColor: expanded ? '#fff' : accent }]}>
+            <Text style={[styles.deptBadgeText, { color: expanded ? accent : '#fff' }]}>{badge}</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -107,6 +125,7 @@ export default function JobsScreen() {
   const { role, navItems, maintenance, dips, deliveries, expenses, budgets, tasks } = useApp();
   const colors = useColors();
   const router = useRouter();
+  const [expandedDept, setExpandedDept] = useState<DeptKey | null>(null);
   if (!role) return null;
 
   const allowed = new Set(navItems.map(item => item.id));
@@ -117,19 +136,55 @@ export default function JobsScreen() {
   const visibleOperations = operations.filter(canSee);
   const visibleSales = sales.filter(canSee);
   const visibleFinance = finance.filter(canSee);
-  const visibleSupport = supportItems.filter(canSee);
+  const visibleHR = humanResources.filter(canSee);
+  const visibleAdmin = administration.filter(canSee);
   const visibleReportTypes = getPerms(role).visible;
+  const canSeeReports = canAccessWorkspaceRoute(SCREEN_ROUTES.exprpt, role, navItems) && visibleReportTypes.length > 0;
+
   const pending = dips.filter(d => d.status === 'pending').length;
   const openMaintenance = maintenance.filter(item => item.st === 'Open').length;
   const pendingDeliveries = deliveries.filter(item => item.approvalStatus === 'pending' || item.approvalStatus === 'pending_acc' || item.approvalStatus === 'pending_md').length;
   const pendingExpenses = expenses.filter(item => item.status === 'pending' || item.status === 'acc_forwarded').length;
+  const pendingBudgets = budgets.filter(item => item.status === 'submitted' || item.status === 'acc_forwarded').length;
   const taskCount = tasks.filter(item => item.assignedTo === role && item.status !== 'completed').length;
+
   const canReviewDips = (role === 'md' || role === 'admin') && (allowed.has('ops') || allowed.has('tanks'));
   const canOpenMaintenance = role === 'admin' || allowed.has('maint');
   const canOpenReceiving = role === 'admin' || allowed.has('recv');
   const canOpenExpenses = role === 'admin' || allowed.has('exp');
   const canOpenTasks = role === 'admin' || allowed.has('tasks');
   const reviewCount = (canReviewDips ? pending : 0) + (canOpenMaintenance ? openMaintenance : 0);
+
+  // Departments defined in one place so their accent colors, badges and
+  // visible item lists all stay in sync as roles/permissions change.
+  const departments: Array<{
+    key: DeptKey; title: string; subtitle: string; icon: string; accent: string;
+    items: JobItem[]; badge?: number;
+  }> = [
+    {
+      key: 'operations' as const, title: 'Operations', subtitle: 'Stock, tanks & deliveries', icon: 'construct-outline',
+      accent: colors.teal, items: visibleOperations,
+      badge: (canOpenReceiving ? pendingDeliveries : 0) + (canOpenMaintenance ? openMaintenance : 0) + (canReviewDips ? pending : 0),
+    },
+    {
+      key: 'sales' as const, title: 'Sales', subtitle: 'Shifts, revenue & marketing', icon: 'trending-up-outline',
+      accent: colors.blue, items: visibleSales, badge: 0,
+    },
+    {
+      key: 'finance' as const, title: 'Finance', subtitle: 'Spend, budgets & pricing', icon: 'wallet-outline',
+      accent: colors.brown, items: visibleFinance,
+      badge: (canOpenExpenses ? pendingExpenses : 0) + pendingBudgets,
+    },
+    {
+      key: 'hr' as const, title: 'Human Resources', subtitle: 'People, tasks & accountability', icon: 'people-circle-outline',
+      accent: colors.coral, items: visibleHR,
+      badge: canOpenTasks ? taskCount : 0,
+    },
+    {
+      key: 'admin' as const, title: 'Administration', subtitle: 'Accounts, stations & controls', icon: 'settings-outline',
+      accent: colors.textMuted, items: visibleAdmin, badge: 0,
+    },
+  ].filter(dept => dept.items.length > 0);
 
   function openNeedsReview() {
     // Tank dip approvals and maintenance both contribute to this summary.
@@ -154,6 +209,12 @@ export default function JobsScreen() {
     router.push(`${SCREEN_ROUTES.exprpt}/view?type=${type}` as never);
   }
 
+  function toggleDept(key: DeptKey) {
+    setExpandedDept(current => current === key ? null : key);
+  }
+
+  const activeDept = departments.find(dept => dept.key === expandedDept);
+
   return (
     <ScreenLayout title="My Jobs">
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -161,7 +222,7 @@ export default function JobsScreen() {
           <View style={styles.heroGlow} />
           <Text style={styles.eyebrow}>WORKSPACE</Text>
           <Text style={styles.heroTitle}>Everything that needs your attention.</Text>
-          <Text style={styles.heroSubtitle}>Your operational work is organized by department, with each action one tap away.</Text>
+          <Text style={styles.heroSubtitle}>Tap a department below to open its tools. Each department is one tap away.</Text>
           <View style={styles.snapshotRow}>
             {(canReviewDips || canOpenMaintenance) ? (
               <TouchableOpacity
@@ -214,13 +275,68 @@ export default function JobsScreen() {
           </View>
         </View>
 
-        <JobSection icon="construct-outline" title="Operations" subtitle="Keep the station running" items={visibleOperations} onPress={openJob} colors={colors} />
-        <JobSection icon="trending-up-outline" title="Sales" subtitle="Track shifts and commercial performance" items={visibleSales} onPress={openJob} colors={colors} />
-        <JobSection icon="wallet-outline" title="Finance" subtitle="Stay ahead of spend and financial health" items={visibleFinance} onPress={openJob} colors={colors} />
+        {/* Department grid — tapping a tile expands its tool list below,
+            so the workspace stays uncluttered instead of dumping every
+            item from every department onto the screen at once. */}
+        <View style={styles.deptGrid}>
+          {departments.map(dept => (
+            <DepartmentTile
+              key={dept.key}
+              icon={dept.icon}
+              title={dept.title}
+              subtitle={dept.subtitle}
+              accent={dept.accent}
+              count={dept.items.length}
+              badge={dept.badge}
+              expanded={expandedDept === dept.key}
+              onPress={() => toggleDept(dept.key)}
+              colors={colors}
+            />
+          ))}
+          {canSeeReports && (
+            <DepartmentTile
+              icon="document-text-outline"
+              title="Reports"
+              subtitle="Focused reports & exports"
+              accent={colors.purple}
+              count={visibleReportTypes.length}
+              expanded={expandedDept === 'reports'}
+              onPress={() => toggleDept('reports')}
+              colors={colors}
+            />
+          )}
+        </View>
 
-        {canAccessWorkspaceRoute(SCREEN_ROUTES.exprpt, role, navItems) && (
+        {activeDept && (
           <View style={styles.section}>
-            <SectionHeader icon="document-text-outline" title="Reports" subtitle="Open a focused report or export the full picture" colors={colors} />
+            <View style={styles.sectionHeader}>
+              <View style={[styles.sectionIcon, { backgroundColor: activeDept.accent + '16' }]}>
+                <Ionicons name={activeDept.icon as any} size={18} color={activeDept.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>{activeDept.title}</Text>
+                <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>{activeDept.subtitle}</Text>
+              </View>
+            </View>
+            <View style={styles.jobList}>
+              {activeDept.items.map(item => (
+                <JobCard key={item.id} item={item} accent={activeDept.accent} onPress={() => openJob(item)} colors={colors} />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {expandedDept === 'reports' && canSeeReports && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.sectionIcon, { backgroundColor: colors.purple + '16' }]}>
+                <Ionicons name="document-text-outline" size={18} color={colors.purple} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Reports</Text>
+                <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>Open a focused report or export the full picture</Text>
+              </View>
+            </View>
             <View style={styles.jobList}>
               {visibleReportTypes.map(type => {
                 const meta = REPORT_META[type];
@@ -231,8 +347,8 @@ export default function JobsScreen() {
                     onPress={() => openReport(type)}
                     activeOpacity={0.78}
                   >
-                    <View style={[styles.jobIcon, { backgroundColor: meta.color + '16' }]}>
-                      <Ionicons name={meta.icon as any} size={20} color={meta.color} />
+                    <View style={[styles.jobIcon, { backgroundColor: colors.purple + '16' }]}>
+                      <Ionicons name={meta.icon as any} size={19} color={colors.purple} />
                     </View>
                     <View style={styles.jobCopy}>
                       <Text style={[styles.jobTitle, { color: colors.text }]}>{meta.label}</Text>
@@ -246,7 +362,15 @@ export default function JobsScreen() {
           </View>
         )}
 
-        <JobSection icon="grid-outline" title="Other work" subtitle="People, controls and business support" items={visibleSupport} onPress={openJob} colors={colors} />
+        {!expandedDept && (
+          <View style={[styles.hintCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
+            <Text style={[styles.hintText, { color: colors.textMuted }]}>
+              Tap any department above to see its tools.
+            </Text>
+          </View>
+        )}
+
         <View style={{ height: 20 }} />
       </ScrollView>
     </ScreenLayout>
@@ -254,7 +378,7 @@ export default function JobsScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: 16, paddingBottom: 34, gap: 22 },
+  scroll: { padding: 16, paddingBottom: 34, gap: 18 },
   hero: { borderRadius: 24, padding: 20, overflow: 'hidden', position: 'relative' },
   heroGlow: { position: 'absolute', width: 220, height: 220, borderRadius: 110, right: -85, top: -100, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
   eyebrow: { color: 'rgba(255,255,255,0.66)', fontSize: 10, letterSpacing: 1.6, fontWeight: '800' },
@@ -264,6 +388,20 @@ const styles = StyleSheet.create({
   snapshotMetric: { flex: 1, minWidth: 0 },
   snapshotNumber: { color: '#fff', fontSize: 20, fontWeight: '800' },
   snapshotLabel: { color: 'rgba(255,255,255,0.68)', fontSize: 10, marginTop: 3 },
+
+  deptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  deptTile: {
+    width: '48%', borderRadius: 18, borderWidth: 1, padding: 14, gap: 2,
+    shadowColor: '#0F172A', shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
+  },
+  deptIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  deptTitle: { fontSize: 14.5, fontWeight: '800' },
+  deptSubtitle: { fontSize: 11, lineHeight: 15, marginTop: 1 },
+  deptFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  deptCount: { fontSize: 10.5, fontWeight: '700' },
+  deptBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
+  deptBadgeText: { fontSize: 11, fontWeight: '800' },
+
   section: { gap: 11 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
   sectionIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
@@ -275,4 +413,7 @@ const styles = StyleSheet.create({
   jobCopy: { flex: 1 },
   jobTitle: { fontSize: 14, fontWeight: '700' },
   jobDescription: { fontSize: 11, lineHeight: 16, marginTop: 3 },
+
+  hintCard: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 14, padding: 12 },
+  hintText: { fontSize: 12, flex: 1 },
 }) as any;

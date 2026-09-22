@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ROLE_COLORS, ROLE_LABELS, UserAccount, useApp, type Role } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -61,6 +62,7 @@ export default function UsersScreen() {
   const [aPassword, setAPassword]         = useState('');
   const [aBranch, setABranch]             = useState('');
   const [showApprovePw, setShowApprovePw] = useState(false);
+  const [isApproving, setIsApproving]     = useState(false);
 
   /* ── edit modal state (active accounts) ── */
   const [editing, setEditing]           = useState<UserAccount | null>(null);
@@ -70,6 +72,7 @@ export default function UsersScreen() {
   const [eBranch, setEBranch]           = useState('');
   const [ePhone, setEPhone]             = useState('');
   const [showEditPw, setShowEditPw]     = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   /* ── view account modal (non-admin) ── */
   const [viewAcc, setViewAcc] = useState<UserAccount | null>(null);
@@ -158,13 +161,16 @@ export default function UsersScreen() {
   }
 
   async function handleApprove() {
+    if (isApproving) return;
     if (!approving) return;
     if (!aUsername.trim()) { Alert.alert('Required', 'Username is required.'); return; }
     if (!aPassword.trim()) { Alert.alert('Required', 'Set a temporary password.'); return; }
     if (!aBranch) { Alert.alert('Required', 'Assign this user to a branch.'); return; }
     const dup = userAccounts.find(a => a.username === aUsername.trim() && a.id !== approving.id);
     if (dup) { Alert.alert('Username Taken', 'That username is already in use.'); return; }
+    setIsApproving(true);
     await approveUserAccount(approving.id, aRole, aUsername.trim(), aPassword.trim(), userName || 'Admin', aBranch);
+    setIsApproving(false);
     Alert.alert('Account Approved', `${approving.empName} can now log in as @${aUsername.trim()}.`);
     setApproving(null);
   }
@@ -185,6 +191,7 @@ export default function UsersScreen() {
   }
 
   async function handleSaveEdit() {
+    if (isSavingEdit) return;
     if (!editing) return;
     if (!eUsername.trim()) { Alert.alert('Required', 'Username cannot be empty.'); return; }
     if (!eBranch) { Alert.alert('Required', 'Assign this user to a branch.'); return; }
@@ -198,7 +205,9 @@ export default function UsersScreen() {
       phoneNumber: ePhone.trim() || undefined,
     };
     if (ePassword.trim()) updates.password = ePassword.trim();
+    setIsSavingEdit(true);
     await updateUserAccount(editing.id, updates, userName || 'Admin');
+    setIsSavingEdit(false);
     Alert.alert('Account Updated', `${editing.empName}'s account has been updated.`);
     setEditing(null);
   }
@@ -523,32 +532,50 @@ export default function UsersScreen() {
             ) : (
               <>
                 {canManageUsers && pendingForRole.length > 0 && (
-                  <View style={[styles.infoBanner, { backgroundColor: '#BA751722', borderColor: '#BA751744' }]}>
-                    <Ionicons name="information-circle" size={16} color="#BA7517" />
-                    <Text style={[styles.infoBannerText, { color: '#BA7517' }]}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${pendingForRole.length} enrollment${pendingForRole.length > 1 ? 's' : ''} awaiting review or activation`}
+                    activeOpacity={0.75}
+                    onPress={() => setSearch('')}
+                    style={[styles.infoBanner, { backgroundColor: colors.warning + '18', borderColor: colors.warning }]}
+                  >
+                    <Ionicons name="information-circle" size={16} color={colors.warning} />
+                    <Text style={[styles.infoBannerText, { color: colors.warning }]}>
                       {pendingForRole.length} enrollment{pendingForRole.length > 1 ? 's' : ''} awaiting review or activation.
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 )}
                 {isMD && pendingMdRecs.length > 0 && (
-                  <View style={[styles.infoBanner, { backgroundColor: '#7B3FA522', borderColor: '#7B3FA544' }]}>
-                    <Ionicons name="information-circle" size={16} color="#7B3FA5" />
-                    <Text style={[styles.infoBannerText, { color: '#7B3FA5' }]}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${pendingMdRecs.length} enrollment${pendingMdRecs.length > 1 ? 's' : ''} awaiting your review`}
+                    activeOpacity={0.75}
+                    onPress={() => setSearch('')}
+                    style={[styles.infoBanner, { backgroundColor: colors.purple + '18', borderColor: colors.purple }]}
+                  >
+                    <Ionicons name="information-circle" size={16} color={colors.purple} />
+                    <Text style={[styles.infoBannerText, { color: colors.purple }]}>
                       {pendingMdRecs.length} enrollment{pendingMdRecs.length > 1 ? 's' : ''} awaiting your review — tap to see full details.
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 )}
                 {isHR && pendingMdRecs.length > 0 && (
-                  <View style={[styles.infoBanner, { backgroundColor: '#185FA522', borderColor: '#185FA544' }]}>
-                    <Ionicons name="information-circle" size={16} color="#185FA5" />
-                    <Text style={[styles.infoBannerText, { color: '#185FA5' }]}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${pendingMdRecs.length} enrollment${pendingMdRecs.length > 1 ? 's' : ''} submitted, awaiting MD review`}
+                    activeOpacity={0.75}
+                    onPress={() => setSearch('')}
+                    style={[styles.infoBanner, { backgroundColor: colors.info + '18', borderColor: colors.info }]}
+                  >
+                    <Ionicons name="information-circle" size={16} color={colors.info} />
+                    <Text style={[styles.infoBannerText, { color: colors.info }]}>
                       {pendingMdRecs.length} enrollment{pendingMdRecs.length > 1 ? 's' : ''} submitted — awaiting MD review.
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 )}
 
                 {filtered.map(acc => {
-                  const stCol = STATUS_COLORS[acc.status] || '#BA7517';
+                  const stCol = STATUS_COLORS[acc.status] || colors.warning;
                   return (
                     <TouchableOpacity
                       key={acc.id}
@@ -802,7 +829,7 @@ export default function UsersScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <KeyboardAwareScrollViewCompat showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={24}>
 
               {/* ── Enrollment meta ── */}
               <View style={[styles.enrollMetaRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1086,7 +1113,7 @@ export default function UsersScreen() {
               )}
 
               <View style={{ height: 16 }} />
-            </ScrollView>
+            </KeyboardAwareScrollViewCompat>
           </View>
         )}
       </ModalSheet>
@@ -1106,7 +1133,7 @@ export default function UsersScreen() {
               <Ionicons name="close-circle" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <KeyboardAwareScrollViewCompat showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={24}>
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Assign Role *</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
               {ROLE_OPTS.map(r => {
@@ -1144,15 +1171,15 @@ export default function UsersScreen() {
               </TouchableOpacity>
             </View>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-              <TouchableOpacity onPress={handleApprove} style={[styles.confirmBtn, { backgroundColor: '#1a6e3c', flex: 1 }]} activeOpacity={0.85}>
+              <TouchableOpacity onPress={handleApprove} style={[styles.confirmBtn, { backgroundColor: '#1a6e3c', flex: 1, opacity: isApproving ? 0.6 : 1 }]} activeOpacity={0.85} disabled={isApproving}>
                 <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                <Text style={styles.confirmBtnText}>Approve & Create</Text>
+                <Text style={styles.confirmBtnText}>{isApproving ? 'Approving\u2026' : 'Approve & Create'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setApproving(null)} style={[styles.cancelBtn, { borderColor: colors.border, flex: 0.55 }]} activeOpacity={0.8}>
+              <TouchableOpacity onPress={() => setApproving(null)} style={[styles.cancelBtn, { borderColor: colors.border, flex: 0.55 }]} activeOpacity={0.8} disabled={isApproving}>
                 <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         </View>
       </ModalSheet>
 
@@ -1172,7 +1199,7 @@ export default function UsersScreen() {
                 <Ionicons name="close-circle" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <KeyboardAwareScrollViewCompat showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={24}>
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Role</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                 {ROLE_OPTS.map(r => {
@@ -1226,11 +1253,11 @@ export default function UsersScreen() {
                 </TouchableOpacity>
               </View>
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                <TouchableOpacity onPress={handleSaveEdit} style={[styles.confirmBtn, { backgroundColor: roleColor, flex: 1 }]} activeOpacity={0.85}>
+                <TouchableOpacity onPress={handleSaveEdit} style={[styles.confirmBtn, { backgroundColor: roleColor, flex: 1, opacity: isSavingEdit ? 0.6 : 1 }]} activeOpacity={0.85} disabled={isSavingEdit}>
                   <Ionicons name="save-outline" size={16} color="#fff" />
-                  <Text style={styles.confirmBtnText}>Save Changes</Text>
+                  <Text style={styles.confirmBtnText}>{isSavingEdit ? 'Saving\u2026' : 'Save Changes'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setEditing(null)} style={[styles.cancelBtn, { borderColor: colors.border, flex: 0.55 }]} activeOpacity={0.8}>
+                <TouchableOpacity onPress={() => setEditing(null)} style={[styles.cancelBtn, { borderColor: colors.border, flex: 0.55 }]} activeOpacity={0.8} disabled={isSavingEdit}>
                   <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
                 </TouchableOpacity>
               </View>
@@ -1238,7 +1265,7 @@ export default function UsersScreen() {
                 <Ionicons name="trash-outline" size={15} color={colors.error} />
                 <Text style={[styles.deleteBtnText, { color: colors.error }]}>Delete Account</Text>
               </TouchableOpacity>
-            </ScrollView>
+            </KeyboardAwareScrollViewCompat>
           </View>
         )}
       </ModalSheet>
@@ -1258,7 +1285,7 @@ export default function UsersScreen() {
               <Ionicons name="close-circle" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <KeyboardAwareScrollViewCompat keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Full Name *</Text>
             <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Ionicons name="person-outline" size={16} color={colors.textMuted} />
@@ -1318,7 +1345,7 @@ export default function UsersScreen() {
               </TouchableOpacity>
             </View>
             <View style={{ height: 16 }} />
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         </View>
       </ModalSheet>
 
@@ -1371,7 +1398,7 @@ export default function UsersScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <KeyboardAwareScrollViewCompat keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
             {/* Personal & Job */}
             <View style={[styles.enrollSectionHeader, { borderTopWidth: 0 }]}>
               <Ionicons name="briefcase-outline" size={13} color={roleColor} />
@@ -1508,7 +1535,7 @@ export default function UsersScreen() {
               </TouchableOpacity>
             </View>
             <View style={{ height: 16 }} />
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         </View>
       </ModalSheet>
     </ScreenLayout>

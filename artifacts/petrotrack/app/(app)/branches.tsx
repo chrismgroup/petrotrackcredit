@@ -5,6 +5,7 @@ import {
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { LPGTank, Pump, ROLE_COLORS, Tank, fmt, salesRevenueByBranch, useApp } from '@/context/AppContext';
@@ -188,7 +189,8 @@ export default function BranchesScreen() {
 
   function handleSaveEdit() {
     if (!editForm.name.trim()) { Alert.alert('Required', 'Branch name cannot be empty.'); return; }
-    const bid = editingId!;
+    if (!editingId) return;
+    const bid = editingId;
     const prevTankIds = tanksFor(bid).map(t => t.id);
     const prevLpgIds  = lpgFor(bid).map(l => l.id);
     const prevPumpIds = pumpsFor(bid).map(p => p.id);
@@ -406,11 +408,12 @@ export default function BranchesScreen() {
       <ModalSheet visible={showAddForm} onClose={() => setShowAddForm(false)}>
         <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
           <Text style={[styles.modalTitle, { color: colors.text }]}>Add Branch</Text>
-          <ScrollView
+          <KeyboardAwareScrollViewCompat
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="none"
             showsVerticalScrollIndicator={false}
             style={{ maxHeight: 520 }}
+            bottomOffset={24}
           >
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Name *</Text>
             <TextInput
@@ -463,7 +466,7 @@ export default function BranchesScreen() {
               </TouchableOpacity>
             </View>
             <View style={{ height: 24 }} />
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         </View>
       </ModalSheet>
 
@@ -476,11 +479,12 @@ export default function BranchesScreen() {
               <Ionicons name="close" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
-          <ScrollView
+          <KeyboardAwareScrollViewCompat
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="none"
             showsVerticalScrollIndicator={false}
             style={{ maxHeight: 520 }}
+            bottomOffset={24}
           >
             <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Name *</Text>
             <TextInput
@@ -534,7 +538,7 @@ export default function BranchesScreen() {
               </TouchableOpacity>
             </View>
             <View style={{ height: 24 }} />
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         </View>
       </ModalSheet>
     </ScreenLayout>

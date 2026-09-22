@@ -51,6 +51,7 @@ const colors = {
     // ── Semantic: info ────────────────────────────────────────
     info:               '#1D4ED8',
     infoBg:             '#EFF6FF',
+    infoBorder:         '#93C5FD',
 
     // ── Chat ─────────────────────────────────────────────────
     messageMine:        '#0D5C2E',

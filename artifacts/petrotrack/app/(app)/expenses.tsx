@@ -7,6 +7,7 @@ import {
 
 import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { Budget, Expense, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
@@ -584,17 +585,25 @@ export default function ExpensesScreen() {
         </TouchableOpacity>
       ) : null}
 
-      {/* Pending badge banner for acc/md */}
+      {/* Pending badge banner for acc/md — tapping jumps straight to the
+          pending-review tab (and clears any date filter) so a report never
+          stays buried behind whatever tab or filter was previously active. */}
       {pendingCount > 0 ? (
-        <View style={[styles.pendingBanner, {
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={`View ${pendingCount} expense${pendingCount > 1 ? 's' : ''} ${isAcc ? 'awaiting your review' : 'pending approval'}`}
+          activeOpacity={0.75}
+          onPress={() => { setTab(0); setFilterDate(''); }}
+          style={[styles.pendingBanner, {
            backgroundColor: isAcc ? '#E6F1FB' : '#F1F5F9',
            borderColor: isAcc ? '#0C447C' : '#64748B',
         }]}>
           <Ionicons name="time" size={15} color={isAcc ? '#0C447C' : '#64748B'} />
-          <Text style={[styles.pendingBannerText, { color: isAcc ? '#0C447C' : '#64748B' }]}>
+          <Text style={[styles.pendingBannerText, { color: isAcc ? '#0C447C' : '#64748B', flex: 1 }]}>
             {pendingCount}{' expense'}{pendingCount > 1 ? 's' : ''}{isAcc ? ' awaiting your review' : ' pending approval'}
           </Text>
-        </View>
+          <Ionicons name="chevron-forward" size={16} color={isAcc ? '#0C447C' : '#64748B'} />
+        </TouchableOpacity>
       ) : null}
 
       <View style={styles.scroll}>
@@ -802,8 +811,8 @@ export default function ExpensesScreen() {
       {/* Add / Edit Modal */}
       <ModalSheet visible={showForm} onClose={() => { setShowForm(false); setFormError(''); }}>
         {hasPendingConfirmation ? confirmationContent : (
-          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
-            keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]}
+            keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
             <Text style={[styles.sheetTitle, { color: colors.text }]}>
               {editTarget ? 'Edit Expense' : 'New Expense'}
             </Text>
@@ -847,7 +856,7 @@ export default function ExpensesScreen() {
                 <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         )}
       </ModalSheet>
     </ScreenLayout>

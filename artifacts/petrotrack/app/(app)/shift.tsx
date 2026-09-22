@@ -8,6 +8,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ModalSheet } from '@/components/FormSheet';
 import {
   PumpDailyReport, ROLE_COLORS, currentBusinessDateKey, fmt, fmtDate, fmtDateTime, getPumpOpeningMeter, getPriceForPump, isFutureBusinessDate, unitForProd, useApp,
@@ -1051,7 +1052,7 @@ export default function ShiftReportScreen() {
 
       {/* ══ RECORD METERS ══ */}
       {tab === 'submit' && (
-        <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
 
           {activePumps.length === 0 && (
             <View style={[c.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1195,7 +1196,7 @@ export default function ShiftReportScreen() {
             </>
           )}
           <View style={{ height: 24 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ══ HISTORY ══ */}
@@ -1345,10 +1346,10 @@ export default function ShiftReportScreen() {
 
       {/* ══ ADMIN: SET INITIAL METERS ══ */}
       {tab === 'initial' && isAdmin && (
-        <ScrollView contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
-          <View style={[c.infoBanner, { backgroundColor: '#185FA522', borderColor: '#185FA544' }]}>
-            <Ionicons name="information-circle" size={16} color="#185FA5" />
-            <Text style={[c.infoBannerTxt, { color: '#185FA5' }]}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={c.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
+          <View style={[c.infoBanner, { backgroundColor: colors.info + '18', borderColor: colors.info }]}>
+            <Ionicons name="information-circle" size={16} color={colors.info} />
+            <Text style={[c.infoBannerTxt, { color: colors.info }]}>
               Set the initial meter reading (first-time seed). To override the next opening meter, enter a value and tap <Text style={{ fontWeight: '700' }}>Lock</Text> — attendants will see that value until you unlock it.
             </Text>
           </View>
@@ -1455,13 +1456,13 @@ export default function ShiftReportScreen() {
             </View>
           )}
           <View style={{ height: 24 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ══ DETAIL MODAL ══ */}
       {!!viewing && (
         <View style={c.modalOverlay}>
-          <ScrollView style={[c.modalSheet, { backgroundColor: colors.background }]}
+          <KeyboardAwareScrollViewCompat style={[c.modalSheet, { backgroundColor: colors.background }]}
             contentContainerStyle={{ padding: 20 }}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
 
@@ -1778,7 +1779,7 @@ export default function ShiftReportScreen() {
             )}
 
             <View style={{ height: 20 }} />
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         </View>
       )}
       {confirmationModal}

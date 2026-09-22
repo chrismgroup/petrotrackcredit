@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { fmtDate, fmtDateTime, type MaintenanceItem, useApp } from '@/context/AppContext';
 import { type MaintenanceWorkflowStatus } from '@/lib/api';
@@ -254,7 +255,7 @@ export default function MaintenanceScreen() {
         </TouchableOpacity>
       }
     >
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bottomOffset={24}>
         <Text style={[styles.intro, { color: colors.textMuted }]}>Submit an issue, then track acknowledgement, assignment, and the complete work history.</Text>
         {showForm && (
           <View style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -295,7 +296,7 @@ export default function MaintenanceScreen() {
         {finishedItems.length > 0 && <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 10 }]}>Done and closed</Text>}
         {finishedItems.map(renderItem)}
         {items.length === 0 && <Text style={[styles.empty, { color: colors.textMuted }]}>No maintenance requests match this date.</Text>}
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
       {confirmationModal}
     </ScreenLayout>
   );

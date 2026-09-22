@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   GeneratedLetter, HRDocType, HRDocStatus, HREmployee, OnboardingStatus,
@@ -196,6 +197,15 @@ export default function HRScreen() {
   const rejectedEnrollments = userAccounts.filter(a => a.status === 'rejected');
   const pendingRecs   = hrRecommendations.filter(r => r.status === 'pending').length;
   const pendingBooks  = hrHandbooks.filter(h => !h.approved).length;
+  // Recommendations awaiting admin approval surface first, so a pending
+  // suspend/deactivate/delete request can never be buried under
+  // already-resolved recommendations further down the list.
+  const sortedHrRecommendations = [...hrRecommendations].sort((a, b) => {
+    const rank = (rec: typeof a) => rec.status === 'pending' ? 0 : 1;
+    const rankDiff = rank(a) - rank(b);
+    if (rankDiff !== 0) return rankDiff;
+    return b.dt.localeCompare(a.dt);
+  });
 
   /* ═══════════════════════════════════════════════════
      HANDLERS — HR ENROLLMENT
@@ -985,7 +995,7 @@ export default function HRScreen() {
 
       {/* ── APPROVALS TAB (Admin only) ── */}
       {activeTab === 'approvals' && isAdmin && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
 
           {/* Select-mode toolbar */}
           {pendingEnrollments.length > 0 && (
@@ -1062,12 +1072,12 @@ export default function HRScreen() {
             </>
           )}
           <View style={{ height: 24 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ── EMPLOYEES TAB ── */}
       {activeTab === 'employees' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={styles.statsRow}>
             {[
               { n: hrEmployees.length,                                       label: 'Total',     col: roleColor,    bg: roleColor + '12' },
@@ -1273,12 +1283,12 @@ export default function HRScreen() {
           )}
 
           <View style={{ height: 24 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ── HANDBOOKS TAB ── */}
       {activeTab === 'handbooks' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           {isHR && (
             <View style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -1336,12 +1346,12 @@ export default function HRScreen() {
             </View>
           ))}
           <View style={{ height: 24 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ── RECOMMENDATIONS TAB ── */}
       {activeTab === 'recommendations' && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={styles.statsRow}>
             {(['pending', 'approved', 'rejected'] as const).map(s => {
               const sm  = REC_STATUS_META[s];
@@ -1360,7 +1370,7 @@ export default function HRScreen() {
               <Text style={[styles.emptyText, { color: colors.textMuted }]}>No recommendations yet</Text>
             </View>
           )}
-          {hrRecommendations.map(rec => {
+          {sortedHrRecommendations.map(rec => {
             const rm = REC_META[rec.type];
             const sm = REC_STATUS_META[rec.status];
             return (
@@ -1403,7 +1413,7 @@ export default function HRScreen() {
             );
           })}
           <View style={{ height: 24 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ═══════════════════════════════════════════════════
@@ -1412,7 +1422,7 @@ export default function HRScreen() {
 
       {/* ── Admin: Approve Enrollment Modal ── */}
       <ModalSheet visible={!!approvingEnrollment} onClose={() => setApprovingEnrollment(null)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
+        <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]}
           keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <Ionicons name="checkmark-circle" size={20} color="#1a6e3c" />
@@ -1491,12 +1501,12 @@ export default function HRScreen() {
             <Text style={styles.submitBtnText}>{isApproving ? 'Activating…' : 'Activate Account Now'}</Text>
           </TouchableOpacity>
           <View style={{ height: 32 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* ── Admin: Edit Enrollment Modal ── */}
       <ModalSheet visible={!!editingEnrollment} onClose={() => setEditingEnrollment(null)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
+        <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]}
           keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <Ionicons name="create" size={18} color={roleColor} />
@@ -1540,12 +1550,12 @@ export default function HRScreen() {
             <Text style={styles.submitBtnText}>Save Changes</Text>
           </TouchableOpacity>
           <View style={{ height: 32 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* ── Admin: Reject Enrollment with Reason Modal ── */}
       <ModalSheet visible={!!rejectingEnrollment} onClose={() => setRejectingEnrollment(null)}>
-        <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <Ionicons name="close-circle" size={20} color="#E74C3C" />
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Reject Enrollment</Text>
@@ -1584,12 +1594,12 @@ export default function HRScreen() {
             </TouchableOpacity>
           </View>
           <View style={{ height: 16 }} />
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* ── HR: Re-submit Rejected Enrollment Modal ── */}
       <ModalSheet visible={!!resubmittingEnrollment} onClose={() => setResubmittingEnrollment(null)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
+        <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]}
           keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <Ionicons name="refresh-circle" size={20} color="#185FA5" />
@@ -1650,12 +1660,12 @@ export default function HRScreen() {
             <Text style={styles.submitBtnText}>Re-submit to Admin</Text>
           </TouchableOpacity>
           <View style={{ height: 32 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* ── Generate Letter Modal ── */}
       <ModalSheet visible={!!letterModal} onClose={() => setLetterModal(null)}>
-        <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]}
+        <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]}
           keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
           <Text style={[styles.sheetTitle, { color: colors.text }]}>
             {letterModal === 'appointment' ? 'Generate Appointment Letter' : 'Generate Promotion Letter'}
@@ -1714,7 +1724,7 @@ export default function HRScreen() {
             <Text style={styles.submitBtnText}>Generate & Save Letter</Text>
           </TouchableOpacity>
           <View style={{ height: 32 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* ── View Letter Modal ── */}

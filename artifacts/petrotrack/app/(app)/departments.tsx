@@ -5,6 +5,7 @@ import {
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { Department, ROLE_COLORS, ROLE_LABELS, useApp } from '@/context/AppContext';
@@ -52,10 +53,11 @@ function DeptFormModal({
       <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
           <Text style={[styles.modalTitle, { color: colors.text }]}>{title}</Text>
 
-          <ScrollView
+          <KeyboardAwareScrollViewCompat
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="none"
+            bottomOffset={24}
           >
               {/* Name */}
               <TextInput
@@ -132,7 +134,7 @@ function DeptFormModal({
                   <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollViewCompat>
           </View>
     </ModalSheet>
   );

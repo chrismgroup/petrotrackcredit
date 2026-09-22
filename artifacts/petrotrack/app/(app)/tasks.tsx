@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { KPI, ROLE_COLORS, ROLE_LABELS, TASK_CAN_ASSIGN, Task, TaskCadence, TaskPriority, TaskStatus, UINFO, resolveUserInfo, fmtDate, useApp } from '@/context/AppContext';
@@ -410,7 +411,7 @@ export default function TasksScreen() {
 
       {/* ── Assign Task Modal ── */}
       <ModalSheet visible={showTaskForm} onClose={() => setShowTaskForm(false)}>
-          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Assign Task</Text>
 
             <TextInput
@@ -518,12 +519,12 @@ export default function TasksScreen() {
                 <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       {/* ── Add KPI Modal (CEO only) ── */}
       <ModalSheet visible={showKpiForm} onClose={() => setShowKpiForm(false)}>
-          <ScrollView style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          <KeyboardAwareScrollViewCompat style={[styles.sheet, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Set KPI / Target</Text>
 
             {[
@@ -584,7 +585,7 @@ export default function TasksScreen() {
                 <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
       </ModalSheet>
     </ScreenLayout>
   );

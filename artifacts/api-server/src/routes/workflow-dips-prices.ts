@@ -224,6 +224,27 @@ router.patch("/workflows/dips/:id", async (req, res) => run(req, res, async (tx,
   const validationBranchId = isAdmin && typeof old.branchId === "string" ? old.branchId : req.auth!.branchId;
   const readingError = await validateReadings(tx, revisedRd, revisedLpg, validationBranchId);
   if (readingError) return { status: 400, body: { error: readingError } };
+  // A corrected applies-on date must not collide with another non-rejected
+  // dip for the same branch, otherwise a manager correcting a rejected dip
+  // could silently create a duplicate reading for that business date.
+  if (typeof input.dt === "string" && input.dt && input.dt.slice(0, 10) !== String(old.dt ?? "").slice(0, 10)) {
+    const conflictingDip = dips.find(dip =>
+      dip.id !== old.id &&
+      dip.branchId === old.branchId &&
+      String(dip.dt ?? "").slice(0, 10) === input.dt.slice(0, 10) &&
+      dip.status !== "rejected",
+    );
+    if (conflictingDip) {
+      return {
+        status: 409,
+        body: {
+          error: conflictingDip.status === "approved"
+            ? "This branch already has an approved tank dip for that business date"
+            : "This branch already has a tank dip awaiting MD approval for that business date",
+        },
+      };
+    }
+  }
   const managerResubmission = !isAdmin && old.status === "rejected";
   const dip = {
     ...old,

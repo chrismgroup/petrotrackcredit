@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import {
   CorpApproval, CorpAttachment, CorpProject, CorpRecordType,
   LegalMatter, MeetingMinutes, MyFolder, MyFolderFile, MyFolderSection,
@@ -572,7 +573,7 @@ export function FolderWorkspacePanel({
         animationType="slide"
         onRequestClose={() => setShowUploadDetails(false)}
       >
-        <View style={sty.detailsBackdrop}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={sty.detailsBackdrop} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={[sty.detailsCard, { backgroundColor: colors.surface }]}>
             <View style={sty.detailsHeader}>
               <View>
@@ -619,7 +620,7 @@ export function FolderWorkspacePanel({
               <Text style={sty.detailsSubmitText}>Choose file</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </Modal>
     </View>
   );
@@ -672,6 +673,19 @@ function EmptySlate({ icon, text }: { icon: string; text: string }) {
   );
 }
 
+// Records awaiting CEO/admin approval surface above everything else so a
+// submitted lease, project, or meeting-minutes record can never be buried
+// under older/unrelated entries further down the list.
+function withPendingApprovalFirst<T extends { approval: { status: string; submittedAt?: string } }>(records: T[]): T[] {
+  return [...records].sort((a, b) => {
+    const rank = (item: T) => item.approval.status === 'submitted' ? 0 : 1;
+    const rankDiff = rank(a) - rank(b);
+    if (rankDiff !== 0) return rankDiff;
+    if (rank(a) === 0) return (b.approval.submittedAt ?? '').localeCompare(a.approval.submittedAt ?? '');
+    return 0;
+  });
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 export default function CorporateScreen() {
   const {
@@ -692,6 +706,9 @@ export default function CorporateScreen() {
   const hasRestrictedFolderAccess = !!role && MY_FOLDER_ALLOWED_ROLES.includes(role as Role);
   const isCSM     = role === 'csm';
   const isCEO     = role === 'ceo' || role === 'md';
+  const sortedLegalMatters   = withPendingApprovalFirst(legalMatters);
+  const sortedCorpProjects   = withPendingApprovalFirst(corpProjects);
+  const sortedMeetingMinutes = withPendingApprovalFirst(meetingMinutes);
   const isAdmin   = role === 'admin';
   const canCreate = isCSM || isAdmin;
 
@@ -1162,7 +1179,7 @@ export default function CorporateScreen() {
 
       {/* ════════════════════════════════════════ LEGAL */}
       {activeTab === 'legal' && (
-        <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           {/* Summary */}
           <View style={sty.summaryRow}>
             {(['Active','Pending','Resolved','Closed'] as LegalMatter['status'][]).map(s => {
@@ -1240,7 +1257,7 @@ export default function CorporateScreen() {
           )}
 
           {legalMatters.length === 0 && <EmptySlate icon="scale-outline" text="No legal matters recorded" />}
-          {legalMatters.map(m => {
+          {sortedLegalMatters.map(m => {
             const sm = LEGAL_STATUS_META[m.status];
             const pm = LEGAL_PRI_META[m.priority];
             const am = APPROVAL_META[m.approval.status];
@@ -1310,12 +1327,12 @@ export default function CorporateScreen() {
             canManage={hasRestrictedFolderAccess}
           />
           <View style={{ height: 20 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ════════════════════════════════════════ PROJECTS */}
       {activeTab === 'projects' && (
-        <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={sty.summaryRow}>
             {(['Planning','Active','On Hold','Completed'] as CorpProject['status'][]).map(s => {
               const m = PROJ_STATUS_META[s];
@@ -1387,7 +1404,7 @@ export default function CorporateScreen() {
           )}
 
           {corpProjects.length === 0 && <EmptySlate icon="hammer-outline" text="No projects yet" />}
-          {corpProjects.map(p => {
+          {sortedCorpProjects.map(p => {
             const sm = PROJ_STATUS_META[p.status];
             const am = APPROVAL_META[p.approval.status];
             const locked   = p.approval.status === 'approved';
@@ -1470,7 +1487,7 @@ export default function CorporateScreen() {
             canManage={hasRestrictedFolderAccess}
           />
           <View style={{ height: 20 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ════════════════════════════════════════ MEETING MINUTES */}
@@ -1563,7 +1580,7 @@ export default function CorporateScreen() {
 
         /* ── CSM / CEO / Admin view: full management ── */
         return (
-          <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+          <KeyboardAwareScrollViewCompat contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={24}>
             {/* Sharing summary */}
             {sharedMinutes.length > 0 && (
               <View style={[sty.sharedBanner, { backgroundColor: '#EAF3DE', borderColor: '#27500A40' }]}>
@@ -1624,7 +1641,7 @@ export default function CorporateScreen() {
             )}
 
             {meetingMinutes.length === 0 && <EmptySlate icon="reader-outline" text="No meeting minutes recorded" />}
-            {meetingMinutes.map(m => {
+            {sortedMeetingMinutes.map(m => {
               const am = APPROVAL_META[m.approval.status];
               const locked   = m.approval.status === 'approved';
               const expanded = expandedId === m.id;
@@ -1728,7 +1745,7 @@ export default function CorporateScreen() {
               canManage={hasRestrictedFolderAccess}
             />
             <View style={{ height: 20 }} />
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         );
       })()}
 
@@ -1821,7 +1838,7 @@ export default function CorporateScreen() {
 
       {/* ════════════════════════════════ REJECT MODAL */}
       <Modal visible={!!rejectTarget} transparent animationType="fade">
-        <View style={sty.modalBackdrop}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={sty.modalBackdrop} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={[sty.modalCard, { backgroundColor: colors.surface }]}>
             <Text style={[sty.modalTitle, { color: colors.text }]}>Reject Record</Text>
             <Text style={[sty.modalSub, { color: colors.textMuted }]}>State the reason for rejection so CSM can correct:</Text>
@@ -1839,7 +1856,7 @@ export default function CorporateScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </Modal>
 
     </ScreenLayout>

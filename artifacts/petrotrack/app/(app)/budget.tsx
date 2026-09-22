@@ -7,6 +7,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { ROLE_COLORS, fmt, fmtDateTime, useApp, type Budget, type Expense } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -771,7 +772,7 @@ export default function BudgetScreen() {
                 </View>
               </View>
 
-              <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+              <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" bottomOffset={24}>
 
                 {/* ── Approved: performance dashboard ── */}
                 {isApproved && selPerf ? (
@@ -1028,7 +1029,7 @@ export default function BudgetScreen() {
                 ) : null}
 
                 <View style={{ height: 32 }} />
-              </ScrollView>
+              </KeyboardAwareScrollViewCompat>
             </View>
           );
         })() : null}
@@ -1036,7 +1037,7 @@ export default function BudgetScreen() {
 
       {/* ═══ MONTH CONSOLIDATION MODAL ═══ */}
       <Modal visible={showConsolidate} animationType="fade" transparent onRequestClose={() => setShowConsolidate(false)}>
-        <View style={styles.consolidateOverlay}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={styles.consolidateOverlay} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={[styles.consolidateCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.consolidateHeader}>
               <View style={{ flex: 1 }}>
@@ -1090,7 +1091,7 @@ export default function BudgetScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </Modal>
 
       {/* ═══ CREATE / EDIT MODAL ═══ */}
@@ -1104,7 +1105,7 @@ export default function BudgetScreen() {
                   </TouchableOpacity>
                   <Text style={styles.modalTitle}>{editTarget ? 'Edit Budget' : 'New Budget'}</Text>
                 </View>
-                <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+                <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" bottomOffset={24}>
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Branch *</Text>
               <View style={styles.chipRow}>
                 {branches.map(branch => (
@@ -1162,7 +1163,7 @@ export default function BudgetScreen() {
                 ) : null}
               </View>
               <View style={{ height: 32 }} />
-                </ScrollView>
+                </KeyboardAwareScrollViewCompat>
               </>
             )}
           </View>

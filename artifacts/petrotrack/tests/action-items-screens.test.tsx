@@ -51,6 +51,14 @@ jest.mock('@/components/FormSheet', () => ({
   ModalSheet: ({ visible, children }: any) => (visible ? children : null),
 }));
 
+jest.mock('@/components/KeyboardAwareScrollViewCompat', () => {
+  const React = require('react');
+  return {
+    KeyboardAwareScrollViewCompat: ({ children, ...props }: any) =>
+      React.createElement('KeyboardAwareScrollViewCompat', props, children),
+  };
+});
+
 jest.mock('@/components/AppliedDateField', () => {
   const React = require('react');
   return {

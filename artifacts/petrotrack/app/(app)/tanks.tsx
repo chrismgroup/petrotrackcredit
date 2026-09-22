@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { DEFAULT_MGR_PERMS, ROLE_COLORS, SCREEN_ROUTES, businessDateKey, fmt, fmtDate, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -29,9 +30,11 @@ export default function TanksScreen() {
   const [editDipReadings, setEditDipReadings] = useState<Record<string, string>>({});
   const [editDipLpg, setEditDipLpg] = useState<Record<string, string>>({});
   const [editDipObs, setEditDipObs] = useState('');
+  const [editDipDate, setEditDipDate] = useState('');
   const [selectedHistoryBranchId, setSelectedHistoryBranchId] = useState<string | null>(null);
   const [decidingDipId, setDecidingDipId] = useState<number | null>(null);
   const [isSavingEditDip, setIsSavingEditDip] = useState(false);
+  const dipScrollRef = useRef<ScrollView>(null);
 
   const isMD = role === 'md';
   const canViewWorkflow = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm';
@@ -95,6 +98,26 @@ export default function TanksScreen() {
     else groups.push({ ...branch, dips: [dip] });
     return groups;
   }, []).sort((a, b) => a.name.localeCompare(b.name));
+  // Branch groups with a pending (awaiting-approval) dip surface above every
+  // other group, ranked by most recently submitted first, so the reviewer
+  // never has to hunt for a report buried under alphabetically-earlier
+  // branches. Groups with no pending dips keep the alphabetical fallback.
+  const compareBranchGroupsForReview = (
+    a: { id: string; name: string; dips: typeof visibleDipRecords },
+    b: { id: string; name: string; dips: typeof visibleDipRecords },
+  ) => {
+    const pendingRank = (group: typeof a) => group.dips.some(dip => dip.status === 'pending') ? 0 : 1;
+    const rankDiff = pendingRank(a) - pendingRank(b);
+    if (rankDiff !== 0) return rankDiff;
+    if (pendingRank(a) === 0) {
+      const latestPendingTime = (group: typeof a) => Math.max(
+        ...group.dips.filter(dip => dip.status === 'pending').map(dip => new Date(dip.submittedAt ?? dip.dt).getTime()),
+      );
+      const timeDiff = latestPendingTime(b) - latestPendingTime(a);
+      if (timeDiff !== 0) return timeDiff;
+    }
+    return a.name.localeCompare(b.name);
+  };
   const historyBranchGroups = (() => {
     const groups = new Map<string, { id: string; name: string; dips: typeof visibleDipRecords }>();
     if (canSeeAllTanks) {
@@ -110,7 +133,7 @@ export default function TanksScreen() {
     });
     return [...groups.values()]
       .map(group => ({ ...group, dips: [...group.dips].sort(compareDipsForReview) }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort(compareBranchGroupsForReview);
   })();
   const activeHistoryBranchId = selectedHistoryBranchId && historyBranchGroups.some(group => group.id === selectedHistoryBranchId)
     ? selectedHistoryBranchId
@@ -120,22 +143,28 @@ export default function TanksScreen() {
   );
   const hasDisplayedHistory = displayedDipHistoryGroups.some(group => group.dips.length > 0);
   const pendingDips = dips.filter(d => d.status === 'pending' && dipHasVisibleReading(d));
-  // The server allows only one non-rejected dip per branch per business date.
-  // Warn before submitting so a manager never hits that block with no visible
-  // explanation of what's already pending.
-  const hasPendingDipForDate = canEdit && Boolean(appliesOn) && dips.some(d =>
+  // The server allows only one non-rejected (pending or approved) dip per
+  // branch per business date. Warn before submitting so a manager never hits
+  // that block with no visible explanation of what's already recorded.
+  const existingDipForDate = canEdit && Boolean(appliesOn) ? dips.find(d =>
     d.by === userName &&
-    d.status === 'pending' &&
+    d.status !== 'rejected' &&
     businessDateKey(d.dt) === businessDateKey(appliesOn),
-  );
+  ) : undefined;
+  const hasPendingDipForDate = Boolean(existingDipForDate);
 
   function handleDipSubmit() {
     if (!appliesOn) {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
       return;
     }
-    if (hasPendingDipForDate) {
-      Alert.alert('Already submitted', 'This date already has a dip record awaiting MD approval. Edit or withdraw it in "My Dip Submissions" below to submit a corrected reading.');
+    if (existingDipForDate) {
+      Alert.alert(
+        'Already submitted',
+        existingDipForDate.status === 'approved'
+          ? 'This date already has an approved dip record and cannot be replaced.'
+          : 'This date already has a dip record awaiting MD approval. Edit or withdraw it in "My Dip Submissions" below to submit a corrected reading.',
+      );
       return;
     }
     const rd: Record<string, number> = {};
@@ -162,21 +191,41 @@ export default function TanksScreen() {
     setEditDipReadings(Object.fromEntries(Object.entries(dip.rd ?? {}).map(([k, v]) => [k, String(v)])));
     setEditDipLpg(Object.fromEntries(Object.entries(dip.lpg ?? {}).map(([k, v]) => [k, String(v)])));
     setEditDipObs(dip.obs ?? '');
+    setEditDipDate(businessDateKey(dip.dt));
   }
   function cancelEditDip() {
     setEditingDipId(null);
     setEditDipReadings({});
     setEditDipLpg({});
     setEditDipObs('');
+    setEditDipDate('');
   }
   function saveEditDip(dipId: number) {
     if (isSavingEditDip) return;
+    if (!editDipDate) {
+      Alert.alert('Date required', 'Select the date this tank dip applies to.');
+      return;
+    }
+    // A corrected date must not collide with another non-rejected dip this
+    // manager already has for that business date, otherwise the manager
+    // stays "stuck" resubmitting the same rejected date forever.
+    const conflictsWithAnotherDip = dips.some(d =>
+      d.id !== dipId &&
+      d.by === userName &&
+      d.status !== 'rejected' &&
+      businessDateKey(d.dt) === businessDateKey(editDipDate),
+    );
+    if (conflictsWithAnotherDip) {
+      Alert.alert('Already submitted', 'This date already has another dip record for this branch. Pick a different date to correct this one.');
+      return;
+    }
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
     for (const [k, v] of Object.entries(editDipReadings)) { const n = parseFloat(v); if (!isNaN(n)) rd[k] = n; }
     for (const [k, v] of Object.entries(editDipLpg)) { const n = parseFloat(v); if (!isNaN(n)) lpg[k] = n; }
-    setIsSavingEditDip(true);
-    updateDip(dipId, { rd, lpg, obs: editDipObs.trim() }).then(result => {
+    requestDateConfirmation('tank dip', editDipDate, async () => {
+      setIsSavingEditDip(true);
+      const result = await updateDip(dipId, { dt: editDipDate, rd, lpg, obs: editDipObs.trim() });
       setIsSavingEditDip(false);
       if (!result.ok) {
         Alert.alert('Dip not updated', result.error ?? 'The server could not update this dip. Please refresh and try again.');
@@ -184,7 +233,7 @@ export default function TanksScreen() {
       }
       cancelEditDip();
       Alert.alert('Dip Updated', 'Readings have been saved.');
-    });
+    }, 'Confirm & save');
   }
   function handleDeleteDip(dip: typeof dips[0]) {
     const isPending = dip.status === 'pending';
@@ -233,7 +282,7 @@ export default function TanksScreen() {
     <ScreenLayout title="Tank Dipping">
       {canEdit && (
         <View style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Form</Text>
           {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
           {!perms.canPetrolTanks && role === 'mgr' && (
@@ -326,16 +375,18 @@ export default function TanksScreen() {
             helper="Select the business date for this reading."
           />
           {hasPendingDipForDate && (
-            <View style={[styles.pendingBanner, { backgroundColor: '#BA751718', borderColor: '#BA7517' }]}>
-              <Ionicons name="time" size={16} color="#BA7517" />
-              <Text style={[styles.pendingText, { color: '#BA7517' }]}>
-                This date already has a dip record awaiting MD approval. Edit or withdraw it in "My Dip Submissions" below.
+            <View style={[styles.pendingBanner, { backgroundColor: colors.warning + '18', borderColor: colors.warning }]}>
+              <Ionicons name="time" size={16} color={colors.warning} />
+              <Text style={[styles.pendingText, { color: colors.warning }]}>
+                {existingDipForDate?.status === 'approved'
+                  ? 'This date already has an approved dip record and cannot be replaced.'
+                  : 'This date already has a dip record awaiting MD approval. Edit or withdraw it in "My Dip Submissions" below.'}
               </Text>
             </View>
           )}
 
           <View style={{ height: 8 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
 
         {canEdit && (
           <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
@@ -354,14 +405,27 @@ export default function TanksScreen() {
       )}
 
       {((canEdit && visibleDipRecords.length > 0) || canViewWorkflow) && (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat ref={dipScrollRef} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           {isMD && dips.some(d => d.status === 'pending') && (
-            <View style={[styles.mdBanner, { backgroundColor: '#4527a018', borderColor: '#4527a0' }]}>
-              <Ionicons name="alert-circle" size={16} color="#4527a0" />
-              <Text style={[styles.mdBannerText, { color: '#4527a0' }]}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={`View ${dips.filter(d => d.status === 'pending').length} dip record${dips.filter(d => d.status === 'pending').length > 1 ? 's' : ''} awaiting your approval`}
+              activeOpacity={0.75}
+              onPress={() => {
+                // Clear any branch filter and jump to the top, since the
+                // pending record can otherwise be hidden behind a specific
+                // branch selection or scrolled out of view further down.
+                setSelectedHistoryBranchId(null);
+                dipScrollRef.current?.scrollTo({ y: 0, animated: true });
+              }}
+              style={[styles.mdBanner, { backgroundColor: colors.purple + '18', borderColor: colors.purple }]}
+            >
+              <Ionicons name="alert-circle" size={16} color={colors.purple} />
+              <Text style={[styles.mdBannerText, { color: colors.purple, flex: 1 }]}>
                 {dips.filter(d => d.status === 'pending').length} dip record{dips.filter(d => d.status === 'pending').length > 1 ? 's' : ''} awaiting your approval
               </Text>
-            </View>
+              <Ionicons name="chevron-forward" size={16} color="#4527a0" />
+            </TouchableOpacity>
           )}
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             {canEdit ? 'My Dip Submissions' : 'Pending Dip Reports for Review'}
@@ -513,6 +577,15 @@ export default function TanksScreen() {
                       placeholder="Observations" placeholderTextColor={colors.textSubtle}
                       multiline numberOfLines={2} value={editDipObs} onChangeText={setEditDipObs}
                     />
+                    <AppliedDateField
+                      value={editDipDate}
+                      onChange={setEditDipDate}
+                      label="Applies on *"
+                      accent={roleColor}
+                      helper={dip.status === 'rejected'
+                        ? 'Correct the business date if this reading was rejected for the wrong date.'
+                        : 'Update the business date if it was entered incorrectly.'}
+                    />
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <TouchableOpacity
                         style={[styles.submitBtn, { flex: 1, backgroundColor: roleColor, opacity: isSavingEditDip ? 0.6 : 1 }]}
@@ -557,7 +630,7 @@ export default function TanksScreen() {
           ))}
 
           <View style={{ height: 16 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {confirmationModal}

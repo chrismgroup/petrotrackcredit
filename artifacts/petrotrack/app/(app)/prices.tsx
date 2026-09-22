@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { getPriceForProduct, PriceProduct, PriceProposal, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -132,6 +133,8 @@ export default function PricesScreen() {
   /* ── Approve / update / reject (CEO / admin) ── */
   const [rejectTarget, setRejectTarget] = useState<PriceProposal | null>(null);
   const [rejectNote,   setRejectNote]   = useState('');
+  const priceScrollRef = useRef<ScrollView>(null);
+  const pendingSectionYRef = useRef(0);
 
   const [updateTarget, setUpdateTarget] = useState<PriceProposal | null>(null);
   const [updateDraft,  setUpdateDraft]  = useState('');
@@ -190,23 +193,32 @@ export default function PricesScreen() {
   return (
     <ScreenLayout title="Selling Prices">
 
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={priceScrollRef} contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Pending banner */}
+        {/* Pending banner — tapping jumps straight to the pending-approvals
+            section below, since it can otherwise sit under the full current
+            price list. */}
         {canApprove && pending.length > 0 ? (
-          <View style={[s.banner, { backgroundColor: '#FAEEDA', borderColor: '#BA7517' }]}>
-            <Ionicons name="time-outline" size={16} color="#BA7517" />
-            <Text style={[s.bannerTxt, { color: '#BA7517' }]}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`View ${pending.length} price proposal${pending.length > 1 ? 's' : ''} awaiting your approval`}
+            activeOpacity={0.75}
+            onPress={() => priceScrollRef.current?.scrollTo({ y: pendingSectionYRef.current, animated: true })}
+            style={[s.banner, { backgroundColor: colors.warning + '18', borderColor: colors.warning }]}
+          >
+            <Ionicons name="time-outline" size={16} color={colors.warning} />
+            <Text style={[s.bannerTxt, { color: colors.warning, flex: 1 }]}>
               {pending.length} price proposal{pending.length > 1 ? 's' : ''} awaiting your approval
             </Text>
-          </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.warning} />
+          </TouchableOpacity>
         ) : null}
 
         {/* ── Current prices ── */}
         <Text style={[s.secLabel, { color: colors.textMuted }]}>Current Selling Prices</Text>
-        <View style={[s.scopeBanner, { backgroundColor: branchId ? '#EAF3DE' : '#E6F1FB', borderColor: branchId ? '#27500A55' : '#185FA555' }]}>
-          <Ionicons name={branchId ? 'location-outline' : 'globe-outline'} size={16} color={branchId ? '#27500A' : '#185FA5'} />
-          <Text style={[s.scopeBannerText, { color: branchId ? '#27500A' : '#185FA5' }]}>
+        <View style={[s.scopeBanner, { backgroundColor: branchId ? colors.successBg : colors.infoBg, borderColor: branchId ? colors.successBorder : colors.infoBorder }]}>
+          <Ionicons name={branchId ? 'location-outline' : 'globe-outline'} size={16} color={branchId ? colors.success : colors.info} />
+          <Text style={[s.scopeBannerText, { color: branchId ? colors.success : colors.info }]}>
             {branchId
               ? `Branch price list: ${branchName}. Changes here apply only to this branch.`
               : 'Network fallback prices. Branch-specific manager overrides remain separate.'}
@@ -266,7 +278,12 @@ export default function PricesScreen() {
         {/* ── Pending approvals (CEO / admin) ── */}
         {canApprove && pending.length > 0 ? (
           <>
-            <Text style={[s.secLabel, { color: colors.textMuted }]}>Pending Approvals</Text>
+            <Text
+              style={[s.secLabel, { color: colors.textMuted }]}
+              onLayout={e => { pendingSectionYRef.current = e.nativeEvent.layout.y; }}
+            >
+              Pending Approvals
+            </Text>
             {pending.map(p => {
               const meta = PROD_META[p.prod] ?? PROD_META.PMS;
               const currentPrice = safeNum(p.currentPrice);
@@ -405,7 +422,7 @@ export default function PricesScreen() {
 
       {/* ══ Set Price Sheet (CEO / MD / admin / station manager) ══ */}
       <Sheet visible={setProd !== null} onClose={() => { setSetProd(null); setSetReason(''); }}>
-        <ScrollView style={[s.sheet, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+        <KeyboardAwareScrollViewCompat style={[s.sheet, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <View style={s.sheetHandle} />
           <View style={s.sheetHeader}>
             <View style={[s.sheetIcon, { backgroundColor: (PROD_META[setProd || 'PMS']?.color ?? rc) + '18' }]}>
@@ -502,12 +519,12 @@ export default function PricesScreen() {
             </TouchableOpacity>
           </View>
           <View style={{ height: 32 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </Sheet>
 
       {/* ══ Propose Sheet (other roles) ══ */}
       <Sheet visible={proposeProd !== null} onClose={() => setProposeProd(null)}>
-        <View style={[s.sheet, { backgroundColor: colors.surface }]}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={[s.sheet, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={s.sheetHandle} />
           <View style={s.sheetHeader}>
             <View style={[s.sheetIcon, { backgroundColor: (PROD_META[proposeProd || 'PMS']?.color ?? rc) + '18' }]}>
@@ -549,12 +566,12 @@ export default function PricesScreen() {
               <Text style={s.btnFillTxt}>Submit Proposal</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </Sheet>
 
       {/* ══ Adjust & Approve Sheet (CEO / admin) ══ */}
       <Sheet visible={updateTarget !== null} onClose={() => setUpdateTarget(null)}>
-        <View style={[s.sheet, { backgroundColor: colors.surface }]}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={[s.sheet, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={s.sheetHandle} />
           <View style={s.sheetHeader}>
             <View style={[s.sheetIcon, { backgroundColor: '#E8F0FC' }]}>
@@ -589,12 +606,12 @@ export default function PricesScreen() {
               <Text style={s.btnFillTxt}>Adjust & Approve</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </Sheet>
 
       {/* ══ Reject Sheet (CEO / admin) ══ */}
       <Sheet visible={rejectTarget !== null} onClose={() => setRejectTarget(null)}>
-        <View style={[s.sheet, { backgroundColor: colors.surface }]}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={[s.sheet, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={s.sheetHandle} />
           <View style={s.sheetHeader}>
             <View style={[s.sheetIcon, { backgroundColor: '#FCEBEB' }]}>
@@ -625,7 +642,7 @@ export default function PricesScreen() {
               <Text style={s.btnFillTxt}>Reject Proposal</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </Sheet>
 
     </ScreenLayout>

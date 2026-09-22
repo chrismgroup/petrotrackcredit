@@ -75,7 +75,7 @@ export function ActionItemsTable({
                     <Text style={[styles.descriptionTitle, { color: colors.text }]}>{item.title}</Text>
                     {!!item.desc && <Text style={[styles.descriptionText, { color: colors.textMuted }]} numberOfLines={3}>{item.desc}</Text>}
                   </View>
-                  <Ionicons name="chevron-forward" size={17} color={colors.textSubtle} />
+                  {onRowPress ? <Ionicons name="chevron-forward" size={17} color={colors.textSubtle} /> : null}
                 </View>
                 <View style={styles.detailsGrid}>
                   <View style={styles.detailCell}>

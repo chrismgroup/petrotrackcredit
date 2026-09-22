@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text,
+  Alert, Keyboard, Platform, ScrollView, StyleSheet, Text,
   TextInput, TouchableOpacity, View,
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
 import { ActionItemsTable } from '@/components/ActionItemsTable';
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   ActionItem,
@@ -404,11 +405,7 @@ export default function ActionItemsScreen() {
       {renderDetails()}
 
       <ModalSheet visible={showForm} onClose={() => setShowForm(false)}>
-        <KeyboardAvoidingView
-          style={[styles.sheetContainer, { backgroundColor: colors.background }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
-        >
+        <View style={[styles.sheetContainer, { backgroundColor: colors.background }]}>
           <View style={[styles.sheetHeader, { borderBottomColor: colors.border }]}>
             <View style={styles.flex}>
               <Text style={[styles.sheetTitle, { color: colors.text }]}>Add Action Item</Text>
@@ -433,12 +430,12 @@ export default function ActionItemsScreen() {
               <Ionicons name="close" size={18} color={colors.text} />
             </TouchableOpacity>
           </View>
-          <ScrollView
+          <KeyboardAwareScrollViewCompat
             style={styles.sheet}
             contentContainerStyle={styles.sheetContent}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-            automaticallyAdjustKeyboardInsets
+            bottomOffset={24}
           >
           <TextInput style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} placeholder="Action item title *" placeholderTextColor={colors.textSubtle} value={form.title} onChangeText={title => setForm(current => ({ ...current, title }))} />
           <TextInput style={[styles.input, styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} placeholder="Description or expected outcome (optional)" placeholderTextColor={colors.textSubtle} multiline value={form.desc} onChangeText={desc => setForm(current => ({ ...current, desc }))} />
@@ -580,8 +577,8 @@ export default function ActionItemsScreen() {
             <TouchableOpacity style={[styles.submitButton, { backgroundColor: roleColor }]} onPress={addItem}><Text style={styles.submitText}>Add Action Item</Text></TouchableOpacity>
             <TouchableOpacity style={styles.cancelButton} onPress={() => setShowForm(false)}><Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel</Text></TouchableOpacity>
           </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+          </KeyboardAwareScrollViewCompat>
+        </View>
       </ModalSheet>
 
     </ScreenLayout>
