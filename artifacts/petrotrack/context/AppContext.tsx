@@ -384,6 +384,8 @@ export interface ActionItem {
   closedAt?: string;
   archivedAt?: string;
 }
+const ACTION_ITEMS_OUTBOX_KEY = 'pt_action_items_outbox_v1';
+type PendingActionItem = { item: ActionItem; username: string };
 export function getActionItemUrgency(targetDate: string, now = new Date()): ActionItemUrgency {
   const target = new Date(`${targetDate}T00:00:00`);
   if (!Number.isFinite(target.getTime())) return 'overdue';
@@ -1195,7 +1197,7 @@ export const ROLE_FULL_NAV: Record<string, NavItem[]> = {
 // excludes admin-only system management panels (users, settings, audit).
 export const GLOBAL_OVERVIEW_ROLES = new Set(['ceo', 'md', 'acc', 'csm']);
 export const ACTION_ITEMS_DASHBOARD_ACCESS_ID = 'actionItemsDashboard';
-export const ACTION_ITEMS_DASHBOARD_DEFAULT_ROLES = new Set(['ceo', 'md', 'acc', 'csm', 'mgr']);
+export const ACTION_ITEMS_DASHBOARD_DEFAULT_ROLES = new Set(['ceo', 'md', 'acc', 'csm', 'mktg', 'mgr', 'att']);
 
 export function canViewActionItemsDashboard(
   targetRole: Role | null,
@@ -1615,8 +1617,8 @@ interface AppContextType {
     targetDate: string;
     branchId: string;
     branchName: string;
-  }) => ActionItem | null;
-  updateActionItemStatus: (id: number, status: ActionItemStatus) => boolean;
+  }) => Promise<ActionItem | null>;
+  updateActionItemStatus: (id: number, status: ActionItemStatus) => Promise<boolean>;
   hrEmployees: HREmployee[];
   hrRecommendations: HRRecommendation[];
   hrHandbooks: HREmployeeDoc[];
@@ -1709,6 +1711,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(INIT_TASKS);
   const [kpis, setKpis] = useState<KPI[]>(INIT_KPIS);
   const [actionItems, setActionItems] = useState<ActionItem[]>(INIT_ACTION_ITEMS);
+  const actionItemsOutboxRef = useRef<PendingActionItem[]>([]);
+  const actionItemsFlushRef = useRef<Promise<boolean> | null>(null);
   const [hrEmployees, setHrEmployees] = useState<HREmployee[]>(INIT_HR_EMPLOYEES);
   const [hrRecommendations, setHrRecommendations] = useState<HRRecommendation[]>(INIT_HR_RECOMMENDATIONS);
   const [hrHandbooks, setHrHandbooks] = useState<HREmployeeDoc[]>(INIT_HR_HANDBOOKS);
@@ -1770,7 +1774,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'auth', 'companyInfo', 'tanks', 'lpgTanks', 'pumps', 'staff', 'branches',
       'departments', 'userAccounts', 'prices', 'priceHistory', 'mgrPerms',
       'roleAccess', 'userAccess', 'reportAccessPolicyVersion', 'expenses', 'budgets', 'sales', 'dips',
-      'deliveries', 'maintenance', 'audit', 'handoverNotes', 'messages', 'tasks', 'kpis', 'actionItems',
+      'deliveries', 'maintenance', 'audit', 'handoverNotes', 'messages', 'tasks', 'kpis', 'actionItems', ACTION_ITEMS_OUTBOX_KEY,
       'companyFiles', 'deliveryEvidences', 'hrEmployees', 'hrHandbooks',
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
@@ -1829,6 +1833,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.tasks)             setTasks(s.tasks);
       if (s.kpis)              setKpis(s.kpis);
        if (s.actionItems)       setActionItems(s.actionItems);
+      if (Array.isArray(s[ACTION_ITEMS_OUTBOX_KEY])) {
+        actionItemsOutboxRef.current = (s[ACTION_ITEMS_OUTBOX_KEY] as unknown[]).filter((entry): entry is PendingActionItem =>
+          !!entry && typeof entry === 'object' && 'item' in entry && 'username' in entry
+          && typeof entry.username === 'string' && !!entry.item && typeof entry.item === 'object',
+        );
+      }
       if (s.companyFiles)      setCompanyFiles(s.companyFiles);
       if (s.myFolders)         setMyFolders(s.myFolders);
       if (s.myFolderFiles)     setMyFolderFiles(s.myFolderFiles);
@@ -2034,7 +2044,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        }
        if (!p.has('tasks'))             setTasks(safeArray<Task>(s.tasks));
        if (!p.has('kpis'))              setKpis(safeArray<KPI>(s.kpis));
-       if (!p.has('actionItems'))       setActionItems(safeArray<ActionItem>(s.actionItems));
+       if (Array.isArray(s.actionItems)) setActionItems(s.actionItems as ActionItem[]);
+       else setActionItems([]);
       if (!p.has('companyFiles'))      setCompanyFiles(safeArray<CompanyFile>(s.companyFiles));
       if (!p.has('myFolders'))         setMyFolders(safeArray<MyFolder>(s.myFolders));
       if (!p.has('myFolderFiles'))     setMyFolderFiles(safeArray<MyFolderFile>(s.myFolderFiles));
@@ -2531,7 +2542,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('marketCompetitors', marketCompetitors); }, [marketCompetitors, loaded]);
   useEffect(() => { if (loaded) syncSlice('tasks',             tasks); },             [tasks, loaded]);
   useEffect(() => { if (loaded) syncSlice('kpis',              kpis); },              [kpis, loaded]);
-  useEffect(() => { if (loaded) syncSlice('actionItems',       actionItems); },       [actionItems, loaded]);
+  // Action items are written through the confirmed outbox below. Never echo a
+  // local snapshot back to the server during hydration or polling.
+  useEffect(() => { if (loaded) AsyncStorage.setItem('actionItems', JSON.stringify(actionItems)); }, [actionItems, loaded]);
   useEffect(() => { if (loaded) syncSlice('inventoryLog',     inventoryLog); },    [inventoryLog, loaded]);
    useEffect(() => { if (loaded) syncSlice('stockLogs',         stockLogs); },        [stockLogs, loaded]);
   useEffect(() => { if (loaded) syncSlice('companyFiles',      companyFiles); },      [companyFiles, loaded]);
@@ -2758,6 +2771,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await Promise.all([
       AsyncStorage.removeItem('auth'),
       AsyncStorage.removeItem('messages'),
+      AsyncStorage.removeItem('actionItems'),
     ]);
     setRole(null); setUserName(''); setAccountUsername(''); setBranchId(null); setStaffId(null);
     setIsServerAuthenticated(false);
@@ -2765,6 +2779,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Chats are account-scoped. Do not leave the previous user's local
     // conversation cache visible when another person signs in on this device.
     setMessages({});
+    setActionItems([]);
   }, []);
 
   const updateMgrPerms = useCallback((bid: string, perms: Partial<MgrPermissions>) => {
@@ -4035,7 +4050,62 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAudit(a => [{ id: genId(), action: 'Task deleted', user: userName, detail: `Task #${id} removed`, ts: nowTs() }, ...a]);
   }, [userName]);
 
-  const addActionItem = useCallback((item: {
+  const flushActionItems = useCallback(async (): Promise<boolean> => {
+    const owner = accountUsername || userName;
+    if (!isServerAuthenticated || !owner || !initialSyncDoneRef.current) return false;
+    if (actionItemsFlushRef.current) return actionItemsFlushRef.current;
+    const run = (async () => {
+      while (true) {
+        const pending = actionItemsOutboxRef.current.find(entry => entry.username === owner);
+        if (!pending) return true;
+        pendingWritesRef.current.add('actionItems');
+        let result;
+        try {
+          result = await stateApi.putChecked<{ actionItems?: ActionItem[] }>('actionItems', [pending.item]);
+        } catch {
+          return false;
+        } finally {
+          pendingWritesRef.current.delete('actionItems');
+        }
+        if (!result.ok || !Array.isArray(result.data.actionItems)
+          || !result.data.actionItems.some(item =>
+            item.id === pending.item.id && item.status === pending.item.status,
+          )) return false;
+        setActionItems(result.data.actionItems);
+        actionItemsOutboxRef.current = actionItemsOutboxRef.current.filter(entry => entry !== pending);
+        await AsyncStorage.setItem(ACTION_ITEMS_OUTBOX_KEY, JSON.stringify(actionItemsOutboxRef.current));
+      }
+    })();
+    actionItemsFlushRef.current = run;
+    try { return await run; }
+    finally { if (actionItemsFlushRef.current === run) actionItemsFlushRef.current = null; }
+  }, [accountUsername, isServerAuthenticated, userName]);
+
+  useEffect(() => {
+    if (!loaded || !isServerAuthenticated || stateSyncReadyTick === 0) return;
+    void flushActionItems();
+    const timer = setInterval(() => { void flushActionItems(); }, 5_000);
+    return () => clearInterval(timer);
+  }, [flushActionItems, isServerAuthenticated, loaded, stateSyncReadyTick]);
+
+  const submitActionItem = useCallback(async (item: ActionItem): Promise<'confirmed' | 'queued' | 'failed'> => {
+    const owner = accountUsername || userName;
+    if (!owner) return 'failed';
+    const pending = { item, username: owner };
+    actionItemsOutboxRef.current.push(pending);
+    try {
+      await AsyncStorage.setItem(ACTION_ITEMS_OUTBOX_KEY, JSON.stringify(actionItemsOutboxRef.current));
+    } catch {
+      actionItemsOutboxRef.current = actionItemsOutboxRef.current.filter(entry => entry !== pending);
+      Alert.alert('Unable to save action item', 'This device could not save the change for retry. Please try again.');
+      return 'failed';
+    }
+    const saved = await flushActionItems();
+    if (!saved) Alert.alert('Unable to sync action item', 'The server could not confirm this change. It is saved on this device and will retry when the connection returns. Other users will see it after confirmation.');
+    return saved ? 'confirmed' : 'queued';
+  }, [accountUsername, flushActionItems, userName]);
+
+  const addActionItem = useCallback(async (item: {
     title: string;
     desc: string;
     actionPartyId?: number;
@@ -4044,8 +4114,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     targetDate: string;
     branchId: string;
     branchName: string;
-  }): ActionItem | null => {
+  }): Promise<ActionItem | null> => {
     if (!role || !userName || !item.title.trim() || !item.targetDate || !item.branchId) return null;
+    const accessOverride = staffId !== null ? userAccess[staffId]?.actionItems : undefined;
+    if (role !== 'admin' && (accessOverride ?? roleAccess[role]?.actionItems) === false) return null;
     const actionItem: ActionItem = {
       ...item,
       title: item.title.trim(),
@@ -4063,7 +4135,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         detail: `Assigned to ${item.actionPartyName} for ${item.branchName}.`,
       }],
     };
-    setActionItems(items => [...items, actionItem]);
+    const outcome = await submitActionItem(actionItem);
+    if (outcome === 'failed') return null;
+    if (outcome === 'queued') return actionItem;
     setAudit(a => [{
       id: genId(),
       action: 'Action item added',
@@ -4072,39 +4146,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ts: nowTs(),
     }, ...a]);
     return actionItem;
-  }, [role, userName]);
+  }, [role, roleAccess, staffId, submitActionItem, userAccess, userName]);
 
-  const updateActionItemStatus = useCallback((id: number, status: ActionItemStatus): boolean => {
+  const updateActionItemStatus = useCallback(async (id: number, status: ActionItemStatus): Promise<boolean> => {
     const item = actionItems.find(candidate => candidate.id === id);
     if (!item || item.status === 'closed' || !role) return false;
+    const accessOverride = staffId !== null ? userAccess[staffId]?.actionItems : undefined;
+    if (role !== 'admin' && (accessOverride ?? roleAccess[role]?.actionItems) === false) return false;
     const isAssignedParty = item.actionPartyId !== undefined
       ? item.actionPartyId === staffId
       : item.actionPartyRole === role;
     if (role !== 'ceo' && !isAssignedParty) return false;
     const closed = status === 'closed';
     const changedAt = nowTs();
-    setActionItems(items => items.map(candidate => candidate.id === id
-      ? {
-          ...candidate,
-          status,
-          history: [
-            ...(candidate.history ?? [{
-              action: 'Action item created',
-              actor: candidate.createdBy,
-              actorRole: candidate.createdByRole,
-              at: candidate.createdAt,
-            }]),
-            {
-              action: closed ? 'Action item closed' : 'Action item status updated',
-              actor: userName,
-              actorRole: role,
-              at: changedAt,
-              detail: `Status changed from ${candidate.status} to ${status}.`,
-            },
-          ],
-          ...(closed ? { closedBy: userName, closedAt: changedAt, archivedAt: changedAt } : {}),
-        }
-      : candidate));
+    const updated: ActionItem = {
+      ...item,
+      status,
+      history: [
+        ...(item.history ?? [{
+          action: 'Action item created',
+          actor: item.createdBy,
+          actorRole: item.createdByRole,
+          at: item.createdAt,
+        }]),
+        {
+          action: closed ? 'Action item closed' : 'Action item status updated',
+          actor: userName,
+          actorRole: role,
+          at: changedAt,
+          detail: `Status changed from ${item.status} to ${status}.`,
+        },
+      ],
+      ...(closed ? { closedBy: userName, closedAt: changedAt, archivedAt: changedAt } : {}),
+    };
+    if (await submitActionItem(updated) !== 'confirmed') return false;
     setAudit(a => [{
       id: genId(),
       action: closed ? 'Action item closed' : 'Action item status updated',
@@ -4113,7 +4188,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ts: nowTs(),
     }, ...a]);
     return true;
-  }, [actionItems, role, staffId, userName]);
+  }, [actionItems, role, roleAccess, staffId, submitActionItem, userAccess, userName]);
 
   const addKpi = useCallback((k: Omit<KPI, 'id' | 'createdAt'>) => {
     setKpis(ks => [...ks, { ...k, id: genId(), createdAt: nowTs() }]);

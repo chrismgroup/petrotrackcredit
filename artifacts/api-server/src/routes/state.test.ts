@@ -16,6 +16,15 @@ import {
   branchScopedStateForBranchUser,
   inferDeliveryEvidenceBranches,
 } from "./branch-state-policy";
+import { canAccessActionItemsForUser } from "./action-item-access";
+
+test("action-item access honors individual grants and denies over role defaults", () => {
+  assert.equal(canAccessActionItemsForUser("att", 9, { att: { actionItems: false } }, { 9: { actionItems: true } }), true);
+  assert.equal(canAccessActionItemsForUser("csm", 4, { csm: { actionItems: true } }, { 4: { actionItems: false } }), false);
+  assert.equal(canAccessActionItemsForUser("mgr", 7, { mgr: { actionItems: false } }, {}), false);
+  assert.equal(canAccessActionItemsForUser("md", 3, {}, {}), true);
+  assert.equal(canAccessActionItemsForUser("admin", null, {}, {}), true);
+});
 
 test("branch users receive only records from their assigned branch", () => {
   const records = [
@@ -29,6 +38,14 @@ test("branch users receive only records from their assigned branch", () => {
     { id: "B1", name: "One" },
     { id: "B2", name: "Two" },
   ], "B1"), [{ id: "B1", name: "One" }]);
+});
+
+test("action items stay visible across branches for authorized branch users", () => {
+  const items = [
+    { id: 1, branchId: "B1", title: "Maitama follow-up" },
+    { id: 2, branchId: "B2", title: "Wuse follow-up" },
+  ];
+  assert.deepEqual(branchScopedStateForBranchUser("actionItems", items, "B1"), items);
 });
 
 test("branch users cannot receive company-wide private state", () => {

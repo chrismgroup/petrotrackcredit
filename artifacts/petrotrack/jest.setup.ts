@@ -95,6 +95,7 @@ jest.mock('@/lib/api', () => {
       getAll: jest.fn(async () => null),
       get: jest.fn(async () => null),
       put: jest.fn(async () => undefined),
+      putChecked: jest.fn(async () => ({ ok: true, data: {} })),
       upsertCompanyAsset: jest.fn(async (asset: unknown) => ({ ok: true, asset, assets: [asset] })),
       deleteCompanyAsset: jest.fn(async () => ({ ok: true, assets: [] })),
       submitPumpReport: jest.fn(async (report: unknown) => ({ ok: true, report })),

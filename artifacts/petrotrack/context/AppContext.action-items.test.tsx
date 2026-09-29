@@ -1,10 +1,12 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { stateApi } from '@/lib/api';
 import {
   AppProvider,
+  canViewActionItemsDashboard,
   getActionItemUrgency,
   useApp,
 } from './AppContext';
@@ -38,11 +40,26 @@ it('uses red for past targets, yellow for the next two weeks, and green beyond t
   expect(getActionItemUrgency('2026-09-18', now)).toBe('on-track');
 });
 
+it('gives every signed-in role action-item dashboard access by default', () => {
+  for (const role of ['admin', 'ceo', 'md', 'acc', 'csm', 'mktg', 'mgr', 'att'] as const) {
+    expect(canViewActionItemsDashboard(role, 1, {})).toBe(true);
+  }
+  expect(canViewActionItemsDashboard('att', 1, { 1: { actionItemsDashboard: false } })).toBe(false);
+});
+
 it('only lets the assigned action party or CEO close an action item, then locks it', async () => {
-  jest.mocked(stateApi.getAll).mockResolvedValue({
+  let serverItems: any[] = [];
+  jest.mocked(stateApi.getAll).mockImplementation(async () => ({
     userAccounts: [],
     branches: [{ id: 'B1', name: 'Maitama Branch', st: 'Active', rev: 0, mgr: '', pumps: 0, tanks: 0 }],
-    actionItems: [],
+    actionItems: serverItems,
+  }));
+  jest.mocked(stateApi.putChecked).mockImplementation(async (key, items) => {
+    if (key === 'actionItems') {
+      for (const item of items as any[]) serverItems = [...serverItems.filter(value => value.id !== item.id), item];
+      return { ok: true, data: { actionItems: serverItems } } as any;
+    }
+    return { ok: true, data: {} } as any;
   });
 
   await act(async () => {
@@ -53,12 +70,12 @@ it('only lets the assigned action party or CEO close an action item, then locks 
     );
   });
   await act(async () => {
-    expect(await app().login('att', 'Attendant', 9, 'B1')).toBe(true);
+    expect(await app().login('att', 'Attendant', 9, 'B1', 'attendant')).toBe(true);
   });
 
   let createdId = 0;
   await act(async () => {
-    const created = app().addActionItem({
+    const created = await app().addActionItem({
       title: 'Inspect nozzle seal',
       desc: 'Confirm the replacement is fitted.',
       actionPartyRole: 'md',
@@ -72,17 +89,17 @@ it('only lets the assigned action party or CEO close an action item, then locks 
   expect(createdId).toBeGreaterThan(0);
   let unauthorizedClose = true;
   await act(async () => {
-    unauthorizedClose = app().updateActionItemStatus(createdId, 'closed');
+    unauthorizedClose = await app().updateActionItemStatus(createdId, 'closed');
   });
   expect(unauthorizedClose).toBe(false);
 
   await act(async () => {
     await app().logout();
-    expect(await app().login('ceo', 'CEO', 1)).toBe(true);
+    expect(await app().login('ceo', 'CEO', 1, undefined, 'ceo')).toBe(true);
   });
   let ceoClose = false;
   await act(async () => {
-    ceoClose = app().updateActionItemStatus(createdId, 'closed');
+    ceoClose = await app().updateActionItemStatus(createdId, 'closed');
   });
   expect(ceoClose).toBe(true);
   expect(app().actionItems[0]).toMatchObject({
@@ -92,7 +109,74 @@ it('only lets the assigned action party or CEO close an action item, then locks 
   });
   let reopen = true;
   await act(async () => {
-    reopen = app().updateActionItemStatus(createdId, 'open');
+    reopen = await app().updateActionItemStatus(createdId, 'open');
   });
   expect(reopen).toBe(false);
+});
+
+it('keeps failed submissions out of the visible list and retries the saved outbox', async () => {
+  let serverItems: any[] = [];
+  let failFirstAction = true;
+  jest.mocked(stateApi.getAll).mockImplementation(async () => ({ actionItems: serverItems }));
+  jest.mocked(stateApi.putChecked)
+    .mockImplementation(async (key, items) => {
+      if (key === 'actionItems') {
+        if (failFirstAction) {
+          failFirstAction = false;
+          return { ok: false, error: 'Offline' } as any;
+        }
+        serverItems = [...serverItems, ...(items as any[])];
+        return { ok: true, data: { actionItems: serverItems } } as any;
+      }
+      return { ok: true, data: {} } as any;
+    });
+
+  await act(async () => {
+    renderer = create(<AppProvider><ContextCapture /></AppProvider>);
+  });
+  await act(async () => {
+    expect(await app().login('csm', 'CSM', 4, undefined, 'csm')).toBe(true);
+  });
+  await act(async () => {
+    await app().addActionItem({
+      title: 'Renew licence', desc: '', actionPartyRole: 'ceo',
+      actionPartyName: 'CEO', targetDate: '2026-10-10',
+      branchId: 'B1', branchName: 'Maitama Branch',
+    });
+  });
+  expect(app().actionItems).toEqual([]);
+  expect(JSON.parse((await AsyncStorage.getItem('pt_action_items_outbox_v1')) ?? '[]')).toHaveLength(1);
+
+  await act(async () => {
+    expect(await app().login('csm', 'CSM', 4, undefined, 'csm')).toBe(true);
+  });
+  expect(app().actionItems).toMatchObject([{ title: 'Renew licence' }]);
+  expect(JSON.parse((await AsyncStorage.getItem('pt_action_items_outbox_v1')) ?? '[]')).toEqual([]);
+});
+
+it('lets an individually authorized user submit despite a denied role default', async () => {
+  jest.mocked(stateApi.getAll).mockResolvedValue({
+    actionItems: [],
+    roleAccess: { att: { actionItems: false } },
+    userAccess: { 9: { actionItems: true } },
+  });
+  jest.mocked(stateApi.putChecked).mockImplementation(async (key, items) =>
+    key === 'actionItems'
+      ? { ok: true, data: { actionItems: items } } as any
+      : { ok: true, data: {} } as any,
+  );
+  await act(async () => {
+    renderer = create(<AppProvider><ContextCapture /></AppProvider>);
+  });
+  await act(async () => {
+    expect(await app().login('att', 'Attendant', 9, 'B1', 'attendant')).toBe(true);
+  });
+  await act(async () => {
+    expect(await app().addActionItem({
+      title: 'Check stock', desc: '', actionPartyRole: 'mgr',
+      actionPartyName: 'Manager', targetDate: '2026-10-10',
+      branchId: 'B1', branchName: 'Maitama Branch',
+    })).toMatchObject({ title: 'Check stock' });
+  });
+  expect(app().actionItems).toMatchObject([{ title: 'Check stock' }]);
 });

@@ -670,15 +670,14 @@ export default function HomeScreen() {
     const urgencyOrder: Record<string, number> = { overdue: 0, 'due-soon': 1, 'on-track': 2 };
     return actionItems
       .filter(item =>
-        item.status !== 'closed'
-        && (isGlobalOverview || !scopedBranchId || item.branchId === scopedBranchId),
+        item.status !== 'closed',
       )
       .sort((a, b) => {
         const urgencyDiff = urgencyOrder[getActionItemUrgency(a.targetDate)] - urgencyOrder[getActionItemUrgency(b.targetDate)];
         if (urgencyDiff !== 0) return urgencyDiff;
         return new Date(`${a.targetDate}T00:00:00`).getTime() - new Date(`${b.targetDate}T00:00:00`).getTime();
       });
-  }, [actionItems, canViewOutstandingActionItems, isGlobalOverview, scopedBranchId]);
+  }, [actionItems, canViewOutstandingActionItems]);
 
   // HR has three separate approval/action queues that previously never
   // reached the Home inbox: HR recommendations, handbook approvals, and
@@ -1231,7 +1230,7 @@ export default function HomeScreen() {
             <ActionItemsTable
               items={outstandingActionItems.slice(0, 8)}
               colors={colors}
-              showBranch={isGlobalOverview}
+              showBranch
               emptyText="No outstanding action items"
               onRowPress={() => router.push(SCREEN_ROUTES.actionItems as never)}
             />

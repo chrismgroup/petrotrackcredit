@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { isDeepStrictEqual } from "node:util";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db, appStateTable, pumpReportsTable, staffUsersTable } from "@workspace/db";
@@ -8,6 +8,7 @@ import {
   isCompanyAssetBranchScopedRole,
 } from "@workspace/asset-policy";
 import { broadcastRealtime } from "../lib/realtime";
+import { canAccessActionItemsForUser } from "./action-item-access";
 import { normalizeMaintenanceRecord } from "./maintenance-workflow-rules";
 import { createBackup, listBackups, restoreBackup } from "../lib/backup";
 import {
@@ -196,6 +197,23 @@ function isJsonRecord(value: unknown): value is JsonRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+async function canAccessActionItems(auth?: Request["auth"]): Promise<boolean> {
+  if (!auth) return false;
+  if (auth.role === "admin") return true;
+  const [roleRows, userRows, staffRows] = await Promise.all([
+    db.select().from(appStateTable).where(eq(appStateTable.key, "roleAccess")),
+    db.select().from(appStateTable).where(eq(appStateTable.key, "userAccess")),
+    db.select({ id: staffUsersTable.id }).from(staffUsersTable)
+      .where(eq(staffUsersTable.username, auth.username)).limit(1),
+  ]);
+  return canAccessActionItemsForUser(
+    auth.role,
+    staffRows[0]?.id ?? null,
+    roleRows[0]?.data,
+    userRows[0]?.data,
+  );
+}
+
 
 function inferDipBranchIds(data: unknown, tanksData: unknown, lpgTanksData: unknown): unknown {
   if (!Array.isArray(data)) return data;
@@ -252,6 +270,9 @@ function mergeActionItems(existing: unknown, incoming: unknown): JsonRecord[] {
     // A closed item is an immutable archive record. Stale clients may send
     // their older open copy, but it must never reopen the archived item.
     if (previous?.status === "closed") continue;
+    // A stale full-array client must not undo a later status transition.
+    if (previous && Array.isArray(previous.history) && Array.isArray(candidate.history)
+      && previous.history.length > candidate.history.length) continue;
     merged.set(id, candidate);
   }
   return Array.from(merged.values());
@@ -897,8 +918,13 @@ router.get("/state", async (req, res): Promise<void> => {
     ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
     : null;
   const chatIdentity = req.auth ? await resolveChatIdentity(req.auth.username, req.auth.role) : null;
+  const mayViewActionItems = await canAccessActionItems(req.auth);
   for (const row of rows) {
     if (row.key === PUMP_REPORT_DELETIONS_KEY || row.key === COMPANY_ASSET_DELETIONS_KEY) continue;
+    if (row.key === "actionItems" && !mayViewActionItems) {
+      result.actionItems = [];
+      continue;
+    }
     const visibleState = row.key === "dips"
       ? inferDipBranchIds(
         row.data,
@@ -1580,6 +1606,10 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Unknown state key" });
     return;
   }
+  if (key === "actionItems" && !await canAccessActionItems(req.auth)) {
+    res.status(403).json({ error: "Action Items access is required" });
+    return;
+  }
   const [row] = await db.select().from(appStateTable).where(eq(appStateTable.key, key));
   if (!row) {
     res.json(null);
@@ -1659,6 +1689,10 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   const key = Array.isArray(req.params.key) ? req.params.key[0] : req.params.key;
   if (!ALLOWED_KEYS.has(key)) {
     res.status(400).json({ error: "Unknown state key" });
+    return;
+  }
+  if (key === "actionItems" && !await canAccessActionItems(req.auth)) {
+    res.status(403).json({ error: "Action Items access is required" });
     return;
   }
   if (COMMAND_OWNED_WORKFLOW_KEYS.has(key)) {
@@ -2009,7 +2043,7 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       });
       data = merged;
     });
-    res.json({ ok: true });
+    res.json({ ok: true, actionItems: data });
     return;
   }
 

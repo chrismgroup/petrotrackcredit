@@ -13,7 +13,6 @@ import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   ActionItem,
   ActionItemStatus,
-  GLOBAL_OVERVIEW_ROLES,
   ROLE_COLORS,
   ROLE_LABELS,
   getActionItemUrgency,
@@ -46,10 +45,14 @@ export default function ActionItemsScreen() {
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'md'] || colors.primary;
-  const isGlobalOverview = role === 'admin' || (role ? GLOBAL_OVERVIEW_ROLES.has(role) : false);
   const availableBranches = branches.filter(branch =>
-    branch.st === 'Active' && (isGlobalOverview || (!!branchId && branch.id === branchId)),
+    branch.st === 'Active' && ((role !== 'mgr' && role !== 'att') || (!!branchId && branch.id === branchId)),
   );
+  const filterBranches = Array.from(new Map([
+    ...branches.filter(branch => branch.st === 'Active')
+      .map(branch => [branch.id, { id: branch.id, name: branch.name }] as const),
+    ...actionItems.map(item => [item.branchId, { id: item.branchId, name: item.branchName }] as const),
+  ]).values());
   const actionPartyAccounts = userAccounts.filter(account =>
     account.status === 'active' && account.role && account.role !== 'admin'
       && ACTION_PARTY_ROLES.includes(account.role as any),
@@ -74,10 +77,9 @@ export default function ActionItemsScreen() {
   });
 
   const visibleItems = actionItems.filter(item => {
-    const userBranchMatches = isGlobalOverview || (!!branchId && item.branchId === branchId);
     const selectedBranchMatches = actionBranchFilter === 'all' || item.branchId === actionBranchFilter;
     const archived = item.status === 'closed' || !!item.archivedAt;
-    return userBranchMatches && selectedBranchMatches && (actionView === 'archived' ? archived : !archived);
+    return selectedBranchMatches && (actionView === 'archived' ? archived : !archived);
   });
   const selectedActionItem = selectedActionItemId === null
     ? null
@@ -101,13 +103,13 @@ export default function ActionItemsScreen() {
     setShowForm(true);
   }
 
-  function addItem() {
+  async function addItem() {
     if (!role || !form.title.trim() || !form.actionPartyRole || !form.targetDate || !form.branchId) {
       Alert.alert('Required', 'Title, action party, target close date, and branch are required.');
       return;
     }
     const selectedBranch = branches.find(branch => branch.id === form.branchId);
-    const created = addActionItem({
+    const created = await addActionItem({
       title: form.title.trim(),
       desc: form.desc.trim(),
       actionPartyId: form.actionPartyId || undefined,
@@ -118,7 +120,6 @@ export default function ActionItemsScreen() {
       branchName: selectedBranch?.name ?? form.branchId,
     });
     if (!created) {
-      Alert.alert('Unable to add action item', 'Please sign in again and try once more.');
       return;
     }
     setForm({
@@ -343,7 +344,7 @@ export default function ActionItemsScreen() {
             <View style={[styles.groupDot, { backgroundColor: meta.color }]} />
             <Text style={[styles.groupLabel, { color: meta.color }]}>{meta.label} · {group.length}</Text>
           </View>
-           <ActionItemsTable items={group} colors={colors} onRowPress={openDetails} />
+           <ActionItemsTable items={group} colors={colors} showBranch onRowPress={openDetails} />
         </View>
       );
     });
@@ -366,7 +367,7 @@ export default function ActionItemsScreen() {
           <View style={styles.heroStats}>
             <View><Text style={styles.statValue}>{actionItems.filter(item => item.status !== 'closed').length}</Text><Text style={styles.statLabel}>Open items</Text></View>
             <View><Text style={styles.statValue}>{actionItems.filter(item => item.status === 'closed').length}</Text><Text style={styles.statLabel}>Archived</Text></View>
-            <View><Text style={styles.statValue}>{availableBranches.length}</Text><Text style={styles.statLabel}>Branches</Text></View>
+            <View><Text style={styles.statValue}>{filterBranches.length}</Text><Text style={styles.statLabel}>Branches</Text></View>
           </View>
         </View>
 
@@ -390,7 +391,7 @@ export default function ActionItemsScreen() {
             <TouchableOpacity onPress={() => setActionBranchFilter('all')} style={[styles.branchPill, { backgroundColor: actionBranchFilter === 'all' ? roleColor + '15' : colors.surface, borderColor: actionBranchFilter === 'all' ? roleColor : colors.border }]}>
               <Text style={[styles.branchPillText, { color: actionBranchFilter === 'all' ? roleColor : colors.textMuted }]}>All branches</Text>
             </TouchableOpacity>
-            {availableBranches.map(branch => (
+            {filterBranches.map(branch => (
               <TouchableOpacity key={branch.id} onPress={() => setActionBranchFilter(branch.id)} style={[styles.branchPill, { backgroundColor: actionBranchFilter === branch.id ? roleColor + '15' : colors.surface, borderColor: actionBranchFilter === branch.id ? roleColor : colors.border }]}>
                 <Text style={[styles.branchPillText, { color: actionBranchFilter === branch.id ? roleColor : colors.textMuted }]} numberOfLines={1}>{branch.name}</Text>
               </TouchableOpacity>

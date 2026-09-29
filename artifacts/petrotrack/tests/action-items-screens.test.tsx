@@ -161,7 +161,7 @@ jest.mock('@/context/AppContext', () => {
     if (days <= 14) return 'due-soon';
     return 'on-track';
   };
-  const defaultActionRoles = new Set(['ceo', 'md', 'acc', 'csm', 'mgr']);
+  const defaultActionRoles = new Set(['ceo', 'md', 'acc', 'csm', 'mktg', 'mgr', 'att']);
 
   return {
     ACTION_ITEMS_DASHBOARD_ACCESS_ID: 'actionItemsDashboard',
@@ -559,12 +559,12 @@ describe('Action Items table and dedicated view', () => {
     act(() => renderer.unmount());
   });
 
-  it('scopes active items by branch and keeps closed items in the archive', () => {
+  it('shows every branch to authorized viewers and keeps closed items in the archive', () => {
     mockedUseApp.mockReturnValue(baseAppState({
       role: 'mgr',
       actionItems: [
         item({ id: 1, title: 'Maitama open item', targetDate: '2026-09-20', branchId: 'B1' }),
-        item({ id: 2, title: 'Wuse item must stay hidden', targetDate: '2026-09-20', branchId: 'B2', branchName: 'Wuse Branch' }),
+        item({ id: 2, title: 'Wuse item is shared', targetDate: '2026-09-20', branchId: 'B2', branchName: 'Wuse Branch' }),
         item({ id: 3, title: 'Maitama archived item', status: 'closed', targetDate: '2026-09-02', branchId: 'B1' }),
       ],
     }) as any);
@@ -572,7 +572,7 @@ describe('Action Items table and dedicated view', () => {
     const renderer = render(<ActionItemsScreen />);
     let text = renderedText(renderer);
     expect(text).toContain('Maitama open item');
-    expect(text).not.toContain('Wuse item must stay hidden');
+    expect(text).toContain('Wuse item is shared');
     expect(text).not.toContain('Maitama archived item');
 
     act(() => touchableWithText(renderer, 'Branch archive').props.onPress());
@@ -581,7 +581,7 @@ describe('Action Items table and dedicated view', () => {
     expect(text).toContain('Closed');
     expect(text).toContain('Locked');
     expect(text).not.toContain('Maitama open item');
-    expect(text).not.toContain('Wuse item must stay hidden');
+    expect(text).not.toContain('Wuse item is shared');
 
     act(() => renderer.unmount());
   });
@@ -632,7 +632,7 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     }),
   ];
 
-  it.each(['ceo', 'md', 'acc', 'csm', 'mgr'] as const)(
+  it.each(['ceo', 'md', 'acc', 'csm', 'mktg', 'mgr', 'att'] as const)(
     'shows outstanding items to the requested %s role',
     role => {
       mockedUseApp.mockReturnValue(baseAppState({
@@ -650,23 +650,7 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     },
   );
 
-  it.each(['att', 'mktg'] as const)(
-    'hides outstanding items from roles without dashboard access (%s)',
-    role => {
-      mockedUseApp.mockReturnValue(baseAppState({
-        role,
-        actionItems: [homeItems[0]],
-      }) as any);
-
-      const renderer = render(<HomeScreen />);
-      const text = renderedText(renderer);
-      expect(text).not.toContain('OUTSTANDING ACTION ITEMS');
-      expect(text).not.toContain('Overdue Maitama item');
-      act(() => renderer.unmount());
-    },
-  );
-
-  it('shows all branches to global roles but only the assigned branch to station managers', () => {
+  it('shows all branches to every authorized role', () => {
     mockedUseApp.mockReturnValue(baseAppState({
       role: 'md',
       actionItems: homeItems,
@@ -689,7 +673,7 @@ describe('Home outstanding Action Items visibility, scope, and urgency', () => {
     const managerText = renderedText(managerRenderer);
     expect(managerText).toContain('Overdue Maitama item');
     expect(managerText).toContain('On-track Maitama item');
-    expect(managerText).not.toContain('Due-soon Wuse item');
+    expect(managerText).toContain('Due-soon Wuse item');
     expect(managerText).not.toContain('Closed item stays archived');
     act(() => managerRenderer.unmount());
   });
