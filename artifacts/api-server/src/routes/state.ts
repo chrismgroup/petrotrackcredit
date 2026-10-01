@@ -35,6 +35,7 @@ import {
   inferPumpReportBranches,
   isBranchScopedArrayKey,
 } from "./branch-state-policy";
+import { repairFinancialEntryBankChargePeriod } from "./financial-entry-state";
 
 const router: IRouter = Router();
 
@@ -947,6 +948,14 @@ router.get("/state", async (req, res): Promise<void> => {
         rows.find(candidate => candidate.key === "deliveries")?.data,
       )
       : row.data;
+    if (row.key === "financialEntry") {
+      const repaired = repairFinancialEntryBankChargePeriod(visibleState);
+      if (!isDeepStrictEqual(repaired, visibleState)) {
+        visibleState = repaired;
+        await db.update(appStateTable).set({ data: repaired, updatedAt: new Date() })
+          .where(eq(appStateTable.key, "financialEntry"));
+      }
+    }
     if (row.key === "companyInfo" && visibleState !== withoutLegacyVat(visibleState)) {
       visibleState = withoutLegacyVat(visibleState);
       await db.update(appStateTable).set({ data: visibleState, updatedAt: new Date() })
@@ -1695,6 +1704,14 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     return;
   }
   let visibleData = row.data;
+  if (key === "financialEntry") {
+    const repaired = repairFinancialEntryBankChargePeriod(visibleData);
+    if (!isDeepStrictEqual(repaired, visibleData)) {
+      visibleData = repaired;
+      await db.update(appStateTable).set({ data: repaired, updatedAt: new Date() })
+        .where(eq(appStateTable.key, "financialEntry"));
+    }
+  }
   if (key === "companyInfo" && visibleData !== withoutLegacyVat(visibleData)) {
     visibleData = withoutLegacyVat(visibleData);
     await db.update(appStateTable).set({ data: visibleData, updatedAt: new Date() })
@@ -1775,6 +1792,9 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   if (data === undefined || data === null) {
     res.status(400).json({ error: "Body required" });
     return;
+  }
+  if (key === "financialEntry") {
+    data = repairFinancialEntryBankChargePeriod(data);
   }
   if ((key === "deliveries" || key === "expenses") && !Array.isArray(data)) {
     res.status(400).json({ error: `${key} must be an array` });
@@ -2267,6 +2287,27 @@ router.put("/state/:key", async (req, res): Promise<void> => {
         if (!previous) {
           if ((req.auth?.role === "acc" || req.auth?.role === "admin")
             && value.status === "pending_md" && value.name && value.phone && value.branchId) next.set(id, value);
+          continue;
+        }
+        if ((req.auth?.role === "acc" || req.auth?.role === "admin")
+          && value.status === "pending_md"
+          && value.name && value.phone && value.branchId
+          && Number(value.revision ?? 0) > Number(previous.revision ?? 0)) {
+          next.set(id, {
+            id,
+            name: value.name,
+            phone: value.phone,
+            email: value.email,
+            address: value.address,
+            contactPerson: value.contactPerson,
+            branchId: value.branchId,
+            status: "pending_md",
+            createdBy: previous.createdBy,
+            createdAt: previous.createdAt,
+            updatedBy: value.updatedBy,
+            updatedAt: value.updatedAt,
+            revision: value.revision,
+          });
           continue;
         }
         if ((req.auth?.role === "md" || req.auth?.role === "admin")

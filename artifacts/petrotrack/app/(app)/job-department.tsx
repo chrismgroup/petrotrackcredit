@@ -28,6 +28,7 @@ const DEPARTMENTS: Record<string, Department> = {
   ] },
   finance: { title: 'Finance', subtitle: 'Spend, budgets & pricing', icon: 'wallet-outline', jobs: [
     { label: 'Financial status', description: 'View cash, assets and business position', icon: 'pie-chart-outline', route: SCREEN_ROUTES.acct },
+    { label: 'Customer Profile', description: 'Manage credit customers, approvals, balances and advances', icon: 'people-outline', route: SCREEN_ROUTES.customerProfile },
     { label: 'Daily revenue log', description: 'Review revenue by business date', icon: 'calendar-outline', route: SCREEN_ROUTES.dailyRevenueLog },
     { label: 'Branch revenue log', description: 'Compare branches across business dates', icon: 'business-outline', route: SCREEN_ROUTES.branchRevenueLog },
     { label: 'Asset management', description: 'Track company assets and depreciation', icon: 'briefcase-outline', route: SCREEN_ROUTES.assets },

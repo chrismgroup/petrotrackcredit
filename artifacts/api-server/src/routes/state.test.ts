@@ -19,6 +19,7 @@ import {
   inferDeliveryEvidenceBranches,
 } from "./branch-state-policy";
 import { canAccessActionItemsForUser } from "./action-item-access";
+import { repairFinancialEntryBankChargePeriod } from "./financial-entry-state";
 
 test("action-item access honors individual grants and denies over role defaults", () => {
   assert.equal(canAccessActionItemsForUser("att", 9, { att: { actionItems: false } }, { 9: { actionItems: true } }), true);
@@ -63,6 +64,54 @@ test("only accountants and administrators can persist financial entries", () => 
   assert.equal(canManageFinancialEntry("md"), false);
   assert.equal(canManageFinancialEntry("mgr"), false);
   assert.equal(canManageFinancialEntry(undefined), false);
+});
+
+test("moves the pre-v5 October bank-charge rollover back to September once", () => {
+  const repaired = repairFinancialEntryBankChargePeriod({
+    schemaVersion: 4,
+    months: { "2026-10": { bankCharges: 48_500, loanInterest: 7_000 } },
+  }) as Record<string, any>;
+
+  assert.equal(repaired.schemaVersion, 6);
+  assert.equal(repaired.months["2026-09"].bankCharges, 48_500);
+  assert.equal(repaired.months["2026-10"].bankCharges, 0);
+  assert.equal(repaired.months["2026-10"].loanInterest, 7_000);
+  assert.deepEqual(repairFinancialEntryBankChargePeriod(repaired), repaired);
+});
+
+test("converts a legacy single financial record into September and preserves its position", () => {
+  const legacy = { bankCharges: 48_500, cashInBank: 2_000_000 };
+  const repaired = repairFinancialEntryBankChargePeriod(legacy) as Record<string, any>;
+  assert.equal(repaired.schemaVersion, 6);
+  assert.equal(repaired.cashInBank, 2_000_000);
+  assert.equal(repaired.months["2026-09"].bankCharges, 48_500);
+  assert.equal(repaired.months["2026-10"].bankCharges, 0);
+  assert.equal("bankCharges" in repaired, false);
+});
+
+test("removes legacy bank-loan details and invalid rows without deleting valid loans", () => {
+  const repaired = repairFinancialEntryBankChargePeriod({
+    schemaVersion: 5,
+    bankLoan: "obsolete",
+    bankLoanAmount: 9_000_000,
+    loanBank: "obsolete bank",
+    loanAmount: 9_000_000,
+    bankLoanDetails: { locked: true },
+    bankLoans: [
+      { bank: " Current Bank ", amount: 2_500_000 },
+      { bank: "", amount: 500_000 },
+      { bank: "Zero Bank", amount: 0 },
+    ],
+    months: {},
+  }) as Record<string, any>;
+
+  assert.equal(repaired.schemaVersion, 6);
+  assert.deepEqual(repaired.bankLoans, [{ bank: "Current Bank", amount: 2_500_000 }]);
+  assert.equal("bankLoan" in repaired, false);
+  assert.equal("bankLoanAmount" in repaired, false);
+  assert.equal("loanBank" in repaired, false);
+  assert.equal("loanAmount" in repaired, false);
+  assert.equal("bankLoanDetails" in repaired, false);
 });
 
 test("pump meter maps are limited to pumps already scoped to the branch", () => {

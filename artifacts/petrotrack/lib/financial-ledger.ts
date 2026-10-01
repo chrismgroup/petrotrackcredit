@@ -24,7 +24,7 @@ export interface FinancialMonthEntry {
 }
 
 export interface FinancialEntry {
-  schemaVersion: 4;
+  schemaVersion: 6;
   cashInBank: number;
   posValue: number;
   goodsOnTransit: number;
@@ -124,7 +124,7 @@ function normaliseMonthEntry(value: unknown): FinancialMonthEntry {
 }
 
 export const EMPTY_FINANCIAL_ENTRY: FinancialEntry = {
-  schemaVersion: 4,
+  schemaVersion: 6,
   cashInBank: 0,
   posValue: 0,
   goodsOnTransit: 0,
@@ -162,9 +162,13 @@ export function normaliseFinancialEntry(value: unknown, now = new Date()): Finan
     || 'startupCapitalMonth' in incoming || 'closingOperatingCapital' in incoming
   ) {
     const currentKey = financialMonthKey(now);
-    const declaredKey = typeof incoming.startupCapitalMonth === 'string' && MONTH_KEY.test(incoming.startupCapitalMonth)
+    const explicitEntryMonth = typeof incoming.financialPeriodMonth === 'string' && MONTH_KEY.test(incoming.financialPeriodMonth)
+      ? incoming.financialPeriodMonth
+      : null;
+    const declaredKey = explicitEntryMonth
+      ?? (typeof incoming.startupCapitalMonth === 'string' && MONTH_KEY.test(incoming.startupCapitalMonth)
       ? incoming.startupCapitalMonth
-      : currentKey;
+      : currentKey);
     const wasAutomaticallyRolled = incoming.startupCapitalSource === 'rollover' && declaredKey === currentKey;
     const legacyMonthKey = wasAutomaticallyRolled ? previousFinancialMonthKey(currentKey) : declaredKey;
     const closingOperatingCapital = Number.isFinite(Number(incoming.closingOperatingCapital))
@@ -189,9 +193,27 @@ export function normaliseFinancialEntry(value: unknown, now = new Date()): Finan
     }
   }
 
+  // One-time correction for the September 2026 charge that older app builds
+  // wrote into October during month rollover. October began before its
+  // month-end charge was entered, so any pre-v5 October value belongs to
+  // September. Preserve an existing September value instead of adding it
+  // twice when both months contain the same legacy charge.
+  if (nonNegative(incoming.schemaVersion) < 5) {
+    const october = months['2026-10'];
+    const carriedCharge = nonNegative(october?.bankCharges);
+    if (carriedCharge > 0) {
+      const september = months['2026-09'] ?? emptyFinancialMonthEntry();
+      months['2026-09'] = {
+        ...september,
+        bankCharges: september.bankCharges > 0 ? september.bankCharges : carriedCharge,
+      };
+      months['2026-10'] = { ...october, bankCharges: 0 };
+    }
+  }
+
   return {
     ...EMPTY_FINANCIAL_ENTRY,
-    schemaVersion: 4,
+    schemaVersion: 6,
     cashInBank: finite(incoming.cashInBank),
     posValue: finite(incoming.posValue),
     goodsOnTransit: finite(incoming.goodsOnTransit),
@@ -201,9 +223,10 @@ export function normaliseFinancialEntry(value: unknown, now = new Date()): Finan
       ? incoming.bankLoans
         .filter(item => item && typeof item === 'object')
         .map(item => ({
-          bank: typeof (item as BankLoan).bank === 'string' ? (item as BankLoan).bank : '',
+          bank: typeof (item as BankLoan).bank === 'string' ? (item as BankLoan).bank.trim() : '',
           amount: nonNegative((item as BankLoan).amount),
         }))
+        .filter(loan => loan.bank.length > 0 && loan.amount > 0)
       : [],
     liabilities: nonNegative(incoming.liabilities),
     months,

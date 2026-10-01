@@ -1144,7 +1144,12 @@ export default function ReceivingScreen() {
 
       {/* MD: Reject / Return Modal */}
       <ModalSheet visible={mdTarget !== null && mdRejectMode} onClose={() => { setMdTarget(null); setMdNote(''); }}>
-        <View style={[styles.smallModal, { backgroundColor: colors.surface }]}>
+        <KeyboardAwareScrollViewCompat
+          contentContainerStyle={[styles.smallModal, { backgroundColor: colors.surface }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          bottomOffset={24}
+        >
           <View style={styles.editHeader}>
             <View style={[styles.editIconBox, { backgroundColor: '#E9F0EB' }]}>
               <Ionicons name="return-down-back" size={18} color="#365A47" />
@@ -1179,7 +1184,7 @@ export default function ReceivingScreen() {
               <Text style={styles.saveBtnText}>{isSubmittingMdAction ? 'Returning…' : 'Return to Accountant'}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
     </ScreenLayout>
   );

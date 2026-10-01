@@ -40,6 +40,7 @@ const sales: JobItem[] = [
 
 const finance: JobItem[] = [
   { id: 'financial-status', label: 'Financial status', description: 'View cash, assets and business position', icon: 'pie-chart-outline', route: SCREEN_ROUTES.acct },
+  { id: 'customer-profile', label: 'Customer Profile', description: 'Manage credit customers, approvals, balances and advances', icon: 'people-outline', route: SCREEN_ROUTES.customerProfile },
   { id: 'daily-revenue-log', label: 'Daily Business-Date Revenue Log', description: 'Review revenue grouped by the business date of each shift report', icon: 'calendar-outline', route: SCREEN_ROUTES.dailyRevenueLog },
   { id: 'branch-revenue-log', label: 'Branch Revenue by Business Date', description: 'Compare each branch’s revenue across recorded business dates', icon: 'business-outline', route: SCREEN_ROUTES.branchRevenueLog },
   { id: 'assets', label: 'Asset management', description: 'Track company assets and monthly depreciation by branch', icon: 'briefcase-outline', route: SCREEN_ROUTES.assets },

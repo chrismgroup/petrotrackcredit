@@ -7,7 +7,19 @@ import { workflowApi, stateApi } from '@/lib/api';
 import { AppProvider, useApp, type Budget, type Expense } from './AppContext';
 
 type AppState = ReturnType<typeof useApp>;
-const actualWorkflowApi = jest.requireActual('@/lib/api').workflowApi as typeof workflowApi;
+
+function loadActualWorkflowApi(): typeof workflowApi {
+  const previousApiUrl = process.env.EXPO_PUBLIC_API_URL;
+  process.env.EXPO_PUBLIC_API_URL = 'https://workflow-contract.test';
+  let actual: typeof workflowApi | undefined;
+  jest.isolateModules(() => {
+    actual = (jest.requireActual('@/lib/api') as typeof import('@/lib/api')).workflowApi;
+  });
+  if (previousApiUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL;
+  else process.env.EXPO_PUBLIC_API_URL = previousApiUrl;
+  if (!actual) throw new Error('Unable to load the real workflow API');
+  return actual;
+}
 
 let capturedApp: AppState | null = null;
 let renderer: ReactTestRenderer | null = null;
@@ -254,6 +266,8 @@ it('applies a successful branch-assigned executive budget approval and keeps it 
 });
 
 describe('finance transition response contracts', () => {
+  const actualWorkflowApi = loadActualWorkflowApi();
+
   afterEach(() => {
     jest.restoreAllMocks();
   });

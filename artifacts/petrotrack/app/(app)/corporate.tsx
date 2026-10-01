@@ -1113,7 +1113,7 @@ export default function CorporateScreen() {
 
           {/* ════════════════════════════════════════ COMPLIANCE FOLDER */}
       {activeTab === 'compliance' && (
-        <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false} bottomOffset={32}>
           <View style={sty.summaryRow}>
             {[
               { n: expiredDocs.length, label: 'Expired',  col: colors.error,   bg: colors.errorBg,   border: colors.errorBorder   },
@@ -1174,7 +1174,7 @@ export default function CorporateScreen() {
           />
 
           <View style={{ height: 20 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ════════════════════════════════════════ LEGAL */}
@@ -1497,7 +1497,7 @@ export default function CorporateScreen() {
 
         /* ── Staff-only view: read-only shared minutes ── */
         if (isStaffOnly) return (
-          <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+          <KeyboardAwareScrollViewCompat contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false} bottomOffset={32}>
             <View style={[sty.sharedBanner, { backgroundColor: '#EAF2ED', borderColor: '#28624740' }]}>
               <Ionicons name="share-social" size={16} color="#286247" />
               <Text style={[sty.sharedBannerTxt, { color: '#286247' }]}>
@@ -1575,7 +1575,7 @@ export default function CorporateScreen() {
               canManage={hasRestrictedFolderAccess}
             />
             <View style={{ height: 20 }} />
-          </ScrollView>
+          </KeyboardAwareScrollViewCompat>
         );
 
         /* ── CSM / CEO / Admin view: full management ── */
@@ -1750,7 +1750,7 @@ export default function CorporateScreen() {
       })()}
 
       {activeTab === 'general' && (
-        <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false} bottomOffset={32}>
           <View style={[sty.libraryIntro, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[sty.workspaceIcon, { backgroundColor: roleColor + '18' }]}>
               <Ionicons name="library-outline" size={21} color={roleColor} />
@@ -1776,11 +1776,11 @@ export default function CorporateScreen() {
             canManage={hasRestrictedFolderAccess}
           />
           <View style={{ height: 20 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {activeTab === 'correspondences' && (
-        <ScrollView contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false}>
+        <KeyboardAwareScrollViewCompat contentContainerStyle={sty.scroll} showsVerticalScrollIndicator={false} bottomOffset={32}>
           <View style={[sty.libraryIntro, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[sty.workspaceIcon, { backgroundColor: roleColor + '18' }]}>
               <Ionicons name="mail-open-outline" size={21} color={roleColor} />
@@ -1806,7 +1806,7 @@ export default function CorporateScreen() {
             canManage={hasRestrictedFolderAccess}
           />
           <View style={{ height: 20 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       {/* ════════════════════════════════ SUBMIT MODAL */}

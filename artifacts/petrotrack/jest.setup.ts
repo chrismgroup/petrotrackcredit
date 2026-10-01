@@ -3,6 +3,16 @@
 // branch consistent and avoid loading unavailable native logger modules.
 process.env.EXPO_OS = 'web';
 
+// Expo installs `fetch` as a lazy native getter. Accessing that getter after a
+// test has completed can asynchronously load ExpoModulesCore and make Jest
+// fail with "Cannot log after tests are done". Tests replace or spy on this
+// stable function when they need HTTP behavior.
+Object.defineProperty(globalThis, 'fetch', {
+  configurable: true,
+  writable: true,
+  value: jest.fn(),
+});
+
 jest.mock('@react-native-async-storage/async-storage', () => {
   const storage = new Map<string, string>();
   return {

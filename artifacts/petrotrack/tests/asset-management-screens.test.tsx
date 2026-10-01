@@ -517,6 +517,94 @@ describe('asset depreciation financial screens', () => {
     act(() => renderer.unmount());
   });
 
+  it('lets an accountant add, edit, and delete persisted bank loans', () => {
+    const updateFinancialEntry = jest.fn();
+    const appState = baseAppState({
+      role: 'acc',
+      updateFinancialEntry,
+      financialEntry: {
+        ...baseAppState().financialEntry,
+        bankLoans: [{ bank: 'Old Bank', amount: 2_000_000 }],
+      },
+    });
+    mockedUseApp.mockReturnValue(appState as any);
+
+    const renderer = mount(<FinancialStatusCard roleColor="#4527a0" />);
+    const edit = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Edit',
+    );
+    act(() => edit.props.onPress({ stopPropagation: jest.fn() }));
+
+    const existingBank = renderer.root.findAll(
+      node => String(node.type) === 'TextInput' && node.props.placeholder === 'Bank name',
+    )[0];
+    const existingAmount = renderer.root.findAll(
+      node => String(node.type) === 'TextInput' && node.props.keyboardType === 'decimal-pad',
+    )[0];
+    act(() => {
+      existingBank.props.onChangeText('Updated Bank');
+      existingAmount.props.onChangeText('2500000');
+    });
+
+    const add = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Add Bank Loan',
+    );
+    act(() => add.props.onPress());
+
+    const bankInputs = renderer.root.findAll(
+      node => String(node.type) === 'TextInput' && node.props.placeholder === 'Bank name',
+    );
+    const amountInputs = renderer.root.findAll(
+      node => String(node.type) === 'TextInput' && node.props.keyboardType === 'decimal-pad',
+    );
+    act(() => {
+      bankInputs[1].props.onChangeText('New Bank');
+      amountInputs[1].props.onChangeText('750,000');
+    });
+
+    // A background state refresh must not replace an accountant's in-progress
+    // edits with the last server snapshot.
+    mockedUseApp.mockReturnValue({
+      ...appState,
+      branches: [...appState.branches],
+      financialEntry: { ...appState.financialEntry, updatedAt: '2026-09-03T12:01:00.000Z' },
+    } as any);
+    act(() => renderer.update(<FinancialStatusCard roleColor="#4527a0" />));
+    expect(renderer.root.findAll(
+      node => String(node.type) === 'TextInput' && node.props.placeholder === 'Bank name',
+    ).map(input => input.props.value)).toEqual(['Updated Bank', 'New Bank']);
+
+    const deleteFirst = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && node.props.accessibilityLabel === 'Delete loan 1',
+    );
+    act(() => deleteFirst.props.onPress());
+
+    const save = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Save Financial Data',
+    );
+    act(() => save.props.onPress());
+
+    expect(updateFinancialEntry).toHaveBeenCalledWith(expect.objectContaining({
+      bankLoans: [{ bank: 'New Bank', amount: 750_000 }],
+    }));
+    act(() => renderer.unmount());
+  });
+
+  it('lets an administrator open and manage bank loans', () => {
+    mockedUseApp.mockReturnValue(baseAppState({ role: 'admin' }) as any);
+
+    const renderer = mount(<FinancialStatusCard roleColor="#4527a0" />);
+    const edit = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Edit',
+    );
+    act(() => edit.props.onPress({ stopPropagation: jest.fn() }));
+
+    expect(renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node) === 'Add Bank Loan',
+    )).toBeTruthy();
+    act(() => renderer.unmount());
+  });
+
   it('keeps a branch-scoped financial status from including another branch asset', () => {
     mockedUseApp.mockReturnValue(baseAppState({
       role: 'mgr',

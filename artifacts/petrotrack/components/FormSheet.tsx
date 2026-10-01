@@ -16,8 +16,8 @@ interface ModalSheetProps {
  *     children           ← sheet card sits at the bottom in normal flow
  *
  * No KeyboardAvoidingView here. The app uses native iOS/Android keyboard
- * handling (softwareKeyboardLayoutMode:"pan" on Android, native on iOS)
- * with keyboardShouldPersistTaps="handled" on all ScrollViews.
+ * handling (softwareKeyboardLayoutMode:"resize" on Android) together with
+ * KeyboardAwareScrollViewCompat inside forms that can extend behind the keyboard.
  * Adding KAV inside Modal causes the keyboard to flip on every keystroke.
  */
 export function ModalSheet({ visible, onClose, children }: ModalSheetProps) {

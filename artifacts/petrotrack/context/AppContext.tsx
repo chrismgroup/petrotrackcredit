@@ -43,6 +43,7 @@ import {
   canManageCompanyAssetBranch as canManageCompanyAssetBranchForRole,
   canManageCompanyAssets as canManageCompanyAssetsForRole,
 } from '@workspace/asset-policy';
+import { canonicalProduct, resolveSalesProduct } from '@/lib/product-identity';
 
 export type Role = 'admin' | 'ceo' | 'md' | 'mktg' | 'csm' | 'acc' | 'mgr' | 'att';
 
@@ -93,7 +94,7 @@ export interface MaintenanceItem {
   updatedAt?: string;
   history?: MaintenanceHistoryEntry[];
 }
-export interface SalesEntry { id: number; pump: string; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
+export interface SalesEntry { id: number; pump: string; product?: StockProduct; by: string; L: number; price: number; dt: string; pos?: number; branchId?: string; shiftReportId?: number; pumpId?: string; lpgCategory?: 'single' | 'distributor'; }
 export type StockProduct = 'PMS' | 'AGO' | 'DPK' | 'LPG' | 'Lube Oil';
 export const STOCK_SNAPSHOT_METRICS = [
   'startupStock', 'deliveries', 'sales', 'submittedTankDip', 'bookStock', 'variance',
@@ -405,7 +406,7 @@ export interface PumpDailyReport {
   date: string;
   pumpId: string;
   pumpName: string;
-  product: string;
+  product: StockProduct;
   branchId: string;
   openingMeter: number;
   closingMeter: number;
@@ -539,9 +540,7 @@ function sumUniquePumpReportVolumes(reports: PumpDailyReport[]): number {
 }
 
 function stockProductFromDelivery(product: string): StockProduct | null {
-  if (product === 'LPG' || product === 'LPG_Single' || product === 'LPG_Distributor') return 'LPG';
-  if (product === 'PMS' || product === 'AGO' || product === 'DPK' || product === 'Lube Oil') return product;
-  return null;
+  return canonicalProduct(product);
 }
 
 export function businessDateKey(value?: string): string {
@@ -1278,6 +1277,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   home: '/(app)/home', users: '/(app)/users', depts: '/(app)/departments',
   audit: '/(app)/audit', settings: '/(app)/system-settings', ops: '/(app)/operations',
   tanks: '/(app)/tanks', acct: '/(app)/accounts', revenue: '/(app)/accounts', corp: '/(app)/corporate',
+  customerProfile: '/(app)/customer-profile',
   assets: '/(app)/asset-management',
   branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
   budget: '/(app)/budget', exp: '/(app)/expenses',
@@ -1440,7 +1440,8 @@ interface AppContextType {
   updateFinancialEntry: (updates: FinancialEntryUpdate, monthKey?: string) => void;
   creditCustomers: CreditCustomer[];
   customerPayments: CustomerPayment[];
-  addCreditCustomer: (input: Pick<CreditCustomer, 'name' | 'phone' | 'email' | 'address' | 'branchId'>) => boolean;
+  addCreditCustomer: (input: Pick<CreditCustomer, 'name' | 'phone' | 'email' | 'address' | 'contactPerson' | 'branchId'>) => boolean;
+  updateCreditCustomer: (id: string, input: Pick<CreditCustomer, 'name' | 'phone' | 'email' | 'address' | 'contactPerson' | 'branchId'>) => boolean;
   approveCreditCustomer: (id: string) => boolean;
   rejectCreditCustomer: (id: string, reason: string) => boolean;
   addCustomerPayment: (input: Pick<CustomerPayment, 'customerId' | 'amount' | 'date' | 'reference' | 'note'>) => boolean;
@@ -2574,6 +2575,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [pumpDailyReports, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
+  // Persist an explicit product on every legacy sales row. Linked shift
+  // reports and pump IDs are authoritative; label parsing is only a fallback
+  // for old manual rows. This prevents AGO and PMS values from being grouped
+  // by a coincidental substring in a pump name.
+  useEffect(() => {
+    if (!loaded || sales.length === 0) return;
+    let changed = false;
+    const normalized = sales.map(entry => {
+      const linkedReport = entry.shiftReportId === undefined
+        ? undefined
+        : pumpDailyReports.find(report => report.id === entry.shiftReportId);
+      const linkedPump = entry.pumpId
+        ? pumps.find(pump => pump.id === entry.pumpId)
+        : undefined;
+      const product = canonicalProduct(linkedReport?.product)
+        ?? canonicalProduct(linkedPump?.prod)
+        ?? canonicalProduct(entry.product)
+        ?? canonicalProduct(resolveSalesProduct(entry));
+      if (!product || entry.product === product) return entry;
+      changed = true;
+      return { ...entry, product };
+    });
+    if (changed) setSales(normalized);
+  }, [loaded, pumpDailyReports, pumps, sales]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
   useEffect(() => {
     if (loaded && (role === 'acc' || role === 'md' || role === 'admin')) syncSlice('creditCustomers', creditCustomers);
@@ -3281,7 +3306,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addSales = useCallback((entry: Omit<SalesEntry, 'id'>) => {
     setSales(s => [...s, { ...entry, id: genId(), branchId: entry.branchId ?? branchId ?? undefined }]);
-    const unit = entry.lpgCategory || entry.pump.includes('LPG') ? 'kg' : 'L';
+    const unit = entry.product === 'LPG' || entry.lpgCategory ? 'kg' : 'L';
     setAudit(a => [{ id: genId(), action: 'Sales entry', user: userName, detail: `${entry.pump} — ${entry.L}${unit}`, ts: nowTs() }, ...a]);
   }, [userName, branchId]);
 
@@ -4737,6 +4762,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: genId(),
         shiftReportId: id,
         pump: `${currentReport.pumpName} (${currentReport.product})`,
+        product: currentReport.product,
         pumpId: currentReport.pumpId,
         lpgCategory: currentReport.product === 'LPG' ? pump?.lpgCategory ?? 'single' : undefined,
         by: currentReport.submittedBy,
@@ -4881,6 +4907,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSales(current => current.map(entry => entry.shiftReportId === id
       ? {
           ...entry,
+          pump: `${next.pumpName} (${next.product})`,
+          product: next.product,
+          pumpId: next.pumpId,
           L: next.liters,
           price: next.unitPrice,
           dt: next.date,
@@ -4927,6 +4956,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return {
           ...entry,
           pump: `${previous.pumpName} (${previous.product})`,
+          product: previous.product,
           by: previous.submittedBy,
           L: previous.liters,
           price: previous.unitPrice,
@@ -4942,6 +4972,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: genId(),
         shiftReportId: id,
         pump: `${previous.pumpName} (${previous.product})`,
+        product: previous.product,
         by: previous.submittedBy,
         L: previous.liters,
         price: previous.unitPrice,
@@ -5198,7 +5229,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [userName]);
 
-  const addCreditCustomer = useCallback((input: Pick<CreditCustomer, 'name' | 'phone' | 'email' | 'address' | 'branchId'>) => {
+  const addCreditCustomer = useCallback((input: Pick<CreditCustomer, 'name' | 'phone' | 'email' | 'address' | 'contactPerson' | 'branchId'>) => {
     if (role !== 'acc' || !input.name.trim() || !input.phone.trim() || !input.branchId) return false;
     const normalizedName = input.name.trim().toLowerCase();
     if (creditCustomers.some(customer => customer.branchId === input.branchId
@@ -5211,6 +5242,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       phone: input.phone.trim(),
       email: input.email?.trim() || undefined,
       address: input.address?.trim() || undefined,
+      contactPerson: input.contactPerson?.trim() || undefined,
       branchId: input.branchId,
       status: 'pending_md',
       createdBy: userName,
@@ -5219,9 +5251,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }]);
     void sendOperationalNotification({
       target: 'md',
-      title: 'Credit Customer Approval Required',
+      title: 'Customer Profile Approval Required',
       body: `${input.name.trim()} was submitted by the Accountant for approval.`,
-      route: SCREEN_ROUTES.acct,
+      route: SCREEN_ROUTES.customerProfile,
+    });
+    return true;
+  }, [creditCustomers, role, userName]);
+
+  const updateCreditCustomer = useCallback((id: string, input: Pick<CreditCustomer, 'name' | 'phone' | 'email' | 'address' | 'contactPerson' | 'branchId'>) => {
+    if (role !== 'acc' || !input.name.trim() || !input.phone.trim() || !input.branchId) return false;
+    const target = creditCustomers.find(customer => customer.id === id);
+    if (!target) return false;
+    const duplicate = creditCustomers.some(customer => customer.id !== id
+      && customer.branchId === input.branchId
+      && customer.name.trim().toLowerCase() === input.name.trim().toLowerCase()
+      && customer.status !== 'rejected');
+    if (duplicate) return false;
+    const timestamp = nowTs();
+    setCreditCustomers(previous => previous.map(customer => customer.id === id ? {
+      ...customer,
+      name: input.name.trim(),
+      phone: input.phone.trim(),
+      email: input.email?.trim() || undefined,
+      address: input.address?.trim() || undefined,
+      contactPerson: input.contactPerson?.trim() || undefined,
+      branchId: input.branchId,
+      status: 'pending_md',
+      updatedBy: userName,
+      updatedAt: timestamp,
+      approvedBy: undefined,
+      approvedAt: undefined,
+      rejectedBy: undefined,
+      rejectedAt: undefined,
+      rejectionReason: undefined,
+      revision: customer.revision + 1,
+    } : customer));
+    void sendOperationalNotification({
+      target: 'md',
+      title: 'Updated Customer Profile Approval Required',
+      body: `${input.name.trim()} was updated by the Accountant and requires approval.`,
+      route: SCREEN_ROUTES.customerProfile,
+      data: { customerId: id },
     });
     return true;
   }, [creditCustomers, role, userName]);
@@ -5240,9 +5310,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } : customer));
     void sendOperationalNotification({
       target: 'acc',
-      title: 'Credit Customer Approved',
+      title: 'Customer Profile Approved',
       body: `${target.name} is approved and available in attendant shift reports.`,
-      route: SCREEN_ROUTES.acct,
+      route: SCREEN_ROUTES.customerProfile,
       data: { customerId: id },
     });
     return true;
@@ -5262,9 +5332,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } : customer));
     void sendOperationalNotification({
       target: 'acc',
-      title: 'Credit Customer Rejected',
+      title: 'Customer Profile Rejected',
       body: `${target.name} was rejected: ${reason.trim()}`,
-      route: SCREEN_ROUTES.acct,
+      route: SCREEN_ROUTES.customerProfile,
       data: { customerId: id },
     });
     return true;
@@ -5486,7 +5556,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
        maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry,
-       creditCustomers, customerPayments, addCreditCustomer, approveCreditCustomer, rejectCreditCustomer, addCustomerPayment,
+       creditCustomers, customerPayments, addCreditCustomer, updateCreditCustomer, approveCreditCustomer, rejectCreditCustomer, addCustomerPayment,
        messages, broadcasts,
        companyAssets, companyAssetSaveError, clearCompanyAssetSaveError,
        addCompanyAsset, updateCompanyAsset, deleteCompanyAsset,

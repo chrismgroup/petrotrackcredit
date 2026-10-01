@@ -11,11 +11,12 @@ import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmati
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ModalSheet } from '@/components/FormSheet';
 import {
-  PumpDailyReport, ROLE_COLORS, currentBusinessDateKey, fmt, fmtDate, fmtDateTime, getPumpOpeningMeter, getPriceForPump, isFutureBusinessDate, unitForProd, useApp,
+  PumpDailyReport, ROLE_COLORS, currentBusinessDateKey, fmt, fmtDate, fmtDateTime, getPumpOpeningMeter, isFutureBusinessDate, unitForProd, useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { customerLedgerBalance } from '@/lib/customer-ledger';
+import { getPriceForPumpOnDate } from '@/lib/price-history';
 
 /* ── helpers ─────────────────────────────────────────── */
 const fmtL = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
@@ -340,7 +341,7 @@ function Field({ label, value, colors, accent }: FieldProps) {
 ══════════════════════════════════════════════════════ */
 export default function ShiftReportScreen() {
   const {
-    role, userName, branchId, pumps, prices, branches, creditCustomers = [], customerPayments = [],
+    role, userName, branchId, pumps, prices, priceHistory, branches, creditCustomers = [], customerPayments = [],
     pumpDailyReports, pumpInitialMeters, pumpLockedMeters,
     submitPumpReportConfirmed, mgrForwardPumpReport,
     accApprovePumpReport, accRejectPumpReport,
@@ -400,7 +401,7 @@ export default function ShiftReportScreen() {
   const [posAmt, setPosAmt]         = useState('');
   const [cashAmt, setCashAmt]         = useState('');
   const [xferAmt, setXferAmt]         = useState('');
-  const [creditAmt, setCreditAmt]     = useState('');
+  const [creditQuantity, setCreditQuantity] = useState('');
   const [creditCustomerId, setCreditCustomerId] = useState('');
   const [noteAtt, setNoteAtt]         = useState('');
   const [appliesOn, setAppliesOn]     = useState('');
@@ -409,12 +410,13 @@ export default function ShiftReportScreen() {
 
   const closeVal  = parseFloat(closeMeter.replace(/,/g, '')) || 0;
   const liters    = closeVal > openingMeter ? parseFloat((closeVal - openingMeter).toFixed(4)) : 0;
-  const unitPrice = pump ? getPriceForPump(pump, prices) : 0;
+  const unitPrice = pump ? getPriceForPumpOnDate(pump, prices, priceHistory, appliesOn || today) : 0;
   const grossAmt  = liters * unitPrice;
   const posVal    = parseFloat(posAmt.replace(/,/g, ''))    || 0;
   const cashVal   = parseFloat(cashAmt.replace(/,/g, ''))   || 0;
   const xferVal   = parseFloat(xferAmt.replace(/,/g, ''))   || 0;
-  const creditVal = parseFloat(creditAmt.replace(/,/g, '')) || 0;
+  const creditQuantityValue = parseFloat(creditQuantity.replace(/,/g, '')) || 0;
+  const creditVal = Number((creditQuantityValue * unitPrice).toFixed(2));
   const totalColl = posVal + cashVal + xferVal;
   const variance  = totalColl + creditVal - grossAmt;
   const varColor  = variance === 0 ? '#1F6848' : variance > 0 ? '#286247' : '#365A47';
@@ -431,6 +433,8 @@ export default function ShiftReportScreen() {
       return;
     }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
+    if (unitPrice <= 0) { Alert.alert('Price unavailable', 'No approved branch selling price is available for this product on the selected business date.'); return; }
+    if (creditQuantityValue > liters) { Alert.alert('Invalid customer quantity', 'The customer purchase quantity cannot exceed the total quantity sold in this shift report.'); return; }
     if (totalColl + creditVal <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, transfer, or credit).'); return; }
     if (creditVal > 0 && !selectedCreditCustomer) {
       Alert.alert('Customer required', 'Select the approved customer receiving this credit sale.');
@@ -454,7 +458,7 @@ export default function ShiftReportScreen() {
         Alert.alert('Report not saved', 'This report could not be stored on the device. Your entries are still on screen—please try again.');
         return;
       }
-      setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditAmt(''); setCreditCustomerId(''); setNoteAtt('');
+      setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditQuantity(''); setCreditCustomerId(''); setNoteAtt('');
       setAppliesOn('');
       const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
       if (submitted === 'queued') {
@@ -1146,13 +1150,12 @@ export default function ShiftReportScreen() {
                   {/* Payment breakdown */}
                   <View style={[c.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <Text style={[c.formTitle, { color: colors.text }]}>Payment Breakdown</Text>
-                    <Text style={[c.formHint, { color: colors.textMuted }]}>Enter all amounts received. POS + Cash + Transfer + Credit must equal gross sales.</Text>
+                    <Text style={[c.formHint, { color: colors.textMuted }]}>Enter all amounts received and the customer’s quantity. Petrotrack calculates the customer amount from the branch price for the selected business date. An available advance is applied automatically.</Text>
 
                     {[
                       { label: 'POS Amount (₦)', val: posAmt, set: setPosAmt, icon: 'card-outline', color: '#286247' },
                       { label: 'Cash Amount (₦)', val: cashAmt, set: setCashAmt, icon: 'cash-outline', color: '#1F6848' },
                       { label: 'Bank Transfer (₦)', val: xferAmt, set: setXferAmt, icon: 'swap-horizontal-outline', color: '#315F49' },
-                      { label: 'Credit to Customer (₦)', val: creditAmt, set: setCreditAmt, icon: 'person-outline', color: '#62754D' },
                     ].map(f => (
                       <View key={f.label} style={{ marginBottom: 10 }}>
                         <Text style={[c.inputLabel, { color: colors.textMuted }]}>{f.label}</Text>
@@ -1167,6 +1170,27 @@ export default function ShiftReportScreen() {
                         </View>
                       </View>
                     ))}
+
+                    <View style={{ marginBottom: 10 }}>
+                      <Text style={[c.inputLabel, { color: colors.textMuted }]}>Customer Purchase Quantity ({pump ? unitForProd(pump.prod) : 'L/kg'})</Text>
+                      <View style={[c.payInputWrap, { backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border }]}>
+                        <Ionicons name="person-outline" size={15} color="#62754D" />
+                        <TextInput
+                          testID="shift-customer-quantity"
+                          style={[c.payInput, { color: colors.text }]}
+                          placeholder="0.00" placeholderTextColor={colors.textSubtle}
+                          keyboardType="decimal-pad" value={creditQuantity} onChangeText={setCreditQuantity}
+                        />
+                      </View>
+                    </View>
+                    {creditQuantityValue > 0 && (
+                      <View style={[c.calcRow, { backgroundColor: '#62754D12', borderColor: '#62754D33', marginBottom: 10 }]}>
+                        <Ionicons name="calculator-outline" size={16} color="#62754D" />
+                        <Text style={[c.calcTxt, { color: '#62754D' }]}>
+                          {creditQuantityValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} {pump ? unitForProd(pump.prod) : ''} × ₦{unitPrice.toLocaleString()} = <Text style={{ fontWeight: '800' }}>{fmt(creditVal)}</Text>
+                        </Text>
+                      </View>
+                    )}
 
                     {creditVal > 0 && (
                       <View style={{ marginBottom: 12 }}>
@@ -1197,10 +1221,14 @@ export default function ShiftReportScreen() {
                         {selectedCreditCustomer && (() => {
                           const currentBalance = customerLedgerBalance(selectedCreditCustomer.id, pumpDailyReports, customerPayments, appliesOn || today);
                           const afterSale = currentBalance + creditVal;
+                          const customerQuantity = unitPrice > 0 ? creditVal / unitPrice : 0;
                           return (
-                            <Text style={[c.formHint, { color: afterSale > 0 ? colors.error : colors.success, marginTop: 7 }]}>
-                              {afterSale > 0 ? `Outstanding after this sale: ${fmt(afterSale)}` : afterSale < 0 ? `Advance remaining after this sale: ${fmt(Math.abs(afterSale))}` : 'This sale will fully use the available advance.'}
-                            </Text>
+                            <View style={{ marginTop: 7, gap: 3 }}>
+                              <Text style={[c.formHint, { color: colors.text }]}>Customer purchase: {customerQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} {unitForProd(pump.prod)} × ₦{unitPrice.toLocaleString()}/{unitForProd(pump.prod)} = {fmt(creditVal)}</Text>
+                              <Text style={[c.formHint, { color: afterSale > 0 ? colors.error : colors.success }]}>
+                                {afterSale > 0 ? `Outstanding after this sale: ${fmt(afterSale)}` : afterSale < 0 ? `Advance remaining after this sale: ${fmt(Math.abs(afterSale))}` : 'This sale will fully use the available advance.'}
+                              </Text>
+                            </View>
                           );
                         })()}
                       </View>

@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { AppliedDateField } from '@/components/AppliedDateField';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ROLE_COLORS, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 
@@ -96,7 +97,7 @@ export default function AuditScreen() {
           )}
         </View>
       </View>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bottomOffset={24}>
         <Text style={[styles.countText, { color: colors.textMuted }]}>{filtered.length} event{filtered.length !== 1 ? 's' : ''}</Text>
         {filtered.map((entry, idx) => {
           const acCol = ACTION_COLORS[entry.action] || roleColor;
@@ -127,7 +128,7 @@ export default function AuditScreen() {
           </View>
         )}
         <View style={{ height: 16 }} />
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
     </ScreenLayout>
   );
 }

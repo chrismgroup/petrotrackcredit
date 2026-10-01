@@ -6,6 +6,7 @@ import {
   TouchableOpacity, View,
 } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ROLE_COLORS, ROLE_LABELS, SCREEN_ROUTES, UINFO, useApp } from '@/context/AppContext';
@@ -189,7 +190,12 @@ export function Header({ title, rightAction }: Props) {
 
       {/* ── Change Password modal ── */}
       <ModalSheet visible={showChangePw} onClose={() => setShowChangePw(false)}>
-        <View style={[styles.pwCard, { backgroundColor: colors.background }]}>
+        <KeyboardAwareScrollViewCompat
+          style={styles.pwScroll}
+          contentContainerStyle={[styles.pwCard, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={24}
+        >
           <View style={styles.pwHeader}>
             <View style={[styles.pwIconBox, { backgroundColor: roleColor + '22' }]}>
               <Ionicons name="key" size={20} color={roleColor} />
@@ -251,7 +257,7 @@ export function Header({ title, rightAction }: Props) {
               <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
     </>
   );
@@ -312,6 +318,7 @@ const styles = StyleSheet.create({
   menuItem:       { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12 },
   menuItemIcon:   { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   menuItemText:   { flex: 1, fontSize: 14, fontWeight: '600' },
+  pwScroll:       { maxHeight: '90%' },
   pwCard:         { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 22, gap: 0 },
   pwHeader:       { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
   pwIconBox:      { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

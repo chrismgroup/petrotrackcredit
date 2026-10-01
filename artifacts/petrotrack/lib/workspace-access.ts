@@ -24,6 +24,7 @@ export const WORKSPACE_ROUTE_ACCESS: readonly WorkspaceRouteAccess[] = [
   { path: '/shift', permission: 'shift' },
   { path: '/pump-report', permission: 'pumpReport' },
   { path: '/accounts', permission: 'acct' },
+  { path: '/customer-profile', permission: 'acct' },
   { path: '/daily-revenue-log', permission: 'dailyRevenueLog' },
   { path: '/branch-revenue-log', permission: 'branchRevenueLog' },
   { path: '/asset-management', permission: 'assets' },

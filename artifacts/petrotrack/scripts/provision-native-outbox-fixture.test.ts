@@ -1,7 +1,6 @@
 declare const require: (moduleName: string) => any;
 declare const __dirname: string;
 
-const { createServer } = require('node:http') as any;
 const { execFile } = require('node:child_process') as any;
 const fs = require('node:fs') as any;
 const os = require('node:os') as any;
@@ -17,12 +16,6 @@ type RequestRecord = {
   method: string;
   url: string;
   authorization?: string;
-};
-
-type MockApi = {
-  baseUrl: string;
-  requests: RequestRecord[];
-  close: () => Promise<void>;
 };
 
 const branchId = 'branch-dedicated';
@@ -45,59 +38,41 @@ function validState(): FixtureState {
   };
 }
 
-async function startMockApi(state: FixtureState): Promise<MockApi> {
-  const requests: RequestRecord[] = [];
-  const server = createServer((request: any, response: any) => {
-    requests.push({
-      method: request.method ?? '',
-      url: request.url ?? '',
-      authorization: request.headers.authorization,
-    });
-
-    request.resume();
-
-    if (request.method === 'POST' && request.url === '/api/auth/login') {
-      response.writeHead(200, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ token: adminToken }));
-      return;
-    }
-
-    if (request.method === 'GET' && request.url === '/api/state') {
-      if (request.headers.authorization !== `Bearer ${adminToken}`) {
-        response.writeHead(401, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify({ error: 'unauthorized' }));
-        return;
-      }
-
-      response.writeHead(200, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify(state));
-      return;
-    }
-
-    response.writeHead(404, { 'Content-Type': 'application/json' });
-    response.end(JSON.stringify({ error: 'not found' }));
+function requestRecords(raw: string): RequestRecord[] {
+  return raw.trim().split('\n').filter(Boolean).map(line => {
+    const args = JSON.parse(line) as string[];
+    const headers = args.flatMap((arg, index) => arg === '--header' ? [args[index + 1] ?? ''] : []);
+    return {
+      method: args.includes('--data') ? 'POST' : 'GET',
+      url: args.at(-1) ?? '',
+      authorization: headers.find(header => header.startsWith('Authorization: '))?.slice('Authorization: '.length),
+    };
   });
-
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-
-  const port = server.address().port;
-  return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    requests,
-    close: () => new Promise<void>((resolve, reject) => {
-      server.close((error: any) => error ? reject(error) : resolve());
-    }),
-  };
 }
 
-function runPreflight(baseUrl: string): Promise<{ status: number; stdout: string; stderr: string }> {
+function runPreflight(state: FixtureState): Promise<{ status: number; stdout: string; stderr: string; requests: RequestRecord[] }> {
   const nodeProcess = require('node:process') as any;
+  const mockDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'petrotrack-curl-mock-'));
+  const curlLog = path.join(mockDirectory, 'requests.jsonl');
+  const curlPath = path.join(mockDirectory, 'curl');
+  fs.writeFileSync(curlPath, [
+    '#!/usr/bin/env node',
+    "const fs = require('node:fs');",
+    'const args = process.argv.slice(2);',
+    "fs.appendFileSync(process.env.PETROTRACK_CURL_LOG, JSON.stringify(args) + '\\n');",
+    "const url = args.at(-1) || '';",
+    "if (url.endsWith('/api/auth/login')) process.stdout.write(JSON.stringify({ token: process.env.PETROTRACK_ADMIN_TOKEN }));",
+    "else if (url.endsWith('/api/state')) process.stdout.write(process.env.PETROTRACK_FIXTURE_STATE);",
+    'else process.exit(22);',
+  ].join('\n'));
+  fs.chmodSync(curlPath, 0o755);
   const environment = {
     ...nodeProcess.env,
-    PETROTRACK_TEST_API_URL: `${baseUrl}/api`,
+    PATH: `${mockDirectory}:${nodeProcess.env.PATH ?? ''}`,
+    PETROTRACK_CURL_LOG: curlLog,
+    PETROTRACK_ADMIN_TOKEN: adminToken,
+    PETROTRACK_FIXTURE_STATE: JSON.stringify(state),
+    PETROTRACK_TEST_API_URL: 'http://fixture.invalid/api',
     PETROTRACK_ADMIN_USERNAME: 'fixture-admin',
     PETROTRACK_ADMIN_PASSWORD: 'fixture-password',
     PETROTRACK_TEST_BRANCH_ID: branchId,
@@ -115,10 +90,13 @@ function runPreflight(baseUrl: string): Promise<{ status: number; stdout: string
       [scriptPath, '--preflight'],
       { cwd: path.resolve(__dirname, '..'), env: environment, encoding: 'utf8' },
       (error: any, stdout: string, stderr: string) => {
+        const requests = fs.existsSync(curlLog) ? requestRecords(fs.readFileSync(curlLog, 'utf8')) : [];
+        fs.rmSync(mockDirectory, { recursive: true, force: true });
         resolve({
           status: typeof error?.code === 'number' ? error.code : 0,
           stdout,
           stderr,
+          requests,
         });
       },
     );
@@ -187,38 +165,28 @@ afterEach(() => {
 
 describe('native outbox fixture preflight', () => {
   it.each(invalidFixtureStates)('rejects $name before account creation', async ({ state, message }) => {
-    const api = await startMockApi(state);
-    try {
-      const result = await runPreflight(api.baseUrl);
+    const result = await runPreflight(state);
 
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(`Native outbox fixture setup error: ${message}`);
-      expect(api.requests.filter(request =>
-        request.method === 'POST' && request.url === '/api/users',
-      )).toHaveLength(0);
-      expect(api.requests.find(request =>
-        request.method === 'GET' && request.url === '/api/state',
-      )?.authorization).toBe(`Bearer ${adminToken}`);
-    } finally {
-      await api.close();
-    }
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(`Native outbox fixture setup error: ${message}`);
+    expect(result.requests.filter(request =>
+      request.method === 'POST' && request.url.endsWith('/api/users'),
+    )).toHaveLength(0);
+    expect(result.requests.find(request =>
+      request.method === 'GET' && request.url.endsWith('/api/state'),
+    )?.authorization).toBe(`Bearer ${adminToken}`);
   });
 
   it('accepts a complete fixture without mutating users', async () => {
-    const api = await startMockApi(validState());
-    try {
-      const result = await runPreflight(api.baseUrl);
+    const result = await runPreflight(validState());
 
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain(
-        `Native outbox fixture preflight passed: branch "${branchId}", ` +
-        `active pump "${pumpName}", product "PMS", opening meter 1000.`,
-      );
-      expect(api.requests.filter(request =>
-        request.method === 'POST' && request.url === '/api/users',
-      )).toHaveLength(0);
-    } finally {
-      await api.close();
-    }
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      `Native outbox fixture preflight passed: branch "${branchId}", ` +
+      `active pump "${pumpName}", product "PMS", opening meter 1000.`,
+    );
+    expect(result.requests.filter(request =>
+      request.method === 'POST' && request.url.endsWith('/api/users'),
+    )).toHaveLength(0);
   });
 });

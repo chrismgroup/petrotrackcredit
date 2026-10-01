@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Modal, ScrollView, StyleSheet, Text,
+  Alert, Modal, StyleSheet, Text,
   TextInput, TouchableOpacity, View,
 } from 'react-native';
 
@@ -21,7 +21,10 @@ import { computePumpReportCOGS, getLastKnownCostPrice, missingPumpReportCostProd
 import { monthlyDepreciationTotal, totalAssetNetBookValue } from '@/lib/asset-depreciation';
 import { calculateNetProfit } from '@/lib/net-profit';
 import { customerReceivablePosition } from '@/lib/customer-ledger';
+import { aggregateStockValueByBranch } from '@/lib/stock-valuation';
+import { STOCK_PRODUCTS } from '@/lib/product-identity';
 import { useColors } from '@/hooks/useColors';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import {
   cumulativeLoanPrincipalRepaid,
   cumulativeCitaPayable,
@@ -37,6 +40,31 @@ const PROD_COLOR: Record<string, string> = {
 const PROD_UNIT: Record<string, string> = {
   PMS: 'L', AGO: 'L', DPK: 'L', LPG: 'kg', 'Lube Oil': 'L',
 };
+
+interface BankLoanDraft {
+  id: string;
+  bank: string;
+  amount: string;
+}
+
+let nextLoanDraftId = 0;
+function loanDraft(loan?: BankLoan): BankLoanDraft {
+  nextLoanDraftId += 1;
+  return {
+    id: `loan-draft-${nextLoanDraftId}`,
+    bank: loan?.bank ?? '',
+    amount: loan?.amount ? String(loan.amount) : '',
+  };
+}
+
+function loanDrafts(loans: BankLoan[]): BankLoanDraft[] {
+  return loans.length ? loans.map(loan => loanDraft(loan)) : [loanDraft()];
+}
+
+function numericAmount(value: string): number {
+  const parsed = Number(value.replace(/,/g, '').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 /* ─── helpers ─── */
 function Row({ label, value, color, indent, bold }: {
@@ -82,46 +110,29 @@ function EditModal({
   );
   const [liabilities, setLiabilities]        = useState(String(entry.liabilities));
   const [startupCapital, setStartupCapital]   = useState(String(monthEntry.startupCapital));
-  const [loans, setLoans]                     = useState<BankLoan[]>(entry.bankLoans.length ? entry.bankLoans : [{ bank: '', amount: 0 }]);
-  const storedLoansSignature = JSON.stringify(entry.bankLoans);
+  const [loans, setLoans]                     = useState<BankLoanDraft[]>(() => loanDrafts(entry.bankLoans));
+  function n(v: string) { return numericAmount(v); }
 
-  useEffect(() => {
-    if (!visible) return;
-    setCashInBank(String(entry.cashInBank));
-    setPosValue(String(entry.posValue));
-    setGoodsOnTransit(String(entry.goodsOnTransit));
-    setCashInHand(String(entry.cashInHand));
-    setCapitalInjection(String(monthEntry.capitalInjection));
-    setBankCharges(String(monthEntry.bankCharges));
-    setLoanPrincipalRepayment(String(monthEntry.loanPrincipalRepayment));
-    setLoanInterest(String(monthEntry.loanInterest));
-    setCustomerPaymentsReceived(String(monthEntry.customerPaymentsReceived));
-    setPayeProvision(String(monthEntry.payeProvision));
-    setPayeRemitted(String(monthEntry.payeRemitted));
-    setCitaPaid(String(monthEntry.citaPaid));
-    setCustomerPaymentsByBranch(Object.fromEntries(
-      branches.map(branch => [branch.id, String(monthEntry.customerPaymentsByBranch[branch.id] ?? '')]),
-    ));
-    setLiabilities(String(entry.liabilities));
-    setStartupCapital(String(monthEntry.startupCapital));
-    setLoans(entry.bankLoans.length ? entry.bankLoans : [{ bank: '', amount: 0 }]);
-  }, [
-    entry.cashInBank, entry.cashInHand, entry.goodsOnTransit, entry.liabilities, entry.posValue,
-    monthEntry.bankCharges, monthEntry.capitalInjection, monthEntry.customerPaymentsReceived, monthEntry.loanInterest,
-    monthEntry.payeProvision, monthEntry.payeRemitted, monthEntry.citaPaid,
-    monthEntry.customerPaymentsByBranch, branches,
-    monthEntry.loanPrincipalRepayment, monthEntry.startupCapital, storedLoansSignature, visible,
-  ]);
-
-  function n(v: string) { return parseFloat(v) || 0; }
-
-  function addLoan() { setLoans(l => [...l, { bank: '', amount: 0 }]); }
-  function updateLoan(i: number, field: 'bank' | 'amount', val: string) {
-    setLoans(l => l.map((x, j) => j === i ? { ...x, [field]: field === 'amount' ? (parseFloat(val) || 0) : val } : x));
+  function addLoan() { setLoans(current => [...current, loanDraft()]); }
+  function updateLoan(id: string, field: 'bank' | 'amount', value: string) {
+    setLoans(current => current.map(loan => loan.id === id ? { ...loan, [field]: value } : loan));
   }
-  function removeLoan(i: number) { setLoans(l => l.filter((_, j) => j !== i)); }
+  function removeLoan(id: string) {
+    setLoans(current => {
+      const remaining = current.filter(loan => loan.id !== id);
+      return remaining.length ? remaining : [loanDraft()];
+    });
+  }
 
   function handleSave() {
+    const partiallyCompletedLoan = loans.find(loan =>
+      (loan.bank.trim() && numericAmount(loan.amount) <= 0)
+      || (!loan.bank.trim() && numericAmount(loan.amount) > 0),
+    );
+    if (partiallyCompletedLoan) {
+      Alert.alert('Complete bank loan details', 'Each bank loan requires a bank name and an amount greater than zero.');
+      return;
+    }
     onSave({
       cashInBank: n(cashInBank), posValue: n(posValue),
       goodsOnTransit: n(goodsOnTransit), cashInHand: n(cashInHand),
@@ -136,7 +147,9 @@ function EditModal({
       payeProvision: Math.max(0, n(payeProvision)),
       payeRemitted: Math.max(0, n(payeRemitted)),
       citaPaid: Math.max(0, n(citaPaid)),
-      bankLoans: loans.filter(l => l.bank.trim()),
+      bankLoans: loans
+        .filter(loan => loan.bank.trim() && numericAmount(loan.amount) > 0)
+        .map(loan => ({ bank: loan.bank.trim(), amount: numericAmount(loan.amount) })),
       liabilities: n(liabilities),
       ...(canSeedStartupCapital ? {
         startupCapital: n(startupCapital),
@@ -169,7 +182,12 @@ function EditModal({
           </TouchableOpacity>
           <Text style={fStyles.modalTitle}>Financial Entries</Text>
         </View>
-        <ScrollView contentContainerStyle={fStyles.modalScroll} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareScrollViewCompat
+          contentContainerStyle={fStyles.modalScroll}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          bottomOffset={32}
+        >
           <Text style={[fStyles.editSection, { color: colors.text }]}>Manual Financial Data</Text>
           {field('Cash in Bank', cashInBank, setCashInBank)}
           {field('POS Value (cash at POS terminals)', posValue, setPosValue)}
@@ -211,24 +229,31 @@ function EditModal({
 
           <Text style={[fStyles.editSection, { color: colors.text, marginTop: 16 }]}>Bank Loans</Text>
           {loans.map((loan, i) => (
-            <View key={i} style={[fStyles.loanRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View key={loan.id} style={[fStyles.loanRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={fStyles.loanRowHeader}>
+                <Text style={[fStyles.loanRowTitle, { color: colors.textMuted }]}>Loan {i + 1}</Text>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete loan ${i + 1}`}
+                  onPress={() => removeLoan(loan.id)}
+                  style={fStyles.removeLoanBtn}
+                >
+                  <Ionicons name="trash-outline" size={17} color="#9B2C2C" />
+                  <Text style={fStyles.removeLoanText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
               <TextInput
-                value={loan.bank} onChangeText={v => updateLoan(i, 'bank', v)}
+                value={loan.bank} onChangeText={value => updateLoan(loan.id, 'bank', value)}
                 placeholder="Bank name" placeholderTextColor={colors.textMuted}
                 style={[fStyles.loanBank, { color: colors.text, borderBottomColor: colors.border }]}
               />
               <View style={fStyles.loanAmtRow}>
                 <Text style={[fStyles.naira, { color: colors.textMuted }]}>₦</Text>
                 <TextInput
-                  value={String(loan.amount || '')} onChangeText={v => updateLoan(i, 'amount', v)}
+                  value={loan.amount} onChangeText={value => updateLoan(loan.id, 'amount', value)}
                   placeholder="0" placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric" style={[fStyles.loanAmt, { color: colors.text }]}
+                  keyboardType="decimal-pad" style={[fStyles.loanAmt, { color: colors.text }]}
                 />
-                {loans.length > 1 && (
-                  <TouchableOpacity onPress={() => removeLoan(i)}>
-                    <Ionicons name="trash-outline" size={16} color="#365A47" />
-                  </TouchableOpacity>
-                )}
               </View>
             </View>
           ))}
@@ -242,7 +267,7 @@ function EditModal({
             <Text style={fStyles.saveBtnText}>Save Financial Data</Text>
           </TouchableOpacity>
           <View style={{ height: 32 }} />
-        </ScrollView>
+        </KeyboardAwareScrollViewCompat>
       </View>
     </Modal>
   );
@@ -290,11 +315,13 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const stockItems: StockItem[] = [];
 
   for (const t of tanks) {
+    if (scopedBranchId && t.branchId !== scopedBranchId) continue;
     const stock = getCurrentTankStock(t, dips);
     const cost  = getLastKnownCostPrice(cogsDeliveries, t.prod, t.branchId, currentMonthRange.to, startupStocks);
     stockItems.push({ prod: t.prod, stock, cost, value: stock * cost, branchId: t.branchId ?? 'HQ' });
   }
   for (const lt of lpgTanks) {
+    if (scopedBranchId && lt.branchId !== scopedBranchId) continue;
     const stock = getCurrentTankStock(lt, dips, 'lpg');
     const cost  = getLastKnownCostPrice(cogsDeliveries, 'LPG', lt.branchId, currentMonthRange.to, startupStocks);
     stockItems.push({ prod: 'LPG', stock, cost, value: stock * cost, branchId: lt.branchId ?? 'HQ' });
@@ -304,14 +331,12 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const fixedAssetValue = totalAssetNetBookValue(companyAssets, currentMonthRange.to, scopedBranchId);
 
   /* per-branch summary for the expanded section */
-  const byBranch: Record<string, { value: number; byProd: Record<string, { stock: number; value: number }> }> = {};
-  for (const item of stockItems) {
-    if (!byBranch[item.branchId]) byBranch[item.branchId] = { value: 0, byProd: {} };
-    byBranch[item.branchId].value += item.value;
-    if (!byBranch[item.branchId].byProd[item.prod]) byBranch[item.branchId].byProd[item.prod] = { stock: 0, value: 0 };
-    byBranch[item.branchId].byProd[item.prod].stock += item.stock;
-    byBranch[item.branchId].byProd[item.prod].value += item.value;
-  }
+  const byBranch = aggregateStockValueByBranch(stockItems.map(item => ({
+    branchId: item.branchId,
+    product: item.prod,
+    quantity: item.stock,
+    unitCost: item.cost,
+  })));
 
   /* ── monthly net profit ── */
   const monthlyRevenueReports = pumpDailyReports.filter(r =>
@@ -561,16 +586,24 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
                   <Text style={[fStyles.branchBoxName, { color: colors.text }]}>{branchMap[bid] ?? bid}</Text>
                   <Text style={[fStyles.branchBoxAmt, { color: '#286247' }]}>{fmt(data.value)}</Text>
                 </View>
-                {Object.entries(data.byProd).map(([prod, pd]) => (
-                  pd.stock > 0 ? (
+                <View style={fStyles.prodTableHeader}>
+                  <Text style={[fStyles.prodHeaderProduct, { color: colors.textSubtle }]}>Product</Text>
+                  <Text style={[fStyles.prodHeaderQty, { color: colors.textSubtle }]}>Quantity</Text>
+                  <Text style={[fStyles.prodHeaderCost, { color: colors.textSubtle }]}>Cost price</Text>
+                  <Text style={[fStyles.prodHeaderValue, { color: colors.textSubtle }]}>Stock value</Text>
+                </View>
+                {STOCK_PRODUCTS.map(prod => {
+                  const pd = data.byProd[prod];
+                  return pd && pd.stock > 0 ? (
                     <View key={prod} style={fStyles.prodRow}>
                       <View style={[fStyles.prodDot, { backgroundColor: PROD_COLOR[prod] ?? '#888' }]} />
                       <Text style={[fStyles.prodLabel, { color: colors.textMuted }]}>{prod}</Text>
                       <Text style={[fStyles.prodStock, { color: colors.text }]}>{pd.stock.toLocaleString()} {PROD_UNIT[prod] ?? 'L'}</Text>
+                      <Text style={[fStyles.prodCost, { color: colors.textMuted }]}>{fmt(pd.unitCost)}/{PROD_UNIT[prod] ?? 'L'}</Text>
                       <Text style={[fStyles.prodValue, { color: PROD_COLOR[prod] ?? '#888' }]}>{fmt(pd.value)}</Text>
                     </View>
-                  ) : null
-                ))}
+                  ) : null;
+                })}
               </View>
             ))}
             {stockItems.length === 0 && (
@@ -610,15 +643,17 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
         )}
       </TouchableOpacity>
 
-      <EditModal
-        visible={showEdit}
-        onClose={() => setShowEdit(false)}
-        entry={financialEntry}
-        monthEntry={currentMonthEntry}
-        onSave={updateFinancialEntry}
-        canSeedStartupCapital={role === 'admin'}
-        branches={branches}
-      />
+      {showEdit ? (
+        <EditModal
+          visible
+          onClose={() => setShowEdit(false)}
+          entry={financialEntry}
+          monthEntry={currentMonthEntry}
+          onSave={updateFinancialEntry}
+          canSeedStartupCapital={role === 'admin'}
+          branches={branches}
+        />
+      ) : null}
     </>
   );
 }
@@ -652,9 +687,15 @@ const fStyles = StyleSheet.create({
   branchBoxName:  { fontSize: 12, fontWeight: '700' },
   branchBoxAmt:   { fontSize: 13, fontWeight: '800' },
   prodRow:        { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
+  prodTableHeader:{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingBottom: 3 },
+  prodHeaderProduct: { fontSize: 9, flex: 1, marginLeft: 13 },
+  prodHeaderQty:  { fontSize: 9, minWidth: 58, textAlign: 'right' },
+  prodHeaderCost: { fontSize: 9, minWidth: 68, textAlign: 'right' },
+  prodHeaderValue:{ fontSize: 9, minWidth: 70, textAlign: 'right' },
   prodDot:        { width: 7, height: 7, borderRadius: 4 },
   prodLabel:      { fontSize: 11, flex: 1 },
-  prodStock:      { fontSize: 11 },
+  prodStock:      { fontSize: 11, minWidth: 58, textAlign: 'right' },
+  prodCost:       { fontSize: 10, minWidth: 68, textAlign: 'right' },
   prodValue:      { fontSize: 11, fontWeight: '700', minWidth: 70, textAlign: 'right' },
   emptyNote:      { fontSize: 12, fontStyle: 'italic', marginBottom: 4 },
   row:            { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 },
@@ -677,6 +718,10 @@ const fStyles = StyleSheet.create({
   naira:          { fontSize: 15, fontWeight: '600', marginRight: 4 },
   editInput:      { flex: 1, fontSize: 16, fontWeight: '600' },
   loanRow:        { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 8 },
+  loanRowHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  loanRowTitle:   { fontSize: 11, fontWeight: '700' },
+  removeLoanBtn:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, paddingVertical: 3 },
+  removeLoanText: { color: '#9B2C2C', fontSize: 11, fontWeight: '700' },
   loanBank:       { fontSize: 14, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   loanAmtRow:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   loanAmt:        { flex: 1, fontSize: 16, fontWeight: '600' },

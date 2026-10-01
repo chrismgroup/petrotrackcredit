@@ -10,6 +10,7 @@ import {
   useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { canonicalProduct } from '@/lib/product-identity';
 
 const PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const GLOBAL_ROLES = new Set(['admin', 'ceo', 'md', 'acc', 'csm', 'mktg']);
@@ -93,7 +94,7 @@ export default function InventoryScreen() {
           });
         } else if (product === 'Lube Oil') {
           const stock = branchDeliveries
-            .filter(delivery => delivery.prod === 'Lube Oil' && isPhysicalDeliveryReceipt(delivery))
+            .filter(delivery => canonicalProduct(delivery.prod) === 'Lube Oil' && isPhysicalDeliveryReceipt(delivery))
             .reduce((sum, delivery) => sum + Number(delivery.rec || 0), 0);
           if (stock > 0) products.push({ product, unit: 'L', stock, capacity: 0, tanks: [], lastDip: null, dipBased: false });
         }

@@ -63,8 +63,64 @@ describe('monthly financial ledger', () => {
     expect(getFinancialMonthEntry(ledger, '2026-09').payeProvision).toBe(75_000);
   });
 
+  it('moves the known September 2026 bank charge out of October once', () => {
+    const ledger = normaliseFinancialEntry({
+      schemaVersion: 4,
+      months: {
+        '2026-10': { bankCharges: 48_500 },
+      },
+    }, new Date('2026-10-01T12:00:00'));
+
+    expect(ledger.schemaVersion).toBe(6);
+    expect(getFinancialMonthEntry(ledger, '2026-09').bankCharges).toBe(48_500);
+    expect(getFinancialMonthEntry(ledger, '2026-10').bankCharges).toBe(0);
+    expect(getFinancialMonthEntry(normaliseFinancialEntry(ledger), '2026-10').bankCharges).toBe(0);
+  });
+
+  it('deletes obsolete and incomplete bank-loan details while preserving valid loans', () => {
+    const ledger = normaliseFinancialEntry({
+      schemaVersion: 5,
+      bankLoan: 'obsolete bank field',
+      loanAmount: 99_000_000,
+      bankLoans: [
+        { bank: ' Current Bank ', amount: 2_500_000 },
+        { bank: '', amount: 500_000 },
+        { bank: 'Zero Bank', amount: 0 },
+      ],
+    });
+
+    expect(ledger.schemaVersion).toBe(6);
+    expect(ledger.bankLoans).toEqual([{ bank: 'Current Bank', amount: 2_500_000 }]);
+    expect(ledger).not.toHaveProperty('bankLoan');
+    expect(ledger).not.toHaveProperty('loanAmount');
+  });
+
+  it('does not duplicate a September charge when October contains the carried copy', () => {
+    const ledger = normaliseFinancialEntry({
+      schemaVersion: 4,
+      months: {
+        '2026-09': { bankCharges: 48_500 },
+        '2026-10': { bankCharges: 48_500 },
+      },
+    });
+
+    expect(getFinancialMonthEntry(ledger, '2026-09').bankCharges).toBe(48_500);
+    expect(getFinancialMonthEntry(ledger, '2026-10').bankCharges).toBe(0);
+  });
+
+  it('uses an explicit legacy financial period instead of the device month', () => {
+    const ledger = normaliseFinancialEntry({
+      bankCharges: 48_500,
+      financialPeriodMonth: '2026-09',
+    }, new Date('2026-10-01T12:00:00'));
+
+    expect(getFinancialMonthEntry(ledger, '2026-09').bankCharges).toBe(48_500);
+    expect(getFinancialMonthEntry(ledger, '2026-10').bankCharges).toBe(0);
+  });
+
   it('prorates monthly finance costs for partial-period reports', () => {
     const ledger = normaliseFinancialEntry({
+      schemaVersion: 5,
       months: {
         '2026-10': { bankCharges: 31_000, loanInterest: 62_000 },
       },

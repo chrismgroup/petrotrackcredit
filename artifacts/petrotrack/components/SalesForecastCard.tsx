@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { type SalesEntry } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
+import { isProduct } from '@/lib/product-identity';
 
 interface Props {
   sales: SalesEntry[];
@@ -69,7 +70,7 @@ export function SalesForecastCard({ sales, roleColor }: Props) {
     }));
 
     const prodData = PRODUCTS.map(p => {
-      const productSales = currentSales.filter(s => s.pump.includes(p.key));
+      const productSales = currentSales.filter(s => isProduct(s, p.key));
       const actualVol = productSales.reduce((sum, entry) => sum + safeNum(entry.L), 0);
       const productRevenue = revenue(productSales);
       const averagePrice = actualVol > 0 ? productRevenue / actualVol : 0;

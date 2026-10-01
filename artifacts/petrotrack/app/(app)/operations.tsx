@@ -13,6 +13,7 @@ import {
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { findLatestDipForProduct } from '@/lib/dip-helpers';
+import { canonicalProduct } from '@/lib/product-identity';
 
 const STOCK_PRODUCTS: StockProduct[] = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const GLOBAL_ROLES = new Set(['admin', 'ceo', 'md', 'acc', 'csm']);
@@ -132,7 +133,7 @@ function StockLogPanel() {
           startupStocks.some(stock => stock.branchId === branch.id && stock.product === product) ||
           deliveries.some(delivery =>
             delivery.branchId === branch.id &&
-            (delivery.prod === product || (product === 'LPG' && ['LPG_Single', 'LPG_Distributor'].includes(delivery.prod))),
+            canonicalProduct(delivery.prod) === product,
           ) ||
           pumpDailyReports.some(report => report.branchId === branch.id && report.product === product) ||
           stockLogs.some(entry => entry.branchId === branch.id && entry.product === product);

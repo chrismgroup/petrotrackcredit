@@ -1,4 +1,5 @@
 import type { Role } from '@/context/AppContext';
+import { canonicalReportProduct, isProduct } from '@/lib/product-identity';
 
 /* ─── Types ─────────────────────────────────────────────── */
 export type Period = 'Daily' | 'Weekly' | 'Monthly' | 'Quarterly' | 'Yearly';
@@ -151,11 +152,7 @@ export function periodRange(p: Period, anchor?: Date | string): { from: Date; to
 }
 
 export function matchesProd(pump: string | null | undefined, prod: string | null | undefined): boolean {
-  const p = String(pump ?? '').toLowerCase();
-  const normalizedProd = String(prod ?? '').toLowerCase();
-  if (normalizedProd === 'lube oil') return p.includes('lube');
-  if (normalizedProd === 'others')   return p.includes('other');
-  return p.includes(normalizedProd);
+  return isProduct({ pump }, prod);
 }
 
 export type COGSDelivery = {
@@ -206,8 +203,10 @@ export function getLastKnownCostPrice(
   asOfDate?: string,
   openingCosts: OpeningInventoryCost[] = [],
 ): number {
+  const targetProduct = canonicalReportProduct(prod);
+  if (!targetProduct) return 0;
   const eligible = deliveries
-    .filter(d => d.prod === prod
+    .filter(d => canonicalReportProduct(d.prod) === targetProduct
       && validCost(d.costPrice) > 0
       && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved')
       && (!asOfDate || String(d.dt ?? '').slice(0, 10) <= asOfDate.slice(0, 10)));
@@ -221,7 +220,7 @@ export function getLastKnownCostPrice(
   const deliveryCost = validCost(latest?.costPrice);
   if (deliveryCost > 0) return deliveryCost;
   const opening = openingCosts
-    .filter(item => item.product === prod
+    .filter(item => canonicalReportProduct(item.product) === targetProduct
       && (!branchId || item.branchId === branchId)
       && (!asOfDate || String(item.seedDate ?? item.setAt ?? '').slice(0, 10) <= asOfDate.slice(0, 10)))
     .sort((a, b) => String(b.seedDate ?? b.setAt ?? '').localeCompare(String(a.seedDate ?? a.setAt ?? '')))[0];
@@ -232,14 +231,14 @@ export function getLastKnownCostPrice(
  *  Uses the last known approved delivery cost for each product multiplied by
  *  the volume sold. Products with no approved cost data contribute 0. */
 export function computeCOGS(
-  sales: Array<{ pump: string; L: number }>,
+  sales: Array<{ pump: string; product?: string; L: number }>,
   deliveries: COGSDelivery[],
   openingCosts: OpeningInventoryCost[] = [],
 ): number {
   const PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil', 'Others'];
   let total = 0;
   for (const prod of PRODS) {
-    const vol = sales.filter(s => matchesProd(s.pump, prod)).reduce((sum, e) => sum + Math.max(0, safeNum(e.L)), 0);
+    const vol = sales.filter(s => isProduct(s, prod)).reduce((sum, e) => sum + Math.max(0, safeNum(e.L)), 0);
     if (vol <= 0) continue;
     total += getLastKnownCostPrice(deliveries, prod, undefined, undefined, openingCosts) * vol;
   }
