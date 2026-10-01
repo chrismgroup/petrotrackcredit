@@ -28,9 +28,11 @@ import {
   workflowTombstones,
 } from "./workflow-record-merge";
 import {
+  canManageFinancialEntry,
   branchPumpMeters,
   branchScopedStateForBranchUser,
   inferDeliveryEvidenceBranches,
+  inferPumpReportBranches,
   isBranchScopedArrayKey,
 } from "./branch-state-policy";
 
@@ -195,6 +197,12 @@ const ADMIN_WRITE_KEYS = new Set([
 
 function isJsonRecord(value: unknown): value is JsonRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function withoutLegacyVat(data: unknown): unknown {
+  if (!isJsonRecord(data) || !("vatRate" in data)) return data;
+  const { vatRate: _legacyVatRate, ...companyInfo } = data;
+  return companyInfo;
 }
 
 async function canAccessActionItems(auth?: Request["auth"]): Promise<boolean> {
@@ -925,7 +933,7 @@ router.get("/state", async (req, res): Promise<void> => {
       result.actionItems = [];
       continue;
     }
-    const visibleState = row.key === "dips"
+    let visibleState = row.key === "dips"
       ? inferDipBranchIds(
         row.data,
         rows.find(candidate => candidate.key === "tanks")?.data,
@@ -937,6 +945,11 @@ router.get("/state", async (req, res): Promise<void> => {
         rows.find(candidate => candidate.key === "deliveries")?.data,
       )
       : row.data;
+    if (row.key === "companyInfo" && visibleState !== withoutLegacyVat(visibleState)) {
+      visibleState = withoutLegacyVat(visibleState);
+      await db.update(appStateTable).set({ data: visibleState, updatedAt: new Date() })
+        .where(eq(appStateTable.key, "companyInfo"));
+    }
     result[row.key] = row.key === "budgets"
       ? budgetStateForIdentity(
           visibleState,
@@ -980,6 +993,7 @@ router.get("/state", async (req, res): Promise<void> => {
         .map(row => row.data),
       req.auth?.role,
     ).filter(report => !deletedPumpReportIds.has(String(report.id ?? "")));
+    result.pumpDailyReports = inferPumpReportBranches(result.pumpDailyReports, result.pumps);
     result.pumpDailyReports = pumpReportsForIdentity(result.pumpDailyReports, req.auth, branchUserId);
   }
   res.json(result);
@@ -1654,7 +1668,9 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     const managerBranchId = req.auth?.role === "mgr" || req.auth?.role === "att"
       ? req.auth.branchId ?? await resolveManagerBranchId(req.auth.username)
       : null;
-    res.json(pumpReportsForIdentity(row.data, req.auth, managerBranchId));
+    const [pumpsRow] = await db.select().from(appStateTable).where(eq(appStateTable.key, "pumps"));
+    const repairedReports = inferPumpReportBranches(row.data, pumpsRow?.data);
+    res.json(pumpReportsForIdentity(repairedReports, req.auth, managerBranchId));
     return;
   }
   if ((key === "pumpInitialMeters" || key === "pumpLockedMeters") && (req.auth?.role === "mgr" || req.auth?.role === "att")) {
@@ -1665,6 +1681,11 @@ router.get("/state/:key", async (req, res): Promise<void> => {
     return;
   }
   let visibleData = row.data;
+  if (key === "companyInfo" && visibleData !== withoutLegacyVat(visibleData)) {
+    visibleData = withoutLegacyVat(visibleData);
+    await db.update(appStateTable).set({ data: visibleData, updatedAt: new Date() })
+      .where(eq(appStateTable.key, "companyInfo"));
+  }
   if (key === "dips") {
     const [tanksRow, lpgTanksRow] = await Promise.all([
       db.select().from(appStateTable).where(eq(appStateTable.key, "tanks")),
@@ -1709,6 +1730,10 @@ router.put("/state/:key", async (req, res): Promise<void> => {
   }
   if (ADMIN_WRITE_KEYS.has(key) && req.auth?.role !== "admin") {
     res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (key === "financialEntry" && !canManageFinancialEntry(req.auth?.role)) {
+    res.status(403).json({ error: "Only Admin or Accountant may update financial entries" });
     return;
   }
   if ((key === "myFolders" || key === "myFolderFiles") && !MY_FOLDER_WRITE_ROLES.has(req.auth?.role ?? "")) {

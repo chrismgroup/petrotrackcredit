@@ -231,22 +231,43 @@ function baseAppState(overrides: Record<string, unknown> = {}) {
     maintenance: [],
     staff: [],
     hrEmployees: [],
-    pumpDailyReports: [],
-    companyInfo: { citaRate: '30', vatRate: '7.5' },
+    pumpDailyReports: [{
+      id: 101,
+      pumpName: 'PMS',
+      product: 'PMS',
+      liters: 1_000,
+      grossAmount: 1_000_000,
+      date: '2026-09-03',
+      branchId: branchA.id,
+      status: 'approved',
+    }],
+    companyInfo: { citaRate: '30' },
     financialEntry: {
+      schemaVersion: 3,
       cashInBank: 0,
       posValue: 0,
       goodsOnTransit: 0,
       cashInHand: 0,
-      capitalInjection: 0,
-      bankCharges: 0,
-      loanInterest: 0,
+      debtsFromCustomers: 0,
       liabilities: 0,
       bankLoans: [],
-      startupCapital: 0,
-      startupCapitalMonth: '2026-09',
-      startupCapitalSource: 'admin',
-      closingOperatingCapital: 0,
+      months: {
+        '2026-09': {
+          capitalInjection: 0,
+          bankCharges: 0,
+          loanPrincipalRepayment: 0,
+          loanInterest: 0,
+          customerPaymentsReceived: 0,
+          payeProvision: 0,
+          startupCapital: 0,
+          startupCapitalSource: 'admin',
+          closingOperatingCapital: 0,
+          updatedBy: '',
+          updatedAt: '',
+        },
+      },
+      updatedBy: '',
+      updatedAt: '',
     },
     updateFinancialEntry: jest.fn(),
     ...overrides,
@@ -489,7 +510,9 @@ describe('asset depreciation financial screens', () => {
     const text = renderedText(renderer);
 
     expect(text).toContain('Monthly Asset Depreciation ₦30,000');
-    expect(text).toContain('CITA (30%) ₦291,000');
+    expect(text).toContain('CIT (30%) ₦291,000');
+    expect(text).toContain('Balance Sheet Snapshot');
+    expect(text).toContain('Capital Movement Bridge');
     expect(text).toContain('= Net Profit ₦679,000');
     act(() => renderer.unmount());
   });
@@ -512,6 +535,41 @@ describe('asset depreciation financial screens', () => {
     act(() => renderer.unmount());
   });
 
+  it('keeps principal repayment out of net profit while reducing operating capital', () => {
+    mockedUseApp.mockReturnValue(baseAppState({
+      financialEntry: {
+        ...baseAppState().financialEntry,
+        bankLoans: [{ bank: 'Test Bank', amount: 2_000_000 }],
+        months: {
+          '2026-09': {
+            capitalInjection: 0,
+            bankCharges: 0,
+            loanPrincipalRepayment: 500_000,
+            loanInterest: 80_000,
+            startupCapital: 0,
+            startupCapitalSource: 'admin',
+            closingOperatingCapital: 0,
+            updatedBy: 'Test Accountant',
+            updatedAt: '2026-09-30T12:00:00.000Z',
+          },
+        },
+      },
+    }) as any);
+
+    const renderer = mount(<FinancialStatusCard roleColor="#4527a0" />);
+    const card = renderer.root.find(
+      node => String(node.type) === 'TouchableOpacity' && nodeText(node).includes('Financial Status'),
+    );
+    act(() => card.props.onPress());
+    const text = renderedText(renderer);
+
+    expect(text).toContain('Net Profit (mo.) ₦630,000');
+    expect(text).toContain('Operating Capital ₦130,000');
+    expect(text).toContain('Total Loans Repayment for the month ₦580,000');
+    expect(text).toContain('Bank Loans ₦1,500,000');
+    act(() => renderer.unmount());
+  });
+
   it('deducts the same monthly depreciation before CITA in the P&L report', () => {
     mockedUseApp.mockReturnValue(baseAppState({
       role: 'md',
@@ -523,7 +581,7 @@ describe('asset depreciation financial screens', () => {
 
     expect(text).toContain('Profit & Loss');
     expect(text).toContain('Asset Depreciation ₦30,000');
-    expect(text).toContain('CITA (30%) ₦291,000');
+    expect(text).toContain('CIT (30%) ₦291,000');
     expect(text).toContain('Profit & Loss ₦679,000');
     act(() => renderer.unmount());
   });
@@ -590,6 +648,10 @@ describe('asset depreciation financial screens', () => {
         dt: '2026-09-15',
         branchId: branchB.id,
       }],
+      pumpDailyReports: [{
+        id: 101, pumpName: 'PMS', product: 'PMS', liters: 1_000,
+        grossAmount: 1_000_000, date: '2026-09-15', branchId: branchB.id, status: 'approved',
+      }],
     });
     const originalSales = state.sales;
     mockRouteParams = {
@@ -640,6 +702,10 @@ describe('asset depreciation financial screens', () => {
       sales: [
         { id: 1, pump: 'PMS', L: 1_000, price: 1_000, dt: '2026-09-15', branchId: branchA.id },
         { id: 2, pump: 'PMS', L: 250, price: 1_000, dt: '2026-09-15', branchId: branchB.id },
+      ],
+      pumpDailyReports: [
+        { id: 101, pumpName: 'PMS', product: 'PMS', liters: 1_000, grossAmount: 1_000_000, date: '2026-09-15', branchId: branchA.id, status: 'approved' },
+        { id: 102, pumpName: 'PMS', product: 'PMS', liters: 250, grossAmount: 250_000, date: '2026-09-15', branchId: branchB.id, status: 'approved' },
       ],
     });
     mockedUseApp.mockReturnValue(hydratingState as any);

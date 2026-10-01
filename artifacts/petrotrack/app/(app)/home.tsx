@@ -646,7 +646,7 @@ export default function HomeScreen() {
       (role === 'mgr' && (r.status === 'pending_manager' || r.status === 'returned')) ||
       (role === 'att' && r.status === 'returned_attendant' && r.submittedBy === userName)
     ) &&
-    (isGlobalOverview || !scopedBranchId || r.branchId === scopedBranchId || !r.branchId),
+    (isGlobalOverview || !scopedBranchId || r.branchId === scopedBranchId),
   );
   const pendingBudgets = budgets.filter(budget => {
     if (!canOpen(SCREEN_ROUTES.budget)) return false;
@@ -889,7 +889,7 @@ export default function HomeScreen() {
         .filter(report =>
            isRevenueReportStatus(report.status) &&
            businessDateKey(report.date) === iso &&
-          (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+          (!scopedBranchId || report.branchId === scopedBranchId),
         )
         .reduce((sum, report) => sum + report.grossAmount, 0);
       days.push({ label: dayLabel, value: rev });

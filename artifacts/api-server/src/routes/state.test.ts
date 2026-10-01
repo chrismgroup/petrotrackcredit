@@ -14,6 +14,8 @@ import {
 import {
   branchPumpMeters,
   branchScopedStateForBranchUser,
+  inferPumpReportBranches,
+  canManageFinancialEntry,
   inferDeliveryEvidenceBranches,
 } from "./branch-state-policy";
 import { canAccessActionItemsForUser } from "./action-item-access";
@@ -53,11 +55,29 @@ test("branch users cannot receive company-wide private state", () => {
   assert.deepEqual(branchScopedStateForBranchUser("financialEntry", { cashInHand: 10 }, "B1"), {});
 });
 
+test("only accountants and administrators can persist financial entries", () => {
+  assert.equal(canManageFinancialEntry("admin"), true);
+  assert.equal(canManageFinancialEntry("acc"), true);
+  assert.equal(canManageFinancialEntry("md"), false);
+  assert.equal(canManageFinancialEntry("mgr"), false);
+  assert.equal(canManageFinancialEntry(undefined), false);
+});
+
 test("pump meter maps are limited to pumps already scoped to the branch", () => {
   assert.deepEqual(
     branchPumpMeters({ "P-1": 100, "P-2": 200 }, [{ id: "P-1", branchId: "B1" }]),
     { "P-1": 100 },
   );
+});
+
+test("legacy pump reports inherit a branch from their pump and unknown pumps stay unassigned", () => {
+  assert.deepEqual(inferPumpReportBranches(
+    [{ id: 1, pumpId: "P1" }, { id: 2, pumpId: "missing" }],
+    [{ id: "P1", branchId: "B1" }],
+  ), [
+    { id: 1, pumpId: "P1", branchId: "B1" },
+    { id: 2, pumpId: "missing" },
+  ]);
 });
 
 test("delivery evidence inherits its delivery branch before filtering", () => {

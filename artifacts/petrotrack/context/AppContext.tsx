@@ -14,6 +14,17 @@ import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { startForegroundTimer } from '@/lib/foreground-timer';
 import { LAST_SIGNED_IN_USERNAME_STORAGE_KEY } from '@/lib/device-identity';
 import {
+  EMPTY_FINANCIAL_ENTRY,
+  cumulativeCustomerPaymentsReceived,
+  financialMonthKey,
+  getFinancialMonthEntry,
+  normaliseFinancialEntry,
+  type BankLoan,
+  type FinancialEntry,
+  type FinancialEntryUpdate,
+} from '@/lib/financial-ledger';
+export type { BankLoan, FinancialEntry, FinancialMonthEntry } from '@/lib/financial-ledger';
+import {
   isMissingNum,
   safeNum,
   validatePriceChange,
@@ -149,17 +160,6 @@ export interface BudgetConsolidationResult {
   relinkedExpenseIds: number[];
   replay?: boolean;
 }
-export interface BankLoan { bank: string; amount: number; }
-export interface FinancialEntry {
-  cashInBank: number; posValue: number; goodsOnTransit: number;
-  cashInHand: number; debtsFromCustomers: number; capitalInjection: number;
-  bankLoans: BankLoan[]; bankCharges: number; loanInterest: number; liabilities: number;
-  startupCapital: number;
-  startupCapitalMonth: string;
-  startupCapitalSource: 'admin' | 'rollover';
-  closingOperatingCapital?: number;
-  updatedBy: string; updatedAt: string;
-}
 export interface NavItem { id: string; icon: string; label: string; }
 export interface UserInfo { name: string; color: string; initials: string; role: string; online: boolean; }
 
@@ -176,24 +176,12 @@ export function getCurrentTankStock(
   dips: DipRecord[],
   productKind: 'petrol' | 'lpg' = 'petrol',
 ): number {
-  const balance = Math.max(0, safeNum(tank.op) + safeNum(tank.rv) - safeNum(tank.sl));
-
-  const latestDip = dips
-    .filter(d => d.status === 'approved')
-    .filter(d => productKind === 'lpg' ? d.lpg[tank.id] !== undefined : d.rd[tank.id] !== undefined)
-    .sort((a, b) => {
-      const aTime = new Date(a.approvedDt ?? a.dt).getTime();
-      const bTime = new Date(b.approvedDt ?? b.dt).getTime();
-      return bTime - aTime;
-    })[0];
-
-  const reading = productKind === 'lpg'
-    ? latestDip?.lpg[tank.id]
-    : latestDip?.rd[tank.id];
-  if (reading !== undefined) {
-    return Math.max(0, productKind === 'lpg' ? safeNum(reading) : dipReadingToLiters(safeNum(reading)));
-  }
-  return balance;
+  // Dip approval persists the physical reading as `op` and resets `rv`/`sl`.
+  // Later deliveries and approved sales then accumulate in those counters, so
+  // this balance remains live after a dip instead of freezing at its reading.
+  void dips;
+  void productKind;
+  return Math.max(0, safeNum(tank.op) + safeNum(tank.rv) - safeNum(tank.sl));
 }
 /** Live revenue derived from actual sales records (auto-created when pump
  *  reports are approved, plus any manual entries). Replaces the static
@@ -328,17 +316,26 @@ export interface StockLogEntry {
 export interface CompanyInfo {
   name: string; rcNumber: string; tin: string; address: string;
   phone: string; email: string; website: string;
-  vatRate: string; citaRate: string; currency: string; fiscalYearStart: string;
+  citaRate: string; currency: string; fiscalYearStart: string;
   lowStockAlert: string; reorderLevel: string;
   dailyDipRequired: boolean; autoAuditLogging: boolean;
 }
 export const BLANK_COMPANY_INFO: CompanyInfo = {
   name: '', rcNumber: '', tin: '', address: '',
   phone: '', email: '', website: '',
-  vatRate: '7.5', citaRate: '30', currency: 'NGN', fiscalYearStart: 'January',
+  citaRate: '30', currency: 'NGN', fiscalYearStart: 'January',
   lowStockAlert: '20', reorderLevel: '30',
   dailyDipRequired: true, autoAuditLogging: true,
 };
+export function normaliseCompanyInfo(value: unknown): CompanyInfo {
+  const incoming = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return Object.fromEntries(
+    (Object.keys(BLANK_COMPANY_INFO) as Array<keyof CompanyInfo>)
+      .map(key => [key, incoming[key] ?? BLANK_COMPANY_INFO[key]]),
+  ) as unknown as CompanyInfo;
+}
 export interface CompanyFile { id: number; name: string; cat: string; by: string; dt: string; size: string; fileType: 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'img' | 'mp4' | 'audio' | 'zip' | 'other'; }
 export type MyFolderSection = 'compliance' | 'legal' | 'minutes' | 'projects' | 'correspondences' | 'general';
 export interface MyFolder {
@@ -601,7 +598,7 @@ export function calendarMonthBusinessDateRange(anchor = new Date()): { from: str
 }
 
 export function isRevenueReportStatus(status: PumpReportStatus): boolean {
-  return status === 'pending_accountant' || status === 'approved';
+  return status === 'approved';
 }
 
 export function calculateBusinessMonthRevenue(
@@ -616,7 +613,7 @@ export function calculateBusinessMonthRevenue(
         isRevenueReportStatus(report.status) &&
         businessDate >= range.from &&
         businessDate <= range.to &&
-        (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId)
+        (!scopedBranchId || report.branchId === scopedBranchId)
       );
     })
     .reduce((sum, report) => sum + safeNum(report.grossAmount), 0));
@@ -625,13 +622,21 @@ export function calculateBusinessMonthRevenue(
 export function calculateAccountsReceivable(
   reports: PumpDailyReport[],
   scopedBranchId: string | null = null,
+  financialEntry?: FinancialEntry,
+  throughDate?: string,
 ): number {
-  return Math.round(reports
+  const throughBusinessDate = throughDate ? businessDateKey(throughDate) : '';
+  const approvedCreditSales = reports
     .filter(report =>
       isRevenueReportStatus(report.status) &&
-      (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+      (!throughBusinessDate || businessDateKey(report.date) <= throughBusinessDate) &&
+      (!scopedBranchId || report.branchId === scopedBranchId),
     )
-    .reduce((sum, report) => sum + safeNum(report.creditAmount), 0));
+    .reduce((sum, report) => sum + safeNum(report.creditAmount), 0);
+  const payments = financialEntry && !scopedBranchId
+    ? cumulativeCustomerPaymentsReceived(financialEntry, throughBusinessDate.slice(0, 7) || undefined)
+    : 0;
+  return Math.round(Math.max(0, approvedCreditSales - payments));
 }
 
 function recordBusinessDate(value?: string): string {
@@ -1403,29 +1408,7 @@ const INIT_HR_HANDBOOKS: HREmployeeDoc[] = [];
 const INIT_LEGAL: LegalMatter[] = [];
 const INIT_CORP_PROJECTS: CorpProject[] = [];
 const INIT_MEETING_MINUTES: MeetingMinutes[] = [];
-const INIT_FINANCIAL_ENTRY: FinancialEntry = {
-  cashInBank: 0, posValue: 0, goodsOnTransit: 0, cashInHand: 0,
-  debtsFromCustomers: 0, capitalInjection: 0, bankLoans: [], bankCharges: 0, loanInterest: 0, liabilities: 0,
-  startupCapital: 0, startupCapitalMonth: '', startupCapitalSource: 'rollover',
-  closingOperatingCapital: 0,
-  updatedBy: '', updatedAt: '',
-};
-
-function normaliseFinancialEntry(value: unknown): FinancialEntry {
-  const incoming = value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Partial<FinancialEntry>
-    : {};
-  return {
-    ...INIT_FINANCIAL_ENTRY,
-    ...incoming,
-    bankLoans: Array.isArray(incoming.bankLoans) ? incoming.bankLoans : [],
-    bankCharges: typeof incoming.bankCharges === 'number' && Number.isFinite(incoming.bankCharges) ? Math.max(0, incoming.bankCharges) : 0,
-    loanInterest: typeof incoming.loanInterest === 'number' && Number.isFinite(incoming.loanInterest) ? Math.max(0, incoming.loanInterest) : 0,
-    startupCapital: typeof incoming.startupCapital === 'number' ? incoming.startupCapital : 0,
-    startupCapitalMonth: typeof incoming.startupCapitalMonth === 'string' ? incoming.startupCapitalMonth : '',
-    startupCapitalSource: incoming.startupCapitalSource === 'admin' ? 'admin' : 'rollover',
-  };
-}
+const INIT_FINANCIAL_ENTRY: FinancialEntry = EMPTY_FINANCIAL_ENTRY;
 
 interface AppContextType {
   companyInfo: CompanyInfo; updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
@@ -1444,7 +1427,7 @@ interface AppContextType {
   deleteMarketCompetitor: (id: string) => void;
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
   financialEntry: FinancialEntry;
-  updateFinancialEntry: (updates: Partial<Omit<FinancialEntry, 'updatedBy' | 'updatedAt'>>) => void;
+  updateFinancialEntry: (updates: FinancialEntryUpdate, monthKey?: string) => void;
   companyAssets: CompanyAsset[];
   companyAssetSaveError: CompanyAssetSaveError | null;
   clearCompanyAssetSaveError: () => void;
@@ -1808,7 +1791,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
-       if (s.companyInfo)       setCompanyInfo(s.companyInfo);
+       if (s.companyInfo)       setCompanyInfo(normaliseCompanyInfo(s.companyInfo));
       if (s.tanks)             setTanks(s.tanks);
       if (s.lpgTanks)          setLpgTanks(s.lpgTanks);
       if (s.pumps)             setPumps(s.pumps);
@@ -1921,7 +1904,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ]);
       if (!s) return false;
       serverHydrationRef.current = true;
-      if (s.companyInfo && !p.has('companyInfo'))             setCompanyInfo(s.companyInfo as CompanyInfo);
+      if (s.companyInfo && !p.has('companyInfo'))             setCompanyInfo(normaliseCompanyInfo(s.companyInfo));
       if (s.tanks && !p.has('tanks'))                         setTanks(s.tanks as Tank[]);
       if (s.lpgTanks && !p.has('lpgTanks'))                   setLpgTanks(s.lpgTanks as LPGTank[]);
       if (s.pumps && !p.has('pumps'))                         setPumps(s.pumps as Pump[]);
@@ -2086,7 +2069,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        }
       if (s.pumpInitialMeters && typeof s.pumpInitialMeters === 'object' && !p.has('pumpInitialMeters')) setPumpInitialMeters(s.pumpInitialMeters as Record<string, number>);
       if (s.pumpLockedMeters && typeof s.pumpLockedMeters === 'object' && !p.has('pumpLockedMeters')) setPumpLockedMeters(s.pumpLockedMeters as Record<string, number>);
-      if (s.financialEntry && !p.has('financialEntry'))                     setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
+      if (s.financialEntry && !p.has('financialEntry')) {
+        const normalizedFinancialEntry = normaliseFinancialEntry(s.financialEntry);
+        setFinancialEntry(normalizedFinancialEntry);
+      }
       if (!p.has('companyAssets') && Array.isArray(s.companyAssets)) {
         setCompanyAssets(prev => mergeCompanyAssetSnapshots(
           s.companyAssets as CompanyAsset[],
@@ -3022,7 +3008,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       void syncFromServer();
       return { ok: false, error: result?.error ?? 'The server could not approve this dip. Please refresh and try again.' };
     }
-    applyDip(result.dip as DipRecord);
+    const approvedDip = result.dip as DipRecord;
+    applyDip(approvedDip);
+    setTanks(current => current.map(tank => {
+      const reading = approvedDip.rd?.[tank.id];
+      return Number.isFinite(reading)
+        ? { ...tank, op: dipReadingToLiters(reading), rv: 0, sl: 0 }
+        : tank;
+    }));
+    setLpgTanks(current => current.map(tank => {
+      const reading = approvedDip.lpg?.[tank.id];
+      return Number.isFinite(reading)
+        ? { ...tank, op: safeNum(reading), rv: 0, sl: 0 }
+        : tank;
+    }));
+    await syncFromServer();
     return { ok: true };
   }, [applyDip, dips, syncFromServer]);
 
@@ -4613,7 +4613,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSales(entries => entries.filter(entry => entry.shiftReportId !== report.id));
     if (report.product === 'LPG') {
       setLpgTanks(entries => {
-        const matching = entries.filter(tank => !resolvedBranchId || !tank.branchId || tank.branchId === resolvedBranchId);
+        const matching = entries.filter(tank => resolvedBranchId ? tank.branchId === resolvedBranchId : !tank.branchId);
         if (matching.length === 0) return entries;
         const share = report.liters / matching.length;
         const matchingIds = new Set(matching.map(tank => tank.id));
@@ -4627,7 +4627,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTanks(entries => {
       const matching = entries.filter(tank =>
         tank.prod === report.product &&
-        (!resolvedBranchId || !tank.branchId || tank.branchId === resolvedBranchId)
+        (resolvedBranchId ? tank.branchId === resolvedBranchId : !tank.branchId)
       );
       if (matching.length === 0) return entries;
       const share = report.liters / matching.length;
@@ -4715,7 +4715,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     if (currentReport.product === 'LPG') {
       setLpgTanks(ts => {
-        const matching = ts.filter(t => !resolvedBranchId || !t.branchId || t.branchId === resolvedBranchId);
+        const matching = ts.filter(t => resolvedBranchId ? t.branchId === resolvedBranchId : !t.branchId);
         if (matching.length === 0) return ts;
         const share = currentReport.liters / matching.length;
         const ids = new Set(matching.map(t => t.id));
@@ -4723,7 +4723,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
     } else {
       setTanks(ts => {
-        const matching = ts.filter(t => t.prod === currentReport.product && (!resolvedBranchId || !t.branchId || t.branchId === resolvedBranchId));
+        const matching = ts.filter(t => t.prod === currentReport.product && (resolvedBranchId ? t.branchId === resolvedBranchId : !t.branchId));
         if (matching.length === 0) return ts;
         const share = currentReport.liters / matching.length;
         const ids = new Set(matching.map(t => t.id));
@@ -5129,8 +5129,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setMarketCompetitors(prev => prev.filter(item => item.id !== id));
   }, []);
 
-  const updateFinancialEntry = useCallback((updates: Partial<Omit<FinancialEntry, 'updatedBy' | 'updatedAt'>>) => {
-    setFinancialEntry(prev => ({ ...prev, ...updates, updatedBy: userName, updatedAt: nowTs() }));
+  const updateFinancialEntry = useCallback((updates: FinancialEntryUpdate, monthKey = financialMonthKey()) => {
+    setFinancialEntry(prev => {
+      const timestamp = nowTs();
+      const monthFields = new Set([
+        'capitalInjection', 'bankCharges', 'loanPrincipalRepayment', 'loanInterest',
+        'customerPaymentsReceived', 'payeProvision',
+        'startupCapital', 'startupCapitalSource', 'closingOperatingCapital',
+        'finalizedNetProfit', 'finalizedAt',
+      ]);
+      const positionUpdates: Record<string, unknown> = {};
+      const monthlyUpdates: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(updates)) {
+        (monthFields.has(key) ? monthlyUpdates : positionUpdates)[key] = value;
+      }
+      return {
+        ...prev,
+        ...positionUpdates,
+        months: Object.keys(monthlyUpdates).length > 0
+          ? {
+            ...prev.months,
+            [monthKey]: {
+              ...getFinancialMonthEntry(prev, monthKey),
+              ...monthlyUpdates,
+              updatedBy: userName,
+              updatedAt: timestamp,
+            },
+          }
+          : prev.months,
+        updatedBy: userName,
+        updatedAt: timestamp,
+      } as FinancialEntry;
+    });
   }, [userName]);
 
   const canManageCompanyAssets = canManageCompanyAssetsForRole(role);

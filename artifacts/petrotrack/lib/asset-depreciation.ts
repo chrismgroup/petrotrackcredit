@@ -89,18 +89,31 @@ export function depreciationTotalForDateRange(
   toDate: string,
   branchId?: string | null,
 ): number {
-  const start = fromDate.slice(0, 7);
-  const end = toDate.slice(0, 7);
-  if (!/^\d{4}-\d{2}$/.test(start) || !/^\d{4}-\d{2}$/.test(end) || start > end) return 0;
-  const [startYear, startMonth] = start.split('-').map(Number);
-  const [endYear, endMonth] = end.split('-').map(Number);
-  let cursor = (startYear * 12) + startMonth - 1;
-  const last = (endYear * 12) + endMonth - 1;
+  const parseUtc = (value: string) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.slice(0, 10));
+    return match ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))) : null;
+  };
+  const startDate = parseUtc(fromDate);
+  const endDate = parseUtc(toDate);
+  if (!startDate || !endDate || startDate > endDate) return 0;
+  let cursor = (startDate.getUTCFullYear() * 12) + startDate.getUTCMonth();
+  const last = (endDate.getUTCFullYear() * 12) + endDate.getUTCMonth();
   let total = 0;
   while (cursor <= last) {
     const year = Math.floor(cursor / 12);
     const month = (cursor % 12) + 1;
-    total += monthlyDepreciationTotal(assets, `${year}-${String(month).padStart(2, '0')}`, branchId);
+    const monthIndex = month - 1;
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const monthStart = new Date(Date.UTC(year, monthIndex, 1));
+    const monthEnd = new Date(Date.UTC(year, monthIndex, daysInMonth));
+    const overlapStart = startDate > monthStart ? startDate : monthStart;
+    const overlapEnd = endDate < monthEnd ? endDate : monthEnd;
+    const includedDays = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / 86_400_000) + 1;
+    total += monthlyDepreciationTotal(
+      assets,
+      `${year}-${String(month).padStart(2, '0')}`,
+      branchId,
+    ) * (includedDays / daysInMonth);
     cursor += 1;
   }
   return total;

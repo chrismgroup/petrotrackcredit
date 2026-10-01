@@ -7,6 +7,7 @@ import { AppState as NativeAppState } from 'react-native';
 import { SHIFT_REPORT_OUTBOX_STORAGE_KEY, stateApi } from '@/lib/api';
 import {
   AppProvider,
+  calculateAccountsReceivable,
   calculateDailyOperationalStock,
   calculateDailyStockLogBalance,
   calculateStockBook,
@@ -16,9 +17,11 @@ import {
   isFutureBusinessDate,
   mergePumpDailyReports,
   mergeDipRecords,
+  normaliseCompanyInfo,
   salesRevenueByBranch,
   useApp,
 } from './AppContext';
+import { normaliseFinancialEntry } from '@/lib/financial-ledger';
 import type { Delivery, DipRecord, PumpDailyReport, PumpReportStatus } from './AppContext';
 import { findLatestDipForProduct } from '../lib/dip-helpers';
 
@@ -843,7 +846,7 @@ describe('pump opening meter rollover', () => {
 });
 
 describe('current tank stock', () => {
-  it('uses the full Uyo PMS dip total without double-counting tank counters', () => {
+  it('uses the persisted post-dip opening plus later receipts and sales', () => {
     const dip = {
       id: 1,
       dt: '2026-08-23',
@@ -859,23 +862,51 @@ describe('current tank stock', () => {
       status: 'approved' as const,
     };
 
-    const tankInputs: Array<[string, number]> = [
-      ['tank-uyo-pms-1', 100],
-      ['tank-uyo-pms-2', 100],
-      ['tank-uyo-pms-3', 100],
-      ['tank-uyo-pms-4', 11_550],
-    ];
-    const tanks = tankInputs.map(([id, opening]) => getCurrentTankStock({
-      id,
+    const stock = getCurrentTankStock({
+      id: 'tank-uyo-pms-1',
       cap: 45_000,
       dip: 4_500,
-      op: opening,
+      op: 100,
       rv: 7_500,
       sl: 763.5,
-    }, [dip]));
+    }, [dip]);
 
-    expect(tanks).toEqual([100, 15_000, 100, 9_000]);
-    expect(tanks.reduce((total, stock) => total + stock, 0)).toBe(24_200);
+    expect(stock).toBe(6_836.5);
+  });
+});
+
+describe('accounts receivable', () => {
+  it('uses approved credit sales less persisted customer payments', () => {
+    const approved = { ...reportWithStatus('approved'), creditAmount: 500_000 };
+    const pending = { ...reportWithStatus('pending_accountant'), id: 102, creditAmount: 200_000 };
+    const ledger = normaliseFinancialEntry({
+      months: {
+        '2026-08': { customerPaymentsReceived: 125_000 },
+      },
+    });
+
+    expect(calculateAccountsReceivable(
+      [approved, pending],
+      null,
+      ledger,
+      '2026-08-31',
+    )).toBe(375_000);
+  });
+
+  it('does not attribute an unassigned report to a selected branch', () => {
+    const branchCredit = { ...reportWithStatus('approved'), creditAmount: 100_000 };
+    const unassignedCredit = { ...reportWithStatus('approved'), id: 102, branchId: '', creditAmount: 900_000 };
+
+    expect(calculateAccountsReceivable([branchCredit, unassignedCredit], 'branch-1')).toBe(100_000);
+  });
+});
+
+describe('company tax settings migration', () => {
+  it('drops legacy VAT settings while preserving CIT configuration', () => {
+    const company = normaliseCompanyInfo({ citaRate: '25', vatRate: '7.5', name: 'Petrotrack' });
+    expect(company.citaRate).toBe('25');
+    expect(company.name).toBe('Petrotrack');
+    expect(company).not.toHaveProperty('vatRate');
   });
 });
 

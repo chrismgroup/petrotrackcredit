@@ -17,6 +17,7 @@ import {
 import { computePumpReportCOGS } from '@/lib/report-helpers';
 import { monthlyDepreciationTotal } from '@/lib/asset-depreciation';
 import { calculateNetProfit } from '@/lib/net-profit';
+import { getFinancialMonthEntry } from '@/lib/financial-ledger';
 import { useColors } from '@/hooks/useColors';
 
 function localDateKey(date: Date): string {
@@ -46,6 +47,7 @@ export default function AccountsScreen() {
   const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'admin';
   const scopedBranchId = isGlobal ? null : branchId;
   const currentMonthRange = calendarMonthBusinessDateRange();
+  const currentMonthEntry = getFinancialMonthEntry(financialEntry, currentMonthRange.from.slice(0, 7));
   const visibleBranches = isGlobal ? branches : branches.filter(b => Boolean(branchId && b.id === branchId));
 
   // One branch scope applied to every input so branch-locked users never mix
@@ -59,7 +61,7 @@ export default function AccountsScreen() {
   };
   const scopedRevenueReports = pumpDailyReports.filter(report =>
     isRevenueReportStatus(report.status) &&
-    (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+    (!scopedBranchId || report.branchId === scopedBranchId),
   );
   const monthlyReports = scopedRevenueReports.filter(report => inCurrentMonth(report.date));
   const todayBusinessDate = localDateKey(new Date());
@@ -88,16 +90,12 @@ export default function AccountsScreen() {
   const totalCOGS     = computePumpReportCOGS(monthlyReports, scopedDeliveries);
   const grossProfit   = totalRevenue - totalCOGS;
   const operatingProfit = grossProfit - totalExpenses;
-  const bankCharges = Math.max(0, Number(financialEntry.bankCharges) || 0);
-  const loanInterest = Math.max(0, Number(financialEntry.loanInterest) || 0);
+  const bankCharges = currentMonthEntry.bankCharges;
+  const loanInterest = currentMonthEntry.loanInterest;
   const depreciation = monthlyDepreciationTotal(companyAssets, currentMonthRange.from.slice(0, 7), scopedBranchId);
 
   // Tax computations
-  const vatRate    = parseFloat(companyInfo.vatRate  || '7.5') / 100;
   const citaRate   = parseFloat(companyInfo.citaRate || '30')  / 100;
-  const payeAmt    = 80_000; // fixed PAYE provision placeholder
-
-  const vatProvision  = Math.round(totalRevenue * vatRate);
   const { profitBeforeTax, citaProvision, netProfit } = calculateNetProfit({
     operatingProfit,
     depreciation,
@@ -108,24 +106,17 @@ export default function AccountsScreen() {
 
   const taxItems = [
     {
-      label: `VAT (${(vatRate * 100).toFixed(1)}%)`,
-      sub:   'On total revenue',
-      value: vatProvision,
-      icon:  'receipt',
-      color: colors.blue,
-    },
-    {
-      label: `CITA (${(citaRate * 100).toFixed(0)}%)`,
-      sub:   'Company Income Tax — on assessable profit',
+      label: `CIT (${(citaRate * 100).toFixed(0)}%)`,
+      sub:   'Company Income Tax — on positive profit before tax',
       value: citaProvision,
       icon:  'business',
       color: colors.amber,
     },
     {
-      label: 'PAYE (Staff)',
-      sub:   'Pay-As-You-Earn provision',
-      value: payeAmt,
-      icon:  'people',
+      label: 'PAYE',
+      sub: 'Configured monthly payroll withholding liability',
+      value: currentMonthEntry.payeProvision,
+      icon: 'people',
       color: colors.purple,
     },
   ];
@@ -136,7 +127,7 @@ export default function AccountsScreen() {
 
         {/* Summary hero */}
         <View style={[styles.summaryCard, { backgroundColor: roleColor }]}>
-          <Text style={styles.sumLabel}>Net Profit (after CITA)</Text>
+          <Text style={styles.sumLabel}>Net Profit (after CIT)</Text>
           <Text style={styles.sumValue}>{fmt(netProfit)}</Text>
           <View style={styles.sumRow}>
             <View style={styles.sumItem}>
@@ -155,7 +146,7 @@ export default function AccountsScreen() {
             </View>
             <View style={styles.sumDivider} />
             <View style={styles.sumItem}>
-              <Text style={styles.sumItemLabel}>CITA</Text>
+              <Text style={styles.sumItemLabel}>CIT</Text>
               <Text style={styles.sumItemValue} numberOfLines={1} adjustsFontSizeToFit>{fmt(citaProvision)}</Text>
             </View>
           </View>
@@ -179,9 +170,9 @@ export default function AccountsScreen() {
             { label: 'Operating Profit',   value: operatingProfit, color: colors.text,     sign: '=' },
             { label: 'Asset Depreciation', value: depreciation,     color: colors.error,   sign: '−' },
             { label: 'Bank Charges',       value: bankCharges,       color: colors.error,   sign: '−' },
-            { label: 'Interest Paid on Loans', value: loanInterest,  color: colors.error,   sign: '−' },
-            { label: 'Profit Before CITA', value: profitBeforeTax,  color: colors.text,     sign: '=' },
-            { label: `CITA @ ${(citaRate * 100).toFixed(0)}%`, value: citaProvision, color: colors.amber, sign: '−' },
+            { label: 'Interest Paid on Loans', value: loanInterest, color: colors.error, sign: '−' },
+            { label: 'Profit Before CIT', value: profitBeforeTax,  color: colors.text,     sign: '=' },
+            { label: `CIT @ ${(citaRate * 100).toFixed(0)}%`, value: citaProvision, color: colors.amber, sign: '−' },
             { label: 'Net Profit',         value: netProfit,       color: roleColor,       sign: '=' },
           ].map((row, i) => (
             <View
@@ -257,11 +248,11 @@ export default function AccountsScreen() {
           </View>
         ))}
 
-        {/* CITA info note */}
+        {/* CIT info note */}
         <View style={[styles.citaNote, { backgroundColor: colors.amber + '12', borderColor: colors.amber + '44' }]}>
           <Ionicons name="information-circle-outline" size={16} color={colors.amber} />
           <Text style={[styles.citaNoteText, { color: colors.text }]}>
-            CITA (Company Income Tax Act) is assessed at{' '}
+            CIT (Company Income Tax) is provisioned at{' '}
             <Text style={{ fontWeight: '700' }}>{(citaRate * 100).toFixed(0)}%</Text> of assessable profit
             under the Nigerian Finance Act. The rate can be adjusted in Company Settings.
           </Text>

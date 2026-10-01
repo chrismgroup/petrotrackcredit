@@ -166,6 +166,15 @@ export type COGSDelivery = {
   rec: number;
   costPrice?: number;
   approvalStatus?: string;
+  branchId?: string;
+};
+
+export type COGSSale = {
+  pumpName: string;
+  product: string;
+  liters: number;
+  date?: string;
+  branchId?: string;
 };
 
 const validCost = (value: unknown) =>
@@ -182,12 +191,24 @@ function latestDeliveryFirst(a: COGSDelivery, b: COGSDelivery): number {
 /** Returns the last approved cost price known for a product in the supplied
  * as-of delivery set. Callers should exclude deliveries after the report end
  * date and outside the selected branch before calling this function. */
-export function getLastKnownCostPrice(deliveries: COGSDelivery[], prod: string): number {
-  const latest = deliveries
+export function getLastKnownCostPrice(
+  deliveries: COGSDelivery[],
+  prod: string,
+  branchId?: string,
+  asOfDate?: string,
+): number {
+  const eligible = deliveries
     .filter(d => d.prod === prod
       && validCost(d.costPrice) > 0
-      && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved'))
-    .sort(latestDeliveryFirst)[0];
+      && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved')
+      && (!asOfDate || String(d.dt ?? '').slice(0, 10) <= asOfDate.slice(0, 10)));
+  const branchDeliveries = branchId
+    ? eligible.filter(d => d.branchId === branchId)
+    : eligible;
+  const candidates = branchDeliveries.length > 0
+    ? branchDeliveries
+    : eligible.filter(d => !d.branchId);
+  const latest = candidates.sort(latestDeliveryFirst)[0];
   return validCost(latest?.costPrice);
 }
 
@@ -212,16 +233,14 @@ export function computeCOGS(
  * last-known approved delivery costs as computeCOGS.
  */
 export function computePumpReportCOGS(
-  reports: Array<{ pumpName: string; product: string; liters: number }>,
+  reports: COGSSale[],
   deliveries: COGSDelivery[],
 ): number {
-  return computeCOGS(
-    reports.map(report => ({
-      pump: `${report.pumpName} ${report.product}`,
-      L: report.liters,
-    })),
-    deliveries,
-  );
+  return Math.round(reports.reduce((total, report) => {
+    const volume = Math.max(0, safeNum(report.liters));
+    const cost = getLastKnownCostPrice(deliveries, report.product, report.branchId, report.date);
+    return total + (volume * cost);
+  }, 0));
 }
 
 /** Coerce any value to a finite number, returning `fallback` (default 0) when

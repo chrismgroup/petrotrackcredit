@@ -288,6 +288,23 @@ router.post("/workflows/dips/:id/:decision", async (req, res) => run(req, res, a
   const dips = await state(tx, "dips"); const index = dips.findIndex(d => String(d.id) === req.params.id);
   if (index < 0) return { status: 404, body: { error: "Dip not found" } }; const old = dips[index];
   if (old.status !== "pending" || revision(old) !== cmd.expectedRevision) return { status: 409, body: { error: "Dip is no longer pending or revision is stale" } };
+  if (decision === "approve") {
+    const tankIds = new Set([
+      ...Object.keys(record(old.rd) ? old.rd : {}),
+      ...Object.keys(record(old.lpg) ? old.lpg : {}),
+    ]);
+    const dipDate = String(old.dt ?? "").slice(0, 10);
+    const newerApprovedDip = dips.find(candidate => {
+      if (candidate.status !== "approved" || String(candidate.id) === String(old.id)) return false;
+      if (String(candidate.dt ?? "").slice(0, 10) <= dipDate) return false;
+      return [candidate.rd, candidate.lpg].some(readings =>
+        record(readings) && Object.keys(readings).some(tankId => tankIds.has(tankId))
+      );
+    });
+    if (newerApprovedDip) {
+      return { status: 409, body: { error: "A newer dip is already approved for one or more of these tanks. This backdated dip cannot replace current stock." } };
+    }
+  }
   const dip = { ...old, status: decision === "approve" ? "approved" : "rejected", approvedBy: req.auth!.username, approvedDt: now, workflowRevision: revision(old) + 1 };
   dips[index] = dip; await save(tx, "dips", dips);
   if (decision === "reject") { await audit(tx, "Dip rejected", req.auth!.username, `Dip ${old.id} rejected`, now); return { status: 200, body: { dip } }; }

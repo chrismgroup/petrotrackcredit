@@ -27,7 +27,7 @@ export default function BranchRevenueLogScreen() {
   const scopedBranchId = isGlobal ? null : branchId;
   const scopedRevenueReports = pumpDailyReports.filter(report =>
     isRevenueReportStatus(report.status) &&
-    (!scopedBranchId || report.branchId === scopedBranchId || !report.branchId),
+    (!scopedBranchId || report.branchId === scopedBranchId),
   );
   const num = (value: number) => (Number.isFinite(value) ? value : 0);
 

@@ -1280,6 +1280,24 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
     const dipApproved = await command(md.token, `/workflows/dips/${dipId}/approve`, dipApproveBody);
     assert.equal(dipApproved.status, 200);
     assert.equal((dipApproved.body.dip as JsonRecord).status, "approved");
+    const backdatedDipCreated = await command(manager.token, "/workflows/dips", {
+      dip: {
+        dt: "2026-10-02",
+        rd: { [tankId]: 1_100 },
+        lpg: {},
+        obs: `${marker}-backdated`,
+      },
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-dip-backdated-create`,
+    });
+    assert.equal(backdatedDipCreated.status, 201);
+    const backdatedDipId = String((backdatedDipCreated.body.dip as JsonRecord).id);
+    const backdatedApproval = await command(md.token, `/workflows/dips/${backdatedDipId}/approve`, {
+      expectedRevision: 0,
+      idempotencyKey: `${marker}-dip-backdated-approve`,
+    });
+    assert.equal(backdatedApproval.status, 409);
+    assert.match(String(backdatedApproval.body.error), /newer dip is already approved/i);
     const approvedDipRevision = Number((dipApproved.body.dip as JsonRecord).workflowRevision);
     const dipReplay = await command(md.token, `/workflows/dips/${dipId}/approve`, dipApproveBody);
     assert.equal(dipReplay.status, 200);

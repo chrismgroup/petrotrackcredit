@@ -19,6 +19,10 @@ export function isBranchScopedArrayKey(key: string): boolean {
   return BRANCH_SCOPED_ARRAY_KEYS.has(key);
 }
 
+export function canManageFinancialEntry(role: string | undefined): boolean {
+  return role === "admin" || role === "acc";
+}
+
 export function branchScopedStateForBranchUser(key: string, data: unknown, branchId: string | null): unknown {
   if (BRANCH_PRIVATE_HIDDEN_KEYS.has(key)) return Array.isArray(data) ? [] : {};
   if (!branchId) {
@@ -51,6 +55,22 @@ export function branchPumpMeters(data: unknown, pumps: unknown): Record<string, 
   if (!isJsonRecord(data) || !Array.isArray(pumps)) return {};
   const pumpIds = new Set(pumps.filter(isJsonRecord).map(pump => String(pump.id ?? "")).filter(Boolean));
   return Object.fromEntries(Object.entries(data).filter(([pumpId]) => pumpIds.has(pumpId)));
+}
+
+/** Repairs legacy reports that predate mandatory branch ownership. Reports
+ * whose pump is unknown remain unassigned instead of leaking into each branch. */
+export function inferPumpReportBranches(data: unknown, pumps: unknown): unknown {
+  if (!Array.isArray(data) || !Array.isArray(pumps)) return data;
+  const branchByPump = new Map(
+    pumps.filter(isJsonRecord)
+      .map(pump => [String(pump.id ?? ''), String(pump.branchId ?? '')] as const)
+      .filter(([pumpId, branchId]) => pumpId && branchId),
+  );
+  return data.map(value => {
+    if (!isJsonRecord(value) || value.branchId) return value;
+    const branchId = branchByPump.get(String(value.pumpId ?? ''));
+    return branchId ? { ...value, branchId } : value;
+  });
 }
 
 export function inferDeliveryEvidenceBranches(data: unknown, deliveries: unknown): unknown {

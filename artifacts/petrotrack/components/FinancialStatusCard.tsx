@@ -21,6 +21,12 @@ import { computePumpReportCOGS, getLastKnownCostPrice } from '@/lib/report-helpe
 import { monthlyDepreciationTotal } from '@/lib/asset-depreciation';
 import { calculateNetProfit } from '@/lib/net-profit';
 import { useColors } from '@/hooks/useColors';
+import {
+  cumulativeLoanPrincipalRepaid,
+  getFinancialMonthEntry,
+  type FinancialEntryUpdate,
+  type FinancialMonthEntry,
+} from '@/lib/financial-ledger';
 
 const PROD_COLOR: Record<string, string> = {
   PMS: '#286247', AGO: '#71805B', DPK: '#315F49', LPG: '#174D36', 'Lube Oil': '#365A47',
@@ -44,14 +50,14 @@ function Row({ label, value, color, indent, bold }: {
 
 /* ─── Edit modal for ACC ─── */
 function EditModal({
-  visible, onClose, entry, onSave, canSeedStartupCapital, currentMonthKey,
+  visible, onClose, entry, monthEntry, onSave, canSeedStartupCapital,
 }: {
   visible: boolean;
   onClose: () => void;
   entry: ReturnType<typeof useApp>['financialEntry'];
-  onSave: (updates: Partial<typeof entry>) => void;
+  monthEntry: FinancialMonthEntry;
+  onSave: (updates: FinancialEntryUpdate) => void;
   canSeedStartupCapital: boolean;
-  currentMonthKey: string;
 }) {
   const colors = useColors();
 
@@ -59,12 +65,38 @@ function EditModal({
   const [posValue, setPosValue]               = useState(String(entry.posValue));
   const [goodsOnTransit, setGoodsOnTransit]   = useState(String(entry.goodsOnTransit));
   const [cashInHand, setCashInHand]           = useState(String(entry.cashInHand));
-  const [capitalInjection, setCapitalInjection] = useState(String(entry.capitalInjection ?? 0));
-  const [bankCharges, setBankCharges]         = useState(String(entry.bankCharges ?? 0));
-  const [loanInterest, setLoanInterest]       = useState(String(entry.loanInterest ?? 0));
+  const [capitalInjection, setCapitalInjection] = useState(String(monthEntry.capitalInjection));
+  const [bankCharges, setBankCharges]         = useState(String(monthEntry.bankCharges));
+  const [loanPrincipalRepayment, setLoanPrincipalRepayment] = useState(String(monthEntry.loanPrincipalRepayment));
+  const [loanInterest, setLoanInterest]       = useState(String(monthEntry.loanInterest));
+  const [customerPaymentsReceived, setCustomerPaymentsReceived] = useState(String(monthEntry.customerPaymentsReceived));
+  const [payeProvision, setPayeProvision]       = useState(String(monthEntry.payeProvision));
   const [liabilities, setLiabilities]        = useState(String(entry.liabilities));
-  const [startupCapital, setStartupCapital]   = useState(String(entry.startupCapital ?? 0));
+  const [startupCapital, setStartupCapital]   = useState(String(monthEntry.startupCapital));
   const [loans, setLoans]                     = useState<BankLoan[]>(entry.bankLoans.length ? entry.bankLoans : [{ bank: '', amount: 0 }]);
+  const storedLoansSignature = JSON.stringify(entry.bankLoans);
+
+  useEffect(() => {
+    if (!visible) return;
+    setCashInBank(String(entry.cashInBank));
+    setPosValue(String(entry.posValue));
+    setGoodsOnTransit(String(entry.goodsOnTransit));
+    setCashInHand(String(entry.cashInHand));
+    setCapitalInjection(String(monthEntry.capitalInjection));
+    setBankCharges(String(monthEntry.bankCharges));
+    setLoanPrincipalRepayment(String(monthEntry.loanPrincipalRepayment));
+    setLoanInterest(String(monthEntry.loanInterest));
+    setCustomerPaymentsReceived(String(monthEntry.customerPaymentsReceived));
+    setPayeProvision(String(monthEntry.payeProvision));
+    setLiabilities(String(entry.liabilities));
+    setStartupCapital(String(monthEntry.startupCapital));
+    setLoans(entry.bankLoans.length ? entry.bankLoans : [{ bank: '', amount: 0 }]);
+  }, [
+    entry.cashInBank, entry.cashInHand, entry.goodsOnTransit, entry.liabilities, entry.posValue,
+    monthEntry.bankCharges, monthEntry.capitalInjection, monthEntry.customerPaymentsReceived, monthEntry.loanInterest,
+    monthEntry.payeProvision,
+    monthEntry.loanPrincipalRepayment, monthEntry.startupCapital, storedLoansSignature, visible,
+  ]);
 
   function n(v: string) { return parseFloat(v) || 0; }
 
@@ -80,12 +112,14 @@ function EditModal({
       goodsOnTransit: n(goodsOnTransit), cashInHand: n(cashInHand),
       capitalInjection: Math.max(0, n(capitalInjection)),
       bankCharges: Math.max(0, n(bankCharges)),
+      loanPrincipalRepayment: Math.max(0, n(loanPrincipalRepayment)),
       loanInterest: Math.max(0, n(loanInterest)),
+      customerPaymentsReceived: Math.max(0, n(customerPaymentsReceived)),
+      payeProvision: Math.max(0, n(payeProvision)),
       bankLoans: loans.filter(l => l.bank.trim()),
       liabilities: n(liabilities),
       ...(canSeedStartupCapital ? {
         startupCapital: n(startupCapital),
-        startupCapitalMonth: currentMonthKey,
         startupCapitalSource: 'admin' as const,
       } : {}),
     });
@@ -123,15 +157,19 @@ function EditModal({
           {field('Cash in Hand', cashInHand, setCashInHand)}
           {field('Capital Injected as Loan', capitalInjection, setCapitalInjection)}
           {field('Bank Charges (this month)', bankCharges, setBankCharges)}
+          {field('Loan Principal Repayment (this month)', loanPrincipalRepayment, setLoanPrincipalRepayment)}
           {field('Interest Paid on Loans (this month)', loanInterest, setLoanInterest)}
+          {field('Customer Credit Payments Received (this month)', customerPaymentsReceived, setCustomerPaymentsReceived)}
+          {field('PAYE Payroll Liability (this month)', payeProvision, setPayeProvision)}
+          <Text style={[fStyles.editHint, { color: colors.textMuted }]}>PAYE is stored as a payroll withholding liability and does not reduce profit again.</Text>
           <Text style={[fStyles.editHint, { color: colors.textMuted }]}>
-            These accountant-entered costs are deducted from profit before CITA.
+            Only loan interest is deducted from profit. Principal repayment reduces operating capital and the outstanding loan balance.
           </Text>
           <Text style={[fStyles.editHint, { color: colors.textMuted }]}>
-            This is shown as a funding source in the Operating Capital Waterfall and does not affect monthly profit.
+            Capital injection is shown in the Capital Movement Bridge and does not affect monthly profit.
           </Text>
           <Text style={[fStyles.editHint, { color: colors.textMuted }]}>
-            Accounts Receivable is calculated automatically from credit sales in validated shift reports.
+            Accounts Receivable is approved credit sales less the customer payments recorded above.
           </Text>
           {canSeedStartupCapital && (
             <>
@@ -141,7 +179,7 @@ function EditModal({
               </Text>
             </>
           )}
-          {field('Total Liabilities', liabilities, setLiabilities)}
+          {field('Other Liabilities (excluding loans, CIT and PAYE)', liabilities, setLiabilities)}
 
           <Text style={[fStyles.editSection, { color: colors.text, marginTop: 16 }]}>Bank Loans</Text>
           {loans.map((loan, i) => (
@@ -199,6 +237,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const scopedBranchId = isGlobal ? null : branchId;
   const currentMonthRange = calendarMonthBusinessDateRange();
   const currentMonthKey = currentMonthRange.from.slice(0, 7);
+  const currentMonthEntry = getFinancialMonthEntry(financialEntry, currentMonthKey);
   const inCurrentMonth = (value?: string) => {
     const businessDate = businessDateKey(value);
     return businessDate >= currentMonthRange.from && businessDate <= currentMonthRange.to;
@@ -209,15 +248,10 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     isGlobal || (!!branchId && recordBranchId === branchId);
 
   /* ── last known cost price per product from approved deliveries ── */
-  const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'] as const;
   const cogsDeliveries = deliveries.filter(delivery =>
     businessDateKey(delivery.dt) <= currentMonthRange.to &&
     inFinancialScope(delivery.branchId),
   );
-  const costPerProd: Record<string, number> = {};
-  for (const prod of PRODUCTS) {
-    costPerProd[prod] = getLastKnownCostPrice(cogsDeliveries, prod);
-  }
 
   /* ── stock value per branch per product ── */
   const branchMap: Record<string, string> = {};
@@ -228,12 +262,12 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
 
   for (const t of tanks) {
     const stock = getCurrentTankStock(t, dips);
-    const cost  = costPerProd[t.prod] ?? 0;
+    const cost  = getLastKnownCostPrice(cogsDeliveries, t.prod, t.branchId, currentMonthRange.to);
     stockItems.push({ prod: t.prod, stock, cost, value: stock * cost, branchId: t.branchId ?? 'HQ' });
   }
   for (const lt of lpgTanks) {
     const stock = getCurrentTankStock(lt, dips, 'lpg');
-    const cost  = costPerProd['LPG'] ?? 0;
+    const cost  = getLastKnownCostPrice(cogsDeliveries, 'LPG', lt.branchId, currentMonthRange.to);
     stockItems.push({ prod: 'LPG', stock, cost, value: stock * cost, branchId: lt.branchId ?? 'HQ' });
   }
 
@@ -263,8 +297,10 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const monthExpenses = expenses
     .filter(e => e.status === 'approved' && inCurrentMonth(e.dt) && inFinancialScope(e.branchId))
     .reduce((s, e) => s + e.amt, 0);
-  const bankCharges = Math.max(0, Number(financialEntry.bankCharges) || 0);
-  const loanInterest = Math.max(0, Number(financialEntry.loanInterest) || 0);
+  const bankCharges = currentMonthEntry.bankCharges;
+  const loanPrincipalRepayment = currentMonthEntry.loanPrincipalRepayment;
+  const loanInterest = currentMonthEntry.loanInterest;
+  const totalLoanRepayment = loanPrincipalRepayment + loanInterest;
   const citaRate = parseFloat(companyInfo.citaRate || '30') / 100;
   const monthlyOperatingProfit = monthRevenue - monthCOGS - monthExpenses;
   const monthDepreciation = monthlyDepreciationTotal(companyAssets, currentMonthKey, scopedBranchId);
@@ -312,61 +348,73 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
     .reduce((s, e) => s + e.amt, 0);
   const previousMonthOperatingProfit = previousMonthRevenue - previousMonthCOGS - previousMonthExpenses;
   const previousMonthKey = previousMonthRange.from.slice(0, 7);
+  const previousMonthEntry = getFinancialMonthEntry(financialEntry, previousMonthKey);
   const previousMonthDepreciation = monthlyDepreciationTotal(companyAssets, previousMonthKey, scopedBranchId);
   const { netProfit: previousMonthNetProfit } = calculateNetProfit({
     operatingProfit: previousMonthOperatingProfit,
     depreciation: previousMonthDepreciation,
-    bankCharges,
-    loanInterest,
+    bankCharges: previousMonthEntry.bankCharges,
+    loanInterest: previousMonthEntry.loanInterest,
     citaRate,
   });
 
   /* ── operating capital formula ── */
   const fe = financialEntry;
-  const totalLoans = fe.bankLoans.reduce((s, l) => s + l.amount, 0);
-  const accountsReceivable = calculateAccountsReceivable(pumpDailyReports, scopedBranchId);
-  const isNewMonth = fe.startupCapitalMonth !== currentMonthKey;
-  const startupCapital = isNewMonth
-    ? (fe.closingOperatingCapital ?? fe.startupCapital)
-    : fe.startupCapital;
-  const startupCapitalSource = isNewMonth ? 'rollover' : fe.startupCapitalSource;
-  const operatingCapital = startupCapital + netProfit + fe.capitalInjection;
+  const totalLoanFacilities = fe.bankLoans.reduce((s, l) => s + l.amount, 0);
+  const totalPrincipalRepaid = cumulativeLoanPrincipalRepaid(fe, currentMonthKey);
+  const outstandingLoans = Math.max(0, totalLoanFacilities - totalPrincipalRepaid);
+  const accountsReceivable = calculateAccountsReceivable(
+    pumpDailyReports,
+    scopedBranchId,
+    financialEntry,
+    currentMonthRange.to,
+  );
+  const hasStoredCurrentMonth = Object.prototype.hasOwnProperty.call(fe.months ?? {}, currentMonthKey);
+  const startupCapital = hasStoredCurrentMonth
+    ? currentMonthEntry.startupCapital
+    : (previousMonthEntry.closingOperatingCapital ?? 0);
+  const startupCapitalSource = hasStoredCurrentMonth
+    ? currentMonthEntry.startupCapitalSource
+    : 'rollover';
+  // Interest is already included in net profit, so subtracting principal here
+  // makes the full principal + interest cash repayment reduce capital once.
+  const operatingCapital = startupCapital + netProfit + currentMonthEntry.capitalInjection - loanPrincipalRepayment;
   const isPositive = operatingCapital >= 0;
-  const waterfallRows = [
-    { label: 'Value of Current Stock', amount: stockValue, color: '#286247' },
-    { label: 'Cash in Bank', amount: fe.cashInBank, color: colors.text },
-    { label: 'Value of Goods on Transit', amount: fe.goodsOnTransit, color: colors.text },
-    { label: 'Debts by Customers (Accounts Receivable)', amount: accountsReceivable, color: colors.text },
-    { label: 'Capital Injected as Loan', amount: fe.capitalInjection, color: colors.text },
-    {
-      label: previousMonthNetProfit >= 0 ? 'Previous Month’s Net Profit' : 'Previous Month’s Net Loss',
-      amount: previousMonthNetProfit,
-      color: previousMonthNetProfit >= 0 ? '#1F6848' : '#365A47',
-    },
-  ];
-  let waterfallTotal = 0;
-  const waterfallRowsWithTotals = waterfallRows.map(row => {
-    waterfallTotal += row.amount;
-    return { ...row, runningTotal: waterfallTotal };
-  });
+  const totalAssets = stockValue + fe.cashInBank + fe.posValue + fe.cashInHand
+    + fe.goodsOnTransit + accountsReceivable;
+  const totalLiabilities = outstandingLoans + Math.max(0, fe.liabilities)
+    + monthCita + currentMonthEntry.payeProvision;
+  const netAssets = totalAssets - totalLiabilities;
 
   useEffect(() => {
+    if (!isAcc) return;
     if (
-      fe.startupCapital === startupCapital
-      && fe.startupCapitalMonth === currentMonthKey
-      && fe.startupCapitalSource === startupCapitalSource
-      && fe.closingOperatingCapital === operatingCapital
+      hasStoredCurrentMonth
+      && currentMonthEntry.startupCapital === startupCapital
+      && currentMonthEntry.startupCapitalSource === startupCapitalSource
+      && currentMonthEntry.closingOperatingCapital === operatingCapital
     ) return;
     updateFinancialEntry({
       startupCapital,
-      startupCapitalMonth: currentMonthKey,
       startupCapitalSource,
       closingOperatingCapital: operatingCapital,
-    });
+    }, currentMonthKey);
   }, [
-    currentMonthKey, fe.closingOperatingCapital, fe.startupCapital,
-    fe.startupCapitalMonth, fe.startupCapitalSource, operatingCapital,
-    startupCapital, startupCapitalSource, updateFinancialEntry,
+    currentMonthEntry.closingOperatingCapital, currentMonthEntry.startupCapital,
+    currentMonthEntry.startupCapitalSource, currentMonthKey, hasStoredCurrentMonth,
+    isAcc, operatingCapital, startupCapital, startupCapitalSource, updateFinancialEntry,
+  ]);
+
+  useEffect(() => {
+    if (!isAcc) return;
+    if (previousMonthEntry.finalizedNetProfit !== undefined) return;
+    updateFinancialEntry({
+      finalizedNetProfit: previousMonthNetProfit,
+      finalizedAt: new Date().toISOString(),
+    }, previousMonthKey);
+  }, [
+    isAcc, previousMonthEntry.finalizedNetProfit, previousMonthKey,
+    previousMonthNetProfit, updateFinancialEntry,
   ]);
 
   return (
@@ -422,7 +470,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
           <View style={[fStyles.quickDivider, { backgroundColor: colors.border }]} />
           <View style={fStyles.quickItem}>
             <Text style={[fStyles.quickLabel, { color: colors.textMuted }]}>Bank Loans</Text>
-            <Text style={[fStyles.quickAmt, { color: totalLoans > 0 ? '#365A47' : colors.textMuted }]}>{fmt(totalLoans)}</Text>
+            <Text style={[fStyles.quickAmt, { color: outstandingLoans > 0 ? '#365A47' : colors.textMuted }]}>{fmt(outstandingLoans)}</Text>
           </View>
         </View>
 
@@ -430,27 +478,26 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
         {expanded && (
           <View style={[fStyles.expandBox, { borderTopColor: colors.border }]}>
 
-            {/* Operating capital waterfall */}
-            <Text style={[fStyles.subSection, { color: colors.text }]}>🌊 Operating Capital Waterfall</Text>
+            {/* Balance sheet snapshot */}
+            <Text style={[fStyles.subSection, { color: colors.text }]}>Balance Sheet Snapshot</Text>
             <View style={[fStyles.waterfallBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {waterfallRowsWithTotals.map(row => (
-                <View key={row.label} style={fStyles.waterfallRow}>
-                  <View style={fStyles.waterfallLabelWrap}>
-                    <Text style={[fStyles.waterfallLabel, { color: colors.text }]}>{row.label}</Text>
-                    <Text style={[fStyles.waterfallRunning, { color: colors.textMuted }]}>
-                      Running total: {fmt(row.runningTotal)}
-                    </Text>
-                  </View>
-                  <Text style={[fStyles.waterfallValue, { color: row.color }]}>
-                    {row.amount < 0 ? `− ${fmt(Math.abs(row.amount))}` : `+ ${fmt(row.amount)}`}
-                  </Text>
-                </View>
-              ))}
+              <Row label="Stock" value={fmt(stockValue)} />
+              <Row label="Cash in Bank" value={fmt(fe.cashInBank)} />
+              <Row label="POS Value" value={fmt(fe.posValue)} />
+              <Row label="Cash in Hand" value={fmt(fe.cashInHand)} />
+              <Row label="Goods on Transit" value={fmt(fe.goodsOnTransit)} />
+              <Row label="Accounts Receivable" value={fmt(accountsReceivable)} />
               <View style={[fStyles.waterfallTotal, { borderTopColor: colors.border }]}>
-                <Text style={[fStyles.totalLabel, { color: colors.text }]}>Waterfall Total</Text>
-                <Text style={[fStyles.totalAmt, { color: waterfallTotal >= 0 ? '#1F6848' : '#365A47' }]}>
-                  {fmt(waterfallTotal)}
-                </Text>
+                <Text style={[fStyles.totalLabel, { color: colors.text }]}>Total Assets</Text>
+                <Text style={[fStyles.totalAmt, { color: '#1F6848' }]}>{fmt(totalAssets)}</Text>
+              </View>
+              <Row label="Outstanding Bank Loans" value={fmt(outstandingLoans)} color="#365A47" />
+              <Row label="CIT Payable" value={fmt(monthCita)} color="#365A47" />
+              <Row label="PAYE Payable" value={fmt(currentMonthEntry.payeProvision)} color="#365A47" />
+              <Row label="Other Liabilities" value={fmt(fe.liabilities)} color="#365A47" />
+              <View style={[fStyles.waterfallTotal, { borderTopColor: colors.border }]}>
+                <Text style={[fStyles.totalLabel, { color: colors.text }]}>Net Assets</Text>
+                <Text style={[fStyles.totalAmt, { color: netAssets >= 0 ? '#1F6848' : '#365A47' }]}>{fmt(netAssets)}</Text>
               </View>
             </View>
 
@@ -479,14 +526,16 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
             )}
 
             {/* Formula */}
-            <Text style={[fStyles.subSection, { color: colors.text, marginTop: 14 }]}>🧮 Capital Formula</Text>
+            <Text style={[fStyles.subSection, { color: colors.text, marginTop: 14 }]}>Capital Movement Bridge</Text>
             <Row
               label={`Start-up Capital (${startupCapitalSource === 'admin' ? 'admin seed' : 'rolled over'})`}
               value={fmt(startupCapital)}
               color="#286247"
             />
             <Row label={netProfit >= 0 ? '+ Net Profit (month)' : '- Net Loss (month)'} value={fmt(Math.abs(netProfit))} color={netProfit >= 0 ? '#1F6848' : '#365A47'} />
-            <Row label="+ Capital Injected as Loan" value={fmt(fe.capitalInjection)} color="#286247" />
+            <Row label="+ Capital Injected as Loan" value={fmt(currentMonthEntry.capitalInjection)} color="#286247" />
+            <Row label="− Loan Principal Repaid" value={fmt(loanPrincipalRepayment)} color="#365A47" />
+            <Row label="Total Loans Repayment for the month" value={fmt(totalLoanRepayment)} color="#365A47" />
             <View style={[fStyles.totalRow, { borderTopColor: colors.border, borderTopWidth: 1.5 }]}>
               <Text style={[fStyles.totalLabel, { color: colors.text }]}>= Operating Capital</Text>
               <Text style={[fStyles.totalAmt, { color: isPositive ? '#1F6848' : '#365A47' }]}>{fmt(operatingCapital)}</Text>
@@ -500,7 +549,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
             <Row label="− Monthly Asset Depreciation" value={fmt(monthDepreciation)} color="#365A47" />
             <Row label="− Bank Charges" value={fmt(bankCharges)} color="#365A47" />
             <Row label="− Interest Paid on Loans" value={fmt(loanInterest)} color="#365A47" />
-            <Row label={`− CITA (${(citaRate * 100).toFixed(0)}%)`} value={fmt(monthCita)} color="#71805B" />
+            <Row label={`− CIT (${(citaRate * 100).toFixed(0)}%)`} value={fmt(monthCita)} color="#71805B" />
             <Row label="= Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? '#1F6848' : '#365A47'} bold />
           </View>
         )}
@@ -510,9 +559,9 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
         visible={showEdit}
         onClose={() => setShowEdit(false)}
         entry={financialEntry}
+        monthEntry={currentMonthEntry}
         onSave={updateFinancialEntry}
         canSeedStartupCapital={role === 'admin'}
-        currentMonthKey={currentMonthKey}
       />
     </>
   );
@@ -540,10 +589,7 @@ const fStyles = StyleSheet.create({
   subSection:     { fontSize: 13, fontWeight: '700', marginBottom: 6 },
   waterfallBox:   { borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 12 },
   waterfallRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, gap: 10 },
-  waterfallLabelWrap: { flex: 1, gap: 2 },
   waterfallLabel: { fontSize: 12, fontWeight: '600' },
-  waterfallRunning: { fontSize: 10 },
-  waterfallValue: { fontSize: 12, fontWeight: '700', textAlign: 'right' },
   waterfallTotal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, marginTop: 4, borderTopWidth: 1.5 },
   branchBox:      { borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 6, gap: 4 },
   branchBoxHeader:{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },

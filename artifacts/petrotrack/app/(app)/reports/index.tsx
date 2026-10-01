@@ -13,12 +13,13 @@ import { useColors } from '@/hooks/useColors';
 import {
   ALL_REPORT_TYPES, PERIODS, PROD_COLORS, REPORT_META,
   Period, ReportType,
-  buildPdf, getLastKnownCostPrice, getPerms, matchesProd, nfmt, periodRange,
+  buildPdf, computePumpReportCOGS, getPerms, nfmt, periodRange,
   localDateKey, priBg, priColor, stColor, safeNum, safeStr, isMissingNum,
 } from '@/lib/report-helpers';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { depreciationTotalForDateRange } from '@/lib/asset-depreciation';
 import { calculateNetProfit } from '@/lib/net-profit';
+import { financialCostsForDateRange } from '@/lib/financial-ledger';
 
 /* ═══════════════════════════════════════════════════════════
    EXPORT — iOS-native share sheet (no print dialog)
@@ -168,7 +169,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   const {
     role, userName, branchId,
     isHydrated,
-    expenses, sales, branches, deliveries, prices, priceHistory, priceProposals,
+    expenses, branches, deliveries, prices, priceHistory, priceProposals,
     maintenance, dips, staff, hrEmployees, pumpDailyReports, companyInfo, companyAssets,
     financialEntry,
   } = useApp();
@@ -184,13 +185,6 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   /* Safety guards — also normalise per-entry numeric/string fields so that
      partially-synced records never reach render or export with undefined values
      that would cause .toLocaleString() / arithmetic to throw. */
-  const safeSales = (Array.isArray(sales) ? sales : []).map((s: any) => ({
-    ...s,
-    L:          safeNum(s.L),
-    price:      safeNum(s.price),
-    dt:         safeStr(s.dt, ''),
-    _amtMissing: isMissingNum(s.L) || isMissingNum(s.price),
-  }));
   const safeDeliveries = (Array.isArray(deliveries) ? deliveries : []).map((d: any) => ({
     ...d,
     costPrice: safeNum(d.costPrice),
@@ -335,9 +329,8 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
 
   /* Branch-filtered helpers */
   const fb = (arr: any[]) =>
-    selBranch === null ? arr : arr.filter((x: any) => x.branchId === selBranch || !x.branchId);
+    selBranch === null ? arr : arr.filter((x: any) => x.branchId === selBranch);
 
-  const fSales = useMemo(() => fb(safeSales).filter((s: any)      => s.dt   >= fromStr && s.dt   <= toStr), [safeSales,       selBranch, fromStr, toStr]);
   // Cost prices remain the cost basis for later sales. Include approved,
   // cost-priced deliveries up to the report end date rather than only
   // deliveries inside the sales window.
@@ -353,7 +346,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   const fPumpReports = useMemo(() =>
     safePumpReports.filter((r: any) =>
       r.status === 'approved' &&
-      (selBranch === null || r.branchId === selBranch || !r.branchId) &&
+      (selBranch === null || r.branchId === selBranch) &&
       r.date >= fromStr && r.date <= toStr
     ),
     [safePumpReports, selBranch, fromStr, toStr]
@@ -386,7 +379,6 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   /* Incomplete-record counts: records whose key amount field was absent during
      sync and was coerced to ₦0 by safeNum. Used for in-app badges and PDF footnotes. */
   const incompleteExpCount     = useMemo(() => approved.filter((e: any) => e._amtMissing).length, [approved]);
-  const incompleteSalesCount   = useMemo(() => fSales.filter((s: any) => s._amtMissing).length, [fSales]);
   const incompletePumpCount    = useMemo(() => fPumpReports.filter((r: any) => r._amtMissing).length, [fPumpReports]);
   const incompleteMgrExpCount  = useMemo(() => mgrBranchExps.filter((e: any) => e._amtMissing).length, [mgrBranchExps]);
 
@@ -396,29 +388,27 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   }
   const scaledExp   = Math.round(totalExp);
   const scaledRev   = shiftGross;
-  const scaledSales = Math.round(fSales.reduce((s: number, e: any) => s + safeNum(e.L) * safeNum(e.price), 0));
+  const scaledSales = shiftGross;
   const scaledNet   = scaledRev - scaledExp;
   const margin      = scaledRev > 0 ? Math.round((scaledNet / scaledRev) * 100) : 0;
 
   const allProds = useMemo(() => {
     const set = new Set<string>();
-    cogsDeliveries.forEach((d: any) => {
-      if (typeof d.prod === 'string' && d.prod.trim()) set.add(d.prod);
+    fPumpReports.forEach((report: any) => {
+      if (typeof report.product === 'string' && report.product.trim()) set.add(report.product);
     });
-    const K = ['PMS','AGO','DPK','LPG','Lube Oil','Others'];
-    fSales.forEach((sale: any) => { const m = K.find(p => matchesProd(sale.pump, p)); if (m) set.add(m); });
     const order = ['PMS','AGO','LPG','Lube Oil','Others','DPK'];
     return [...order.filter(p => set.has(p)), ...[...set].filter(p => !order.includes(p))];
-  }, [fSales, cogsDeliveries]);
+  }, [fPumpReports]);
 
   const pnlByProd = useMemo(() => allProds.map(prod => {
-    const pe  = fSales.filter((sale: any) => matchesProd(sale.pump, prod));
-    const vol = pe.reduce((sum: number, e: any) => sum + safeNum(e.L), 0);
-    const rev = pe.reduce((sum: number, e: any) => sum + safeNum(e.L) * safeNum(e.price), 0);
+    const pe  = fPumpReports.filter((report: any) => report.product === prod);
+    const vol = pe.reduce((sum: number, report: any) => sum + safeNum(report.liters), 0);
+    const rev = pe.reduce((sum: number, report: any) => sum + safeNum(report.grossAmount), 0);
     const sr  = Math.round(rev);
     const avg = vol > 0 ? Math.round(rev / vol) : getPriceForProduct(prices, prod, selBranch);
-    const ac  = getLastKnownCostPrice(cogsDeliveries, prod);
-    const cogs = Math.round(ac * vol);
+    const cogs = computePumpReportCOGS(pe, cogsDeliveries);
+    const ac  = vol > 0 ? cogs / vol : 0;
     const gp   = sr - cogs;
     return {
       prod, totalVolumeSold: vol, avgSellPrice: avg,
@@ -431,7 +421,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
        *  product's sales revenue and P&L figures potentially understated. */
       hasIncomplete: pe.some((e: any) => e._amtMissing),
     };
-  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fSales, cogsDeliveries, prices, safePriceHistory]);
+  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fPumpReports, cogsDeliveries, prices, safePriceHistory]);
 
   const totSR   = pnlByProd.reduce((s, p) => s + p.salesRevenue, 0);
   const totCOGS = pnlByProd.reduce((s, p) => s + p.scaledCOGS,  0);
@@ -440,8 +430,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
   const citaRate = parseFloat(safeCompanyInfo.citaRate || '30') / 100;
   const operatingProfit = totGP - scaledExp;
   const depreciation = depreciationTotalForDateRange(companyAssets, fromStr, toStr, selBranch);
-  const bankCharges = Math.max(0, Number(financialEntry.bankCharges) || 0);
-  const loanInterest = Math.max(0, Number(financialEntry.loanInterest) || 0);
+  const { bankCharges, loanInterest } = financialCostsForDateRange(financialEntry, fromStr, toStr);
   const { citaProvision, netProfit: netPnl } = calculateNetProfit({
     operatingProfit,
     depreciation,
@@ -460,9 +449,9 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
 
   const prodSales = ['PMS','AGO','DPK','LPG'].map(prod => {
     const color = PROD_COLORS[prod] || rc;
-    const entries = fSales.filter((sale: any) => matchesProd(sale.pump, prod));
-    const L = entries.reduce((sum: number, e: any) => sum + safeNum(e.L), 0);
-    const rev = entries.reduce((sum: number, e: any) => sum + safeNum(e.L) * safeNum(e.price), 0);
+    const entries = fPumpReports.filter((report: any) => report.product === prod);
+    const L = entries.reduce((sum: number, report: any) => sum + safeNum(report.liters), 0);
+    const rev = entries.reduce((sum: number, report: any) => sum + safeNum(report.grossAmount), 0);
     const price = L > 0 ? Math.round(rev / L) : 0;
     return { prod, color, L, price, scaledL: Math.round(L), scaledRev: Math.round(rev) };
   }).filter(p => p.L > 0);
@@ -474,10 +463,10 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
       const bR  = Math.round(bPR.reduce((s: number, r: any) => s + r.grossAmount, 0));
       const bE  = safeExpenses.filter((e: any) => e.status === 'approved' && e.branchId === b.id && e.dt >= fromStr && e.dt <= toStr);
       const bX  = Math.round(bE.reduce((sum: number, e: any) => sum + e.amt, 0));
-      const bSR = Math.round(safeSales.filter((s: any) => s.branchId === b.id && s.dt >= fromStr && s.dt <= toStr).reduce((sum: number, e: any) => sum + safeNum(e.L) * safeNum(e.price), 0));
+      const bSR = bR;
       return { id: b.id, name: b.name, rev: bR, exp: bX, salesRev: bSR, net: bR - bX };
     });
-  }, [safeBranches, safePumpReports, safeSales, safeExpenses, selBranch, fromStr, toStr]);
+  }, [safeBranches, safePumpReports, safeExpenses, selBranch, fromStr, toStr]);
 
   const maintOpen   = safeMaintenance.filter((m: any) => m.st === 'Open').length;
   const maintDone   = safeMaintenance.filter((m: any) => m.st === 'Done').length;
@@ -502,7 +491,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
       const common = { branchName, generatedAt, generatedBy: userName, period: `${period} · ${periodStr}` };
       let html = '';
       if (reportType === 'summary') {
-        const summaryIncomplete = incompleteExpCount + incompleteSalesCount + incompletePumpCount;
+        const summaryIncomplete = incompleteExpCount + incompletePumpCount;
         html = buildPdf({ ...common, title: 'Summary Report',
         sections: [
           { heading: 'Financial Overview', rows: [
@@ -519,7 +508,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
         footnote: buildIncompleteFootnote(summaryIncomplete),
         });
       } else if (reportType === 'pnl') {
-        const pnlIncomplete = incompleteExpCount + incompleteSalesCount + incompletePumpCount;
+        const pnlIncomplete = incompleteExpCount + incompletePumpCount;
         html = buildPdf({ ...common, title: 'P&L Report',
         sections: [{ heading: 'P&L Summary', rows: [
           { label: 'Sales Revenue',       value: nfmt(totSR)    },
@@ -668,7 +657,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
           { heading: 'Product P&L', headers: ['Product','Volume','Revenue','COGS','Gross Profit','Margin'],
             rows: pnlByProd.map(p => [p.prod, p.totalVolumeSold.toLocaleString(), nfmt(p.salesRevenue), nfmt(p.scaledCOGS), nfmt(p.grossProfit), p.grossMargin !== null ? `${p.grossMargin}%` : '—']) },
         ],
-        footnote: buildIncompleteFootnote(incompleteExpCount + incompleteSalesCount + incompletePumpCount),
+        footnote: buildIncompleteFootnote(incompleteExpCount + incompletePumpCount),
         });
       }
       await shareAsPdf(html, meta.label);
@@ -1210,7 +1199,7 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
             { label: 'Sales Revenue', value: totSR },
             { label: 'Cost of Goods', value: totCOGS },
             { label: 'Gross Profit',  value: totGP  },
-            { label: 'CITA',          value: citaProvision },
+            { label: 'CIT',           value: citaProvision },
           ].map(it => (
             <View key={it.label} style={{ flex: 1, alignItems: 'center' }}>
               <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9, marginBottom: 3 }}>{it.label}</Text>
@@ -1291,14 +1280,14 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
           <Text style={{ fontSize: 14, fontWeight: '800', color: '#365A47' }}>{fmt(loanInterest)}</Text>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>CITA ({(citaRate * 100).toFixed(0)}%)</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>CIT ({(citaRate * 100).toFixed(0)}%)</Text>
           <Text style={{ fontSize: 14, fontWeight: '800', color: '#71805B' }}>{fmt(citaProvision)}</Text>
         </View>
       </View>
       <View style={[s.plFinal, { backgroundColor: netPnl >= 0 ? '#E5F1E9' : '#E9F0EB', borderColor: netPnl >= 0 ? '#1F684833' : '#365A4733' }]}>
         <View style={s.plFinalCopy}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: netPnl >= 0 ? '#1F6848' : '#365A47' }}>{netPnl >= 0 ? 'Net Profit' : 'Net Loss'}</Text>
-          <Text style={{ fontSize: 10, marginTop: 3, color: netPnl >= 0 ? '#3a6e1c' : '#aa2222' }}>Gross Profit − Expenses − Depreciation − Finance Costs − CITA</Text>
+          <Text style={{ fontSize: 10, marginTop: 3, color: netPnl >= 0 ? '#3a6e1c' : '#aa2222' }}>Gross Profit − Expenses − Depreciation − Finance Costs − CIT</Text>
         </View>
         <Text style={[s.plFinalValue, { color: netPnl >= 0 ? '#1F6848' : '#365A47' }]}>{fmt(netPnl)}</Text>
       </View>

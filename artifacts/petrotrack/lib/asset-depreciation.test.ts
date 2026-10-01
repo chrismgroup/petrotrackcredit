@@ -46,6 +46,10 @@ describe('asset depreciation', () => {
     expect(depreciationTotalForDateRange([asset], '2026-01-01', '2026-03-31')).toBe(60_000);
   });
 
+  it('prorates depreciation for a partial month', () => {
+    expect(depreciationTotalForDateRange([asset], '2026-01-01', '2026-01-15')).toBeCloseTo(20_000 * 15 / 31);
+  });
+
   it('keeps server records exact while retaining locally registered new IDs during an update', () => {
     const serverAsset = { ...asset, name: 'Server-authoritative name', notes: 'Keep exact formatting.' };
     const staleLocalCopy = { ...asset, name: 'Stale local name' };

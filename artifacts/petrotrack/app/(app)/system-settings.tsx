@@ -566,13 +566,7 @@ export default function SystemSettingsScreen() {
                   </View>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Financial Settings</Text>
                 </View>
-                <FieldInput colors={colors} editable={isAdmin} label="VAT Rate (%)"
-                  value={cDraft.vatRate}
-                  onChangeText={v => patchDraft({ vatRate: v })}
-                  placeholder="7.5"
-                  keyboardType="decimal-pad"
-                />
-                <FieldInput colors={colors} editable={isAdmin} label="CITA Rate (%)"
+                <FieldInput colors={colors} editable={isAdmin} label="CIT Rate (%)"
                   value={cDraft.citaRate}
                   onChangeText={v => patchDraft({ citaRate: v })}
                   placeholder="30"
