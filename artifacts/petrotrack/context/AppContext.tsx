@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { Alert, AppState } from 'react-native';
 import {
   stateApi, versionApi, usersApi, notificationsApi, sendOperationalNotification, maintenanceApi, realtimeApi, workflowApi,
-  AppNotification, StaffUserRecord, apiLogin, saveToken, clearToken,
+  AppNotification, StaffUserRecord, apiLogin, authApi, saveToken, clearToken,
   enqueueShiftReportOutbox, loadShiftReportOutbox, removeShiftReportOutbox,
   SHIFT_REPORT_OUTBOX_STORAGE_KEY,
   type ShiftReportOutboxItem,
@@ -12,6 +12,7 @@ import {
 import { mergeWorkflowRecords } from '@/lib/workflow-record-merge';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { startForegroundTimer } from '@/lib/foreground-timer';
+import { LAST_SIGNED_IN_USERNAME_STORAGE_KEY } from '@/lib/device-identity';
 import {
   isMissingNum,
   safeNum,
@@ -2758,7 +2759,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRole(r); setUserName(n); setAccountUsername(username ?? '');
     setBranchId(bid ?? null); setStaffId(sid ?? null);
     setIsServerAuthenticated(true);
-    await AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null, username: username ?? null }));
+    await Promise.all([
+      AsyncStorage.setItem('auth', JSON.stringify({ r, n, sid: sid ?? null, bid: bid ?? null, username: username ?? null })),
+      username?.trim()
+        ? AsyncStorage.setItem(LAST_SIGNED_IN_USERNAME_STORAGE_KEY, username.trim())
+        : Promise.resolve(),
+    ]);
     return true;
   }, [syncFromServer]);
 
@@ -3831,14 +3837,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [branches]);
 
   const changeOwnPassword = useCallback(async (currentPassword: string, newPassword: string): Promise<boolean> => {
-    const acc = userAccounts.find(a => a.username === userName);
-    if (!acc) return false;
-    // API responses never include passwords — skip local check, server validates on next login
-    // Send plaintext; server hashes via ensureHashed
-    await usersApi.update(acc.id, { password: newPassword });
+    // The server identifies the account from the JWT and verifies the current
+    // password before accepting a replacement. Never rely on client-side
+    // account data for this security-sensitive operation.
+    const result = await authApi.changeOwnPassword(currentPassword, newPassword);
+    if (!result?.ok) return false;
     setAudit(a => [{ id: genId(), action: 'Password changed', user: userName, detail: `${userName} changed their own password`, ts: nowTs() }, ...a]);
     return true;
-  }, [userAccounts, userName]);
+  }, [userName]);
 
   const enrollStaff = useCallback(async (acc: { empName: string; jobTitle?: string; dept?: string; branchId?: string; phoneNumber?: string; nin?: string; staffAddress?: string; guarantorName?: string; guarantorPhone?: string; guarantorAddress?: string; employmentDocs?: string[] }, by: string, initialStatus: AccountStatus = 'pending_md') => {
     const empId = generateEmpId(userAccounts);

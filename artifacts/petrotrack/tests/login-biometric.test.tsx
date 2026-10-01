@@ -13,6 +13,7 @@ const mockAuthenticate = jest.fn();
 const mockGetItem = jest.fn();
 const mockSetItem = jest.fn();
 const mockDeleteItem = jest.fn();
+const mockAsyncStorageGetItem = jest.fn();
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -55,6 +56,11 @@ jest.mock('expo-secure-store', () => ({
   getItemAsync: (...args: unknown[]) => mockGetItem(...args),
   setItemAsync: (...args: unknown[]) => mockSetItem(...args),
   deleteItemAsync: (...args: unknown[]) => mockDeleteItem(...args),
+}));
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: { getItem: (...args: unknown[]) => mockAsyncStorageGetItem(...args) },
 }));
 
 jest.mock('@/context/AppContext', () => ({
@@ -126,6 +132,7 @@ beforeEach(() => {
   mockGetItem.mockResolvedValue(credentials);
   mockSetItem.mockResolvedValue(undefined);
   mockDeleteItem.mockResolvedValue(undefined);
+  mockAsyncStorageGetItem.mockResolvedValue(null);
   mockLogin.mockResolvedValue(true);
 });
 
@@ -218,5 +225,14 @@ it.each(['ios', 'android'] as const)('falls back to password sign-in if capabili
 
   expect(renderer.root.findAllByProps({ testID: 'login-biometric' })).toHaveLength(0);
   expect(renderer.root.findByProps({ testID: 'login-submit' })).toBeTruthy();
+  act(() => renderer.unmount());
+});
+
+it('prefills the username saved on this device', async () => {
+  mockAsyncStorageGetItem.mockResolvedValue('  saved.operator  ');
+  const renderer = await renderScreen('android');
+
+  expect(mockAsyncStorageGetItem).toHaveBeenCalledWith('pt_last_signed_in_username');
+  expect(renderer.root.findByProps({ testID: 'login-username' }).props.value).toBe('saved.operator');
   act(() => renderer.unmount());
 });

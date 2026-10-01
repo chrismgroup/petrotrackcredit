@@ -70,6 +70,30 @@ test("HR shares full user lifecycle control with Admin", {
     assert.equal(login.status, 200);
     const token = String(login.body.token);
 
+    const changedPassword = `${password}-changed`;
+    const rejectedPasswordChange = await request("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword: "not-the-password", newPassword: changedPassword }),
+    }, token);
+    assert.equal(rejectedPasswordChange.status, 401);
+
+    const passwordChange = await request("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword: password, newPassword: changedPassword }),
+    }, token);
+    assert.equal(passwordChange.status, 200);
+
+    const oldPasswordLogin = await request("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username: hrUsername, password }),
+    });
+    assert.equal(oldPasswordLogin.status, 401);
+    const updatedPasswordLogin = await request("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username: hrUsername, password: changedPassword }),
+    });
+    assert.equal(updatedPasswordLogin.status, 200);
+
     const created = await request("/users", {
       method: "POST",
       body: JSON.stringify({

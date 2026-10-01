@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Redirect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Alert, Image, Platform, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
@@ -13,6 +14,7 @@ import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { type LoginError, apiLogin } from '@/lib/api';
 import { clearCredentials, isBiometricDisabled, loadCredentials, saveCredentials, setBiometricEnabled } from '@/lib/biometric-auth';
+import { LAST_SIGNED_IN_USERNAME_STORAGE_KEY } from '@/lib/device-identity';
 
 const BG_DARK = '#071910';
 const BG_MID  = '#0D2E1A';
@@ -40,6 +42,17 @@ export default function LoginScreen() {
   useEffect(() => {
     if (role) router.replace('/(app)/home');
   }, [role]);
+
+  // Keep the account identifier convenient on this device, independently of
+  // the session. The password and token are never stored here.
+  useEffect(() => {
+    AsyncStorage.getItem(LAST_SIGNED_IN_USERNAME_STORAGE_KEY)
+      .then(savedUsername => {
+        const value = savedUsername?.trim();
+        if (value) setUsername(current => current || value);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     (async () => {

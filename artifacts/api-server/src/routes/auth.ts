@@ -4,6 +4,7 @@ import { Router, type IRouter } from "express";
 import jwt from "jsonwebtoken";
 
 import { db, appStateTable, staffUsersTable } from "@workspace/db";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
@@ -36,6 +37,48 @@ function serverHash(plaintext: string): string {
   const hash = createHash("sha256").update(salt + plaintext).digest("hex");
   return `sha256:${salt}:${hash}`;
 }
+
+/**
+ * Self-service password changes are bound to the subject in the JWT.  This is
+ * intentionally separate from the admin/HR user-management endpoint.
+ */
+router.post("/auth/change-password", requireAuth, async (req, res): Promise<void> => {
+  const { currentPassword, newPassword } = req.body ?? {};
+  if (typeof currentPassword !== "string" || typeof newPassword !== "string") {
+    res.status(400).json({ error: "currentPassword and newPassword are required" });
+    return;
+  }
+
+  const current = currentPassword.trim();
+  const next = newPassword.trim();
+  if (!current || !next) {
+    res.status(400).json({ error: "currentPassword and newPassword are required" });
+    return;
+  }
+  if (next.length < 6) {
+    res.status(400).json({ error: "New password must be at least 6 characters" });
+    return;
+  }
+  if (current === next) {
+    res.status(400).json({ error: "New password must be different from the current password" });
+    return;
+  }
+
+  const [user] = await db
+    .select()
+    .from(staffUsersTable)
+    .where(eq(staffUsersTable.username, req.auth!.username));
+  if (!user || user.status !== "active" || !verifyStoredPassword(current, user.password)) {
+    res.status(401).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+  await db
+    .update(staffUsersTable)
+    .set({ password: serverHash(next) })
+    .where(eq(staffUsersTable.id, user.id));
+  res.json({ ok: true });
+});
 
 router.post("/auth/login", async (req, res): Promise<void> => {
   if (!JWT_SECRET) {

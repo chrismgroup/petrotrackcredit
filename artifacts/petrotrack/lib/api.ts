@@ -229,6 +229,12 @@ export async function apiLogin(username: string, password: string): Promise<Logi
   }
 }
 
+export const authApi = {
+  /** Changes the password for the account identified by the current JWT. */
+  changeOwnPassword: (currentPassword: string, newPassword: string) =>
+    post<{ ok: true }>('/auth/change-password', { currentPassword, newPassword }),
+};
+
 export const stateApi = {
   getAll: () => get<Record<string, unknown>>('/state'),
   get: <T>(key: string) => get<T>(`/state/${key}`),
