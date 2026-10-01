@@ -10,7 +10,7 @@ import { AppliedDateField } from '@/components/AppliedDateField';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
-import { Budget, Expense, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
+import { Budget, Expense, ROLE_COLORS, businessDateKey, fmt, fmtDateTime, isRevenueReportStatus, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
 import { workflowApi } from '@/lib/api';
@@ -107,7 +107,7 @@ function FormSheet({ f, setF, roleColor, approvedBudgets, branchNames }: FormShe
 
 export default function ExpensesScreen() {
   const {
-    role, userName, branchId, expenses, sales, budgets, branches,
+    role, userName, branchId, expenses, pumpDailyReports, budgets, branches,
     refreshFinanceState: refreshFinanceStateFromContext,
     addExpense, updateExpenseConfirmed, deleteExpense,
     forwardExpenseToMDConfirmed, approveExpenseConfirmed, rejectExpenseConfirmed,
@@ -144,7 +144,9 @@ export default function ExpensesScreen() {
   const reviewingExpenseIdsRef = useRef<Set<number>>(new Set());
 
   const today = localDateKey();
-  const todaySalesRev    = sales.filter(s => s.dt.startsWith(today)).reduce((s, x) => s + safeNum(x.L) * safeNum(x.price), 0);
+  const todaySalesRev    = (pumpDailyReports ?? [])
+    .filter(report => isRevenueReportStatus(report.status) && businessDateKey(report.date) === today)
+    .reduce((sum, report) => sum + safeNum(report.grossAmount), 0);
   const todayApprovedExp = expenses.filter(e => e.status === 'approved' && e.dt.startsWith(today)).reduce((s, e) => s + e.amt, 0);
   const todayNet = todaySalesRev - todayApprovedExp;
 
@@ -372,7 +374,7 @@ export default function ExpensesScreen() {
       {/* Net balance banner */}
       <View style={[styles.netBanner, { backgroundColor: todayNet >= 0 ? colors.successBg : colors.errorBg, borderColor: todayNet >= 0 ? colors.successBorder : colors.errorBorder }]}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.netLabel, { color: colors.textMuted }]}>Today's Net Balance</Text>
+          <Text style={[styles.netLabel, { color: colors.textMuted }]}>Revenue Less Approved Expenses</Text>
           <Text style={[styles.netValue, { color: todayNet >= 0 ? colors.success : colors.error }]}>{fmt(todayNet)}</Text>
           <Text style={[styles.netSub, { color: colors.textSubtle }]}>{'Sales '}{fmt(todaySalesRev)}{' − Expenses '}{fmt(todayApprovedExp)}</Text>
         </View>

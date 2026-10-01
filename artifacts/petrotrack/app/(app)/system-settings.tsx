@@ -286,7 +286,7 @@ export default function SystemSettingsScreen() {
   const [lpgEdits,  setLpgEdits]  = useState<Record<string, { name: string; cap: string; branchId: string }>>({});
   const [pumpEdits, setPumpEdits] = useState<Record<string, { name: string; prod: Pump['prod']; active: boolean; branchId: string; openingMeter: string; lpgCategory: 'single' | 'distributor' | '' }>>({});
   const [staffEdits,setStaffEdits]= useState<Record<number, { name: string; email: string; branchId: string }>>({});
-  const [startupEdits, setStartupEdits] = useState<Record<string, string>>({});
+  const [startupEdits, setStartupEdits] = useState<Record<string, { quantity: string; unitCost: string }>>({});
 
   /* ── new-item forms ── */
   const [showNewTank,  setShowNewTank]  = useState(false);
@@ -298,7 +298,7 @@ export default function SystemSettingsScreen() {
   const [newLpg,   setNewLpg]   = useState(BLANK_LPG);
   const [newPump,  setNewPump]  = useState(BLANK_PUMP);
   const [newStaff, setNewStaff] = useState(BLANK_STAFF);
-  const [newStartup, setNewStartup] = useState<{ product: StockProduct; quantity: string; branchId: string }>({ product: 'PMS', quantity: '', branchId: '' });
+  const [newStartup, setNewStartup] = useState<{ product: StockProduct; quantity: string; unitCost: string; branchId: string }>({ product: 'PMS', quantity: '', unitCost: '', branchId: '' });
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -324,8 +324,8 @@ export default function SystemSettingsScreen() {
     setStaffEdits(se);
   }, [staff]);
   useEffect(() => {
-    const edits: Record<string, string> = {};
-    for (const stock of startupStocks) edits[stock.id] = String(stock.quantity);
+    const edits: Record<string, { quantity: string; unitCost: string }> = {};
+    for (const stock of startupStocks) edits[stock.id] = { quantity: String(stock.quantity), unitCost: String(stock.unitCost ?? '') };
     setStartupEdits(edits);
   }, [startupStocks]);
 
@@ -369,12 +369,18 @@ export default function SystemSettingsScreen() {
   }
 
   function saveStartupStock(id: string) {
-    const quantity = parseFloat((startupEdits[id] ?? '').replace(/,/g, ''));
+    const edit = startupEdits[id];
+    const quantity = parseFloat((edit?.quantity ?? '').replace(/,/g, ''));
+    const unitCost = parseFloat((edit?.unitCost ?? '').replace(/,/g, ''));
     if (!Number.isFinite(quantity) || quantity < 0) {
       Alert.alert('Error', 'Start-up stock must be a valid quantity of 0 or more.');
       return;
     }
-    updateStartupStock(id, quantity);
+    if (!Number.isFinite(unitCost) || unitCost <= 0) {
+      Alert.alert('Error', 'Opening unit cost must be greater than 0 so inventory and COGS can be valued.');
+      return;
+    }
+    updateStartupStock(id, { quantity, unitCost });
     Alert.alert('Updated', 'Start-up stock updated and remains locked for non-admin users.');
   }
 
@@ -412,8 +418,13 @@ export default function SystemSettingsScreen() {
 
   function createStartupStock() {
     const quantity = parseFloat(newStartup.quantity.replace(/,/g, ''));
+    const unitCost = parseFloat(newStartup.unitCost.replace(/,/g, ''));
     if (!Number.isFinite(quantity) || quantity < 0) {
       Alert.alert('Error', 'Start-up stock must be a valid quantity of 0 or more.');
+      return;
+    }
+    if (!Number.isFinite(unitCost) || unitCost <= 0) {
+      Alert.alert('Error', 'Opening unit cost must be greater than 0.');
       return;
     }
     if (!newStartup.branchId) {
@@ -424,8 +435,8 @@ export default function SystemSettingsScreen() {
       Alert.alert('Already set', `${newStartup.product} already has start-up stock for this branch. Edit the existing locked record instead.`);
       return;
     }
-    addStartupStock({ product: newStartup.product, quantity, branchId: newStartup.branchId });
-    setNewStartup({ product: 'PMS', quantity: '', branchId: '' });
+    addStartupStock({ product: newStartup.product, quantity, unitCost, branchId: newStartup.branchId });
+    setNewStartup({ product: 'PMS', quantity: '', unitCost: '', branchId: '' });
     setShowNewStartup(false);
     Alert.alert('Start-up stock set', 'The branch opening quantity is now locked for non-admin users and will be used in the Home Stock Snapshot.');
   }
@@ -916,9 +927,18 @@ export default function SystemSettingsScreen() {
                       colors={colors}
                       editable={isAdmin}
                       label={`Start-up quantity (${stock.product === 'LPG' ? 'kg' : 'L'})`}
-                      value={startupEdits[stock.id] ?? String(stock.quantity)}
-                      onChangeText={value => setStartupEdits(prev => ({ ...prev, [stock.id]: value }))}
+                      value={startupEdits[stock.id]?.quantity ?? String(stock.quantity)}
+                      onChangeText={value => setStartupEdits(prev => ({ ...prev, [stock.id]: { quantity: value, unitCost: prev[stock.id]?.unitCost ?? String(stock.unitCost ?? '') } }))}
                       keyboardType="decimal-pad"
+                    />
+                    <FieldInput
+                      colors={colors}
+                      editable={isAdmin}
+                      label={`Opening unit cost (₦/${stock.product === 'LPG' ? 'kg' : 'L'})`}
+                      value={startupEdits[stock.id]?.unitCost ?? String(stock.unitCost ?? '')}
+                      onChangeText={value => setStartupEdits(prev => ({ ...prev, [stock.id]: { quantity: prev[stock.id]?.quantity ?? String(stock.quantity), unitCost: value } }))}
+                      keyboardType="decimal-pad"
+                      placeholder="Required for COGS"
                     />
                     {isAdmin && (
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
@@ -953,7 +973,7 @@ export default function SystemSettingsScreen() {
                       <Ionicons name="add" size={16} color={roleColor} />
                     </View>
                     <Text style={[styles.cardTitle, { color: colors.text }]}>New start-up stock</Text>
-                    <TouchableOpacity onPress={() => { setShowNewStartup(false); setNewStartup({ product: 'PMS', quantity: '', branchId: '' }); }}>
+                    <TouchableOpacity onPress={() => { setShowNewStartup(false); setNewStartup({ product: 'PMS', quantity: '', unitCost: '', branchId: '' }); }}>
                       <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
@@ -965,6 +985,14 @@ export default function SystemSettingsScreen() {
                     onChangeText={value => setNewStartup(prev => ({ ...prev, quantity: value }))}
                     keyboardType="decimal-pad"
                     placeholder={newStartup.product === 'LPG' ? 'e.g. 5000' : 'e.g. 25000'}
+                  />
+                  <FieldInput
+                    colors={colors}
+                    label={`Opening unit cost (₦/${newStartup.product === 'LPG' ? 'kg' : 'L'}) *`}
+                    value={newStartup.unitCost}
+                    onChangeText={value => setNewStartup(prev => ({ ...prev, unitCost: value }))}
+                    keyboardType="decimal-pad"
+                    placeholder="e.g. 780"
                   />
                   <View style={{ marginBottom: 10 }}>
                     <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Branch Assignment *</Text>

@@ -35,6 +35,8 @@ test("branch users receive only records from their assigned branch", () => {
     { id: "legacy-without-branch" },
   ];
   assert.deepEqual(branchScopedStateForBranchUser("sales", records, "B1"), [records[0]]);
+  assert.deepEqual(branchScopedStateForBranchUser("creditCustomers", records, "B1"), [records[0]]);
+  assert.deepEqual(branchScopedStateForBranchUser("customerPayments", records, "B1"), [records[0]]);
   assert.deepEqual(branchScopedStateForBranchUser("sales", records, null), []);
   assert.deepEqual(branchScopedStateForBranchUser("branches", [
     { id: "B1", name: "One" },

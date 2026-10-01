@@ -10,7 +10,7 @@ import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollV
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { getPriceForProduct, PriceProduct, PriceProposal, ROLE_COLORS, fmt, fmtDateTime, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { safeNum, safeStr } from '@/lib/report-helpers';
+import { getLastKnownCostPrice, safeNum, safeStr } from '@/lib/report-helpers';
 
 const PRODUCTS: PriceProduct[] = ['PMS', 'AGO', 'DPK', 'LPG_Single', 'LPG_Distributor', 'Lube Oil'];
 
@@ -40,20 +40,21 @@ function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () =
 export default function PricesScreen() {
   const {
     role, userName, branchId, branches,
-    prices, priceHistory, priceProposals, deliveries,
+    prices, priceHistory, priceProposals, deliveries, startupStocks,
     updatePriceConfirmed, addPriceProposalConfirmed,
     approvePriceProposalConfirmed, updateAndApprovePriceProposalConfirmed, rejectPriceProposal,
   } = useApp();
 
   // Last approved delivery cost price per product — gives MD market context
   function lastCostPrice(prod: string): number | null {
-    const approved = deliveries
-      .filter(d => d.prod === prod
-        && Boolean(branchId && d.branchId === branchId)
-        && (d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved')
-        && d.costPrice)
-      .sort((a, b) => safeNum(b.id) - safeNum(a.id));
-    return safeNum(approved[0]?.costPrice) || null;
+    const deliveryProduct = prod.startsWith('LPG_') ? 'LPG' : prod;
+    return getLastKnownCostPrice(
+      deliveries,
+      deliveryProduct,
+      branchId ?? undefined,
+      new Date().toISOString().slice(0, 10),
+      startupStocks,
+    ) || null;
   }
   const colors = useColors();
   const rc = ROLE_COLORS[role || 'md'] || colors.primary;

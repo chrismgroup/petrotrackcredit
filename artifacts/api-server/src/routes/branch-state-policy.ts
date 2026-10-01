@@ -9,6 +9,7 @@ const BRANCH_SCOPED_ARRAY_KEYS = new Set([
   "maintenance", "inventoryLog", "stockLogs", "startupStocks", "companyAssets",
   "priceHistory", "priceProposals", "budgets", "shiftReports", "deliveryEvidences",
   "staff", "userAccounts", "hrEmployees",
+  "creditCustomers", "customerPayments",
 ]);
 
 const BRANCH_PRIVATE_HIDDEN_KEYS = new Set([

@@ -1,5 +1,8 @@
 import {
   cumulativeCustomerPaymentsReceived,
+  cumulativeBranchCustomerPaymentsReceived,
+  cumulativeCitaPayable,
+  cumulativePayePayable,
   cumulativeLoanPrincipalRepaid,
   financialEntriesInRange,
   financialCostsForDateRange,
@@ -75,5 +78,25 @@ describe('monthly financial ledger', () => {
       bankCharges: 7_000,
       loanInterest: 14_000,
     });
+  });
+
+  it('persists branch payments and carries tax liabilities until settlement', () => {
+    const ledger = normaliseFinancialEntry({
+      months: {
+        '2026-09': {
+          customerPaymentsByBranch: { A: 200_000, B: 100_000 },
+          citaProvision: 900_000,
+          citaPaid: 250_000,
+          payeProvision: 80_000,
+          payeRemitted: 30_000,
+        },
+        '2026-10': { citaPaid: 100_000, payeRemitted: 20_000 },
+      },
+    });
+
+    expect(cumulativeCustomerPaymentsReceived(ledger, '2026-09')).toBe(300_000);
+    expect(cumulativeBranchCustomerPaymentsReceived(ledger, 'A', '2026-09')).toBe(200_000);
+    expect(cumulativeCitaPayable(ledger, '2026-10')).toBe(550_000);
+    expect(cumulativePayePayable(ledger, '2026-10')).toBe(30_000);
   });
 });

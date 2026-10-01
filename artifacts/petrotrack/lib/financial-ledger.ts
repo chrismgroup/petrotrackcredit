@@ -9,7 +9,11 @@ export interface FinancialMonthEntry {
   loanPrincipalRepayment: number;
   loanInterest: number;
   customerPaymentsReceived: number;
+  customerPaymentsByBranch: Record<string, number>;
   payeProvision: number;
+  payeRemitted: number;
+  citaProvision: number;
+  citaPaid: number;
   startupCapital: number;
   startupCapitalSource: 'admin' | 'rollover';
   closingOperatingCapital?: number;
@@ -20,7 +24,7 @@ export interface FinancialMonthEntry {
 }
 
 export interface FinancialEntry {
-  schemaVersion: 3;
+  schemaVersion: 4;
   cashInBank: number;
   posValue: number;
   goodsOnTransit: number;
@@ -67,7 +71,11 @@ export function emptyFinancialMonthEntry(overrides: Partial<FinancialMonthEntry>
     loanPrincipalRepayment: 0,
     loanInterest: 0,
     customerPaymentsReceived: 0,
+    customerPaymentsByBranch: {},
     payeProvision: 0,
+    payeRemitted: 0,
+    citaProvision: 0,
+    citaPaid: 0,
     startupCapital: 0,
     startupCapitalSource: 'rollover',
     updatedBy: '',
@@ -80,13 +88,25 @@ function normaliseMonthEntry(value: unknown): FinancialMonthEntry {
   const incoming = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Partial<FinancialMonthEntry>
     : {};
+  const rawBranchPayments = incoming.customerPaymentsByBranch && typeof incoming.customerPaymentsByBranch === 'object'
+    ? incoming.customerPaymentsByBranch
+    : {};
+  const customerPaymentsByBranch = Object.fromEntries(
+    Object.entries(rawBranchPayments)
+      .map(([branchId, amount]) => [branchId, nonNegative(amount)])
+      .filter(([branchId]) => Boolean(branchId)),
+  );
   return emptyFinancialMonthEntry({
     capitalInjection: nonNegative(incoming.capitalInjection),
     bankCharges: nonNegative(incoming.bankCharges),
     loanPrincipalRepayment: nonNegative(incoming.loanPrincipalRepayment),
     loanInterest: nonNegative(incoming.loanInterest),
     customerPaymentsReceived: nonNegative(incoming.customerPaymentsReceived),
+    customerPaymentsByBranch,
     payeProvision: nonNegative(incoming.payeProvision),
+    payeRemitted: nonNegative(incoming.payeRemitted),
+    citaProvision: nonNegative(incoming.citaProvision),
+    citaPaid: nonNegative(incoming.citaPaid),
     startupCapital: finite(incoming.startupCapital),
     startupCapitalSource: incoming.startupCapitalSource === 'admin' ? 'admin' : 'rollover',
     ...(Number.isFinite(Number(incoming.closingOperatingCapital))
@@ -104,7 +124,7 @@ function normaliseMonthEntry(value: unknown): FinancialMonthEntry {
 }
 
 export const EMPTY_FINANCIAL_ENTRY: FinancialEntry = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   cashInBank: 0,
   posValue: 0,
   goodsOnTransit: 0,
@@ -171,7 +191,7 @@ export function normaliseFinancialEntry(value: unknown, now = new Date()): Finan
 
   return {
     ...EMPTY_FINANCIAL_ENTRY,
-    schemaVersion: 3,
+    schemaVersion: 4,
     cashInBank: finite(incoming.cashInBank),
     posValue: finite(incoming.posValue),
     goodsOnTransit: finite(incoming.goodsOnTransit),
@@ -213,7 +233,39 @@ export function cumulativeLoanPrincipalRepaid(entry: FinancialEntry, throughMont
 export function cumulativeCustomerPaymentsReceived(entry: FinancialEntry, throughMonth?: string): number {
   return Object.entries(entry.months ?? {})
     .filter(([key]) => !throughMonth || key <= throughMonth)
-    .reduce((total, [, month]) => total + nonNegative(month.customerPaymentsReceived), 0);
+    .reduce((total, [, rawMonth]) => {
+      const month = normaliseMonthEntry(rawMonth);
+      const allocated = Object.values(month.customerPaymentsByBranch).reduce((sum, amount) => sum + nonNegative(amount), 0);
+      return total + (allocated > 0 ? allocated : nonNegative(month.customerPaymentsReceived));
+    }, 0);
+}
+
+export function cumulativeBranchCustomerPaymentsReceived(
+  entry: FinancialEntry,
+  branchId: string,
+  throughMonth?: string,
+): number {
+  return Object.entries(entry.months ?? {})
+    .filter(([key]) => !throughMonth || key <= throughMonth)
+    .reduce((total, [, rawMonth]) => total + nonNegative(normaliseMonthEntry(rawMonth).customerPaymentsByBranch[branchId]), 0);
+}
+
+export function cumulativeCitaPayable(entry: FinancialEntry, throughMonth?: string): number {
+  return Math.max(0, Object.entries(entry.months ?? {})
+    .filter(([key]) => !throughMonth || key <= throughMonth)
+    .reduce((total, [, rawMonth]) => {
+      const month = normaliseMonthEntry(rawMonth);
+      return total + month.citaProvision - month.citaPaid;
+    }, 0));
+}
+
+export function cumulativePayePayable(entry: FinancialEntry, throughMonth?: string): number {
+  return Math.max(0, Object.entries(entry.months ?? {})
+    .filter(([key]) => !throughMonth || key <= throughMonth)
+    .reduce((total, [, rawMonth]) => {
+      const month = normaliseMonthEntry(rawMonth);
+      return total + month.payeProvision - month.payeRemitted;
+    }, 0));
 }
 
 function utcDate(value: string): Date | null {

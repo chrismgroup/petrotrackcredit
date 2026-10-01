@@ -623,7 +623,7 @@ describe('expense approval controls', () => {
     act(() => { renderer = create(<ExpensesScreen />); });
 
     expect(nodeText(renderer.root)).toContain('Pending Approval');
-    expect(nodeText(renderer.root).indexOf('Pending Approval')).toBeLessThan(nodeText(renderer.root).indexOf("Today's Net Balance"));
+    expect(nodeText(renderer.root).indexOf('Pending Approval')).toBeLessThan(nodeText(renderer.root).indexOf('Revenue Less Approved Expenses'));
     expect(nodeText(renderer.root)).not.toContain('Workflow');
     expect(nodeText(renderer.root)).toContain('Pending generator fuel');
 

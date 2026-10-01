@@ -52,6 +52,7 @@ const ALLOWED_KEYS = new Set([
   "myFolders", "myFolderFiles", "startupStocks", "stockSnapshotConfig",
   "stockLogs", "reportAccessPolicyVersion",
   "companyAssets",
+  "creditCustomers", "customerPayments",
   "deliveryDeletionTombstones", "expenseDeletionTombstones",
 ]);
 const COMMAND_OWNED_WORKFLOW_KEYS = new Set([
@@ -254,6 +255,7 @@ const PRICE_WRITE_ROLES = new Set(["admin", "ceo", "md", "mgr"]);
 const OPERATIONAL_KEYS = [
   "expenses", "budgets", "sales", "dips", "deliveries",
   "inventoryLog", "pumpDailyReports", "financialEntry", "messages",
+  "creditCustomers", "customerPayments",
   "stockLogs",
   "tasks", "kpis", "companyFiles", "deliveryEvidences", "hrEmployees",
   "actionItems",
@@ -1004,7 +1006,10 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
   const requestedBranchId = String(
     req.auth?.role === "admin" ? incomingReport?.branchId ?? "" : req.auth?.branchId ?? "",
   ).trim();
-  const [branchesRow] = await db.select().from(appStateTable).where(eq(appStateTable.key, "branches"));
+  const [branchesRow, customerRows] = await Promise.all([
+    db.select().from(appStateTable).where(eq(appStateTable.key, "branches")).then(rows => rows[0]),
+    db.select().from(appStateTable).where(eq(appStateTable.key, "creditCustomers")),
+  ]);
   const canonicalBranch = (Array.isArray(branchesRow?.data) ? branchesRow.data : [])
     .find(value => isJsonRecord(value) && String(value.id ?? "") === requestedBranchId) as JsonRecord | undefined;
   const report: JsonRecord | undefined = incomingReport && canonicalBranch
@@ -1016,6 +1021,12 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     "openingMeter", "closingMeter", "liters", "unitPrice", "grossAmount",
     "posAmount", "cashAmount", "transferAmount", "creditAmount", "totalCollected", "variance",
   ];
+  const creditAmount = Number(report?.creditAmount ?? 0);
+  const creditCustomer = (Array.isArray(customerRows[0]?.data) ? customerRows[0].data : [])
+    .find(value => isJsonRecord(value)
+      && String(value.id ?? "") === String(report?.creditCustomerId ?? "")
+      && value.status === "approved"
+      && String(value.branchId ?? "") === requestedBranchId) as JsonRecord | undefined;
   if (
     !report ||
     !id ||
@@ -1026,11 +1037,14 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     !/^\d{4}-\d{2}-\d{2}$/.test(report.date) ||
     numericFields.some(field => !Number.isFinite(Number(report[field]))) ||
     Number(report.closingMeter) <= Number(report.openingMeter) ||
-    Number(report.liters) <= 0
+    Number(report.liters) <= 0 ||
+    (creditAmount > 0 && !creditCustomer) ||
+    (creditAmount <= 0 && Boolean(report.creditCustomerId))
   ) {
     res.status(400).json({ error: "A valid pending manager report is required" });
     return;
   }
+  if (creditCustomer) report.creditCustomerName = String(creditCustomer.name ?? "");
   const authEmpName = req.auth?.empName ?? (
     req.auth
       ? await db.select({ empName: staffUsersTable.empName })
@@ -1736,6 +1750,14 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Only Admin or Accountant may update financial entries" });
     return;
   }
+  if (key === "creditCustomers" && !["acc", "md", "admin"].includes(req.auth?.role ?? "")) {
+    res.status(403).json({ error: "Only Accountant or MD may manage credit customers" });
+    return;
+  }
+  if (key === "customerPayments" && !["acc", "admin"].includes(req.auth?.role ?? "")) {
+    res.status(403).json({ error: "Only Accountant may record customer payments" });
+    return;
+  }
   if ((key === "myFolders" || key === "myFolderFiles") && !MY_FOLDER_WRITE_ROLES.has(req.auth?.role ?? "")) {
     res.status(403).json({ error: "Only approved corporate users may manage My Folder" });
     return;
@@ -1755,6 +1777,10 @@ router.put("/state/:key", async (req, res): Promise<void> => {
     return;
   }
   if ((key === "deliveries" || key === "expenses") && !Array.isArray(data)) {
+    res.status(400).json({ error: `${key} must be an array` });
+    return;
+  }
+  if ((key === "creditCustomers" || key === "customerPayments") && !Array.isArray(data)) {
     res.status(400).json({ error: `${key} must be an array` });
     return;
   }
@@ -2200,6 +2226,70 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       .from(appStateTable)
       .where(eq(appStateTable.key, "myFolders"));
     data = mergeMyFolders(existingRow?.data, data);
+  }
+
+  if ((key === "creditCustomers" || key === "customerPayments") && Array.isArray(data)) {
+    const [existingRows, customerRows] = await Promise.all([
+      db.select().from(appStateTable).where(eq(appStateTable.key, key)),
+      key === "customerPayments"
+        ? db.select().from(appStateTable).where(eq(appStateTable.key, "creditCustomers"))
+        : Promise.resolve([]),
+    ]);
+    const existingRow = existingRows[0];
+    const existing = Array.isArray(existingRow?.data) ? existingRow.data.filter(isJsonRecord) : [];
+    const existingById = new Map(existing.map(record => [String(record.id ?? ""), record]));
+    if (key === "customerPayments") {
+      const approvedCustomers = new Map(
+        (Array.isArray(customerRows[0]?.data) ? customerRows[0].data : [])
+          .filter(value => isJsonRecord(value) && value.status === "approved")
+          .map(value => [String((value as JsonRecord).id ?? ""), value as JsonRecord]),
+      );
+      const additions = data.flatMap(value => {
+        if (!isJsonRecord(value)) return [];
+        const id = String(value.id ?? "");
+        const customer = approvedCustomers.get(String(value.customerId ?? ""));
+        if (!id || existingById.has(id) || Number(value.amount) <= 0
+          || !/^\d{4}-\d{2}-\d{2}$/.test(String(value.date ?? "")) || !customer) return [];
+        return [{
+          ...value,
+          customerName: String(customer.name ?? ""),
+          branchId: String(customer.branchId ?? ""),
+        }];
+      }) as JsonRecord[];
+      data = [...existing, ...additions];
+    } else {
+      const next = new Map(existingById);
+      for (const value of data) {
+        if (!isJsonRecord(value)) continue;
+        const id = String(value.id ?? "");
+        if (!id) continue;
+        const previous = existingById.get(id);
+        if (!previous) {
+          if ((req.auth?.role === "acc" || req.auth?.role === "admin")
+            && value.status === "pending_md" && value.name && value.phone && value.branchId) next.set(id, value);
+          continue;
+        }
+        if ((req.auth?.role === "md" || req.auth?.role === "admin")
+          && previous.status === "pending_md"
+          && (value.status === "approved" || value.status === "rejected")
+          && Number(value.revision ?? 0) > Number(previous.revision ?? 0)) {
+          next.set(id, {
+            ...previous,
+            status: value.status,
+            revision: value.revision,
+            ...(value.status === "approved" ? {
+              approvedBy: value.approvedBy,
+              approvedAt: value.approvedAt,
+            } : {
+              rejectedBy: value.rejectedBy,
+              rejectedAt: value.rejectedAt,
+              rejectionReason: value.rejectionReason,
+            }),
+          });
+        }
+      }
+      data = [...next.values()];
+    }
   }
 
   if ([

@@ -1,4 +1,4 @@
-import { computePumpReportCOGS, getLastKnownCostPrice } from './report-helpers';
+import { computePumpReportCOGS, getLastKnownCostPrice, missingPumpReportCostProducts } from './report-helpers';
 
 describe('historical COGS', () => {
   const deliveries = [
@@ -17,5 +17,21 @@ describe('historical COGS', () => {
 
   it('does not use a future delivery cost', () => {
     expect(getLastKnownCostPrice(deliveries, 'PMS', 'A', '2026-09-10')).toBe(700);
+  });
+
+  it('uses the persisted branch opening cost before the first delivery', () => {
+    const openingCosts = [{ product: 'PMS', branchId: 'A', unitCost: 650, seedDate: '2026-08-01' }];
+    expect(computePumpReportCOGS([
+      { pumpName: 'Pump 1', product: 'PMS', liters: 10, date: '2026-08-20', branchId: 'A' },
+    ], deliveries, openingCosts)).toBe(6_500);
+    expect(missingPumpReportCostProducts([
+      { pumpName: 'Pump 1', product: 'PMS', liters: 10, date: '2026-08-20', branchId: 'A' },
+    ], deliveries, openingCosts)).toEqual([]);
+  });
+
+  it('flags sold products whose cost basis is unavailable', () => {
+    expect(missingPumpReportCostProducts([
+      { pumpName: 'Pump 3', product: 'AGO', liters: 10, date: '2026-08-20', branchId: 'A' },
+    ], deliveries)).toEqual(['AGO']);
   });
 });

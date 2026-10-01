@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { FinancialStatusCard } from '@/components/FinancialStatusCard';
 import { ScreenLayout } from '@/components/ScreenLayout';
@@ -14,11 +14,12 @@ import {
   fmt,
   useApp,
 } from '@/context/AppContext';
-import { computePumpReportCOGS } from '@/lib/report-helpers';
+import { computePumpReportCOGS, missingPumpReportCostProducts } from '@/lib/report-helpers';
 import { monthlyDepreciationTotal } from '@/lib/asset-depreciation';
 import { calculateNetProfit } from '@/lib/net-profit';
 import { getFinancialMonthEntry } from '@/lib/financial-ledger';
 import { useColors } from '@/hooks/useColors';
+import { customerLedgerBalance } from '@/lib/customer-ledger';
 
 function localDateKey(date: Date): string {
   return [
@@ -39,10 +40,21 @@ function formatBusinessDate(value: string): string {
 export default function AccountsScreen() {
   const {
     role, branchId, prices, branches, expenses, companyInfo, pumpDailyReports, deliveries,
-    financialEntry, companyAssets,
+    financialEntry, companyAssets, startupStocks, creditCustomers = [], customerPayments = [],
+    addCreditCustomer, approveCreditCustomer, rejectCreditCustomer, addCustomerPayment,
   } = useApp();
   const colors = useColors();
   const roleColor = ROLE_COLORS[role || 'acc'] || colors.primary;
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [customerBranchId, setCustomerBranchId] = useState('');
+  const [paymentCustomerId, setPaymentCustomerId] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState(localDateKey(new Date()));
+  const [paymentReference, setPaymentReference] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
 
   const isGlobal = role === 'md' || role === 'ceo' || role === 'acc' || role === 'csm' || role === 'admin';
   const scopedBranchId = isGlobal ? null : branchId;
@@ -87,7 +99,8 @@ export default function AccountsScreen() {
     Math.round(monthlyReports.filter(report => report.branchId === bid).reduce((s, report) => s + num(report.grossAmount), 0));
   const totalRevenue  = calculateBusinessMonthRevenue(pumpDailyReports, scopedBranchId, currentMonthRange);
   const totalExpenses = Math.round(scopedExpenses.reduce((s, e) => s + num(e.amt), 0));
-  const totalCOGS     = computePumpReportCOGS(monthlyReports, scopedDeliveries);
+  const totalCOGS     = computePumpReportCOGS(monthlyReports, scopedDeliveries, startupStocks);
+  const missingCostProducts = missingPumpReportCostProducts(monthlyReports, scopedDeliveries, startupStocks);
   const grossProfit   = totalRevenue - totalCOGS;
   const operatingProfit = grossProfit - totalExpenses;
   const bankCharges = currentMonthEntry.bankCharges;
@@ -121,6 +134,28 @@ export default function AccountsScreen() {
     },
   ];
 
+  function createCustomer() {
+    if (!addCreditCustomer({
+      name: customerName, phone: customerPhone, email: customerEmail,
+      address: customerAddress, branchId: customerBranchId,
+    })) {
+      Alert.alert('Customer not created', 'Enter a unique customer name, phone number, and branch.');
+      return;
+    }
+    setCustomerName(''); setCustomerPhone(''); setCustomerEmail(''); setCustomerAddress(''); setCustomerBranchId('');
+    Alert.alert('Submitted', 'The customer profile has been sent to the MD for approval.');
+  }
+
+  function recordCustomerPayment() {
+    const amount = parseFloat(paymentAmount.replace(/,/g, '')) || 0;
+    if (!addCustomerPayment({ customerId: paymentCustomerId, amount, date: paymentDate, reference: paymentReference })) {
+      Alert.alert('Payment not recorded', 'Select an approved customer and enter a valid amount and date.');
+      return;
+    }
+    setPaymentAmount(''); setPaymentReference('');
+    Alert.alert('Payment recorded', 'The customer ledger and available advance have been updated.');
+  }
+
   return (
     <ScreenLayout title="Accounts">
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -151,6 +186,9 @@ export default function AccountsScreen() {
             </View>
           </View>
         </View>
+        {missingCostProducts.length > 0 && (
+          <Text style={[styles.sectionHint, { color: colors.error }]}>Profit is incomplete until an opening or approved delivery cost is recorded for {missingCostProducts.join(', ')}.</Text>
+        )}
 
         {/* Accountant-maintained financial position */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Financial Status</Text>
@@ -158,6 +196,83 @@ export default function AccountsScreen() {
           Accountant-entered cash and goods in transit; receivables come from validated credit sales
         </Text>
         <FinancialStatusCard roleColor={roleColor} />
+
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Credit Customers</Text>
+        <Text style={[styles.sectionHint, { color: colors.textMuted }]}>Approved credit sales increase a customer balance. Payments and advances reduce it and remain available for later purchases.</Text>
+
+        {role === 'acc' && (
+          <View style={[styles.waterfallCard, { backgroundColor: colors.surface, borderColor: colors.border, gap: 8 }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 0 }]}>Create Customer Profile</Text>
+            {[
+              ['Customer name *', customerName, setCustomerName],
+              ['Phone number *', customerPhone, setCustomerPhone],
+              ['Email', customerEmail, setCustomerEmail],
+              ['Address', customerAddress, setCustomerAddress],
+            ].map(([label, value, setter]) => (
+              <TextInput key={label as string} value={value as string} onChangeText={setter as (value: string) => void}
+                placeholder={label as string} placeholderTextColor={colors.textMuted}
+                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 10, color: colors.text }} />
+            ))}
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>Branch *</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {branches.map(branch => (
+                <TouchableOpacity key={branch.id} onPress={() => setCustomerBranchId(branch.id)}
+                  style={{ borderWidth: 1, borderColor: customerBranchId === branch.id ? roleColor : colors.border, backgroundColor: customerBranchId === branch.id ? roleColor : colors.surface, borderRadius: 8, padding: 8 }}>
+                  <Text style={{ color: customerBranchId === branch.id ? '#fff' : colors.text }}>{branch.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity onPress={createCustomer} style={{ backgroundColor: roleColor, borderRadius: 9, padding: 11, alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Send to MD for Approval</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {creditCustomers.map(customer => {
+          const balance = customerLedgerBalance(customer.id, pumpDailyReports, customerPayments, currentMonthRange.to);
+          return (
+            <View key={customer.id} style={[styles.waterfallCard, { backgroundColor: colors.surface, borderColor: colors.border, gap: 5 }]}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>{customer.name}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>{branches.find(branch => branch.id === customer.branchId)?.name ?? customer.branchId} · {customer.phone} · {customer.status.replace('_', ' ')}</Text>
+              {customer.status === 'approved' && (
+                <Text style={{ color: balance > 0 ? colors.error : balance < 0 ? colors.success : colors.text, fontWeight: '800' }}>
+                  {balance > 0 ? `Outstanding: ${fmt(balance)}` : balance < 0 ? `Advance available: ${fmt(Math.abs(balance))}` : 'Balanced'}
+                </Text>
+              )}
+              {(role === 'md' || role === 'admin') && customer.status === 'pending_md' && (
+                <>
+                  <TextInput value={rejectionReason} onChangeText={setRejectionReason} placeholder="Rejection reason (required only to reject)" placeholderTextColor={colors.textMuted}
+                    style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 9, color: colors.text }} />
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity onPress={() => approveCreditCustomer(customer.id)} style={{ flex: 1, backgroundColor: colors.success, borderRadius: 8, padding: 9, alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '700' }}>Approve</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => {
+                      if (!rejectCreditCustomer(customer.id, rejectionReason)) Alert.alert('Reason required', 'Enter a rejection reason.');
+                      else setRejectionReason('');
+                    }} style={{ flex: 1, backgroundColor: colors.error, borderRadius: 8, padding: 9, alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '700' }}>Reject</Text></TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          );
+        })}
+
+        {(role === 'acc' || role === 'admin') && creditCustomers.some(customer => customer.status === 'approved') && (
+          <View style={[styles.waterfallCard, { backgroundColor: colors.surface, borderColor: colors.border, gap: 8 }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 0 }]}>Record Payment or Advance</Text>
+            <View style={{ gap: 6 }}>
+              {creditCustomers.filter(customer => customer.status === 'approved').map(customer => (
+                <TouchableOpacity key={customer.id} onPress={() => setPaymentCustomerId(customer.id)}
+                  style={{ borderWidth: 1, borderColor: paymentCustomerId === customer.id ? roleColor : colors.border, backgroundColor: paymentCustomerId === customer.id ? roleColor : colors.surface, borderRadius: 8, padding: 8 }}>
+                  <Text style={{ color: paymentCustomerId === customer.id ? '#fff' : colors.text }}>{customer.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" placeholder="Amount paid or deposited" placeholderTextColor={colors.textMuted} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 10, color: colors.text }} />
+            <TextInput value={paymentDate} onChangeText={setPaymentDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 10, color: colors.text }} />
+            <TextInput value={paymentReference} onChangeText={setPaymentReference} placeholder="Receipt or bank reference" placeholderTextColor={colors.textMuted} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 10, color: colors.text }} />
+            <TouchableOpacity onPress={recordCustomerPayment} style={{ backgroundColor: roleColor, borderRadius: 9, padding: 11, alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '700' }}>Record Payment</Text></TouchableOpacity>
+          </View>
+        )}
 
         {/* Profit waterfall */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Profit Waterfall</Text>

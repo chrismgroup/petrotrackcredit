@@ -11,30 +11,10 @@ interface Props {
   roleColor: string;
 }
 
-function seededRand(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s * 1664525 + 1013904223) & 0xffffffff;
-    return Math.abs(s) / 0xffffffff;
-  };
-}
-
-function linReg(y: number[]): { slope: number; intercept: number } {
-  const n = y.length;
-  const x = y.map((_, i) => i);
-  const sx = x.reduce((a, b) => a + b, 0);
-  const sy = y.reduce((a, b) => a + b, 0);
-  const sxy = x.reduce((a, xi, i) => a + xi * y[i], 0);
-  const sxx = x.reduce((a, xi) => a + xi * xi, 0);
-  const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
-  const intercept = (sy - slope * sx) / n;
-  return { slope, intercept };
-}
-
 const PRODUCTS = [
-  { key: 'PMS', label: 'PMS', color: '#174D36', volBase: 880,  price: 830  },
-  { key: 'AGO', label: 'AGO', color: '#286247', volBase: 520,  price: 1050 },
-  { key: 'DPK', label: 'DPK', color: '#71805B', volBase: 150,  price: 695  },
+  { key: 'PMS', label: 'PMS', color: '#174D36' },
+  { key: 'AGO', label: 'AGO', color: '#286247' },
+  { key: 'DPK', label: 'DPK', color: '#71805B' },
 ];
 
 function fmt(n: number) {
@@ -52,45 +32,28 @@ export function SalesForecastCard({ sales, roleColor }: Props) {
   const colors = useColors();
 
   const { pastDays, futureDays, thisMonthActual, projectedTotal, growthPct, products } = useMemo(() => {
-    const rand = seededRand(20250704);
-
-    const HIST = 30;
-    const FUTURE = 14;
-    const TREND_SLOPE = 0.008;
-
-    const actualRevPerDay = sales.length > 0
-      ? sales.reduce((s, e) => s + safeNum(e.L) * safeNum(e.price), 0) / Math.max(1, [...new Set(sales.map(e => e.dt.slice(0, 10)))].length)
-      : 1_276_400;
-
-    const pastRevs: number[] = [];
-    for (let i = 0; i < HIST; i++) {
-      const trend = 1 + TREND_SLOPE * (i - HIST / 2);
-      const noise = 0.82 + rand() * 0.36;
-      const weekend = (i % 7 === 5 || i % 7 === 6) ? 1.15 : 1;
-      pastRevs.push(Math.round(actualRevPerDay * trend * noise * weekend));
-    }
-
-    const { slope, intercept } = linReg(pastRevs.slice(-14));
-    const futureRevs: number[] = [];
-    for (let i = 0; i < FUTURE; i++) {
-      const base = intercept + slope * (14 + i);
-      const noise = 0.88 + rand() * 0.24;
-      const weekend = ((HIST + i) % 7 === 5 || (HIST + i) % 7 === 6) ? 1.12 : 1;
-      futureRevs.push(Math.max(0, Math.round(base * noise * weekend)));
-    }
-
-    const dayOfMonth = new Date().getDate();
-    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const daysRemaining = daysInMonth - dayOfMonth;
-
-    const thisMonthActual = pastRevs.slice(-dayOfMonth).reduce((a, b) => a + b, 0);
-    const projectedRemaining = futureRevs.slice(0, daysRemaining).reduce((a, b) => a + b, 0);
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const previous = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const previousMonthKey = `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, '0')}`;
+    const currentSales = sales.filter(entry => entry.dt.slice(0, 7) === monthKey);
+    const revenue = (entries: SalesEntry[]) => entries.reduce((sum, entry) => sum + safeNum(entry.L) * safeNum(entry.price), 0);
+    const thisMonthActual = revenue(currentSales);
+    const dailyAverage = dayOfMonth > 0 ? thisMonthActual / dayOfMonth : 0;
+    const projectedRemaining = dailyAverage * daysRemaining;
     const projectedTotal = thisMonthActual + projectedRemaining;
-    const lastMonthTotal = pastRevs.reduce((a, b) => a + b, 0);
-    const growthPct = ((projectedTotal - lastMonthTotal) / lastMonthTotal) * 100;
-
-    const last7 = pastRevs.slice(-7);
-    const next7 = futureRevs.slice(0, 7);
+    const lastMonthTotal = revenue(sales.filter(entry => entry.dt.slice(0, 7) === previousMonthKey));
+    const growthPct = lastMonthTotal > 0 ? ((projectedTotal - lastMonthTotal) / lastMonthTotal) * 100 : 0;
+    const last7 = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(now);
+      date.setDate(now.getDate() - (6 - index));
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      return revenue(sales.filter(entry => entry.dt.slice(0, 10) === key));
+    });
+    const next7 = Array.from({ length: 7 }, () => dailyAverage);
     const allVals = [...last7, ...next7];
     const maxVal = Math.max(...allVals, 1);
 
@@ -106,11 +69,13 @@ export function SalesForecastCard({ sales, roleColor }: Props) {
     }));
 
     const prodData = PRODUCTS.map(p => {
-      const actualVol = sales.filter(s => s.pump.includes(p.key)).reduce((s, e) => s + safeNum(e.L), 0);
-      const baseVol = actualVol > 0 ? actualVol : p.volBase;
-      const projVol = Math.round(baseVol * (1 + TREND_SLOPE * 7) * daysInMonth);
-      const projRev = Math.round(projVol * p.price);
-      const share = Math.round((projRev / projectedTotal) * 100);
+      const productSales = currentSales.filter(s => s.pump.includes(p.key));
+      const actualVol = productSales.reduce((sum, entry) => sum + safeNum(entry.L), 0);
+      const productRevenue = revenue(productSales);
+      const averagePrice = actualVol > 0 ? productRevenue / actualVol : 0;
+      const projVol = Math.round((actualVol / Math.max(1, dayOfMonth)) * daysInMonth);
+      const projRev = Math.round(projVol * averagePrice);
+      const share = projectedTotal > 0 ? Math.round((projRev / projectedTotal) * 100) : 0;
       return { ...p, projVol, projRev, share };
     });
 

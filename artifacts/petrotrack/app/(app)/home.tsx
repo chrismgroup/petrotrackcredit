@@ -43,6 +43,7 @@ import { useColors } from '@/hooks/useColors';
 import { getDashboardApprovalRoute } from '@/lib/dashboard-approval-routing';
 import { findLatestDipForProduct } from '@/lib/dip-helpers';
 import { canAccessWorkspaceRoute } from '@/lib/workspace-access';
+import { customerReceivablePosition } from '@/lib/customer-ledger';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 import { G, Rect, Svg, Text as SvgText } from 'react-native-svg';
@@ -452,7 +453,7 @@ export default function HomeScreen() {
     role, userName, branchId, staffId, roleAccess, userAccess, branches, navItems,
     tanks, lpgTanks, pumps, dips,
     deliveries, maintenance, expenses, budgets,
-    financialEntry, priceProposals,
+    financialEntry, priceProposals, creditCustomers, customerPayments,
     pumpDailyReports, userAccounts, messages, notifications,
     approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
@@ -479,7 +480,15 @@ export default function HomeScreen() {
   // their Home KPIs to one branch.
   const isGlobalOverview = role === 'admin' || (role ? GLOBAL_OVERVIEW_ROLES.has(role) : false);
   const scopedBranchId = isGlobalOverview ? null : branchId;
-  const accountsReceivable = calculateAccountsReceivable(pumpDailyReports, scopedBranchId);
+  const legacyAccountsReceivable = Math.max(0, calculateAccountsReceivable(
+    pumpDailyReports.filter(report => !report.creditCustomerId),
+    scopedBranchId,
+    financialEntry,
+    todayKey,
+  ));
+  const accountsReceivable = legacyAccountsReceivable + customerReceivablePosition(
+    creditCustomers, pumpDailyReports, customerPayments, scopedBranchId, todayKey,
+  ).receivables;
   const greeting = dayGreeting();
   const currentAccount = userAccounts.find(account => account.id === staffId)
     ?? userAccounts.find(account => account.empName.trim().toLowerCase() === userName.trim().toLowerCase());
@@ -851,16 +860,48 @@ export default function HomeScreen() {
   const openMaintenance = maintenance.filter(m => m.st === 'Open');
 
   // ── Budget ────────────────────────────────────────────────────────────
+  const currentBudgets = useMemo<Budget[]>(() => {
+    const now = new Date();
+    const eligible = budgets.filter(b =>
+      b.month === now.getMonth() + 1 && b.year === now.getFullYear()
+      && b.status === 'fully_approved'
+      && (!scopedBranchId || b.branchId === scopedBranchId),
+    );
+    const latestByBranch = new Map<string, Budget>();
+    eligible.forEach(budget => {
+      const previous = latestByBranch.get(budget.branchId);
+      if (!previous || budget.id > previous.id) latestByBranch.set(budget.branchId, budget);
+    });
+    return [...latestByBranch.values()];
+  }, [budgets, scopedBranchId]);
+
   const currentBudget = useMemo<Budget | undefined>(() => {
     const now = new Date();
-    return budgets.find(b => b.month === now.getMonth() + 1 && b.year === now.getFullYear()) ?? budgets[budgets.length - 1];
-  }, [budgets]);
+    const selected = currentBudgets;
+    if (selected.length === 0) return undefined;
+    if (selected.length === 1) return selected[0];
+    const categoryTotals = new Map<string, number>();
+    selected.forEach(budget => budget.items.forEach(item =>
+      categoryTotals.set(item.cat, (categoryTotals.get(item.cat) ?? 0) + item.amt),
+    ));
+    return {
+      ...selected[0],
+      id: -1,
+      label: `${now.toLocaleString('en-NG', { month: 'long' })} company budget`,
+      byName: `${selected.length} branches`,
+      items: [...categoryTotals].map(([cat, amt]) => ({ cat, amt })),
+      total: selected.reduce((sum, budget) => sum + budget.total, 0),
+    };
+  }, [currentBudgets]);
 
   const budgetSpent = useMemo(() =>
     expenses
-      .filter(e => currentBudget && e.budgetId === currentBudget.id && e.status === 'approved')
+      .filter(e => currentBudget && e.status === 'approved'
+        && (currentBudget.id === -1
+          ? currentBudgets.some(b => b.id === e.budgetId)
+          : e.budgetId === currentBudget.id))
       .reduce((s, e) => s + e.amt, 0),
-    [expenses, currentBudget],
+    [expenses, currentBudget, currentBudgets],
   );
 
   const budgetPct = currentBudget && currentBudget.total > 0

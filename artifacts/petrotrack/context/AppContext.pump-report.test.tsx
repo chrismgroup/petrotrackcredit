@@ -899,6 +899,17 @@ describe('accounts receivable', () => {
 
     expect(calculateAccountsReceivable([branchCredit, unassignedCredit], 'branch-1')).toBe(100_000);
   });
+
+  it('deducts only repayments allocated to the selected branch and preserves customer credits', () => {
+    const branchCredit = { ...reportWithStatus('approved'), creditAmount: 100_000 };
+    const ledger = normaliseFinancialEntry({
+      months: {
+        '2026-08': { customerPaymentsByBranch: { 'branch-1': 125_000, 'branch-2': 75_000 } },
+      },
+    });
+
+    expect(calculateAccountsReceivable([branchCredit], 'branch-1', ledger, '2026-08-31')).toBe(-25_000);
+  });
 });
 
 describe('company tax settings migration', () => {

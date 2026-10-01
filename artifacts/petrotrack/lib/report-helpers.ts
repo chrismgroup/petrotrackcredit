@@ -177,6 +177,14 @@ export type COGSSale = {
   branchId?: string;
 };
 
+export type OpeningInventoryCost = {
+  product: string;
+  branchId?: string;
+  unitCost?: number;
+  seedDate?: string;
+  setAt?: string;
+};
+
 const validCost = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 
@@ -196,6 +204,7 @@ export function getLastKnownCostPrice(
   prod: string,
   branchId?: string,
   asOfDate?: string,
+  openingCosts: OpeningInventoryCost[] = [],
 ): number {
   const eligible = deliveries
     .filter(d => d.prod === prod
@@ -209,7 +218,14 @@ export function getLastKnownCostPrice(
     ? branchDeliveries
     : eligible.filter(d => !d.branchId);
   const latest = candidates.sort(latestDeliveryFirst)[0];
-  return validCost(latest?.costPrice);
+  const deliveryCost = validCost(latest?.costPrice);
+  if (deliveryCost > 0) return deliveryCost;
+  const opening = openingCosts
+    .filter(item => item.product === prod
+      && (!branchId || item.branchId === branchId)
+      && (!asOfDate || String(item.seedDate ?? item.setAt ?? '').slice(0, 10) <= asOfDate.slice(0, 10)))
+    .sort((a, b) => String(b.seedDate ?? b.setAt ?? '').localeCompare(String(a.seedDate ?? a.setAt ?? '')))[0];
+  return validCost(opening?.unitCost);
 }
 
 /** Cost of goods sold: the total cost price of the products sold.
@@ -218,13 +234,14 @@ export function getLastKnownCostPrice(
 export function computeCOGS(
   sales: Array<{ pump: string; L: number }>,
   deliveries: COGSDelivery[],
+  openingCosts: OpeningInventoryCost[] = [],
 ): number {
   const PRODS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil', 'Others'];
   let total = 0;
   for (const prod of PRODS) {
     const vol = sales.filter(s => matchesProd(s.pump, prod)).reduce((sum, e) => sum + Math.max(0, safeNum(e.L)), 0);
     if (vol <= 0) continue;
-    total += getLastKnownCostPrice(deliveries, prod) * vol;
+    total += getLastKnownCostPrice(deliveries, prod, undefined, undefined, openingCosts) * vol;
   }
   return Math.round(total);
 }
@@ -235,12 +252,24 @@ export function computeCOGS(
 export function computePumpReportCOGS(
   reports: COGSSale[],
   deliveries: COGSDelivery[],
+  openingCosts: OpeningInventoryCost[] = [],
 ): number {
   return Math.round(reports.reduce((total, report) => {
     const volume = Math.max(0, safeNum(report.liters));
-    const cost = getLastKnownCostPrice(deliveries, report.product, report.branchId, report.date);
+    const cost = getLastKnownCostPrice(deliveries, report.product, report.branchId, report.date, openingCosts);
     return total + (volume * cost);
   }, 0));
+}
+
+export function missingPumpReportCostProducts(
+  reports: COGSSale[],
+  deliveries: COGSDelivery[],
+  openingCosts: OpeningInventoryCost[] = [],
+): string[] {
+  return [...new Set(reports
+    .filter(report => safeNum(report.liters) > 0
+      && getLastKnownCostPrice(deliveries, report.product, report.branchId, report.date, openingCosts) <= 0)
+    .map(report => report.product))];
 }
 
 /** Coerce any value to a finite number, returning `fallback` (default 0) when

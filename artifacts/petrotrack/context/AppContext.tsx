@@ -12,10 +12,13 @@ import {
 import { mergeWorkflowRecords } from '@/lib/workflow-record-merge';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { startForegroundTimer } from '@/lib/foreground-timer';
+import type { CreditCustomer, CustomerPayment } from '@/lib/customer-ledger';
+export type { CreditCustomer, CustomerPayment } from '@/lib/customer-ledger';
 import { LAST_SIGNED_IN_USERNAME_STORAGE_KEY } from '@/lib/device-identity';
 import {
   EMPTY_FINANCIAL_ENTRY,
   cumulativeCustomerPaymentsReceived,
+  cumulativeBranchCustomerPaymentsReceived,
   financialMonthKey,
   getFinancialMonthEntry,
   normaliseFinancialEntry,
@@ -115,6 +118,8 @@ export interface StartupStock {
   id: string;
   product: StockProduct;
   quantity: number;
+  /** Persisted acquisition cost per litre/kg for valuing opening inventory and COGS. */
+  unitCost?: number;
   branchId?: string;
   setBy: string;
   setAt: string;
@@ -411,6 +416,8 @@ export interface PumpDailyReport {
   cashAmount: number;
   transferAmount: number;
   creditAmount: number;
+  creditCustomerId?: string;
+  creditCustomerName?: string;
   totalCollected: number;
   variance: number;
   note: string;
@@ -633,10 +640,13 @@ export function calculateAccountsReceivable(
       (!scopedBranchId || report.branchId === scopedBranchId),
     )
     .reduce((sum, report) => sum + safeNum(report.creditAmount), 0);
-  const payments = financialEntry && !scopedBranchId
-    ? cumulativeCustomerPaymentsReceived(financialEntry, throughBusinessDate.slice(0, 7) || undefined)
+  const throughMonth = throughBusinessDate.slice(0, 7) || undefined;
+  const payments = financialEntry
+    ? scopedBranchId
+      ? cumulativeBranchCustomerPaymentsReceived(financialEntry, scopedBranchId, throughMonth)
+      : cumulativeCustomerPaymentsReceived(financialEntry, throughMonth)
     : 0;
-  return Math.round(Math.max(0, approvedCreditSales - payments));
+  return Math.round(approvedCreditSales - payments);
 }
 
 function recordBusinessDate(value?: string): string {
@@ -1428,6 +1438,12 @@ interface AppContextType {
   docs: ComplianceDoc[]; expenses: Expense[]; budgets: Budget[];
   financialEntry: FinancialEntry;
   updateFinancialEntry: (updates: FinancialEntryUpdate, monthKey?: string) => void;
+  creditCustomers: CreditCustomer[];
+  customerPayments: CustomerPayment[];
+  addCreditCustomer: (input: Pick<CreditCustomer, 'name' | 'phone' | 'email' | 'address' | 'branchId'>) => boolean;
+  approveCreditCustomer: (id: string) => boolean;
+  rejectCreditCustomer: (id: string, reason: string) => boolean;
+  addCustomerPayment: (input: Pick<CustomerPayment, 'customerId' | 'amount' | 'date' | 'reference' | 'note'>) => boolean;
   companyAssets: CompanyAsset[];
   companyAssetSaveError: CompanyAssetSaveError | null;
   clearCompanyAssetSaveError: () => void;
@@ -1467,8 +1483,8 @@ interface AppContextType {
   stockLogs: StockLogEntry[];
   upsertStockLogs: (entries: Omit<StockLogEntry, 'id' | 'createdBy' | 'createdAt'>[]) => Promise<{ ok: boolean; error?: string }>;
   startupStocks: StartupStock[];
-  addStartupStock: (stock: { product: StockProduct; quantity: number; branchId: string }) => void;
-  updateStartupStock: (id: string, quantity: number) => void;
+  addStartupStock: (stock: { product: StockProduct; quantity: number; unitCost: number; branchId: string }) => void;
+  updateStartupStock: (id: string, updates: { quantity: number; unitCost: number }) => void;
   deleteStartupStock: (id: string) => void;
   stockSnapshotConfig: StockSnapshotConfig;
   updateStockSnapshotMetric: (metric: StockSnapshotMetric, enabled: boolean) => void;
@@ -1716,6 +1732,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [startupStocks, setStartupStocks] = useState<StartupStock[]>(INIT_STARTUP_STOCK);
   const [stockSnapshotConfig, setStockSnapshotConfig] = useState<StockSnapshotConfig>(DEFAULT_STOCK_SNAPSHOT_CONFIG);
   const [financialEntry, setFinancialEntry] = useState<FinancialEntry>(INIT_FINANCIAL_ENTRY);
+  const [creditCustomers, setCreditCustomers] = useState<CreditCustomer[]>([]);
+  const [customerPayments, setCustomerPayments] = useState<CustomerPayment[]>([]);
   const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>([]);
   const [companyAssetSaveError, setCompanyAssetSaveError] = useState<CompanyAssetSaveError | null>(null);
   const companyAssetSaveErrorIdRef = useRef(0);
@@ -1763,6 +1781,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       'hrRecommendations', 'priceProposals', 'legalMatters', 'corpProjects', 'meetingMinutes',
       'broadcasts', 'pumpDailyReports', 'pumpInitialMeters', 'pumpLockedMeters', 'financialEntry', 'inventoryLog',
       'marketCompetitors', 'myFolders', 'myFolderFiles', 'startupStocks', 'stockSnapshotConfig', 'stockLogs', 'companyAssets',
+      'creditCustomers', 'customerPayments',
        SHIFT_REPORT_OUTBOX_STORAGE_KEY,
     ] as const;
     const markLoaded = () => {
@@ -1850,6 +1869,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.broadcasts)        setBroadcasts(s.broadcasts);
       if (s.marketCompetitors) setMarketCompetitors(s.marketCompetitors);
        if (s.financialEntry)    setFinancialEntry(normaliseFinancialEntry(s.financialEntry));
+       if (Array.isArray(s.creditCustomers)) setCreditCustomers(s.creditCustomers);
+       if (Array.isArray(s.customerPayments)) setCustomerPayments(s.customerPayments);
        if (Array.isArray(s.companyAssets)) setCompanyAssets(s.companyAssets as CompanyAsset[]);
         if (Array.isArray(s[SHIFT_REPORT_OUTBOX_STORAGE_KEY])) {
           shiftReportOutboxRef.current = s[SHIFT_REPORT_OUTBOX_STORAGE_KEY] as ShiftReportOutboxItem<PumpDailyReport>[];
@@ -2073,6 +2094,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const normalizedFinancialEntry = normaliseFinancialEntry(s.financialEntry);
         setFinancialEntry(normalizedFinancialEntry);
       }
+      if (!p.has('creditCustomers')) setCreditCustomers(safeArray<CreditCustomer>(s.creditCustomers));
+      if (!p.has('customerPayments')) setCustomerPayments(safeArray<CustomerPayment>(s.customerPayments));
       if (!p.has('companyAssets') && Array.isArray(s.companyAssets)) {
         setCompanyAssets(prev => mergeCompanyAssetSnapshots(
           s.companyAssets as CompanyAsset[],
@@ -2552,6 +2575,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (loaded) syncSlice('pumpInitialMeters', pumpInitialMeters); }, [pumpInitialMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('pumpLockedMeters',  pumpLockedMeters); },  [pumpLockedMeters, loaded]);
   useEffect(() => { if (loaded) syncSlice('financialEntry',    financialEntry); },    [financialEntry, loaded]);
+  useEffect(() => {
+    if (loaded && (role === 'acc' || role === 'md' || role === 'admin')) syncSlice('creditCustomers', creditCustomers);
+  }, [creditCustomers, loaded, role]);
+  useEffect(() => {
+    if (loaded && (role === 'acc' || role === 'admin')) syncSlice('customerPayments', customerPayments);
+  }, [customerPayments, loaded, role]);
   useEffect(() => { if (loaded) syncSlice('companyAssets',     companyAssets); },     [companyAssets, loaded]);
   useEffect(() => { if (loaded) syncSlice('startupStocks',    startupStocks); },      [startupStocks, loaded]);
   useEffect(() => { if (loaded) syncSlice('stockSnapshotConfig', stockSnapshotConfig); }, [stockSnapshotConfig, loaded]);
@@ -4304,8 +4333,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, ...a]);
   }, [userName]);
 
-  const addStartupStock = useCallback((stock: { product: StockProduct; quantity: number; branchId: string }) => {
-    if (role !== 'admin' || !Number.isFinite(stock.quantity) || stock.quantity < 0 || !stock.branchId) return;
+  const addStartupStock = useCallback((stock: { product: StockProduct; quantity: number; unitCost: number; branchId: string }) => {
+    if (role !== 'admin' || !Number.isFinite(stock.quantity) || stock.quantity < 0
+      || !Number.isFinite(stock.unitCost) || stock.unitCost < 0 || !stock.branchId) return;
     const branchId = stock.branchId;
     setStartupStocks(prev => {
       if (prev.some(item => item.product === stock.product && item.branchId === branchId)) return prev;
@@ -4313,6 +4343,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: `startup-${genId()}`,
         product: stock.product,
         quantity: stock.quantity,
+        unitCost: stock.unitCost,
         branchId,
         setBy: userName,
         setAt: nowTs(),
@@ -4328,13 +4359,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, ...a]);
   }, [role, userName]);
 
-  const updateStartupStock = useCallback((id: string, quantity: number) => {
-    if (role !== 'admin' || !Number.isFinite(quantity) || quantity < 0) return;
+  const updateStartupStock = useCallback((id: string, updates: { quantity: number; unitCost: number }) => {
+    if (role !== 'admin' || !Number.isFinite(updates.quantity) || updates.quantity < 0
+      || !Number.isFinite(updates.unitCost) || updates.unitCost < 0) return;
     setStartupStocks(prev => prev.map(item => item.id === id
-      ? { ...item, quantity, locked: true, setBy: userName, setAt: nowTs() }
+      ? { ...item, ...updates, locked: true, setBy: userName, setAt: nowTs() }
       : item
     ));
-    setAudit(a => [{ id: genId(), action: 'Start-up stock updated', user: userName, detail: `Start-up stock #${id} updated to ${quantity.toLocaleString()}`, ts: nowTs() }, ...a]);
+    setAudit(a => [{ id: genId(), action: 'Start-up stock updated', user: userName, detail: `Start-up stock #${id} updated to ${updates.quantity.toLocaleString()} at ${updates.unitCost.toLocaleString()} per unit`, ts: nowTs() }, ...a]);
   }, [role, userName]);
 
   const deleteStartupStock = useCallback((id: string) => {
@@ -4449,6 +4481,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPumpLockedMeters({});
     setPriceHistory([]);
     setFinancialEntry(INIT_FINANCIAL_ENTRY);
+    setCreditCustomers([]);
+    setCustomerPayments([]);
     // Apply the preserved pump seed meters so the next shift reports start from the last known readings.
     setPumpInitialMeters(localSeedMeters);
     // Audit must be written AFTER the arrays are cleared, not before, so it survives the reset.
@@ -5134,7 +5168,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const timestamp = nowTs();
       const monthFields = new Set([
         'capitalInjection', 'bankCharges', 'loanPrincipalRepayment', 'loanInterest',
-        'customerPaymentsReceived', 'payeProvision',
+        'customerPaymentsReceived', 'customerPaymentsByBranch', 'payeProvision', 'payeRemitted',
+        'citaProvision', 'citaPaid',
         'startupCapital', 'startupCapitalSource', 'closingOperatingCapital',
         'finalizedNetProfit', 'finalizedAt',
       ]);
@@ -5162,6 +5197,97 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } as FinancialEntry;
     });
   }, [userName]);
+
+  const addCreditCustomer = useCallback((input: Pick<CreditCustomer, 'name' | 'phone' | 'email' | 'address' | 'branchId'>) => {
+    if (role !== 'acc' || !input.name.trim() || !input.phone.trim() || !input.branchId) return false;
+    const normalizedName = input.name.trim().toLowerCase();
+    if (creditCustomers.some(customer => customer.branchId === input.branchId
+      && customer.name.trim().toLowerCase() === normalizedName
+      && customer.status !== 'rejected')) return false;
+    const timestamp = nowTs();
+    setCreditCustomers(previous => [...previous, {
+      id: `customer-${genId()}`,
+      name: input.name.trim(),
+      phone: input.phone.trim(),
+      email: input.email?.trim() || undefined,
+      address: input.address?.trim() || undefined,
+      branchId: input.branchId,
+      status: 'pending_md',
+      createdBy: userName,
+      createdAt: timestamp,
+      revision: 1,
+    }]);
+    void sendOperationalNotification({
+      target: 'md',
+      title: 'Credit Customer Approval Required',
+      body: `${input.name.trim()} was submitted by the Accountant for approval.`,
+      route: SCREEN_ROUTES.acct,
+    });
+    return true;
+  }, [creditCustomers, role, userName]);
+
+  const approveCreditCustomer = useCallback((id: string) => {
+    if (role !== 'md' && role !== 'admin') return false;
+    const target = creditCustomers.find(customer => customer.id === id);
+    if (!target || target.status !== 'pending_md') return false;
+    setCreditCustomers(previous => previous.map(customer => customer.id === id ? {
+      ...customer,
+      status: 'approved',
+      approvedBy: userName,
+      approvedAt: nowTs(),
+      rejectionReason: undefined,
+      revision: customer.revision + 1,
+    } : customer));
+    void sendOperationalNotification({
+      target: 'acc',
+      title: 'Credit Customer Approved',
+      body: `${target.name} is approved and available in attendant shift reports.`,
+      route: SCREEN_ROUTES.acct,
+      data: { customerId: id },
+    });
+    return true;
+  }, [creditCustomers, role, userName]);
+
+  const rejectCreditCustomer = useCallback((id: string, reason: string) => {
+    if ((role !== 'md' && role !== 'admin') || !reason.trim()) return false;
+    const target = creditCustomers.find(customer => customer.id === id);
+    if (!target || target.status !== 'pending_md') return false;
+    setCreditCustomers(previous => previous.map(customer => customer.id === id ? {
+      ...customer,
+      status: 'rejected',
+      rejectedBy: userName,
+      rejectedAt: nowTs(),
+      rejectionReason: reason.trim(),
+      revision: customer.revision + 1,
+    } : customer));
+    void sendOperationalNotification({
+      target: 'acc',
+      title: 'Credit Customer Rejected',
+      body: `${target.name} was rejected: ${reason.trim()}`,
+      route: SCREEN_ROUTES.acct,
+      data: { customerId: id },
+    });
+    return true;
+  }, [creditCustomers, role, userName]);
+
+  const addCustomerPayment = useCallback((input: Pick<CustomerPayment, 'customerId' | 'amount' | 'date' | 'reference' | 'note'>) => {
+    if ((role !== 'acc' && role !== 'admin') || !Number.isFinite(input.amount) || input.amount <= 0) return false;
+    const customer = creditCustomers.find(item => item.id === input.customerId && item.status === 'approved');
+    if (!customer || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return false;
+    setCustomerPayments(previous => [...previous, {
+      id: `customer-payment-${genId()}`,
+      customerId: customer.id,
+      customerName: customer.name,
+      branchId: customer.branchId,
+      amount: input.amount,
+      date: input.date,
+      reference: input.reference?.trim() || undefined,
+      note: input.note?.trim() || undefined,
+      recordedBy: userName,
+      recordedAt: nowTs(),
+    }]);
+    return true;
+  }, [creditCustomers, role, userName]);
 
   const canManageCompanyAssets = canManageCompanyAssetsForRole(role);
   const canManageCompanyAssetBranch = useCallback((assetBranchId: string) =>
@@ -5359,7 +5485,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refreshFinanceState: syncFromServer,
       login, logout, updateMgrPerms, roleAccess, updateRoleAccess, userAccess, updateUserAccess, clearUserAccess,
       prices, priceHistory, tanks, lpgTanks, pumps, dips, deliveries,
-       maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry, messages, broadcasts,
+       maintenance, sales, staff, branches, docs, expenses, budgets, financialEntry, updateFinancialEntry,
+       creditCustomers, customerPayments, addCreditCustomer, approveCreditCustomer, rejectCreditCustomer, addCustomerPayment,
+       messages, broadcasts,
        companyAssets, companyAssetSaveError, clearCompanyAssetSaveError,
        addCompanyAsset, updateCompanyAsset, deleteCompanyAsset,
        handoverNotes, addShiftHandoverNote,

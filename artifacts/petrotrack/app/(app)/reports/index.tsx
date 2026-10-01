@@ -14,7 +14,7 @@ import {
   ALL_REPORT_TYPES, PERIODS, PROD_COLORS, REPORT_META,
   Period, ReportType,
   buildPdf, computePumpReportCOGS, getPerms, nfmt, periodRange,
-  localDateKey, priBg, priColor, stColor, safeNum, safeStr, isMissingNum,
+  localDateKey, priBg, priColor, stColor, safeNum, safeStr, isMissingNum, missingPumpReportCostProducts,
 } from '@/lib/report-helpers';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { depreciationTotalForDateRange } from '@/lib/asset-depreciation';
@@ -171,7 +171,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
     isHydrated,
     expenses, branches, deliveries, prices, priceHistory, priceProposals,
     maintenance, dips, staff, hrEmployees, pumpDailyReports, companyInfo, companyAssets,
-    financialEntry,
+    financialEntry, startupStocks,
   } = useApp();
   const colors = useColors();
   const router = useRouter();
@@ -407,7 +407,8 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
     const rev = pe.reduce((sum: number, report: any) => sum + safeNum(report.grossAmount), 0);
     const sr  = Math.round(rev);
     const avg = vol > 0 ? Math.round(rev / vol) : getPriceForProduct(prices, prod, selBranch);
-    const cogs = computePumpReportCOGS(pe, cogsDeliveries);
+    const cogs = computePumpReportCOGS(pe, cogsDeliveries, startupStocks);
+    const hasMissingCost = missingPumpReportCostProducts(pe, cogsDeliveries, startupStocks).length > 0;
     const ac  = vol > 0 ? cogs / vol : 0;
     const gp   = sr - cogs;
     return {
@@ -415,13 +416,14 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
       salesRevenue: sr, avgCostPerL: Math.round(ac), scaledCOGS: cogs, grossProfit: gp,
       grossMargin: sr > 0 ? Math.round((gp / sr) * 100) : null,
       hasCostData: ac > 0,
+      hasMissingCost,
       priceChanges: safePriceHistory.filter(h => h.prod === prod).slice(0, 3),
       /** True when at least one underlying sale record for this product had a
        *  missing L or price field that safeNum coerced to 0, making the
        *  product's sales revenue and P&L figures potentially understated. */
       hasIncomplete: pe.some((e: any) => e._amtMissing),
     };
-  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fPumpReports, cogsDeliveries, prices, safePriceHistory]);
+  }).filter(p => p.totalVolumeSold > 0 || p.scaledCOGS > 0), [allProds, fPumpReports, cogsDeliveries, prices, safePriceHistory, startupStocks]);
 
   const totSR   = pnlByProd.reduce((s, p) => s + p.salesRevenue, 0);
   const totCOGS = pnlByProd.reduce((s, p) => s + p.scaledCOGS,  0);
@@ -1228,6 +1230,9 @@ function PnlBlock({ pnlByProd, netPnl, nmPct, totSR, totCOGS, totGP, gmPct, scal
               ) : null}
             </View>
             {p.hasIncomplete && <IncompleteBadge />}
+            {p.hasMissingCost && p.totalVolumeSold > 0 && (
+              <Text style={{ color: colors.error, fontSize: 11, marginBottom: 6 }}>Profit incomplete: opening or approved delivery cost is missing.</Text>
+            )}
             <View style={{ flexDirection: 'row', marginBottom: 8, marginTop: p.hasIncomplete ? 8 : 0 }}>
               {[
                 { label: 'Volume Sold', val: `${p.totalVolumeSold.toLocaleString()} L` },

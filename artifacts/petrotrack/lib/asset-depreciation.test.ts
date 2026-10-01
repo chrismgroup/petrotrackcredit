@@ -1,5 +1,6 @@
 import {
   annualAssetDepreciation,
+  assetNetBookValue,
   depreciationTotalForDateRange,
   isAssetDepreciatingInMonth,
   mergeCompanyAssetSnapshots,
@@ -43,11 +44,17 @@ describe('asset depreciation', () => {
   });
 
   it('adds one depreciation charge for each month in a report range', () => {
-    expect(depreciationTotalForDateRange([asset], '2026-01-01', '2026-03-31')).toBe(60_000);
+    expect(depreciationTotalForDateRange([asset], '2026-01-01', '2026-03-31')).toBeCloseTo((20_000 * 17 / 31) + 40_000);
   });
 
-  it('prorates depreciation for a partial month', () => {
-    expect(depreciationTotalForDateRange([asset], '2026-01-01', '2026-01-15')).toBeCloseTo(20_000 * 15 / 31);
+  it('starts partial-month depreciation on the exact acquisition date', () => {
+    expect(depreciationTotalForDateRange([asset], '2026-01-01', '2026-01-14')).toBe(0);
+    expect(depreciationTotalForDateRange([asset], '2026-01-01', '2026-01-15')).toBeCloseTo(20_000 / 31);
+  });
+
+  it('calculates persisted assets at net book value', () => {
+    expect(assetNetBookValue(asset, '2026-01-14')).toBe(0);
+    expect(assetNetBookValue(asset, '2026-01-31')).toBeCloseTo(1_300_000 - (20_000 * 17 / 31));
   });
 
   it('keeps server records exact while retaining locally registered new IDs during an update', () => {
