@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, gte, inArray, isNull, lte, or, gt, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, lte, or, gt, sql, type SQL } from "drizzle-orm";
 import express, { Router, type IRouter, type Request, type Response } from "express";
 
 import {
@@ -18,6 +18,7 @@ import {
   SANDBOX_TIMESTAMP_HEADER,
   MAX_TRANSACTION_KOBO,
   isPaymentProvider,
+  businessDayWindow,
   ledgerLinesFor,
   parseSandboxEvent,
   sandboxSecret,
@@ -325,7 +326,10 @@ router.get("/payments/transactions", async (req, res) => {
   if (to) filters.push(lte(paymentTransactionsTable.occurredAt, to));
   const where = filters.length ? and(...filters) : undefined;
   const limit = Math.min(Math.max(Number(q.limit) || 100, 1), 500);
+  res.json(await queryTransactions(where, limit));
+});
 
+async function queryTransactions(where: SQL | undefined, limit: number) {
   const t = paymentTransactionsTable;
   const sumWhere = (condition: SQL) => sql<string>`coalesce(sum(${t.amountKobo}) filter (where ${condition}), 0)::text`;
   const [rows, [totals]] = await Promise.all([
@@ -355,24 +359,85 @@ router.get("/payments/transactions", async (req, res) => {
       count: sql<string>`count(*)::text`,
       cardKobo: sumWhere(sql`${t.method} = 'card' and ${t.status} = 'successful'`),
       transferKobo: sumWhere(sql`${t.method} = 'transfer' and ${t.status} = 'successful'`),
-      reversalKobo: sumWhere(sql`${t.status} = 'reversal'`),
+      cardReversalKobo: sumWhere(sql`${t.method} = 'card' and ${t.status} = 'reversal'`),
+      transferReversalKobo: sumWhere(sql`${t.method} = 'transfer' and ${t.status} = 'reversal'`),
       failedCount: sql<string>`count(*) filter (where ${t.status} = 'failed')::text`,
+      firstAt: sql<string | null>`min(${t.occurredAt})`,
+      lastAt: sql<string | null>`max(${t.occurredAt})`,
     }).from(t).where(where),
   ]);
   const cardKobo = Number(totals.cardKobo);
   const transferKobo = Number(totals.transferKobo);
-  const reversalKobo = Number(totals.reversalKobo);
-  res.json({
+  const cardReversalKobo = Number(totals.cardReversalKobo);
+  const transferReversalKobo = Number(totals.transferReversalKobo);
+  return {
     transactions: rows,
     totals: {
       count: Number(totals.count),
       cardKobo,
       transferKobo,
-      reversalKobo,
+      reversalKobo: cardReversalKobo + transferReversalKobo,
+      cardNetKobo: cardKobo - cardReversalKobo,
+      transferNetKobo: transferKobo - transferReversalKobo,
       failedCount: Number(totals.failedCount),
-      netKobo: cardKobo + transferKobo - reversalKobo,
+      netKobo: cardKobo + transferKobo - cardReversalKobo - transferReversalKobo,
+      firstAt: totals.firstAt ? new Date(totals.firstAt).toISOString() : null,
+      lastAt: totals.lastAt ? new Date(totals.lastAt).toISOString() : null,
     },
-  });
+  };
+}
+
+/**
+ * POS evidence for one shift report (one pump, one business date).
+ */
+const SHIFT_VIEW_ROLES = new Set([...VIEW_ALL_ROLES, "mktg", "mgr", "att"]);
+const GLOBAL_SHIFT_VIEW_ROLES = new Set([...VIEW_ALL_ROLES, "mktg"]);
+
+router.get("/payments/shift-summary", async (req, res) => {
+  const auth = req.auth!;
+  if (!SHIFT_VIEW_ROLES.has(auth.role)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const q = req.query as Record<string, unknown>;
+  const pumpId = typeof q.pumpId === "string" ? q.pumpId : "";
+  const window = businessDayWindow(typeof q.date === "string" ? q.date : "");
+  if (!pumpId || !window) {
+    res.status(400).json({ error: "pumpId and date (YYYY-MM-DD) are required" });
+    return;
+  }
+  const requestedBranch = typeof q.branchId === "string" ? q.branchId : "";
+  let branchId: string;
+  if (GLOBAL_SHIFT_VIEW_ROLES.has(auth.role)) {
+    branchId = requestedBranch;
+  } else {
+    if (!auth.branchId || (requestedBranch && requestedBranch !== auth.branchId)) {
+      res.status(403).json({ error: "You can only view POS data for your branch" });
+      return;
+    }
+    branchId = auth.branchId;
+  }
+  const t = paymentTransactionsTable;
+  const where = and(
+    eq(t.pumpId, pumpId),
+    branchId ? eq(t.branchId, branchId) : undefined,
+    gte(t.occurredAt, window.from),
+    lt(t.occurredAt, window.to),
+  );
+  const [summary, terminals] = await Promise.all([
+    queryTransactions(where, 500),
+    db.select({
+      id: paymentTerminalsTable.id,
+      label: paymentTerminalsTable.label,
+      provider: paymentTerminalsTable.provider,
+      providerTerminalId: paymentTerminalsTable.providerTerminalId,
+      status: paymentTerminalsTable.status,
+    }).from(paymentTerminalsTable).where(and(
+      eq(paymentTerminalsTable.pumpId, pumpId),
+      branchId ? eq(paymentTerminalsTable.branchId, branchId) : undefined,
+    )),
+  ]);
+  res.json({ ...summary, terminals, window: { from: window.from.toISOString(), to: window.to.toISOString() } });
 });
 
 /** Admin-only demo helper: signs a sample event and sends it through the real webhook pipeline. */

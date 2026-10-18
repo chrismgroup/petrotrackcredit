@@ -1,6 +1,8 @@
 export type PosRangeKey = 'today' | '7d' | '30d';
 
 export const POS_REFRESH_MS = 30_000;
+/** Roles that see terminal POS totals on shift reports (attendants and managers are branch-scoped by the API). */
+export const SHIFT_POS_VIEW_ROLES: ReadonlySet<string> = new Set(['admin', 'ceo', 'md', 'acc', 'csm', 'mktg', 'mgr', 'att']);
 export const POS_VIEW_ROLES: ReadonlySet<string> = new Set(['admin', 'ceo', 'md', 'acc', 'csm', 'mgr']);
 
 export function formatKobo(kobo: number): string {

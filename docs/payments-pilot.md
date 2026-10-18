@@ -116,4 +116,11 @@ records signed notifications of payments that already happened.
 - App screens: **POS Terminals** (admin: register a terminal UUID to one pump,
   disable, simulate a notification) and **POS Transactions** (Finance: totals and
   list by branch, pump, period and method).
+- Shift reports show a read-only **POS terminal total for this shift** card
+  (`GET /api/payments/shift-summary?pumpId=&date=YYYY-MM-DD[&branchId=]`): the
+  net card and transfer totals for that pump's Lagos business day, reversals,
+  failed attempts, transaction count and times, the assigned terminal, the
+  difference from the amounts typed on the report, and the transaction list.
+  Visible to attendants and managers (own branch only) and to admin, CEO, MD,
+  accountants and the other global viewers (HR, marketing).
 - Not yet done: auto-filling shift report POS/transfer fields from these records.

@@ -430,6 +430,17 @@ export interface PosTransactionTotals {
   reversalKobo: number;
   failedCount: number;
   netKobo: number;
+  cardNetKobo?: number;
+  transferNetKobo?: number;
+  firstAt?: string | null;
+  lastAt?: string | null;
+}
+
+export interface PosShiftSummary {
+  transactions: PosTransaction[];
+  totals: PosTransactionTotals;
+  terminals: Array<Pick<PosTerminal, 'id' | 'label' | 'provider' | 'providerTerminalId' | 'status'>>;
+  window: { from: string; to: string };
 }
 
 export interface PosProviderStatus { id: string; label: string; ready: boolean }
@@ -459,6 +470,11 @@ export const paymentsApi = {
     return get<{ transactions: PosTransaction[]; totals: PosTransactionTotals }>(
       `/payments/transactions${params ? `?${params}` : ''}`,
     );
+  },
+  shiftSummary: (params: { pumpId: string; date: string; branchId?: string }) => {
+    const query = [`pumpId=${encodeURIComponent(params.pumpId)}`, `date=${encodeURIComponent(params.date)}`];
+    if (params.branchId) query.push(`branchId=${encodeURIComponent(params.branchId)}`);
+    return get<PosShiftSummary>(`/payments/shift-summary?${query.join('&')}`);
   },
   simulate: (data: { terminalId: string; method: PosPaymentMethod; amountKobo: number }) =>
     authenticatedJsonCommand<{ recorded?: true; replayed?: true; transactionId?: string }>('POST', '/payments/sandbox/simulate', data),

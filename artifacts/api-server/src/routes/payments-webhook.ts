@@ -171,3 +171,13 @@ export function sandboxSecret(env: NodeJS.ProcessEnv = process.env): string | nu
   if (env.NODE_ENV === "production" && env.PAYMENTS_ALLOW_SANDBOX !== "true") return null;
   return secret;
 }
+
+/** Shift business dates are Nigerian station days (Africa/Lagos, UTC+1, no DST). */
+export function businessDayWindow(date: string): { from: Date; to: Date } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const [y, m, d] = date.split("-").map(Number);
+  const utcMidnight = Date.UTC(y, m - 1, d);
+  if (new Date(utcMidnight).toISOString().slice(0, 10) !== date) return null;
+  const from = new Date(utcMidnight - 60 * 60 * 1000); // 00:00 in Lagos (UTC+1)
+  return { from, to: new Date(from.getTime() + 24 * 60 * 60 * 1000) };
+}

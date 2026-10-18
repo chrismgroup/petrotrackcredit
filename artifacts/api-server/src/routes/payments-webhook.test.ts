@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  businessDayWindow,
   ledgerLinesFor,
   parseSandboxEvent,
   sandboxSecret,
@@ -85,4 +86,11 @@ test("sandbox is disabled without a strong secret and in production unless allow
   assert.equal(sandboxSecret({ PAYMENTS_SANDBOX_WEBHOOK_SECRET: SECRET }), SECRET);
   assert.equal(sandboxSecret({ PAYMENTS_SANDBOX_WEBHOOK_SECRET: SECRET, NODE_ENV: "production" }), null);
   assert.equal(sandboxSecret({ PAYMENTS_SANDBOX_WEBHOOK_SECRET: SECRET, NODE_ENV: "production", PAYMENTS_ALLOW_SANDBOX: "true" }), SECRET);
+});
+
+test("maps a business date to the Lagos calendar day", () => {
+  const window = businessDayWindow("2026-10-18");
+  assert.equal(window?.from.toISOString(), "2026-10-17T23:00:00.000Z");
+  assert.equal(window?.to.toISOString(), "2026-10-18T23:00:00.000Z");
+  for (const bad of ["", "2026-02-30", "18-10-2026", "2026-10-18T00:00"]) assert.equal(businessDayWindow(bad), null, bad);
 });

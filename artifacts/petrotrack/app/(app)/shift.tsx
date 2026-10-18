@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { ShiftPosSummary } from '@/components/ShiftPosSummary';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ModalSheet } from '@/components/FormSheet';
@@ -1147,6 +1148,18 @@ export default function ShiftReportScreen() {
                     )}
                   </View>
 
+                  {appliesOn ? (
+                    <ShiftPosSummary
+                      role={role}
+                      pumpId={pump.id}
+                      branchId={branchId ?? pump.branchId}
+                      date={appliesOn}
+                      reportedPos={posVal}
+                      reportedTransfer={xferVal}
+                      live
+                    />
+                  ) : null}
+
                   {/* Payment breakdown */}
                   <View style={[c.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <Text style={[c.formTitle, { color: colors.text }]}>Payment Breakdown</Text>
@@ -1718,6 +1731,14 @@ export default function ShiftReportScreen() {
               </>
             )}
             <Field label="Total Collected" value={fmt(viewing.totalCollected)} colors={colors} />
+            <ShiftPosSummary
+              role={role}
+              pumpId={viewing.pumpId}
+              branchId={viewing.branchId}
+              date={viewing.date}
+              reportedPos={viewing.posAmount}
+              reportedTransfer={viewing.transferAmount}
+            />
             {(() => {
               const vc = viewing.variance === 0 ? '#1F6848' : viewing.variance > 0 ? '#286247' : '#365A47';
               return (

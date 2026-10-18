@@ -4,6 +4,7 @@ import type { ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 
 import PosTerminalsScreen from '@/app/(app)/pos-terminals';
 import PosTransactionsScreen from '@/app/(app)/pos-transactions';
+import { ShiftPosSummary } from '@/components/ShiftPosSummary';
 import { useApp } from '@/context/AppContext';
 import { paymentsApi } from '@/lib/api';
 import { formatKobo, nairaToKobo, rangeStart } from '@/lib/pos';
@@ -39,6 +40,7 @@ jest.mock('@/lib/api', () => ({
     registerTerminal: jest.fn(),
     disableTerminal: jest.fn(),
     transactions: jest.fn(),
+    shiftSummary: jest.fn(),
     simulate: jest.fn(),
   },
 }));
@@ -231,6 +233,74 @@ describe('POS Terminals screen', () => {
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<PosTerminalsScreen />); });
     expect(renderer.toJSON()).toBeNull();
+    act(() => renderer.unmount());
+  });
+});
+
+describe('Shift report POS summary', () => {
+  const summary = {
+    transactions: [
+      { id: 'a', method: 'card', status: 'successful', amountKobo: 1_500_000, occurredAt: '2026-10-18T08:00:00Z' },
+      { id: 'b', method: 'transfer', status: 'successful', amountKobo: 250_000, occurredAt: '2026-10-18T09:00:00Z' },
+      { id: 'c', method: 'card', status: 'reversal', amountKobo: 50_000, occurredAt: '2026-10-18T10:00:00Z' },
+    ],
+    totals: {
+      count: 3, cardKobo: 1_500_000, transferKobo: 250_000, reversalKobo: 50_000, failedCount: 1,
+      netKobo: 1_700_000, cardNetKobo: 1_450_000, transferNetKobo: 250_000,
+      firstAt: '2026-10-18T08:00:00Z', lastAt: '2026-10-18T10:00:00Z',
+    },
+    terminals: [{ id: 'u1', label: 'Pump 1 POS', provider: 'sandbox', providerTerminalId: '2KUD0001', status: 'active' }],
+    window: { from: '2026-10-17T23:00:00Z', to: '2026-10-18T23:00:00Z' },
+  };
+
+  beforeEach(() => { api.shiftSummary.mockResolvedValue(summary as never); });
+
+  it.each(['att', 'mgr', 'md', 'acc', 'ceo', 'csm', 'mktg', 'admin'])('shows the whole-shift POS total to %s', async role => {
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ShiftPosSummary role={role} pumpId="p1" branchId="b1" date="2026-10-18" />); });
+    await flush();
+    expect(api.shiftSummary).toHaveBeenCalledWith({ pumpId: 'p1', date: '2026-10-18', branchId: 'b1' });
+    const total = renderer.root.find(node => node.props.testID === 'shift-pos-total' && String(node.type) === 'Text');
+    expect(nodeText(total)).toBe('₦17,000.00');
+    act(() => renderer.unmount());
+  });
+
+  it('is hidden for unknown roles and does not call the API', () => {
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ShiftPosSummary role={null} pumpId="p1" date="2026-10-18" />); });
+    expect(renderer.toJSON()).toBeNull();
+    expect(api.shiftSummary).not.toHaveBeenCalled();
+    act(() => renderer.unmount());
+  });
+
+  it('shows the breakdown, terminal, comparison with entered amounts and transactions', async () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<ShiftPosSummary role="mgr" pumpId="p1" date="2026-10-18" reportedPos={14500} reportedTransfer={3000} />);
+    });
+    await flush();
+    const text = allText(renderer);
+    expect(text).toContain('₦14,500.00');
+    expect(text).toContain('₦2,500.00');
+    expect(text).toContain('₦500.00');
+    expect(text).toContain('3 (1 failed)');
+    expect(text).toContain('Pump 1 POS (2KUD0001)');
+    expect(text).toContain('Matches terminal');
+    expect(text).toContain('+₦500.00 vs terminal');
+    act(() => { button(renderer, 'Show 3 transactions').props.onPress(); });
+    expect(renderer.root.findAll(node => node.props.testID === 'shift-pos-row' && String(node.type) === 'View')).toHaveLength(3);
+    act(() => renderer.unmount());
+  });
+
+  it('explains when the pump has no terminal and refreshes while live', async () => {
+    api.shiftSummary.mockResolvedValue({ ...summary, transactions: [], terminals: [], totals: { ...summary.totals, count: 0, netKobo: 0 } } as never);
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ShiftPosSummary role="att" pumpId="p1" date="2026-10-18" live />); });
+    await flush();
+    expect(allText(renderer)).toContain('No POS terminal is assigned to this pump yet.');
+    act(() => { jest.advanceTimersByTime(30_000); });
+    await flush();
+    expect(api.shiftSummary).toHaveBeenCalledTimes(2);
     act(() => renderer.unmount());
   });
 });
