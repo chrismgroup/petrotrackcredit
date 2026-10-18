@@ -1148,6 +1148,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'branches', icon: 'business',         label: 'Branches' },
     { id: 'audit',    icon: 'list',             label: 'Audit'    },
     { id: 'exprpt',   icon: 'analytics',        label: 'Reports'  },
+    { id: 'creditFacility', icon: 'shield-checkmark', label: 'Credit Facility' },
     { id: 'settings', icon: 'settings',         label: 'Settings' },
   ],
 };
@@ -1180,6 +1181,7 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'branches', icon: 'business',         label: 'Branches'   },
   { id: 'budget',   icon: 'wallet',           label: 'Budget'     },
   { id: 'exprpt',   icon: 'analytics',        label: 'Reports'    },
+  { id: 'creditFacility', icon: 'shield-checkmark', label: 'Credit Facility' },
   { id: 'sales',    icon: 'bar-chart',        label: 'Sales'      },
   { id: 'exp',      icon: 'receipt',          label: 'Expenses'   },
   { id: 'recv',     icon: 'cube',             label: 'Receiving'  },
@@ -1249,6 +1251,7 @@ function defaultRoleAccess(): Record<string, Record<string, boolean>> {
       if (i.id === 'exprpt' || i.id === 'depts' || i.id === 'audit' || i.id === 'settings') {
         return [i.id, false];
       }
+      if (i.id === 'creditFacility') return [i.id, r === 'ceo' || r === 'md'];
       if (i.id === 'users') return [i.id, r === 'md' || r === 'csm'];
       return [i.id, true];
     }));
@@ -1282,6 +1285,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   branches: '/(app)/branches', maint: '/(app)/maintenance', sales: '/(app)/sales',
   budget: '/(app)/budget', exp: '/(app)/expenses',
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
+  creditFacility: '/(app)/credit-facility',
   tasks: '/(app)/tasks',
   actionItems: '/(app)/action-items',
   dailyRevenueLog: '/(app)/daily-revenue-log',

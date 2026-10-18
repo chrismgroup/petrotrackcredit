@@ -831,6 +831,12 @@ describe('role-aware route access and stale notification links', () => {
   it('requires each protected My Jobs destination to be declared in the shared policy', () => {
     expect(workspaceRouteAccess('/(app)/stock-snapshot')).toEqual(expect.objectContaining({ permission: 'stockSnapshot' }));
     expect(workspaceRouteAccess('/(app)/customer-profile')).toEqual(expect.objectContaining({ permission: 'acct' }));
+    expect(workspaceRouteAccess('/(app)/credit-facility')).toEqual(expect.objectContaining({
+      permission: 'creditFacility',
+      allowedRoles: ['admin', 'ceo', 'md'],
+    }));
+    expect(canAccessWorkspaceRoute('/(app)/credit-facility', 'ceo', [{ id: 'creditFacility' }])).toBe(true);
+    expect(canAccessWorkspaceRoute('/(app)/credit-facility', 'mgr', [{ id: 'creditFacility' }])).toBe(false);
     expect(workspaceRouteAccess('/(app)/future-workspace')).toBeUndefined();
     expect(canAccessWorkspaceRoute('/(app)/future-workspace', 'mgr', [{ id: 'home' }])).toBe(false);
   });
