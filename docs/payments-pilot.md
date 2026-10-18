@@ -75,3 +75,45 @@ consent and time range. It should show confirmed collections, settlements,
 meter-derived expected sales, stock/delivery evidence, reconciliation rate,
 and exceptions. It must not expose employee credentials, customer card data,
 or raw webhook payloads.
+
+## Pilot implementation (sandbox)
+
+Petrotrack does not process payments. The POS provider (Moniepoint or
+another acquirer) charges the customer and settles funds; Petrotrack only
+records signed notifications of payments that already happened.
+
+- Webhook: `POST /api/payments/webhooks/:provider`. Only `sandbox` is enabled;
+  `moniepoint` returns 503 until its schema and signature scheme are confirmed.
+- Enable the sandbox with `PAYMENTS_SANDBOX_WEBHOOK_SECRET` (32+ characters).
+  It is ignored when `NODE_ENV=production` unless `PAYMENTS_ALLOW_SANDBOX=true`.
+- Headers: `x-petrotrack-timestamp` (Unix seconds, ±300s) and
+  `x-petrotrack-signature: v1=<hex HMAC-SHA256(secret, "<timestamp>." + raw body)>`.
+- Body:
+
+```json
+{
+  "eventId": "evt_123",
+  "eventType": "pos.transaction",
+  "occurredAt": "2026-10-18T10:00:00Z",
+  "transaction": {
+    "id": "txn_123",
+    "terminalId": "2KUD0001",
+    "method": "card",
+    "status": "successful",
+    "amountKobo": 1500000,
+    "currency": "NGN",
+    "reference": "RRN123"
+  }
+}
+```
+
+  `method` is `card` or `transfer`; `status` is `successful`, `failed` or
+  `reversal` (reversals require `reversalOf`). Only `reference`, `rrn`, `stan`,
+  `cardScheme`, `narration` and `senderBank` metadata are kept.
+- Unknown terminals get 422 and nothing is stored, so the provider retries after
+  the terminal is registered. Replayed event or transaction IDs return 200
+  without creating duplicates.
+- App screens: **POS Terminals** (admin: register a terminal UUID to one pump,
+  disable, simulate a notification) and **POS Transactions** (Finance: totals and
+  list by branch, pump, period and method).
+- Not yet done: auto-filling shift report POS/transfer fields from these records.

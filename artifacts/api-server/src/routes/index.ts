@@ -10,6 +10,7 @@ import maintenanceWorkflowRouter from "./maintenance-workflow";
 import deliveryWorkflowRouter from "./workflow-deliveries";
 import financeWorkflowRouter from "./workflow-finance";
 import workflowDipsPricesRouter from "./workflow-dips-prices";
+import paymentsRouter from "./payments";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -24,6 +25,7 @@ router.use(requireAuth, maintenanceWorkflowRouter);
 router.use(requireAuth, deliveryWorkflowRouter);
 router.use(requireAuth, financeWorkflowRouter);
 router.use(requireAuth, workflowDipsPricesRouter);
+router.use(requireAuth, paymentsRouter);
 router.use(storageRouter);
 
 export default router;
