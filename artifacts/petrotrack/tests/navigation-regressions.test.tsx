@@ -7,6 +7,7 @@ const mockBack = jest.fn();
 const mockReplace = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
 const mockUsePathname = jest.fn(() => '/home');
+const mockSearchParams = jest.fn((): Record<string, string> => ({}));
 const mockUseApp = jest.fn();
 const mockMarkNotificationRead = jest.fn(async () => undefined);
 const mockAddNotificationResponseReceivedListener = jest.fn();
@@ -87,6 +88,7 @@ jest.mock('expo-router', () => ({
     canGoBack: mockCanGoBack,
   }),
   usePathname: () => mockUsePathname(),
+  useLocalSearchParams: () => mockSearchParams(),
 }));
 
 jest.mock('@/components/ScreenLayout', () => ({
@@ -189,6 +191,9 @@ jest.mock('@/context/AppContext', () => ({
     inventory: '/(app)/inventory',
     hr: '/(app)/hr',
     prices: '/(app)/prices',
+    creditFacility: '/(app)/credit-facility',
+    posTransactions: '/(app)/pos-transactions',
+    posTerminals: '/(app)/pos-terminals',
     customerProfile: '/(app)/customer-profile',
     comms: '/(app)/comms',
     jobs: '/(app)/jobs',
@@ -227,6 +232,7 @@ jest.mock('@/context/AppContext', () => ({
 
 import HomeScreen from '../app/(app)/home';
 import JobsScreen from '../app/(app)/jobs';
+import JobDepartmentScreen from '../app/(app)/job-department';
 import NotificationsScreen from '../app/(app)/notifications';
 import AppLayout from '../app/(app)/_layout';
 import { Header } from '../components/Header';
@@ -816,6 +822,25 @@ describe('role-aware route access and stale notification links', () => {
     expect(buttons(jobsRenderer).some(button => nodeText(button).includes(deptFor[label]))).toBe(false);
     expect(canAccessWorkspaceRoute(route, 'att', [])).toBe(false);
     act(() => jobsRenderer.unmount());
+  });
+
+  it('lists Credit Facility under Finance for executives only', () => {
+    mockSearchParams.mockReturnValue({ department: 'finance' });
+
+    mockUseApp.mockReturnValue(baseAppState({ role: 'admin', navItems: [] }));
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<JobDepartmentScreen />); });
+    const card = buttons(renderer).find(button => nodeText(button).includes('Credit Facility'));
+    expect(card).toBeDefined();
+    act(() => { card!.props.onPress(); });
+    expect(mockPush).toHaveBeenCalledWith('/(app)/credit-facility');
+    act(() => renderer.unmount());
+
+    mockUseApp.mockReturnValue(baseAppState({ role: 'mgr', navItems: [{ id: 'exp' }, { id: 'creditFacility' }] }));
+    act(() => { renderer = create(<JobDepartmentScreen />); });
+    expect(buttons(renderer).some(button => nodeText(button).includes('Credit Facility'))).toBe(false);
+    act(() => renderer.unmount());
+    mockSearchParams.mockReturnValue({});
   });
 
   it('keeps protected workspace cards and routes available to admins', () => {

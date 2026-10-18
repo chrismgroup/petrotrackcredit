@@ -1149,6 +1149,8 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'audit',    icon: 'list',             label: 'Audit'    },
     { id: 'exprpt',   icon: 'analytics',        label: 'Reports'  },
     { id: 'creditFacility', icon: 'shield-checkmark', label: 'Credit Facility' },
+    { id: 'posTransactions', icon: 'card', label: 'POS Transactions' },
+    { id: 'posTerminals', icon: 'hardware-chip', label: 'POS Terminals' },
     { id: 'settings', icon: 'settings',         label: 'Settings' },
   ],
 };
@@ -1182,6 +1184,8 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'budget',   icon: 'wallet',           label: 'Budget'     },
   { id: 'exprpt',   icon: 'analytics',        label: 'Reports'    },
   { id: 'creditFacility', icon: 'shield-checkmark', label: 'Credit Facility' },
+  { id: 'posTransactions', icon: 'card', label: 'POS Transactions' },
+  { id: 'posTerminals', icon: 'hardware-chip', label: 'POS Terminals' },
   { id: 'sales',    icon: 'bar-chart',        label: 'Sales'      },
   { id: 'exp',      icon: 'receipt',          label: 'Expenses'   },
   { id: 'recv',     icon: 'cube',             label: 'Receiving'  },
@@ -1252,6 +1256,8 @@ function defaultRoleAccess(): Record<string, Record<string, boolean>> {
         return [i.id, false];
       }
       if (i.id === 'creditFacility') return [i.id, r === 'ceo' || r === 'md'];
+      if (i.id === 'posTransactions') return [i.id, r !== 'mktg' && r !== 'att'];
+      if (i.id === 'posTerminals') return [i.id, false];
       if (i.id === 'users') return [i.id, r === 'md' || r === 'csm'];
       return [i.id, true];
     }));
@@ -1286,6 +1292,8 @@ export const SCREEN_ROUTES: Record<string, string> = {
   budget: '/(app)/budget', exp: '/(app)/expenses',
   exprpt: '/(app)/reports', mktg: '/(app)/marketing', shift: '/(app)/shift',
   creditFacility: '/(app)/credit-facility',
+  posTransactions: '/(app)/pos-transactions',
+  posTerminals: '/(app)/pos-terminals',
   tasks: '/(app)/tasks',
   actionItems: '/(app)/action-items',
   dailyRevenueLog: '/(app)/daily-revenue-log',

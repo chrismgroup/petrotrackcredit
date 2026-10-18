@@ -35,6 +35,9 @@ const DEPARTMENTS: Record<string, Department> = {
     { label: 'Expenses', description: 'Submit, review and approve expenses', icon: 'receipt-outline', route: SCREEN_ROUTES.exp },
     { label: 'Budgets', description: 'Plan spend and monitor performance', icon: 'calculator-outline', route: SCREEN_ROUTES.budget },
     { label: 'Prices', description: 'Review product prices and proposals', icon: 'pricetag-outline', route: SCREEN_ROUTES.prices },
+    { label: 'Credit Facility', description: 'Indicative borrowing capacity from business data (pilot)', icon: 'shield-checkmark-outline', route: SCREEN_ROUTES.creditFacility },
+    { label: 'POS Transactions', description: 'Card and transfer payments from pump POS terminals', icon: 'card-outline', route: SCREEN_ROUTES.posTransactions },
+    { label: 'POS Terminals', description: 'Assign each POS terminal (UUID) to a pump', icon: 'hardware-chip-outline', route: SCREEN_ROUTES.posTerminals },
   ] },
   hr: { title: 'Human Resources', subtitle: 'People, tasks & accountability', icon: 'people-circle-outline', jobs: [
     { label: 'People & HR', description: 'Staff, departments and employee records', icon: 'people-outline', route: SCREEN_ROUTES.hr },

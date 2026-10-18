@@ -47,6 +47,9 @@ const finance: JobItem[] = [
   { id: 'expenses', label: 'Expenses', description: 'Submit, review and approve expenses', icon: 'receipt-outline', route: SCREEN_ROUTES.exp },
   { id: 'budgets', label: 'Budgets', description: 'Plan spend and monitor budget performance', icon: 'calculator-outline', route: SCREEN_ROUTES.budget },
   { id: 'prices', label: 'Prices', description: 'Review product prices and proposals', icon: 'pricetag-outline', route: SCREEN_ROUTES.prices },
+  { id: 'creditFacility', label: 'Credit Facility', description: 'See indicative borrowing capacity from Petrotrack business data (pilot)', icon: 'shield-checkmark-outline', route: SCREEN_ROUTES.creditFacility },
+  { id: 'posTransactions', label: 'POS Transactions', description: 'Card and transfer payments reported automatically by pump POS terminals', icon: 'card-outline', route: SCREEN_ROUTES.posTransactions },
+  { id: 'posTerminals', label: 'POS Terminals', description: 'Assign each POS terminal (UUID) to a pump', icon: 'hardware-chip-outline', route: SCREEN_ROUTES.posTerminals },
 ];
 
 const humanResources: JobItem[] = [

@@ -381,6 +381,27 @@ describe('expense approval controls', () => {
     act(() => renderer.unmount());
   });
 
+  it('shows the grouped Nigerian expense categories in the New Expense form', () => {
+    mockedUseApp.mockReturnValue(appState({
+      role: 'acc',
+      budgets: [budget({ id: 1, status: 'fully_approved' })],
+    }) as any);
+
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<ExpensesScreen />); });
+    const addButton = renderer.root.findAll(node =>
+      String(node.type) === 'TouchableOpacity' && nodeText(node) === '',
+    )[0];
+    act(() => { addButton.props.onPress(); });
+
+    const text = nodeText(renderer.root);
+    expect(text).toContain('New Expense');
+    for (const group of ['Station Operations', 'Staff & Payroll', 'Office & Admin', 'Travel & Transport', 'IT & Technology']) {
+      expect(text).toContain(group);
+    }
+    act(() => renderer.unmount());
+  });
+
   it('submits an expense against the manager fully approved branch budget', async () => {
     const addExpense = jest.fn(async () => ({ ok: true }));
     mockedUseApp.mockReturnValue(appState({

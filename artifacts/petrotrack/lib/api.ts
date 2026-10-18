@@ -390,6 +390,80 @@ export const versionApi = {
   get: () => get<{ version: string }>('/version'),
 };
 
+export type PosPaymentMethod = 'card' | 'transfer';
+export type PosPaymentStatus = 'successful' | 'failed' | 'reversal';
+
+export interface PosTerminal {
+  id: string;
+  provider: 'sandbox' | 'moniepoint';
+  providerTerminalId: string;
+  branchId: string;
+  pumpId: string | null;
+  label: string;
+  status: 'active' | 'disabled';
+  createdAt: string;
+  disabledAt: string | null;
+}
+
+export interface PosTransaction {
+  id: string;
+  provider: string;
+  providerTransactionId: string;
+  terminalId: string | null;
+  terminalLabel: string | null;
+  providerTerminalId: string | null;
+  branchId: string;
+  pumpId: string | null;
+  method: PosPaymentMethod;
+  status: PosPaymentStatus;
+  amountKobo: number;
+  occurredAt: string;
+  recordedAt: string;
+  reversalOfProviderTransactionId: string | null;
+  metadata: Record<string, string>;
+}
+
+export interface PosTransactionTotals {
+  count: number;
+  cardKobo: number;
+  transferKobo: number;
+  reversalKobo: number;
+  failedCount: number;
+  netKobo: number;
+}
+
+export interface PosProviderStatus { id: string; label: string; ready: boolean }
+
+export interface PosTransactionFilters {
+  branchId?: string;
+  pumpId?: string;
+  terminalId?: string;
+  method?: PosPaymentMethod;
+  from?: string;
+  to?: string;
+  limit?: number;
+}
+
+export const paymentsApi = {
+  config: () => get<{ providers: PosProviderStatus[] }>('/payments/config'),
+  terminals: () => get<{ terminals: PosTerminal[] }>('/payments/terminals'),
+  registerTerminal: (data: { provider: string; providerTerminalId: string; branchId: string; pumpId: string; label: string }) =>
+    authenticatedJsonCommand<{ terminal: PosTerminal }>('POST', '/payments/terminals', data),
+  disableTerminal: (id: string) =>
+    authenticatedJsonCommand<{ terminal: PosTerminal }>('POST', `/payments/terminals/${encodeURIComponent(id)}/disable`, {}),
+  transactions: (filters: PosTransactionFilters = {}) => {
+    const params = Object.entries(filters)
+      .filter(([, value]) => value !== undefined && value !== '')
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+      .join('&');
+    return get<{ transactions: PosTransaction[]; totals: PosTransactionTotals }>(
+      `/payments/transactions${params ? `?${params}` : ''}`,
+    );
+  },
+  simulate: (data: { terminalId: string; method: PosPaymentMethod; amountKobo: number }) =>
+    authenticatedJsonCommand<{ recorded?: true; replayed?: true; transactionId?: string }>('POST', '/payments/sandbox/simulate', data),
+};
+
 export interface AppNotification {
   id: number;
   username: string;
