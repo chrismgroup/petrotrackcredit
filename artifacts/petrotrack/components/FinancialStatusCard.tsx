@@ -20,7 +20,7 @@ import {
 import { computePumpReportCOGS, getLastKnownCostPrice, missingPumpReportCostProducts } from '@/lib/report-helpers';
 import { monthlyDepreciationTotal, totalAssetNetBookValue } from '@/lib/asset-depreciation';
 import { calculateNetProfit } from '@/lib/net-profit';
-import { customerReceivablePosition } from '@/lib/customer-ledger';
+import { customerReceivablePosition, hasCustomerCredit } from '@/lib/customer-ledger';
 import { aggregateStockValueByBranch } from '@/lib/stock-valuation';
 import { STOCK_PRODUCTS } from '@/lib/product-identity';
 import { useColors } from '@/hooks/useColors';
@@ -422,7 +422,7 @@ export function FinancialStatusCard({ roleColor }: { roleColor: string }) {
   const totalPrincipalRepaid = cumulativeLoanPrincipalRepaid(fe, currentMonthKey);
   const outstandingLoans = Math.max(0, totalLoanFacilities - totalPrincipalRepaid);
   const legacyReceivableBalance = calculateAccountsReceivable(
-    pumpDailyReports.filter(report => !report.creditCustomerId),
+    pumpDailyReports.filter(report => !hasCustomerCredit(report)),
     scopedBranchId,
     financialEntry,
     currentMonthRange.to,

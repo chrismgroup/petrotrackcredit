@@ -1,3 +1,4 @@
+import { validatedCreditSaleLines } from "./credit-sales";
 import { Router, type IRouter, type Request } from "express";
 import { isDeepStrictEqual } from "node:util";
 import { eq, inArray, sql } from "drizzle-orm";
@@ -1031,11 +1032,14 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     "posAmount", "cashAmount", "transferAmount", "creditAmount", "totalCollected", "variance",
   ];
   const creditAmount = Number(report?.creditAmount ?? 0);
-  const creditCustomer = (Array.isArray(customerRows[0]?.data) ? customerRows[0].data : [])
-    .find(value => isJsonRecord(value)
-      && String(value.id ?? "") === String(report?.creditCustomerId ?? "")
-      && value.status === "approved"
-      && String(value.branchId ?? "") === requestedBranchId) as JsonRecord | undefined;
+  const approvedBranchCustomers = new Map(
+    (Array.isArray(customerRows[0]?.data) ? customerRows[0].data : [])
+      .filter((value): value is JsonRecord => isJsonRecord(value)
+        && value.status === "approved"
+        && String(value.branchId ?? "") === requestedBranchId)
+      .map(value => [String(value.id ?? ""), value]),
+  );
+  const creditLines = report ? validatedCreditSaleLines(report, creditAmount, approvedBranchCustomers) : null;
   if (
     !report ||
     !id ||
@@ -1047,13 +1051,21 @@ router.post("/pump-reports", async (req, res): Promise<void> => {
     numericFields.some(field => !Number.isFinite(Number(report[field]))) ||
     Number(report.closingMeter) <= Number(report.openingMeter) ||
     Number(report.liters) <= 0 ||
-    (creditAmount > 0 && !creditCustomer) ||
-    (creditAmount <= 0 && Boolean(report.creditCustomerId))
+    !creditLines
   ) {
     res.status(400).json({ error: "A valid pending manager report is required" });
     return;
   }
-  if (creditCustomer) report.creditCustomerName = String(creditCustomer.name ?? "");
+  if (creditLines.length > 0) {
+    // Names come from the approved customer profiles, not the device.
+    report.creditSales = creditLines;
+    report.creditCustomerId = creditLines.length === 1 ? creditLines[0].customerId : undefined;
+    report.creditCustomerName = creditLines.map(line => line.customerName).join(", ");
+  } else {
+    delete report.creditSales;
+    delete report.creditCustomerId;
+    delete report.creditCustomerName;
+  }
   const authEmpName = req.auth?.empName ?? (
     req.auth
       ? await db.select({ empName: staffUsersTable.empName })

@@ -12,8 +12,8 @@ import {
 import { mergeWorkflowRecords } from '@/lib/workflow-record-merge';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { startForegroundTimer } from '@/lib/foreground-timer';
-import type { CreditCustomer, CustomerPayment } from '@/lib/customer-ledger';
-export type { CreditCustomer, CustomerPayment } from '@/lib/customer-ledger';
+import type { CreditCustomer, CreditSaleLine, CustomerPayment } from '@/lib/customer-ledger';
+export type { CreditCustomer, CreditSaleLine, CustomerPayment } from '@/lib/customer-ledger';
 import { LAST_SIGNED_IN_USERNAME_STORAGE_KEY } from '@/lib/device-identity';
 import {
   EMPTY_FINANCIAL_ENTRY,
@@ -419,6 +419,8 @@ export interface PumpDailyReport {
   creditAmount: number;
   creditCustomerId?: string;
   creditCustomerName?: string;
+  /** Per-customer credit sales; creditAmount is their total. */
+  creditSales?: CreditSaleLine[];
   totalCollected: number;
   variance: number;
   note: string;

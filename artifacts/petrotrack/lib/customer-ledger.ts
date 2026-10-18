@@ -34,6 +34,14 @@ export interface CustomerPayment {
   recordedAt: string;
 }
 
+/** One approved credit customer's purchase within a single shift report. */
+export interface CreditSaleLine {
+  customerId: string;
+  customerName: string;
+  quantity: number;
+  amount: number;
+}
+
 export interface CustomerCreditSale {
   id?: number | string;
   status: string;
@@ -41,8 +49,98 @@ export interface CustomerCreditSale {
   branchId: string;
   creditAmount: number;
   creditCustomerId?: string;
+  creditCustomerName?: string;
+  /** Present on reports that may record several credit customers. */
+  creditSales?: CreditSaleLine[];
   product?: string;
   unitPrice?: number;
+}
+
+/**
+ * Credit lines for a report. Reports saved before multi-customer support only
+ * carry a single creditCustomerId, which is treated as one line.
+ */
+export function reportCreditLines(report: CustomerCreditSale): CreditSaleLine[] {
+  if (Array.isArray(report.creditSales) && report.creditSales.length > 0) {
+    return report.creditSales.filter(line => line && line.customerId && amount(line.amount) > 0);
+  }
+  if (report.creditCustomerId && amount(report.creditAmount) > 0) {
+    const unitPrice = amount(report.unitPrice);
+    return [{
+      customerId: report.creditCustomerId,
+      customerName: report.creditCustomerName ?? '',
+      quantity: unitPrice > 0 ? Number((amount(report.creditAmount) / unitPrice).toFixed(4)) : 0,
+      amount: amount(report.creditAmount),
+    }];
+  }
+  return [];
+}
+
+/** True when the report's credit is attributed to approved customer profiles. */
+export function hasCustomerCredit(report: CustomerCreditSale): boolean {
+  return reportCreditLines(report).length > 0;
+}
+
+export interface CreditSaleDraft {
+  customerId: string;
+  quantity: string;
+}
+
+export type CreditSalesResult =
+  | { ok: true; lines: CreditSaleLine[]; totalAmount: number; totalQuantity: number }
+  | { ok: false; error: string };
+
+/**
+ * Validates the attendant's credit entries. Only MD-approved customers of the
+ * report's branch are accepted, each at most once, each with a positive
+ * quantity, and the combined quantity cannot exceed the volume sold.
+ */
+export function buildCreditSales(
+  drafts: CreditSaleDraft[],
+  customers: CreditCustomer[],
+  branchId: string,
+  unitPrice: number,
+  volumeSold: number,
+): CreditSalesResult {
+  const seen = new Set<string>();
+  const lines: CreditSaleLine[] = [];
+  for (const draft of drafts) {
+    const customer = customers.find(candidate => candidate.id === draft.customerId);
+    if (!customer || customer.status !== 'approved' || customer.branchId !== branchId) {
+      return { ok: false, error: 'Only MD-approved credit customers of this branch can buy on credit.' };
+    }
+    if (seen.has(customer.id)) {
+      return { ok: false, error: `${customer.name} has been added more than once.` };
+    }
+    seen.add(customer.id);
+    const quantity = parseFloat(draft.quantity.replace(/,/g, '')) || 0;
+    if (quantity <= 0) {
+      return { ok: false, error: `Enter the quantity ${customer.name} bought, or remove the customer.` };
+    }
+    lines.push({
+      customerId: customer.id,
+      customerName: customer.name,
+      quantity,
+      amount: Number((quantity * unitPrice).toFixed(2)),
+    });
+  }
+  const totalQuantity = Number(lines.reduce((total, line) => total + line.quantity, 0).toFixed(4));
+  if (totalQuantity > volumeSold) {
+    return { ok: false, error: 'The combined credit customer quantity cannot exceed the total quantity sold in this shift report.' };
+  }
+  const totalAmount = Number(lines.reduce((total, line) => total + line.amount, 0).toFixed(2));
+  return { ok: true, lines, totalAmount, totalQuantity };
+}
+
+/** Report fields to save for a set of validated credit lines. */
+export function creditSaleFields(lines: CreditSaleLine[], totalAmount: number) {
+  return {
+    creditAmount: totalAmount,
+    creditSales: lines.length > 0 ? lines : undefined,
+    // Single-customer reports keep the original fields so older readers still work.
+    creditCustomerId: lines.length === 1 ? lines[0].customerId : undefined,
+    creditCustomerName: lines.length > 0 ? lines.map(line => line.customerName).join(', ') : undefined,
+  };
 }
 
 export type CustomerLedgerPeriod = 'weekly' | 'monthly';
@@ -83,9 +181,10 @@ export function customerLedgerBalance(
 ): number {
   const sales = reports
     .filter(report => report.status === 'approved'
-      && report.creditCustomerId === customerId
       && (!throughDate || report.date.slice(0, 10) <= throughDate.slice(0, 10)))
-    .reduce((total, report) => total + amount(report.creditAmount), 0);
+    .reduce((total, report) => total + reportCreditLines(report)
+      .filter(line => line.customerId === customerId)
+      .reduce((sum, line) => sum + amount(line.amount), 0), 0);
   const received = payments
     .filter(payment => payment.customerId === customerId
       && (!throughDate || payment.date.slice(0, 10) <= throughDate.slice(0, 10)))
@@ -140,24 +239,26 @@ export function customerStatementForPeriod(
 ): CustomerStatement {
   const purchases = reports
     .filter(report => report.status === 'approved'
-      && report.creditCustomerId === customerId
       && report.date.slice(0, 10) >= range.from
       && report.date.slice(0, 10) <= range.to)
-    .map((report, index): CustomerPurchaseLine => {
-      const purchaseAmount = amount(report.creditAmount);
-      const unitPrice = amount(report.unitPrice);
-      const product = String(report.product || 'Product');
-      return {
-        id: String(report.id ?? `${report.date}-${index}`),
-        date: report.date.slice(0, 10),
-        product,
-        unit: product === 'LPG' || product.startsWith('LPG_') ? 'kg' : 'L',
-        quantity: unitPrice > 0 ? Number((purchaseAmount / unitPrice).toFixed(4)) : 0,
-        unitPrice,
-        amount: purchaseAmount,
-        branchId: report.branchId,
-      };
-    })
+    .flatMap((report, index) => reportCreditLines(report)
+      .filter(line => line.customerId === customerId)
+      .map((line, lineIndex): CustomerPurchaseLine => {
+        const purchaseAmount = amount(line.amount);
+        const unitPrice = amount(report.unitPrice);
+        const product = String(report.product || 'Product');
+        const baseId = String(report.id ?? `${report.date}-${index}`);
+        return {
+          id: lineIndex === 0 ? baseId : `${baseId}-${lineIndex}`,
+          date: report.date.slice(0, 10),
+          product,
+          unit: product === 'LPG' || product.startsWith('LPG_') ? 'kg' : 'L',
+          quantity: unitPrice > 0 ? Number((purchaseAmount / unitPrice).toFixed(4)) : 0,
+          unitPrice,
+          amount: purchaseAmount,
+          branchId: report.branchId,
+        };
+      }))
     .sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id));
   const periodPayments = payments
     .filter(payment => payment.customerId === customerId

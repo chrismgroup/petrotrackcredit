@@ -1,8 +1,12 @@
 import {
+  buildCreditSales,
+  creditSaleFields,
   customerLedgerBalance,
   customerLedgerPeriodRange,
   customerReceivablePosition,
   customerStatementForPeriod,
+  hasCustomerCredit,
+  reportCreditLines,
   type CreditCustomer,
 } from './customer-ledger';
 
@@ -61,5 +65,87 @@ describe('customer receivables ledger', () => {
     expect(statement.totalPurchases).toBe(65_000);
     expect(statement.totalPayments).toBe(40_000);
     expect(statement.closingBalance).toBe(40_000);
+  });
+
+  it('posts each customer on a multi-customer shift report to their own ledger', () => {
+    const reports = [{
+      id: 7, status: 'approved', date: '2026-10-03', branchId: 'B1', product: 'PMS', unitPrice: 1_000,
+      creditAmount: 150_000, creditCustomerName: 'Ibom Air, Tulcan',
+      creditSales: [
+        { customerId: 'IBOM', customerName: 'Ibom Air', quantity: 100, amount: 100_000 },
+        { customerId: 'TULCAN', customerName: 'Tulcan', quantity: 50, amount: 50_000 },
+      ],
+    }];
+    expect(customerLedgerBalance('IBOM', reports)).toBe(100_000);
+    expect(customerLedgerBalance('TULCAN', reports)).toBe(50_000);
+    expect(customerReceivablePosition([customer('IBOM'), customer('TULCAN')], reports, [], 'B1'))
+      .toEqual({ receivables: 150_000, advances: 0 });
+    const statement = customerStatementForPeriod('TULCAN', reports, [], { from: '2026-10-01', to: '2026-10-31' });
+    expect(statement.purchases.map(line => [line.quantity, line.amount])).toEqual([[50, 50_000]]);
+    expect(hasCustomerCredit(reports[0])).toBe(true);
+    expect(hasCustomerCredit({ status: 'approved', date: '2026-10-03', branchId: 'B1', creditAmount: 9_000 })).toBe(false);
+  });
+
+  it('reads legacy single-customer reports as one credit line', () => {
+    expect(reportCreditLines({
+      status: 'approved', date: '2026-10-03', branchId: 'B1', unitPrice: 1_000,
+      creditAmount: 20_000, creditCustomerId: 'C1', creditCustomerName: 'C1',
+    })).toEqual([{ customerId: 'C1', customerName: 'C1', quantity: 20, amount: 20_000 }]);
+  });
+});
+
+describe('buildCreditSales', () => {
+  const approved = [
+    { ...customer('IBOM'), name: 'Ibom Air' },
+    { ...customer('TULCAN'), name: 'Tulcan' },
+    { ...customer('PENDING'), name: 'Pending Co', status: 'pending_md' as const },
+    { ...customer('OTHER'), name: 'Other Branch', branchId: 'B2' },
+  ];
+
+  it('builds lines for several approved customers', () => {
+    const result = buildCreditSales(
+      [{ customerId: 'IBOM', quantity: '100' }, { customerId: 'TULCAN', quantity: '50.5' }],
+      approved, 'B1', 1_000, 400,
+    );
+    expect(result).toEqual({
+      ok: true,
+      totalAmount: 150_500,
+      totalQuantity: 150.5,
+      lines: [
+        { customerId: 'IBOM', customerName: 'Ibom Air', quantity: 100, amount: 100_000 },
+        { customerId: 'TULCAN', customerName: 'Tulcan', quantity: 50.5, amount: 50_500 },
+      ],
+    });
+    if (result.ok) {
+      expect(creditSaleFields(result.lines, result.totalAmount)).toEqual({
+        creditAmount: 150_500,
+        creditSales: result.lines,
+        creditCustomerId: undefined,
+        creditCustomerName: 'Ibom Air, Tulcan',
+      });
+    }
+  });
+
+  it('keeps the single-customer fields for one customer and clears them for none', () => {
+    const single = buildCreditSales([{ customerId: 'IBOM', quantity: '10' }], approved, 'B1', 1_000, 400);
+    expect(single.ok && creditSaleFields(single.lines, single.totalAmount)).toMatchObject({
+      creditAmount: 10_000, creditCustomerId: 'IBOM', creditCustomerName: 'Ibom Air',
+    });
+    expect(creditSaleFields([], 0)).toEqual({
+      creditAmount: 0, creditSales: undefined, creditCustomerId: undefined, creditCustomerName: undefined,
+    });
+  });
+
+  it.each([
+    ['an unapproved customer', [{ customerId: 'PENDING', quantity: '5' }], /MD-approved/],
+    ['another branch customer', [{ customerId: 'OTHER', quantity: '5' }], /MD-approved/],
+    ['an unknown customer', [{ customerId: 'GHOST', quantity: '5' }], /MD-approved/],
+    ['a duplicate customer', [{ customerId: 'IBOM', quantity: '5' }, { customerId: 'IBOM', quantity: '1' }], /more than once/],
+    ['a missing quantity', [{ customerId: 'IBOM', quantity: '' }], /Enter the quantity Ibom Air bought/],
+    ['more than was sold', [{ customerId: 'IBOM', quantity: '300' }, { customerId: 'TULCAN', quantity: '150' }], /cannot exceed/],
+  ])('rejects %s', (_label, drafts, error) => {
+    const result = buildCreditSales(drafts, approved, 'B1', 1_000, 400);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(error);
   });
 });

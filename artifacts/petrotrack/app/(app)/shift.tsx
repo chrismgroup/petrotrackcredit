@@ -16,11 +16,16 @@ import {
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { AppliedDateField } from '@/components/AppliedDateField';
-import { customerLedgerBalance } from '@/lib/customer-ledger';
+import { CreditSalesEditor } from '@/components/CreditSalesEditor';
+import {
+  buildCreditSales, creditSaleFields, customerLedgerBalance, reportCreditLines, type CreditSaleDraft,
+} from '@/lib/customer-ledger';
 import { getPriceForPumpOnDate } from '@/lib/price-history';
 
 /* ── helpers ─────────────────────────────────────────── */
 const fmtL = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+const creditDraftsFor = (report: PumpDailyReport): CreditSaleDraft[] =>
+  reportCreditLines(report).map(line => ({ customerId: line.customerId, quantity: String(line.quantity) }));
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   pending_manager:    { label: "Awaiting Manager's Approval",    color: '#71805B', bg: '#EEF2E4', icon: 'time-outline' },
@@ -402,8 +407,7 @@ export default function ShiftReportScreen() {
   const [posAmt, setPosAmt]         = useState('');
   const [cashAmt, setCashAmt]         = useState('');
   const [xferAmt, setXferAmt]         = useState('');
-  const [creditQuantity, setCreditQuantity] = useState('');
-  const [creditCustomerId, setCreditCustomerId] = useState('');
+  const [creditDrafts, setCreditDrafts] = useState<CreditSaleDraft[]>([]);
   const [noteAtt, setNoteAtt]         = useState('');
   const [appliesOn, setAppliesOn]     = useState('');
   const [historyDate, setHistoryDate] = useState('');
@@ -416,15 +420,16 @@ export default function ShiftReportScreen() {
   const posVal    = parseFloat(posAmt.replace(/,/g, ''))    || 0;
   const cashVal   = parseFloat(cashAmt.replace(/,/g, ''))   || 0;
   const xferVal   = parseFloat(xferAmt.replace(/,/g, ''))   || 0;
-  const creditQuantityValue = parseFloat(creditQuantity.replace(/,/g, '')) || 0;
-  const creditVal = Number((creditQuantityValue * unitPrice).toFixed(2));
+  const creditVal = Number(creditDrafts
+    .reduce((total, draft) => total + (parseFloat(draft.quantity.replace(/,/g, '')) || 0) * unitPrice, 0)
+    .toFixed(2));
   const totalColl = posVal + cashVal + xferVal;
   const variance  = totalColl + creditVal - grossAmt;
   const varColor  = variance === 0 ? '#1F6848' : variance > 0 ? '#286247' : '#365A47';
+  const reportBranchId = branchId ?? pump?.branchId ?? '';
   const approvedCreditCustomers = creditCustomers.filter(customer =>
-    customer.status === 'approved' && customer.branchId === (branchId ?? pump?.branchId ?? ''),
+    customer.status === 'approved' && customer.branchId === reportBranchId,
   );
-  const selectedCreditCustomer = approvedCreditCustomers.find(customer => customer.id === creditCustomerId);
 
   function handleSubmit() {
     if (!pump) { Alert.alert('Error', 'No active pump selected.'); return; }
@@ -435,12 +440,9 @@ export default function ShiftReportScreen() {
     }
     if (liters <= 0) { Alert.alert('Error', 'Closing meter must be greater than opening meter.'); return; }
     if (unitPrice <= 0) { Alert.alert('Price unavailable', 'No approved branch selling price is available for this product on the selected business date.'); return; }
-    if (creditQuantityValue > liters) { Alert.alert('Invalid customer quantity', 'The customer purchase quantity cannot exceed the total quantity sold in this shift report.'); return; }
-    if (totalColl + creditVal <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, transfer, or credit).'); return; }
-    if (creditVal > 0 && !selectedCreditCustomer) {
-      Alert.alert('Customer required', 'Select the approved customer receiving this credit sale.');
-      return;
-    }
+    const credit = buildCreditSales(creditDrafts, creditCustomers, reportBranchId, unitPrice, liters);
+    if (!credit.ok) { Alert.alert('Check credit sales', credit.error); return; }
+    if (totalColl + credit.totalAmount <= 0) { Alert.alert('Error', 'Enter at least one payment amount (POS, cash, transfer, or credit).'); return; }
     requestDateConfirmation('shift report', appliesOn, async () => {
       const submitted = await submitPumpReportConfirmed({
          date: appliesOn,
@@ -448,10 +450,9 @@ export default function ShiftReportScreen() {
         branchId: branchId ?? pump.branchId ?? '',
         openingMeter, closingMeter: closeVal, liters,
         unitPrice, grossAmount: grossAmt,
-        posAmount: posVal, cashAmount: cashVal, transferAmount: xferVal, creditAmount: creditVal,
-        creditCustomerId: creditVal > 0 ? selectedCreditCustomer?.id : undefined,
-        creditCustomerName: creditVal > 0 ? selectedCreditCustomer?.name : undefined,
-        totalCollected: totalColl, variance,
+        posAmount: posVal, cashAmount: cashVal, transferAmount: xferVal,
+        ...creditSaleFields(credit.lines, credit.totalAmount),
+        totalCollected: totalColl, variance: totalColl + credit.totalAmount - grossAmt,
         note: noteAtt.trim(),
         submittedBy: userName ?? '', submittedByName: userName ?? '',
       });
@@ -459,7 +460,7 @@ export default function ShiftReportScreen() {
         Alert.alert('Report not saved', 'This report could not be stored on the device. Your entries are still on screen—please try again.');
         return;
       }
-      setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditQuantity(''); setCreditCustomerId(''); setNoteAtt('');
+      setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditDrafts([]); setNoteAtt('');
       setAppliesOn('');
       const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
       if (submitted === 'queued') {
@@ -483,8 +484,7 @@ export default function ShiftReportScreen() {
   const [editPos, setEditPos] = useState('');
   const [editCash, setEditCash] = useState('');
   const [editXfer, setEditXfer] = useState('');
-  const [editCredit, setEditCredit] = useState('');
-  const [editCreditCustomerId, setEditCreditCustomerId] = useState('');
+  const [editCreditDrafts, setEditCreditDrafts] = useState<CreditSaleDraft[]>([]);
   const [editNote, setEditNote] = useState('');
   const [editDate, setEditDate] = useState('');
   const [isCorrectingDate, setIsCorrectingDate] = useState(false);
@@ -503,8 +503,7 @@ export default function ShiftReportScreen() {
     setEditPos(String(r.posAmount));
     setEditCash(String(r.cashAmount));
     setEditXfer(String(r.transferAmount));
-    setEditCredit(String(r.creditAmount));
-    setEditCreditCustomerId(r.creditCustomerId ?? '');
+    setEditCreditDrafts(creditDraftsFor(r));
     setEditNote(r.note ?? '');
     setEditDate(r.date);
     setIsCorrectingDate(false);
@@ -526,8 +525,7 @@ export default function ShiftReportScreen() {
     setEditPos(String(viewing.posAmount));
     setEditCash(String(viewing.cashAmount));
     setEditXfer(String(viewing.transferAmount));
-    setEditCredit(String(viewing.creditAmount));
-    setEditCreditCustomerId(viewing.creditCustomerId ?? '');
+    setEditCreditDrafts(creditDraftsFor(viewing));
     setEditNote(viewing.note ?? '');
     setEditDate(viewing.date);
     setIsEditing(false);
@@ -576,9 +574,13 @@ export default function ShiftReportScreen() {
     if (!editDate) { Alert.alert('Date required', 'Select the correct business date before saving.'); return; }
     const closeVal = parseFloat(editClose.replace(/,/g, '')) || 0;
     if (closeVal <= viewing.openingMeter) { Alert.alert('Invalid', 'Closing meter must be greater than opening meter.'); return; }
-    const editedCredit = parseFloat(editCredit.replace(/,/g, '')) || 0;
-    const editedCustomer = creditCustomers.find(customer => customer.id === editCreditCustomerId && customer.status === 'approved');
-    if (editedCredit > 0 && !editedCustomer) { Alert.alert('Customer required', 'Select the approved customer receiving this credit sale.'); return; }
+    const editedCredit = buildCreditSales(
+      editCreditDrafts, creditCustomers, viewing.branchId, viewing.unitPrice,
+      parseFloat((closeVal - viewing.openingMeter).toFixed(4)),
+    );
+    if (!editedCredit.ok) { Alert.alert('Check credit sales', editedCredit.error); return; }
+    // Older reports may hold credit with no customer; keep it until customers are assigned.
+    const keepUnassignedCredit = editedCredit.lines.length === 0 && reportCreditLines(viewing).length === 0;
     requestDateConfirmation('shift report', editDate, () => {
       updatePumpReport(viewing.id, {
         date: editDate,
@@ -586,9 +588,7 @@ export default function ShiftReportScreen() {
         posAmount: parseFloat(editPos.replace(/,/g, '')) || 0,
         cashAmount: parseFloat(editCash.replace(/,/g, '')) || 0,
         transferAmount: parseFloat(editXfer.replace(/,/g, '')) || 0,
-        creditAmount: editedCredit,
-        creditCustomerId: editedCredit > 0 ? editedCustomer?.id : undefined,
-        creditCustomerName: editedCredit > 0 ? editedCustomer?.name : undefined,
+        ...(keepUnassignedCredit ? {} : creditSaleFields(editedCredit.lines, editedCredit.totalAmount)),
         note: editNote.trim(),
       });
       setIsEditing(false);
@@ -1184,68 +1184,15 @@ export default function ShiftReportScreen() {
                       </View>
                     ))}
 
-                    <View style={{ marginBottom: 10 }}>
-                      <Text style={[c.inputLabel, { color: colors.textMuted }]}>Customer Purchase Quantity ({pump ? unitForProd(pump.prod) : 'L/kg'})</Text>
-                      <View style={[c.payInputWrap, { backgroundColor: colors.background, borderColor: colors.inputBorder ?? colors.border }]}>
-                        <Ionicons name="person-outline" size={15} color="#62754D" />
-                        <TextInput
-                          testID="shift-customer-quantity"
-                          style={[c.payInput, { color: colors.text }]}
-                          placeholder="0.00" placeholderTextColor={colors.textSubtle}
-                          keyboardType="decimal-pad" value={creditQuantity} onChangeText={setCreditQuantity}
-                        />
-                      </View>
-                    </View>
-                    {creditQuantityValue > 0 && (
-                      <View style={[c.calcRow, { backgroundColor: '#62754D12', borderColor: '#62754D33', marginBottom: 10 }]}>
-                        <Ionicons name="calculator-outline" size={16} color="#62754D" />
-                        <Text style={[c.calcTxt, { color: '#62754D' }]}>
-                          {creditQuantityValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} {pump ? unitForProd(pump.prod) : ''} × ₦{unitPrice.toLocaleString()} = <Text style={{ fontWeight: '800' }}>{fmt(creditVal)}</Text>
-                        </Text>
-                      </View>
-                    )}
-
-                    {creditVal > 0 && (
-                      <View style={{ marginBottom: 12 }}>
-                        <Text style={[c.inputLabel, { color: colors.textMuted }]}>Credit Customer *</Text>
-                        {approvedCreditCustomers.length === 0 ? (
-                          <Text style={[c.formHint, { color: colors.error }]}>No MD-approved credit customer is available for this branch. Ask the Accountant to create a profile.</Text>
-                        ) : (
-                          <View style={{ gap: 7 }}>
-                            {approvedCreditCustomers.map(customer => {
-                              const balance = customerLedgerBalance(customer.id, pumpDailyReports, customerPayments, appliesOn || today);
-                              const selected = customer.id === creditCustomerId;
-                              return (
-                                <TouchableOpacity
-                                  key={customer.id}
-                                  testID={`shift-credit-customer-${customer.id}`}
-                                  onPress={() => setCreditCustomerId(customer.id)}
-                                  style={[c.pumpChip, { backgroundColor: selected ? roleColor : colors.background, borderColor: selected ? roleColor : colors.border }]}
-                                >
-                                  <Text style={[c.pumpChipTxt, { color: selected ? '#fff' : colors.text }]}>{customer.name}</Text>
-                                  <Text style={[c.pumpProd, { color: selected ? '#fff' : balance > 0 ? colors.error : colors.success }]}>
-                                    {balance > 0 ? `Outstanding ${fmt(balance)}` : balance < 0 ? `Advance ${fmt(Math.abs(balance))}` : 'Balanced'}
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        )}
-                        {selectedCreditCustomer && (() => {
-                          const currentBalance = customerLedgerBalance(selectedCreditCustomer.id, pumpDailyReports, customerPayments, appliesOn || today);
-                          const afterSale = currentBalance + creditVal;
-                          const customerQuantity = unitPrice > 0 ? creditVal / unitPrice : 0;
-                          return (
-                            <View style={{ marginTop: 7, gap: 3 }}>
-                              <Text style={[c.formHint, { color: colors.text }]}>Customer purchase: {customerQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} {unitForProd(pump.prod)} × ₦{unitPrice.toLocaleString()}/{unitForProd(pump.prod)} = {fmt(creditVal)}</Text>
-                              <Text style={[c.formHint, { color: afterSale > 0 ? colors.error : colors.success }]}>
-                                {afterSale > 0 ? `Outstanding after this sale: ${fmt(afterSale)}` : afterSale < 0 ? `Advance remaining after this sale: ${fmt(Math.abs(afterSale))}` : 'This sale will fully use the available advance.'}
-                              </Text>
-                            </View>
-                          );
-                        })()}
-                      </View>
-                    )}
+                    <CreditSalesEditor
+                      customers={approvedCreditCustomers}
+                      drafts={creditDrafts}
+                      onChange={setCreditDrafts}
+                      unitPrice={unitPrice}
+                      unit={pump ? unitForProd(pump.prod) : 'L'}
+                      accent={roleColor}
+                      balanceFor={customerId => customerLedgerBalance(customerId, pumpDailyReports, customerPayments, appliesOn || today)}
+                    />
 
                     {/* Balance summary */}
                     {(posVal + cashVal + xferVal + creditVal) > 0 && (
@@ -1696,7 +1643,6 @@ export default function ShiftReportScreen() {
                   { label: 'POS', value: editPos, setter: setEditPos },
                   { label: 'Cash', value: editCash, setter: setEditCash },
                   { label: 'Bank Transfer', value: editXfer, setter: setEditXfer },
-                  { label: 'Credit to Customer', value: editCredit, setter: setEditCredit },
                 ].map(f => (
                   <View key={f.label} style={{ marginBottom: 8 }}>
                     <Text style={[c.inputLabel, { color: colors.textMuted }]}>{f.label}</Text>
@@ -1707,19 +1653,20 @@ export default function ShiftReportScreen() {
                     />
                   </View>
                 ))}
-                {(parseFloat(editCredit.replace(/,/g, '')) || 0) > 0 && (
-                  <View style={{ gap: 6, marginBottom: 8 }}>
-                    <Text style={[c.inputLabel, { color: colors.textMuted }]}>Credit Customer *</Text>
-                    {creditCustomers
-                      .filter(customer => customer.status === 'approved' && customer.branchId === viewing.branchId)
-                      .map(customer => (
-                        <TouchableOpacity key={customer.id} onPress={() => setEditCreditCustomerId(customer.id)}
-                          style={[c.pumpChip, { backgroundColor: editCreditCustomerId === customer.id ? roleColor : colors.surface, borderColor: editCreditCustomerId === customer.id ? roleColor : colors.border }]}>
-                          <Text style={[c.pumpChipTxt, { color: editCreditCustomerId === customer.id ? '#fff' : colors.text }]}>{customer.name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                  </View>
+                {viewing.creditAmount > 0 && reportCreditLines(viewing).length === 0 && editCreditDrafts.length === 0 && (
+                  <Text style={[c.formHint, { color: colors.error, marginBottom: 6 }]}>
+                    This older report has {fmt(viewing.creditAmount)} of credit with no customer. Select the approved customers to assign it.
+                  </Text>
                 )}
+                <CreditSalesEditor
+                  customers={creditCustomers.filter(customer => customer.status === 'approved' && customer.branchId === viewing.branchId)}
+                  drafts={editCreditDrafts}
+                  onChange={setEditCreditDrafts}
+                  unitPrice={viewing.unitPrice}
+                  unit={unitForProd(viewing.product)}
+                  accent={roleColor}
+                  testIDPrefix="edit-credit"
+                />
               </>
             ) : (
               <>
@@ -1727,7 +1674,21 @@ export default function ShiftReportScreen() {
                 <Field label="Cash" value={fmt(viewing.cashAmount)} colors={colors} />
                 <Field label="Bank Transfer" value={fmt(viewing.transferAmount)} colors={colors} />
                 <Field label="Credit to Customer" value={fmt(viewing.creditAmount ?? 0)} colors={colors} accent="#62754D" />
-                {(viewing.creditAmount ?? 0) > 0 && <Field label="Credit Customer" value={viewing.creditCustomerName ?? 'Not assigned'} colors={colors} accent="#62754D" />}
+                {(viewing.creditAmount ?? 0) > 0 && (() => {
+                  const creditLines = reportCreditLines(viewing);
+                  if (creditLines.length === 0) {
+                    return <Field label="Credit Customer" value="Not assigned" colors={colors} accent="#62754D" />;
+                  }
+                  return creditLines.map(line => (
+                    <Field
+                      key={line.customerId}
+                      label={`Credit · ${line.customerName || 'Customer'}`}
+                      value={`${fmtL(line.quantity)} ${unitForProd(viewing.product)} · ${fmt(line.amount)}`}
+                      colors={colors}
+                      accent="#62754D"
+                    />
+                  ));
+                })()}
               </>
             )}
             <Field label="Total Collected" value={fmt(viewing.totalCollected)} colors={colors} />

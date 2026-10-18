@@ -43,7 +43,7 @@ import { useColors } from '@/hooks/useColors';
 import { getDashboardApprovalRoute } from '@/lib/dashboard-approval-routing';
 import { findLatestDipForProduct } from '@/lib/dip-helpers';
 import { canAccessWorkspaceRoute } from '@/lib/workspace-access';
-import { customerReceivablePosition } from '@/lib/customer-ledger';
+import { customerReceivablePosition, hasCustomerCredit } from '@/lib/customer-ledger';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 import { G, Rect, Svg, Text as SvgText } from 'react-native-svg';
@@ -481,7 +481,7 @@ export default function HomeScreen() {
   const isGlobalOverview = role === 'admin' || (role ? GLOBAL_OVERVIEW_ROLES.has(role) : false);
   const scopedBranchId = isGlobalOverview ? null : branchId;
   const legacyAccountsReceivable = Math.max(0, calculateAccountsReceivable(
-    pumpDailyReports.filter(report => !report.creditCustomerId),
+    pumpDailyReports.filter(report => !hasCustomerCredit(report)),
     scopedBranchId,
     financialEntry,
     todayKey,
