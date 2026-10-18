@@ -1,12 +1,15 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { bigint, check, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Relational payment records are deliberately separate from app_state.  They
  * are evidence received from a payment provider, not staff-editable workflow
  * snapshots.  Amounts are stored in kobo to avoid rounding a naira value.
+ * Record IDs are Postgres-generated UUIDs; branch/pump IDs stay text because
+ * they reference existing app_state records.
  */
 export const paymentTerminalsTable = pgTable("payment_terminals", {
-  id: text("id").primaryKey(),
+  id: uuid("id").primaryKey().defaultRandom(),
   provider: text("provider").notNull(),
   providerTerminalId: text("provider_terminal_id").notNull(),
   branchId: text("branch_id").notNull(),
@@ -17,13 +20,17 @@ export const paymentTerminalsTable = pgTable("payment_terminals", {
   disabledAt: timestamp("disabled_at", { withTimezone: true }),
 }, table => ({
   providerTerminalUnique: uniqueIndex("payment_terminals_provider_terminal_unique").on(table.provider, table.providerTerminalId),
+  activePumpUnique: uniqueIndex("payment_terminals_active_pump_unique").on(table.branchId, table.pumpId).where(sql`${table.status} = 'active'`),
   branchIndex: index("payment_terminals_branch_idx").on(table.branchId),
+  statusCheck: check("payment_terminals_status_check", sql`${table.status} IN ('active', 'disabled')`),
+  activeRequiresPump: check("payment_terminals_active_requires_pump", sql`${table.status} <> 'active' OR ${table.pumpId} IS NOT NULL`),
+  disabledAtCheck: check("payment_terminals_disabled_at_check", sql`(${table.status} = 'active') = (${table.disabledAt} IS NULL)`),
 }));
 
 /** A closed or active interval used to attribute terminal events to a shift. */
 export const terminalShiftAssignmentsTable = pgTable("terminal_shift_assignments", {
-  id: text("id").primaryKey(),
-  terminalId: text("terminal_id").notNull().references(() => paymentTerminalsTable.id),
+  id: uuid("id").primaryKey().defaultRandom(),
+  terminalId: uuid("terminal_id").notNull().references(() => paymentTerminalsTable.id),
   branchId: text("branch_id").notNull(),
   pumpId: text("pump_id"),
   attendantUsername: text("attendant_username").notNull(),
@@ -32,13 +39,15 @@ export const terminalShiftAssignmentsTable = pgTable("terminal_shift_assignments
   openedBy: text("opened_by").notNull(),
   closedBy: text("closed_by"),
 }, table => ({
+  openTerminalUnique: uniqueIndex("terminal_shift_assignments_open_terminal_unique").on(table.terminalId).where(sql`${table.closedAt} IS NULL`),
   terminalTimeIndex: index("terminal_shift_assignments_terminal_time_idx").on(table.terminalId, table.openedAt),
   branchTimeIndex: index("terminal_shift_assignments_branch_time_idx").on(table.branchId, table.openedAt),
+  closedAfterOpened: check("terminal_shift_assignments_closed_after_opened", sql`${table.closedAt} IS NULL OR ${table.closedAt} > ${table.openedAt}`),
 }));
 
 /** Immutable provider event envelope.  Payload hashes prove the received bytes without retaining cardholder data. */
 export const paymentProviderEventsTable = pgTable("payment_provider_events", {
-  id: text("id").primaryKey(),
+  id: uuid("id").primaryKey().defaultRandom(),
   provider: text("provider").notNull(),
   providerEventId: text("provider_event_id").notNull(),
   eventType: text("event_type").notNull(),
@@ -53,18 +62,18 @@ export const paymentProviderEventsTable = pgTable("payment_provider_events", {
 
 /** Immutable financial facts. Corrections are new reversal rows, never updates. */
 export const paymentTransactionsTable = pgTable("payment_transactions", {
-  id: text("id").primaryKey(),
+  id: uuid("id").primaryKey().defaultRandom(),
   provider: text("provider").notNull(),
   providerTransactionId: text("provider_transaction_id").notNull(),
   providerEventId: text("provider_event_id").notNull(),
-  providerEventRecordId: text("provider_event_record_id").notNull().references(() => paymentProviderEventsTable.id),
-  terminalId: text("terminal_id").references(() => paymentTerminalsTable.id),
-  shiftAssignmentId: text("shift_assignment_id").references(() => terminalShiftAssignmentsTable.id),
+  providerEventRecordId: uuid("provider_event_record_id").notNull().references(() => paymentProviderEventsTable.id),
+  terminalId: uuid("terminal_id").references(() => paymentTerminalsTable.id),
+  shiftAssignmentId: uuid("shift_assignment_id").references(() => terminalShiftAssignmentsTable.id),
   branchId: text("branch_id").notNull(),
   pumpId: text("pump_id"),
   method: text("method").notNull(),
   status: text("status").notNull(),
-  amountKobo: integer("amount_kobo").notNull(),
+  amountKobo: bigint("amount_kobo", { mode: "number" }).notNull(),
   currency: text("currency").notNull().default("NGN"),
   occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
   reversalOfProviderTransactionId: text("reversal_of_provider_transaction_id"),
@@ -74,18 +83,21 @@ export const paymentTransactionsTable = pgTable("payment_transactions", {
   providerTransactionUnique: uniqueIndex("payment_transactions_provider_tx_unique").on(table.provider, table.providerTransactionId),
   branchTimeIndex: index("payment_transactions_branch_time_idx").on(table.branchId, table.occurredAt),
   terminalTimeIndex: index("payment_transactions_terminal_time_idx").on(table.terminalId, table.occurredAt),
+  amountPositive: check("payment_transactions_amount_positive", sql`${table.amountKobo} > 0`),
 }));
 
 /** A balanced journal is required before funds can affect financial reporting. */
 export const paymentLedgerEntriesTable = pgTable("payment_ledger_entries", {
-  id: text("id").primaryKey(),
-  transactionId: text("transaction_id").notNull().references(() => paymentTransactionsTable.id),
+  id: uuid("id").primaryKey().defaultRandom(),
+  transactionId: uuid("transaction_id").notNull().references(() => paymentTransactionsTable.id),
   account: text("account").notNull(),
   direction: text("direction").notNull(),
-  amountKobo: integer("amount_kobo").notNull(),
+  amountKobo: bigint("amount_kobo", { mode: "number" }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, table => ({
   transactionIndex: index("payment_ledger_entries_transaction_idx").on(table.transactionId),
+  directionCheck: check("payment_ledger_entries_direction_check", sql`${table.direction} IN ('debit', 'credit')`),
+  amountPositive: check("payment_ledger_entries_amount_positive", sql`${table.amountKobo} > 0`),
 }));
 
 export type PaymentTerminal = typeof paymentTerminalsTable.$inferSelect;

@@ -55,8 +55,14 @@ processor fees, and bank cash received remain distinguishable.
   repository files.
 - Enforce HTTPS, request size limits, signature verification, timestamp skew,
   replay/idempotency checks, rate limits, and audit alerts.
-- Map each terminal to exactly one active shift; unmatched events are held as
-  exceptions rather than assigned speculatively.
+- Each terminal has a Postgres-generated UUID and every active terminal must
+  be assigned to a pump; the database allows only one active terminal per
+  pump per branch. Disable a terminal (with `disabled_at`) before assigning a
+  replacement to the same pump.
+- Map each terminal to exactly one open shift (enforced by a partial unique
+  index); unmatched events are held as exceptions rather than assigned
+  speculatively.
+- Amounts are `bigint` kobo, so a single transaction is not capped at ₦21.47M.
 - Attendants cannot create, edit, delete, or reconcile provider transactions.
 - Managers can view their branch exceptions; accountants reconcile; lenders
   only receive consented, read-only aggregate reports.
