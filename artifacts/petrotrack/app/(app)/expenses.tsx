@@ -15,11 +15,93 @@ import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
 import { workflowApi } from '@/lib/api';
 
-const EXPENSE_CATS = [
-  'Generator fuel', 'Security & guarding', 'Utilities',
-  'Staff welfare', 'Salaries and wages', 'Maintenance & repairs', 'Office supplies',
-  'Transport', 'Miscellaneous',
+type ExpenseCategoryGroup = {
+  key: string;
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  color: string;
+  items: string[];
+};
+
+export const EXPENSE_CATEGORY_GROUPS: ExpenseCategoryGroup[] = [
+  {
+    key: 'operations', label: 'Station Operations', icon: 'speedometer-outline', color: '#B7791F',
+    items: [
+      'Generator fuel', 'Generator maintenance', 'Pump & dispenser servicing', 'Tank cleaning & calibration',
+      'Product haulage & logistics', 'Fire safety equipment', 'Security & guarding', 'Utilities',
+      'Water supply', 'Waste disposal',
+    ],
+  },
+  {
+    key: 'payroll', label: 'Staff & Payroll', icon: 'people-outline', color: '#2F6B9A',
+    items: [
+      'Salaries and wages', 'Staff allowances', 'Overtime', 'Bonuses', 'Pension contribution',
+      'Staff welfare', 'Medical / HMO', 'Training and development', 'Uniforms & PPE', 'Recruitment',
+    ],
+  },
+  {
+    key: 'office', label: 'Office & Admin', icon: 'briefcase-outline', color: '#6B4FA3',
+    items: [
+      'Office supplies', 'Office stationery', 'Printing and photocopying', 'Postage and courier',
+      'Internet subscription', 'Telephone bills', 'Electricity bills', 'Cleaning services',
+      'Refreshments & kitchen', 'Miscellaneous',
+    ],
+  },
+  {
+    key: 'travel', label: 'Travel & Transport', icon: 'airplane-outline', color: '#0E7C86',
+    items: [
+      'Transport', 'Air ticket', 'Hotel accommodation', 'Travel allowance', 'Meals on official trips',
+      'Vehicle fuel', 'Vehicle repairs & maintenance', 'Vehicle licensing & insurance',
+    ],
+  },
+  {
+    key: 'marketing', label: 'Sales & Marketing', icon: 'megaphone-outline', color: '#C2410C',
+    items: [
+      'Promotional materials', 'Customer entertainment', 'Sales commission', 'Branding and publicity',
+      'Advertising (radio / print / social)', 'Signage & banners', 'Customer loyalty & rewards',
+    ],
+  },
+  {
+    key: 'facilities', label: 'Facilities & Rent', icon: 'business-outline', color: '#4D7C0F',
+    items: [
+      'Office rent', 'Maintenance & repairs', 'Facility maintenance', 'Facility management',
+      'Service charges', 'Property rates & tenement', 'Landscaping & grounds', 'Furniture & fittings',
+    ],
+  },
+  {
+    key: 'professional', label: 'Professional & Statutory', icon: 'document-text-outline', color: '#5B5BD6',
+    items: [
+      'Legal fees', 'Audit fees', 'Consulting fees', 'Tax advisory fees', 'Tax remittances (PAYE / VAT / WHT)',
+      'NMDPRA permits & levies', 'Business premises permit', 'Local government levies',
+      'CAC filings', 'Insurance premiums',
+    ],
+  },
+  {
+    key: 'technology', label: 'IT & Technology', icon: 'laptop-outline', color: '#0369A1',
+    items: [
+      'Software subscriptions', 'Computer repairs', 'IT support services', 'Website hosting / maintenance',
+      'Cyber security', 'CCTV & surveillance', 'Hardware & equipment', 'Data & airtime',
+    ],
+  },
+  {
+    key: 'finance', label: 'Finance & Banking', icon: 'card-outline', color: '#9D174D',
+    items: [
+      'Bank charges', 'POS & transfer charges', 'Loan interest', 'Stamp duty', 'Forex / exchange losses',
+    ],
+  },
+  {
+    key: 'community', label: 'Community & Donations', icon: 'heart-outline', color: '#B45309',
+    items: [
+      'Host community relations', 'Donations & sponsorships', 'Festive gifts & hampers', 'CSR projects',
+    ],
+  },
 ];
+
+const EXPENSE_CATS = EXPENSE_CATEGORY_GROUPS.flatMap(g => g.items);
+
+function groupForCategory(cat: string): ExpenseCategoryGroup | undefined {
+  return EXPENSE_CATEGORY_GROUPS.find(g => g.items.includes(cat));
+}
 
 const ST_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   pending:      { label: 'With Accountant', color: '#225B40', bg: '#EAF2ED', icon: 'time-outline' },
@@ -48,16 +130,64 @@ type FormSheetProps = {
 };
 function FormSheet({ f, setF, roleColor, approvedBudgets, branchNames }: FormSheetProps) {
   const colors = useColors();
+  const [openGroup, setOpenGroup] = useState<string | null>(() => groupForCategory(f.cat)?.key ?? EXPENSE_CATEGORY_GROUPS[0].key);
+  const selectedGroup = groupForCategory(f.cat);
+  const toggleGroup = (key: string) => setOpenGroup(prev => (prev === key ? null : key));
   return (
     <>
-      <Text style={[styles.fieldLabel, { color: colors.text }]}>Category</Text>
-      <View style={styles.catGrid}>
-        {EXPENSE_CATS.map(c => (
-          <TouchableOpacity key={c} onPress={() => setF(p => ({ ...p, cat: c }))}
-            style={[styles.catChip, { backgroundColor: f.cat === c ? roleColor : colors.surface, borderColor: f.cat === c ? roleColor : colors.border }]}>
-            <Text style={[styles.catChipText, { color: f.cat === c ? '#fff' : colors.textMuted }]}>{c}</Text>
-          </TouchableOpacity>
-        ))}
+      <Text style={[styles.fieldLabel, { color: colors.text }]}>Category *</Text>
+      <View style={[styles.catSelected, { backgroundColor: `${roleColor}14`, borderColor: `${roleColor}55` }]}>
+        <View style={[styles.catSelectedIcon, { backgroundColor: selectedGroup?.color ?? roleColor }]}>
+          <Ionicons name={selectedGroup?.icon ?? 'pricetag-outline'} size={18} color="#fff" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.catSelectedEyebrow, { color: colors.textMuted }]}>
+            {selectedGroup ? selectedGroup.label.toUpperCase() : 'SELECTED CATEGORY'}
+          </Text>
+          <Text style={[styles.catSelectedName, { color: colors.text }]} numberOfLines={1}>{f.cat}</Text>
+        </View>
+        <Ionicons name="checkmark-circle" size={22} color={roleColor} />
+      </View>
+      <View style={styles.catGroups}>
+        {EXPENSE_CATEGORY_GROUPS.map(group => {
+          const isOpen = openGroup === group.key;
+          const hasSelection = selectedGroup?.key === group.key;
+          return (
+            <View key={group.key}
+              style={[styles.catGroup, { backgroundColor: colors.surface, borderColor: hasSelection ? group.color : colors.border }]}>
+              <TouchableOpacity onPress={() => toggleGroup(group.key)} activeOpacity={0.7} style={styles.catGroupHeader}>
+                <View style={[styles.catGroupIcon, { backgroundColor: `${group.color}1A` }]}>
+                  <Ionicons name={group.icon} size={18} color={group.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.catGroupTitle, { color: colors.text }]}>{group.label}</Text>
+                  <Text style={[styles.catGroupMeta, { color: colors.textSubtle }]}>
+                    {hasSelection ? f.cat : `${group.items.length} categories`}
+                  </Text>
+                </View>
+                {hasSelection ? <View style={[styles.catGroupDot, { backgroundColor: group.color }]} /> : null}
+                <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSubtle} />
+              </TouchableOpacity>
+              {isOpen ? (
+                <View style={[styles.catGrid, styles.catGroupBody, { borderTopColor: colors.border }]}>
+                  {group.items.map(c => {
+                    const active = f.cat === c;
+                    return (
+                      <TouchableOpacity key={c} onPress={() => setF(p => ({ ...p, cat: c }))} activeOpacity={0.75}
+                        style={[styles.catChip, {
+                          backgroundColor: active ? group.color : colors.background,
+                          borderColor: active ? group.color : colors.border,
+                        }]}>
+                        {active ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
+                        <Text style={[styles.catChipText, { color: active ? '#fff' : colors.text, fontWeight: active ? '700' : '600' }]}>{c}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
       </View>
       <AppliedDateField
         value={f.dt}
@@ -460,6 +590,9 @@ export default function ExpensesScreen() {
               borderWidth: (exp.status === 'pending' || exp.status === 'acc_forwarded') && isAcc ? 1.5 : 1,
             }]}>
               <View style={styles.expHeader}>
+                <View style={[styles.expCatIcon, { backgroundColor: `${groupForCategory(exp.cat)?.color ?? roleColor}1A` }]}>
+                  <Ionicons name={groupForCategory(exp.cat)?.icon ?? 'pricetag-outline'} size={16} color={groupForCategory(exp.cat)?.color ?? roleColor} />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.expCat, { color: colors.text }]}>{exp.cat}</Text>
                   <Text style={[styles.expDesc, { color: colors.textMuted }]}>{exp.desc}</Text>
@@ -696,7 +829,8 @@ const styles = StyleSheet.create({
   tabBtn:       { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10, borderWidth: 1 },
   tabText:      { fontSize: 13, fontWeight: '600' },
   expCard:      { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10, gap: 8 },
-  expHeader:    { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  expHeader:    { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  expCatIcon:   { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   expCat:       { fontSize: 14, fontWeight: '700' },
   expDesc:      { fontSize: 12, marginTop: 2, lineHeight: 17 },
   expMeta:      { fontSize: 11, marginTop: 3 },
@@ -735,8 +869,20 @@ const styles = StyleSheet.create({
   fwdSub:       { fontSize: 12, marginTop: 2 },
   fieldLabel:   { fontSize: 13, fontWeight: '600', marginBottom: 6 },
   catGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  catChip:      { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
+  catChip:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   catChipText:  { fontSize: 12, fontWeight: '600' },
+  catSelected:  { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
+  catSelectedIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  catSelectedEyebrow: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 2 },
+  catSelectedName: { fontSize: 16, fontWeight: '800' },
+  catGroups:    { gap: 8, marginBottom: 16 },
+  catGroup:     { borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
+  catGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 11 },
+  catGroupIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  catGroupTitle: { fontSize: 14, fontWeight: '700' },
+  catGroupMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  catGroupDot:  { width: 8, height: 8, borderRadius: 4, marginRight: 2 },
+  catGroupBody: { marginBottom: 0, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12, borderTopWidth: StyleSheet.hairlineWidth },
   input:        { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14, marginBottom: 12 },
   saveBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12 },
   saveBtnText:  { color: '#fff', fontSize: 14, fontWeight: '700' },
