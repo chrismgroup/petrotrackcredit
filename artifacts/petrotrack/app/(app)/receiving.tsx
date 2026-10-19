@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useRef, useState } from 'react';
@@ -13,7 +14,7 @@ import { Delivery, DeliveryEvidence, ROLE_COLORS, fmt, fmtDate, fmtDateTime, get
 import { useColors } from '@/hooks/useColors';
 import { MAX_UPLOAD_BYTES, storageApi, uploadFailureMessage, type UploadableFile } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
-import { openStoredFile, useStoredFileSource } from '@/lib/stored-files';
+import { storedFilePreviewRoute, useStoredFileSource } from '@/lib/stored-files';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const ST_MAP = {
@@ -180,12 +181,12 @@ function EvidenceThumb({ evidence, icon, color }: { evidence: DeliveryEvidence; 
   );
 }
 
-async function openEvidence(evidence: DeliveryEvidence) {
-  try {
-    await openStoredFile(evidence);
-  } catch {
-    Alert.alert('Cannot open', 'This evidence file could not be opened.');
-  }
+function evidencePreviewRoute(evidence: DeliveryEvidence) {
+  return storedFilePreviewRoute(evidence, {
+    context: `Delivery #${evidence.delivId} evidence`,
+    uploadedBy: evidence.by,
+    uploadedAt: evidence.dt,
+  });
 }
 
 export default function ReceivingScreen() {
@@ -197,6 +198,7 @@ export default function ReceivingScreen() {
     submitDeliveryForApprovalConfirmed, accForwardToMdConfirmed, accRecallDelivery, approveDeliveryConfirmed, rejectDeliveryConfirmed,
   } = useApp();
   const colors = useColors();
+  const router = useRouter();
   const roleColor = ROLE_COLORS[role || 'mgr'] || colors.primary;
   // Date confirmation is retained only for editing a returned receipt. New
   // receipts submit directly to the accountant from their form.
@@ -860,7 +862,7 @@ export default function ReceivingScreen() {
                             key={ev.id}
                             activeOpacity={0.8}
                             disabled={!ev.objectPath && !ev.uri}
-                            onPress={() => openEvidence(ev)}
+                            onPress={() => router.push(evidencePreviewRoute(ev) as never)}
                             style={[styles.evItem, { backgroundColor: colors.background, borderColor: colors.border }]}
                           >
                             {isImg ? (

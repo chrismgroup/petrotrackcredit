@@ -1,8 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -19,7 +16,7 @@ import {
   type Role,
 } from '@/context/AppContext';
 import { MAX_UPLOAD_BYTES, storageApi, uploadFailureMessage } from '@/lib/api';
-import { resolveStoredFileUri } from '@/lib/stored-files';
+import { downloadStoredFile, exportStoredFile, printStoredFile, storedFilePreviewRoute } from '@/lib/stored-files';
 import { useColors } from '@/hooks/useColors';
 
 // ── Compliance helpers ──────────────────────────────────────────────────────
@@ -128,9 +125,8 @@ export function FolderWorkspacePanel({
     if (focusedFile) setSelectedFolderId(focusedFile.folderId);
   }, [files, focusedFileId, routeSection, section]);
 
-  function getLocalFile(file: MyFolderFile): Promise<string> {
-    if (!file.objectPath) return Promise.reject(new Error('This document is missing its stored file.'));
-    return resolveStoredFileUri({ objectPath: file.objectPath, name: file.name, mimeType: file.mimeType });
+  function storedRef(file: MyFolderFile) {
+    return { objectPath: file.objectPath, name: file.name, mimeType: file.mimeType, size: file.size };
   }
 
   async function previewDocument(file: MyFolderFile) {
@@ -140,86 +136,35 @@ export function FolderWorkspacePanel({
     } as never);
   }
 
-  async function downloadDocument(file: MyFolderFile) {
+  async function runFileAction(file: MyFolderFile, task: () => Promise<void>, failure: [string, string]) {
+    if (!file.objectPath) {
+      Alert.alert(failure[0], 'This document is missing its stored file.');
+      return;
+    }
     setBusyFileId(file.id);
     try {
-      const uri = await getLocalFile(file);
-      if (Platform.OS === 'web') {
-        const link = document.createElement('a');
-        link.href = uri;
-        link.download = file.name;
-        link.rel = 'noopener';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(uri), 1000);
-        return;
-      }
-      if (Platform.OS === 'android') {
-        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-        if (!permissions.granted) return;
-        const targetUri = await FileSystem.StorageAccessFramework.createFileAsync(
-          permissions.directoryUri,
-          file.name,
-          file.mimeType || 'application/octet-stream',
-        );
-        const contents = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        await FileSystem.writeAsStringAsync(targetUri, contents, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        Alert.alert('Downloaded', `${file.name} was saved to the selected folder.`);
-      } else {
-        await Sharing.shareAsync(uri, { dialogTitle: `Save ${file.name}` });
-      }
-    } catch {
-      Alert.alert('Download failed', 'The document could not be saved to this device.');
+      await task();
+    } catch (error) {
+      Alert.alert(failure[0], error instanceof Error && error.message ? error.message : failure[1]);
     } finally {
       setBusyFileId(null);
     }
   }
 
-  async function printDocument(file: MyFolderFile) {
-    setBusyFileId(file.id);
-    try {
-      const uri = await getLocalFile(file);
-      await Print.printAsync({ uri });
-    } catch {
-      Alert.alert('Print unavailable', 'This document could not be sent to a printer.');
-    } finally {
-      setBusyFileId(null);
+  const downloadDocument = (file: MyFolderFile) => runFileAction(file, async () => {
+    const result = await downloadStoredFile(storedRef(file));
+    if (result === 'done' && Platform.OS === 'android') {
+      Alert.alert('Downloaded', `${file.name} was saved to the selected folder.`);
     }
-  }
+  }, ['Download failed', 'The document could not be saved to this device.']);
 
-  async function shareDocument(file: MyFolderFile) {
-    setBusyFileId(file.id);
-    try {
-      const uri = await getLocalFile(file);
-      if (Platform.OS === 'web') {
-        const webNavigator = navigator as Navigator & {
-          share?: (data: { title?: string; url?: string }) => Promise<void>;
-        };
-        if (webNavigator.share) {
-          await webNavigator.share({ title: file.name, url: uri });
-        } else {
-          window.open(uri, '_blank', 'noopener,noreferrer');
-        }
-        setTimeout(() => URL.revokeObjectURL(uri), 1000);
-        return;
-      }
-      const available = await Sharing.isAvailableAsync();
-      if (!available) {
-        Alert.alert('Sharing unavailable', 'Sharing is not supported on this device.');
-        return;
-      }
-      await Sharing.shareAsync(uri, { dialogTitle: `Share ${file.name}` });
-    } catch {
-      Alert.alert('Share failed', 'The document could not be shared.');
-    } finally {
-      setBusyFileId(null);
-    }
-  }
+  const printDocument = (file: MyFolderFile) => runFileAction(file, async () => {
+    await printStoredFile(storedRef(file));
+  }, ['Print unavailable', 'This document could not be sent to a printer.']);
+
+  const exportDocument = (file: MyFolderFile) => runFileAction(file, async () => {
+    await exportStoredFile(storedRef(file));
+  }, ['Export failed', 'The document could not be exported.']);
 
   function createFolder() {
     const name = folderName.trim();
@@ -515,13 +460,13 @@ export function FolderWorkspacePanel({
                   <Text style={[sty.workspaceFileActionText, { color: roleColor }]}>Print</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => void shareDocument(file)}
+                  onPress={() => void exportDocument(file)}
                   disabled={busyFileId === file.id}
                   style={[sty.workspaceFileAction, { borderColor: colors.border }]}
-                  accessibilityLabel={`Share ${file.name}`}
+                  accessibilityLabel={`Export ${file.name}`}
                 >
                   <Ionicons name="share-outline" size={14} color={roleColor} />
-                  <Text style={[sty.workspaceFileActionText, { color: roleColor }]}>Share</Text>
+                  <Text style={[sty.workspaceFileActionText, { color: roleColor }]}>Export</Text>
                 </TouchableOpacity>
                 {canManage && (
                  <TouchableOpacity
@@ -948,6 +893,15 @@ export default function CorporateScreen() {
     );
   }
 
+  function previewAttachment(a: CorpAttachment, type: CorpRecordType) {
+    if (!a.objectPath) return;
+    const label = type === 'minutes' ? 'Meeting minutes' : type === 'legal' ? 'Legal matter' : 'Project';
+    router.push(storedFilePreviewRoute(
+      { objectPath: a.objectPath, name: a.name, mimeType: a.mimeType },
+      { context: `${label} attachment`, uploadedBy: a.uploadedBy, uploadedAt: a.uploadedAt },
+    ) as never);
+  }
+
   function AttachmentsPanel({ type, id, attachments, locked }: {
     type: CorpRecordType; id: number; attachments: CorpAttachment[]; locked: boolean;
   }) {
@@ -987,13 +941,21 @@ export default function CorporateScreen() {
           const fi = FILE_TYPE_MAP[a.fileType] || FILE_TYPE_MAP.other;
           return (
             <View key={a.id} style={[sty.attItem, { borderColor: colors.border }]}>
-              <View style={[sty.attIcon, { backgroundColor: fi.color + '18' }]}>
-                <Ionicons name={fi.icon as any} size={16} color={fi.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[sty.attName, { color: colors.text }]} numberOfLines={1}>{a.name}</Text>
-                <Text style={[sty.attMeta, { color: colors.textMuted }]}>{a.size} · {fmtDate(a.uploadedAt)} · {a.uploadedBy}</Text>
-              </View>
+              <TouchableOpacity
+                onPress={() => previewAttachment(a, type)}
+                disabled={!a.objectPath}
+                accessibilityLabel={`Preview ${a.name}`}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+              >
+                <View style={[sty.attIcon, { backgroundColor: fi.color + '18' }]}>
+                  <Ionicons name={fi.icon as any} size={16} color={fi.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[sty.attName, { color: colors.text }]} numberOfLines={1}>{a.name}</Text>
+                  <Text style={[sty.attMeta, { color: colors.textMuted }]}>{a.size} · {fmtDate(a.uploadedAt)} · {a.uploadedBy}</Text>
+                </View>
+                {!!a.objectPath && <Ionicons name="eye-outline" size={16} color={roleColor} />}
+              </TouchableOpacity>
               {!locked && (canCreate || isAdmin) && (
                 <TouchableOpacity onPress={() => removeCorpAttachment(type, id, a.id)}
                   style={sty.attRemove}>
@@ -1512,7 +1474,13 @@ export default function CorporateScreen() {
                       {m.attachments.map(a => {
                         const fi = FILE_TYPE_MAP[a.fileType] || FILE_TYPE_MAP.other;
                         return (
-                          <View key={a.id} style={[sty.attItem, { borderColor: colors.border }]}>
+                          <TouchableOpacity
+                            key={a.id}
+                            onPress={() => previewAttachment(a, 'minutes')}
+                            disabled={!a.objectPath}
+                            accessibilityLabel={`Preview ${a.name}`}
+                            style={[sty.attItem, { borderColor: colors.border }]}
+                          >
                             <View style={[sty.attIcon, { backgroundColor: fi.color + '18' }]}>
                               <Ionicons name={fi.icon as any} size={16} color={fi.color} />
                             </View>
@@ -1520,7 +1488,8 @@ export default function CorporateScreen() {
                               <Text style={[sty.attName, { color: colors.text }]} numberOfLines={1}>{a.name}</Text>
                               <Text style={[sty.attMeta, { color: colors.textMuted }]}>{a.size} · {fmtDate(a.uploadedAt)}</Text>
                             </View>
-                          </View>
+                            {!!a.objectPath && <Ionicons name="eye-outline" size={16} color={roleColor} />}
+                          </TouchableOpacity>
                         );
                       })}
                       {m.sharedBy && (

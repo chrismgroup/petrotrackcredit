@@ -14,6 +14,7 @@ jest.mock('react-native', () => {
     React.createElement(name, props, children);
 
   return {
+    ActivityIndicator: primitive('ActivityIndicator'),
     Alert: { alert: jest.fn() },
     Image: primitive('Image'),
     Modal: primitive('Modal'),
@@ -1104,11 +1105,12 @@ describe('My Documents area navigation', () => {
     const mounted = renderer as unknown as ReactTestRenderer;
     const text = renderedText(mounted);
 
-    expect(text).toContain('Selected file');
+    expect(text).toContain('My Folders · General Library · Main folder');
     expect(text).toContain('Safety Manual.pdf');
-    expect(text).toContain('Load preview');
     expect(text).toContain('Download');
+    expect(text).toContain('Export');
     expect(text).toContain('Print');
+    expect(text).toContain('Open');
     expect(text).toContain('File details');
     act(() => mounted.unmount());
   });

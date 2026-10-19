@@ -6,6 +6,10 @@ const mockDeleteAsync = jest.fn();
 const mockMakeDirectoryAsync = jest.fn();
 const mockReadDirectoryAsync = jest.fn();
 const mockShareAsync = jest.fn();
+const mockReadAsStringAsync = jest.fn();
+const mockWriteAsStringAsync = jest.fn();
+const mockRequestDirectoryPermissionsAsync = jest.fn();
+const mockCreateFileAsync = jest.fn();
 
 jest.mock('react-native', () => ({ Platform: mockPlatform, Linking: { openURL: jest.fn() } }));
 jest.mock('@/lib/api', () => ({
@@ -20,6 +24,17 @@ jest.mock('expo-file-system/legacy', () => ({
   deleteAsync: (...args: unknown[]) => mockDeleteAsync(...args),
   makeDirectoryAsync: (...args: unknown[]) => mockMakeDirectoryAsync(...args),
   readDirectoryAsync: (...args: unknown[]) => mockReadDirectoryAsync(...args),
+  readAsStringAsync: (...args: unknown[]) => mockReadAsStringAsync(...args),
+  writeAsStringAsync: (...args: unknown[]) => mockWriteAsStringAsync(...args),
+  EncodingType: { Base64: 'base64' },
+  StorageAccessFramework: {
+    requestDirectoryPermissionsAsync: (...args: unknown[]) => mockRequestDirectoryPermissionsAsync(...args),
+    createFileAsync: (...args: unknown[]) => mockCreateFileAsync(...args),
+  },
+}));
+const mockPrintAsync = jest.fn();
+jest.mock('expo-print', () => ({
+  printAsync: (...args: unknown[]) => mockPrintAsync(...args),
 }));
 jest.mock('expo-sharing', () => ({
   isAvailableAsync: jest.fn(async () => true),
@@ -27,7 +42,10 @@ jest.mock('expo-sharing', () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { clearViewedFiles, openStoredFile, resolveStoredFileUri } = require('../lib/stored-files') as typeof import('../lib/stored-files');
+const {
+  clearViewedFiles, downloadStoredFile, exportStoredFile, printStoredFile, resolveStoredFileUri,
+  storedFileKind, storedFilePreviewRoute,
+} = require('../lib/stored-files') as typeof import('../lib/stored-files');
 
 describe('stored files', () => {
   beforeEach(() => {
@@ -83,14 +101,68 @@ describe('stored files', () => {
       .rejects.toThrow('could not be downloaded');
   });
 
-  it('opens stored files through the share sheet on native', async () => {
+  it('exports stored files through the share sheet on native', async () => {
     mockDownloadObject.mockImplementation(async (_path: string, dest: string) => dest);
 
-    await openStoredFile({ objectPath: '/objects/uploads/abc', name: 'minutes.pdf', mimeType: 'application/pdf' });
+    await exportStoredFile({ objectPath: '/objects/uploads/abc', name: 'minutes.pdf', mimeType: 'application/pdf' });
 
     expect(mockShareAsync).toHaveBeenCalledWith('file:///cache/petrotrack-viewing/abc-minutes.pdf', {
       mimeType: 'application/pdf',
-      dialogTitle: 'minutes.pdf',
+      dialogTitle: 'Export minutes.pdf',
+    });
+  });
+
+  it('reuses a file the preview already loaded instead of downloading again', async () => {
+    await downloadStoredFile({ objectPath: '/objects/uploads/abc', name: 'a.pdf' }, 'file:///cache/petrotrack-viewing/abc-a.pdf');
+
+    expect(mockDownloadObject).not.toHaveBeenCalled();
+    expect(mockShareAsync).toHaveBeenCalledWith('file:///cache/petrotrack-viewing/abc-a.pdf', {
+      mimeType: undefined,
+      dialogTitle: 'Save a.pdf',
+    });
+  });
+
+  it('saves to a folder the user picks on Android', async () => {
+    mockPlatform.OS = 'android';
+    mockRequestDirectoryPermissionsAsync.mockResolvedValue({ granted: true, directoryUri: 'content://docs' });
+    mockCreateFileAsync.mockResolvedValue('content://docs/a.pdf');
+    mockReadAsStringAsync.mockResolvedValue('QUJD');
+
+    const result = await downloadStoredFile({ objectPath: '/o', name: 'a.pdf', mimeType: 'application/pdf' }, 'file:///tmp/a.pdf');
+
+    expect(result).toBe('done');
+    expect(mockCreateFileAsync).toHaveBeenCalledWith('content://docs', 'a.pdf', 'application/pdf');
+    expect(mockWriteAsStringAsync).toHaveBeenCalledWith('content://docs/a.pdf', 'QUJD', { encoding: 'base64' });
+  });
+
+  it('reports a cancelled Android download when no folder is chosen', async () => {
+    mockPlatform.OS = 'android';
+    mockRequestDirectoryPermissionsAsync.mockResolvedValue({ granted: false });
+
+    await expect(downloadStoredFile({ objectPath: '/o', name: 'a.pdf' }, 'file:///tmp/a.pdf')).resolves.toBe('cancelled');
+    expect(mockWriteAsStringAsync).not.toHaveBeenCalled();
+  });
+
+  it('prints PDFs directly and wraps images in a page', async () => {
+    await printStoredFile({ objectPath: '/o', name: 'r.pdf', mimeType: 'application/pdf' }, 'file:///tmp/r.pdf');
+    expect(mockPrintAsync).toHaveBeenCalledWith({ uri: 'file:///tmp/r.pdf' });
+
+    mockReadAsStringAsync.mockResolvedValue('SU1H');
+    await printStoredFile({ objectPath: '/o', name: 'p.png', mimeType: 'image/png' }, 'file:///tmp/p.png');
+    expect(mockPrintAsync).toHaveBeenLastCalledWith({ html: expect.stringContaining('data:image/png;base64,SU1H') });
+  });
+
+  it('detects file kinds and builds preview routes', () => {
+    expect(storedFileKind({ name: 'a.PDF' })).toBe('pdf');
+    expect(storedFileKind({ name: 'x', mimeType: 'image/jpeg' })).toBe('image');
+    expect(storedFileKind({ name: 'clip.mp4' })).toBe('video');
+    expect(storedFileKind({ name: 'sheet.xlsx' })).toBe('other');
+    expect(storedFilePreviewRoute(
+      { objectPath: '/objects/uploads/abc', name: 'a.pdf', mimeType: 'application/pdf', size: 42 },
+      { context: 'HR Library', uploadedBy: 'Ada' },
+    )).toEqual({
+      pathname: '/(app)/document-preview',
+      params: { name: 'a.pdf', objectPath: '/objects/uploads/abc', mimeType: 'application/pdf', size: '42', context: 'HR Library', uploadedBy: 'Ada' },
     });
   });
 });

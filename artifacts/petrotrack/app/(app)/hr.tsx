@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput,
@@ -16,7 +17,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { storageApi, uploadFailureMessage } from '@/lib/api';
 import { safeStr } from '@/lib/report-helpers';
-import { openStoredFile } from '@/lib/stored-files';
+import { storedFilePreviewRoute } from '@/lib/stored-files';
 
 const REQUIRED_DOCS: { type: HRDocType; label: string; icon: string; color: string }[] = [
   { type: 'biodata',        label: 'Bio-Data Form',         icon: 'person',            color: '#1F6848' },
@@ -107,6 +108,7 @@ export default function HRScreen() {
   } = useApp();
 
   const colors    = useColors();
+  const router    = useRouter();
   const isHR      = role === 'csm';
   const isMD      = role === 'md';
   const isAdmin   = role === 'admin';
@@ -478,12 +480,12 @@ export default function HRScreen() {
     }
   }
 
-  async function openHRFile(doc: HREmployeeDoc) {
-    try {
-      await openStoredFile({ objectPath: doc.objectPath, uri: doc.uri, name: doc.name, mimeType: doc.mimeType });
-    } catch {
-      Alert.alert('Cannot open', 'This document could not be opened.');
-    }
+  function openHRFile(doc: HREmployeeDoc, context: string) {
+    if (!doc.objectPath && !doc.uri) return;
+    router.push(storedFilePreviewRoute(
+      { objectPath: doc.objectPath, uri: doc.uri, name: doc.name, mimeType: doc.mimeType, size: doc.size },
+      { context, uploadedBy: doc.uploadedBy, uploadedAt: doc.dt },
+    ) as never);
   }
 
   async function handlePickHandbook() {
@@ -594,14 +596,22 @@ export default function HRScreen() {
           const doc = emp.docs.find(d => d.type === rd.type);
           if (!doc) return null;
           const sm = DOC_STATUS_META[doc.status];
+          const stored = [...(emp.uploads ?? [])].reverse().find(u => u.cat === rd.type && (u.objectPath || u.uri));
           return (
-            <View key={rd.type} style={[styles.docCheckRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
+            <TouchableOpacity
+              key={rd.type}
+              activeOpacity={0.8}
+              disabled={!stored}
+              onPress={() => stored && openHRFile(stored, `${emp.name} · ${rd.label}`)}
+              accessibilityLabel={stored ? `Preview ${rd.label}` : rd.label}
+              style={[styles.docCheckRow, { borderColor: colors.border, backgroundColor: colors.background }]}
+            >
               <View style={[styles.docCheckIcon, { backgroundColor: rd.color + '18' }]}>
                 <Ionicons name={rd.icon as any} size={14} color={rd.color} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.docCheckLabel, { color: colors.text }]}>{rd.label}</Text>
-                {doc.fileName && <Text style={[styles.docCheckFile, { color: colors.textMuted }]} numberOfLines={1}>{doc.fileName}</Text>}
+                {doc.fileName && <Text style={[styles.docCheckFile, { color: stored ? roleColor : colors.textMuted }]} numberOfLines={1}>{stored && <Ionicons name="eye-outline" size={11} color={roleColor} />}{stored ? ' ' : ''}{doc.fileName}</Text>}
                 {doc.date && <Text style={[styles.docCheckDate, { color: colors.textSubtle }]}>{fmtDate(doc.date)}</Text>}
               </View>
               <View style={[styles.docStatusBadge, { backgroundColor: sm.bg }]}>
@@ -618,7 +628,7 @@ export default function HRScreen() {
                   <Text style={styles.uploadBtnText}>{hrFileUploading ? 'Uploading…' : 'Upload'}</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </TouchableOpacity>
           );
         })}
       </>
@@ -1342,7 +1352,7 @@ export default function HRScreen() {
               key={doc.id}
               activeOpacity={0.8}
               disabled={!doc.objectPath}
-              onPress={() => openHRFile(doc)}
+              onPress={() => openHRFile(doc, `HR Library · ${doc.cat}`)}
               style={[styles.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
             >
               <View style={[styles.fileIconWrap, { backgroundColor: '#286247' + '18' }]}>
@@ -1351,7 +1361,7 @@ export default function HRScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>{doc.name}</Text>
                 <Text style={[styles.fileMeta, { color: colors.textMuted }]}>{doc.cat} · by {doc.uploadedBy}</Text>
-                <Text style={[styles.fileDate, { color: colors.textSubtle }]}>{fmtDateTime(doc.dt)}{doc.objectPath ? ' · tap to open' : ''}</Text>
+                <Text style={[styles.fileDate, { color: colors.textSubtle }]}>{fmtDateTime(doc.dt)}{doc.objectPath ? ' · tap to preview, download or export' : ''}</Text>
                 {doc.approved && <Text style={[styles.approvedBy, { color: '#1F6848' }]}>✓ Approved by {doc.approvedBy}</Text>}
               </View>
               {doc.approved ? (

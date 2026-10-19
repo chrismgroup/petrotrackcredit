@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -31,7 +32,10 @@ import {
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { MAX_UPLOAD_BYTES, storageApi, uploadFailureMessage, type UploadableFile } from '@/lib/api';
-import { openStoredFile, useStoredFileSource } from '@/lib/stored-files';
+import {
+  downloadStoredFile, exportStoredFile, printStoredFile, storedFilePreviewRoute, useStoredFileSource,
+  type StoredFileRef,
+} from '@/lib/stored-files';
 
 type Tab    = 'chats';
 type InboxFilter = 'active' | 'archived';
@@ -94,10 +98,11 @@ function UserAvatar({ account, size = 40, colors }: { account: UserAccount; size
 }
 
 function MediaBubble({
-  msg, isMine, peerColor, colors, onViewImage,
+  msg, isMine, peerColor, colors, onViewImage, onOpenFile,
 }: {
   msg: Message; isMine: boolean; peerColor: string; colors: Colors;
-  onViewImage: (source: ImageSourcePropType) => void;
+  onViewImage: (image: ViewingImage) => void;
+  onOpenFile: (msg: Message) => void;
 }) {
   const { media } = msg;
   const imageSource = useStoredFileSource(media?.mimeType.startsWith('image/') ? media : null);
@@ -107,22 +112,12 @@ function MediaBubble({
   const isVideo = media.mimeType.startsWith('video/');
   const icon    = mediaIcon(media.mimeType);
 
-  async function openMedia() {
-    const m = msg.media;
-    if (!m) return;
-    try {
-      await openStoredFile(m);
-    } catch {
-      Alert.alert('Cannot Open', 'Unable to open this file on your device.');
-    }
-  }
-
   if (isImage) {
     return (
       <TouchableOpacity
         activeOpacity={0.9}
         disabled={!imageSource}
-        onPress={() => imageSource && onViewImage(imageSource)}
+        onPress={() => imageSource && onViewImage({ source: imageSource, file: media })}
         style={[
           styles.mediaBubble,
           isMine
@@ -156,7 +151,7 @@ function MediaBubble({
   return (
     <TouchableOpacity
       activeOpacity={0.85}
-      onPress={openMedia}
+      onPress={() => onOpenFile(msg)}
       style={[
         styles.mediaBubble, styles.fileBubble,
         isMine
@@ -181,7 +176,7 @@ function MediaBubble({
         </Text>
         <Text style={[styles.fileMeta, { color: isMine ? 'rgba(255,255,255,0.65)' : colors.textSubtle }]}>
           {isVideo ? 'Video' : media.mimeType === 'application/pdf' ? 'PDF' : 'File'}
-          {media.size ? ` · ${formatBytes(media.size)}` : ''} · tap to open
+          {media.size ? ` · ${formatBytes(media.size)}` : ''} · tap to preview
         </Text>
       </View>
       <Text style={[styles.bubbleTime, { color: isMine ? 'rgba(255,255,255,0.5)' : colors.textSubtle, alignSelf: 'flex-end' }]}>
@@ -191,7 +186,29 @@ function MediaBubble({
   );
 }
 
-function ImageViewerModal({ source, onClose }: { source: ImageSourcePropType; onClose: () => void }) {
+interface ViewingImage { source: ImageSourcePropType; file: StoredFileRef }
+
+function ImageViewerModal({ image, onClose }: { image: ViewingImage; onClose: () => void }) {
+  const [busy, setBusy] = useState<'download' | 'export' | 'print' | null>(null);
+
+  async function run(action: 'download' | 'export' | 'print') {
+    setBusy(action);
+    try {
+      if (action === 'download') {
+        const result = await downloadStoredFile(image.file);
+        if (result === 'done' && Platform.OS === 'android') Alert.alert('Downloaded', `${image.file.name} was saved.`);
+      } else if (action === 'export') {
+        await exportStoredFile(image.file);
+      } else {
+        await printStoredFile(image.file);
+      }
+    } catch (error) {
+      Alert.alert('Action failed', error instanceof Error && error.message ? error.message : 'Please try again.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.imgViewerBg} onPress={onClose}>
@@ -199,8 +216,28 @@ function ImageViewerModal({ source, onClose }: { source: ImageSourcePropType; on
           <Ionicons name="close" size={22} color="#fff" />
         </TouchableOpacity>
         <Pressable onPress={() => {/* prevent close on image tap */}}>
-          <Image source={source} style={styles.imgViewerImg} resizeMode="contain" />
+          <Image source={image.source} style={styles.imgViewerImg} resizeMode="contain" />
         </Pressable>
+        <View style={styles.imgViewerActions}>
+          {([
+            ['download', 'download-outline', 'Download'],
+            ['export', 'share-outline', 'Export'],
+            ['print', 'print-outline', 'Print'],
+          ] as const).map(([action, icon, label]) => (
+            <TouchableOpacity
+              key={action}
+              onPress={() => void run(action)}
+              disabled={!!busy}
+              accessibilityLabel={`${label} ${image.file.name}`}
+              style={[styles.imgViewerAction, { opacity: busy && busy !== action ? 0.5 : 1 }]}
+            >
+              {busy === action
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name={icon} size={18} color="#fff" />}
+              <Text style={styles.imgViewerActionText}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         <Text style={styles.imgViewerHint}>Tap outside to close</Text>
       </Pressable>
     </Modal>
@@ -230,7 +267,7 @@ export default function CommsScreen() {
   // ── Direct message state ───────────────────────────────────────────────────
   const [chatPeer,     setChatPeer]     = useState<UserAccount | null>(null);
   const [draft,        setDraft]        = useState('');
-  const [viewingImage, setViewingImage] = useState<ImageSourcePropType | null>(null);
+  const [viewingImage, setViewingImage] = useState<ViewingImage | null>(null);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const chatScrollRef = useRef<ScrollView>(null);
 
@@ -243,6 +280,14 @@ export default function CommsScreen() {
   const [groupDraft, setGroupDraft] = useState('');
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+  const router = useRouter();
+
+  function openChatFile(message: Message) {
+    const m = message.media;
+    if (!m || (!m.objectPath && !m.uri)) return;
+    router.push(storedFilePreviewRoute(m, { context: `Chat file from ${message.from}`, uploadedBy: message.from, uploadedAt: message.createdAt }) as never);
+  }
+
   function peerUnread(user: UserAccount): number {
     return getConversation(user.empName)
       .filter(message => (message.to === userName || message.to === role) && !message.read)
@@ -439,7 +484,7 @@ export default function CommsScreen() {
     return (
       <ScreenLayout title={chatPeer.empName}>
         {viewingImage && (
-          <ImageViewerModal source={viewingImage} onClose={() => setViewingImage(null)} />
+          <ImageViewerModal image={viewingImage} onClose={() => setViewingImage(null)} />
         )}
 
         {/* Thread header */}
@@ -539,6 +584,7 @@ export default function CommsScreen() {
                       <MediaBubble
                         msg={msg} isMine={isMine} peerColor={peerCol}
                         colors={colors} onViewImage={setViewingImage}
+                        onOpenFile={openChatFile}
                       />
                     </View>
                   );
@@ -958,6 +1004,9 @@ const styles = StyleSheet.create({
   imgViewerClose: { position: 'absolute', top: 52, right: 18, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
   imgViewerImg:   { width: '100%', aspectRatio: 1 },
   imgViewerHint:  { position: 'absolute', bottom: 42, color: 'rgba(255,255,255,0.4)', fontSize: 12 },
+  imgViewerActions: { position: 'absolute', bottom: 74, flexDirection: 'row', gap: 10 },
+  imgViewerAction: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
+  imgViewerActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   // Input bar
   inputBar:  { flexDirection: 'row', alignItems: 'flex-end', gap: 6, padding: 10, borderTopWidth: StyleSheet.hairlineWidth },
