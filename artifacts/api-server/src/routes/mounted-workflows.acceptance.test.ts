@@ -1172,8 +1172,7 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       idempotencyKey: `${marker}-dip-create`,
     });
     assert.equal(dipCreated.status, 201);
-    const dip = dipCreated.body.dip as JsonRecord;
-    const dipId = String(dip.id);
+    const firstDip = dipCreated.body.dip as JsonRecord;
     const duplicateDailyDip = await command(manager.token, "/workflows/dips", {
       dip: {
         dt: "2026-10-03",
@@ -1184,8 +1183,12 @@ test("mounted workflow commands are server-authoritative, revision-safe, and ide
       expectedRevision: 0,
       idempotencyKey: `${marker}-dip-duplicate-date`,
     });
-    assert.equal(duplicateDailyDip.status, 409);
-    assert.match(String(duplicateDailyDip.body.error), /awaiting MD approval/i);
+    // A second reading for the same date replaces the pending one instead of
+    // locking the manager out.
+    assert.equal(duplicateDailyDip.status, 201);
+    assert.deepEqual(duplicateDailyDip.body.supersededDipIds, [Number(firstDip.id)]);
+    const dip = duplicateDailyDip.body.dip as JsonRecord;
+    const dipId = String(dip.id);
     for (const [reviewer, token] of [
       ["MD", md.token],
       ["CEO", ceo.token],

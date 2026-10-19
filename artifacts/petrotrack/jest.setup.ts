@@ -167,6 +167,7 @@ jest.mock('@/lib/api', () => {
     },
     versionApi: { get: jest.fn(async () => ({ version: 'test' })) },
     usersApi: { list: jest.fn(async () => []) },
+    authApi: { me: jest.fn(async () => null), changeOwnPassword: jest.fn(async () => ({ ok: true })) },
     notificationsApi: mockNotificationsApi,
     sendOperationalNotification: jest.fn(async (input: {
       target: string;

@@ -1,5 +1,6 @@
 import { type Request, type Response, type NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { resolveLiveIdentity } from "../lib/liveIdentity";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -31,12 +32,25 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
 
-  const token = header.slice(7);
-  try {
-    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
-    req.auth = payload;
+  // requireAuth is mounted in front of several routers; refresh only once.
+  if (req.auth && liveRequests.has(req)) {
     next();
+    return;
+  }
+
+  const token = header.slice(7);
+  let payload: AuthPayload;
+  try {
+    payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
   } catch {
     res.status(401).json({ error: "Unauthorized" });
+    return;
   }
+  void resolveLiveIdentity(payload).then(live => {
+    req.auth = live;
+    liveRequests.add(req);
+    next();
+  });
 }
+
+const liveRequests = new WeakSet<Request>();

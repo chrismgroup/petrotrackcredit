@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useRef, useState } from 'react';
 import {
-  Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
@@ -152,7 +152,7 @@ export default function TanksScreen() {
   // branch per business date. Warn before submitting so a manager never hits
   // that block with no visible explanation of what's already recorded.
   const existingDipForDate = canEdit && Boolean(appliesOn) ? dips.find(d =>
-    d.by === userName &&
+    (branchId ? d.branchId === branchId : d.by === userName) &&
     d.status !== 'rejected' &&
     businessDateKey(d.dt) === businessDateKey(appliesOn),
   ) : undefined;
@@ -163,21 +163,17 @@ export default function TanksScreen() {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
       return;
     }
-    if (existingDipForDate) {
-      Alert.alert(
-        'Already submitted',
-        existingDipForDate.status === 'approved'
-          ? 'This date already has an approved dip record and cannot be replaced.'
-          : 'This date already has a dip record awaiting MD approval. Edit or withdraw it in "My Dip Submissions" below to submit a corrected reading.',
-      );
-      return;
-    }
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
     for (const t of visibleTanks)    { rd[t.id]  = parseFloat(readings[t.id]    || '0') || 0; }
     for (const l of visibleLpgTanks) { lpg[l.id] = parseFloat(lpgReadings[l.id] || '0') || 0; }
+    const capacityProblem = findCapacityProblem(rd, lpg);
+    if (capacityProblem) {
+      Alert.alert('Check this reading', capacityProblem);
+      return;
+    }
 
-    requestDateConfirmation('tank dip', appliesOn, async () => {
+    const submit = () => requestDateConfirmation('tank dip', appliesOn, async () => {
       const result = await addDip({ dt: appliesOn, by: userName, rd, lpg, obs, status: 'pending' });
       if (!result.ok) {
         Alert.alert(
@@ -189,6 +185,44 @@ export default function TanksScreen() {
       setReadings({}); setLpgReadings({}); setObs(''); setAppliesOn('');
       Alert.alert('Dip Submitted', 'Tank readings recorded and sent to MD for approval.');
     });
+
+    // An earlier dip for the same date never blocks a new reading: a pending
+    // one is replaced, and an approved one gets a correction for MD to review.
+    if (existingDipForDate) {
+      const message = existingDipForDate.status === 'approved'
+        ? 'This date already has an approved dip. Your new readings will be sent to MD as a correction.'
+        : 'This date already has a dip awaiting MD approval. Submitting will replace it with these readings.';
+      if (Platform.OS === 'web') {
+        if (window.confirm(message)) submit();
+        return;
+      }
+      Alert.alert(
+        existingDipForDate.status === 'approved' ? 'Send a correction?' : 'Replace pending dip?',
+        message,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: existingDipForDate.status === 'approved' ? 'Send correction' : 'Replace', onPress: submit },
+        ],
+      );
+      return;
+    }
+    submit();
+  }
+
+  function findCapacityProblem(rd: Record<string, number>, lpg: Record<string, number>): string | null {
+    for (const [id, value] of Object.entries(rd)) {
+      const tank = tanks.find(t => t.id === id);
+      if (tank && safeNum(tank.cap) > 0 && value > safeNum(tank.cap)) {
+        return `${tank.name}: ${value.toLocaleString()} L is above the tank capacity of ${safeNum(tank.cap).toLocaleString()} L.`;
+      }
+    }
+    for (const [id, value] of Object.entries(lpg)) {
+      const tank = lpgTanks.find(t => t.id === id);
+      if (tank && safeNum(tank.cap) > 0 && value > safeNum(tank.cap)) {
+        return `${tank.name}: ${value.toLocaleString()} kg is above the tank capacity of ${safeNum(tank.cap).toLocaleString()} kg.`;
+      }
+    }
+    return null;
   }
 
   function startEditDip(dip: typeof dips[0]) {
@@ -211,23 +245,15 @@ export default function TanksScreen() {
       Alert.alert('Date required', 'Select the date this tank dip applies to.');
       return;
     }
-    // A corrected date must not collide with another non-rejected dip this
-    // manager already has for that business date, otherwise the manager
-    // stays "stuck" resubmitting the same rejected date forever.
-    const conflictsWithAnotherDip = dips.some(d =>
-      d.id !== dipId &&
-      d.by === userName &&
-      d.status !== 'rejected' &&
-      businessDateKey(d.dt) === businessDateKey(editDipDate),
-    );
-    if (conflictsWithAnotherDip) {
-      Alert.alert('Already submitted', 'This date already has another dip record for this branch. Pick a different date to correct this one.');
-      return;
-    }
     const rd: Record<string, number> = {};
     const lpg: Record<string, number> = {};
     for (const [k, v] of Object.entries(editDipReadings)) { const n = parseFloat(v); if (!isNaN(n)) rd[k] = n; }
     for (const [k, v] of Object.entries(editDipLpg)) { const n = parseFloat(v); if (!isNaN(n)) lpg[k] = n; }
+    const capacityProblem = findCapacityProblem(rd, lpg);
+    if (capacityProblem) {
+      Alert.alert('Check this reading', capacityProblem);
+      return;
+    }
     requestDateConfirmation('tank dip', editDipDate, async () => {
       setIsSavingEditDip(true);
       const result = await updateDip(dipId, { dt: editDipDate, rd, lpg, obs: editDipObs.trim() });
@@ -289,6 +315,14 @@ export default function TanksScreen() {
         <View style={{ flex: 1 }}>
         <KeyboardAwareScrollViewCompat contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" bottomOffset={24}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Dip Form</Text>
+          {role === 'mgr' && !branchId && (
+            <View style={[styles.pendingBanner, { backgroundColor: colors.warning + '18', borderColor: colors.warning }]}>
+              <Ionicons name="alert-circle" size={16} color={colors.warning} />
+              <Text style={[styles.pendingText, { color: colors.warning }]}>
+                Your account is not linked to a branch yet, so no tanks can be shown. Ask an admin to set your branch in Users — it applies immediately.
+              </Text>
+            </View>
+          )}
           {visibleTanks.length > 0 && <Text style={[styles.formSection, { color: colors.text }]}>Petroleum Tanks</Text>}
           {!perms.canPetrolTanks && role === 'mgr' && (
             <View style={[styles.noBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -384,8 +418,8 @@ export default function TanksScreen() {
               <Ionicons name="time" size={16} color={colors.warning} />
               <Text style={[styles.pendingText, { color: colors.warning }]}>
                 {existingDipForDate?.status === 'approved'
-                  ? 'This date already has an approved dip record and cannot be replaced.'
-                  : 'This date already has a dip record awaiting MD approval. Edit or withdraw it in "My Dip Submissions" below.'}
+                  ? 'This date already has an approved dip. Submitting again sends your readings to MD as a correction.'
+                  : 'This date already has a dip awaiting MD approval. Submitting again replaces it with these readings.'}
               </Text>
             </View>
           )}
@@ -396,9 +430,8 @@ export default function TanksScreen() {
         {canEdit && (
           <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
             <TouchableOpacity
-              style={[styles.submitBtn, { backgroundColor: roleColor, marginBottom: 0, opacity: hasPendingDipForDate ? 0.6 : 1 }]}
+              style={[styles.submitBtn, { backgroundColor: roleColor, marginBottom: 0 }]}
               onPress={handleDipSubmit}
-              disabled={hasPendingDipForDate}
               activeOpacity={0.85}
             >
               <Ionicons name="send" size={18} color="#fff" />

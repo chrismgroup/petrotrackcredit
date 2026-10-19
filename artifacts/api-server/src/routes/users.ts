@@ -5,6 +5,12 @@ import { Router, type IRouter } from "express";
 import { appStateTable, db, staffUsersTable } from "@workspace/db";
 
 const router: IRouter = Router();
+
+router.get("/auth/me", (req, res): void => {
+  const auth = req.auth!;
+  res.json({ username: auth.username, empName: auth.empName ?? null, role: auth.role, branchId: auth.branchId ?? null });
+});
+
 const FULL_USER_MANAGEMENT_ROLES = new Set(["admin", "csm"]);
 
 function serverHash(plaintext: string): string {

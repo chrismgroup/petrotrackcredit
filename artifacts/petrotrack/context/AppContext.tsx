@@ -1935,11 +1935,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const syncFromServer = useCallback(async (): Promise<boolean> => {
     try {
       const p = pendingWritesRef.current;
-      const [s, userRows] = await Promise.all([
+      const [s, userRows, identity] = await Promise.all([
         stateApi.getAll(),
         usersApi.list(),
+        Promise.resolve(authApi?.me?.()).catch(() => null),
       ]);
       if (!s) return false;
+      // The branch saved at login goes stale when an admin assigns or moves a
+      // user; adopt the live assignment so branch-scoped screens (tank dips,
+      // shift reports, expenses…) always use the station the server enforces.
+      if (identity && typeof identity === 'object' && 'branchId' in identity) {
+        const liveBranchId = identity.branchId ?? null;
+        setBranchId(current => {
+          if (current === liveBranchId) return current;
+          void AsyncStorage.getItem('auth').then(raw => {
+            if (!raw) return;
+            const saved = JSON.parse(raw);
+            return AsyncStorage.setItem('auth', JSON.stringify({ ...saved, bid: liveBranchId }));
+          }).catch(() => undefined);
+          return liveBranchId;
+        });
+      }
       serverHydrationRef.current = true;
       if (s.companyInfo && !p.has('companyInfo'))             setCompanyInfo(normaliseCompanyInfo(s.companyInfo));
       if (s.tanks && !p.has('tanks'))                         setTanks(s.tanks as Tank[]);
@@ -2725,6 +2741,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     deleted ? current.filter(item => item.id !== record.id) : current.some(item => item.id === record.id)
       ? current.map(item => item.id === record.id ? record : item) : [record, ...current],
   );
+  const dropSupersededDips = (ids?: number[]) => {
+    if (ids?.length) setDips(current => current.filter(item => !ids.includes(item.id)));
+  };
   const applyProposal = (record: PriceProposal) => setPriceProposals(current =>
     current.some(item => item.id === record.id)
       ? current.map(item => item.id === record.id ? record : item) : [record, ...current],
@@ -3066,6 +3085,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       void syncFromServer();
       return { ok: false, error };
     }
+    dropSupersededDips(result.supersededDipIds);
     applyDip(result.dip as DipRecord);
     return { ok: true };
   }, [applyDip]);
@@ -3116,6 +3136,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       void syncFromServer();
       return { ok: false, error: result?.error ?? 'The server could not update this dip. Please refresh and try again.' };
     }
+    dropSupersededDips(result.supersededDipIds);
     applyDip(result.dip as DipRecord);
     return { ok: true };
   }, [dips, syncFromServer]);

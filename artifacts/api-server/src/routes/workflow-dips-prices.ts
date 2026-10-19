@@ -75,19 +75,39 @@ function currentPrice(prices: JsonRecord, product: string, branchId?: string): n
   const raw = branch[product] ?? prices[product];
   return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
 }
-async function validateReadings(tx: Tx, rd: JsonRecord, lpg: JsonRecord, branchId?: string | null): Promise<string | null> {
+/**
+ * Checks readings against the configured tanks and returns cleaned readings.
+ * Only genuine data-entry problems block a dip (negative/non-numeric values,
+ * values above a known capacity, or tanks owned by another branch). Tanks with
+ * no configured capacity are accepted, and readings for tanks that have since
+ * been removed are dropped instead of rejecting the whole submission.
+ */
+async function validateReadings(tx: Tx, rd: JsonRecord, lpg: JsonRecord, branchId?: string | null): Promise<{ error: string } | { rd: JsonRecord; lpg: JsonRecord }> {
   const [tanks, lpgTanks] = await Promise.all([state(tx, "tanks"), state(tx, "lpgTanks")]);
-  const validate = (input: JsonRecord, configured: JsonRecord[], label: string) => {
+  const clean = (input: JsonRecord, configured: JsonRecord[], label: string, unit: string): string | JsonRecord => {
     const byId = new Map(configured.map(tank => [String(tank.id), tank]));
+    const out: JsonRecord = {};
     for (const [tankId, raw] of Object.entries(input)) {
-      const tank = byId.get(tankId); const value = Number(raw);
-      if (!tank || (branchId && tank.branchId && tank.branchId !== branchId)) return `${label} tank ${tankId} is not assigned to your branch`;
-      if (!Number.isFinite(value) || value < 0 || value > Number(tank.cap)) return `${label} reading for ${tankId} must be between 0 and its tank capacity`;
+      const tank = byId.get(tankId);
+      if (!tank) continue;
+      const name = String(tank.name ?? tankId);
+      if (branchId && tank.branchId && tank.branchId !== branchId) return `${label} tank ${name} belongs to another branch`;
+      const value = typeof raw === "string" && raw.trim() ? Number(raw) : raw;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return `${label} reading for ${name} must be a number of ${unit} (0 or more)`;
+      const cap = Number(tank.cap);
+      if (Number.isFinite(cap) && cap > 0 && value > cap) return `${label} reading for ${name} (${value.toLocaleString()} ${unit}) is above its capacity of ${cap.toLocaleString()} ${unit}`;
+      out[tankId] = value;
     }
-    return null;
+    return out;
   };
-  return validate(rd, tanks, "Petroleum") ?? validate(lpg, lpgTanks, "LPG");
+  const cleanRd = clean(rd, tanks, "Petroleum", "litres");
+  if (typeof cleanRd === "string") return { error: cleanRd };
+  const cleanLpg = clean(lpg, lpgTanks, "LPG", "kg");
+  if (typeof cleanLpg === "string") return { error: cleanLpg };
+  return { rd: cleanRd, lpg: cleanLpg };
 }
+
+const dateKey = (value: unknown) => String(value ?? "").slice(0, 10);
 
 async function run(req: Request, res: Response, action: (tx: Tx, now: string) => Promise<{ status: number; body: JsonRecord }>) {
   const cmd = command(req);
@@ -177,33 +197,32 @@ router.post("/workflows/dips", async (req, res) => run(req, res, async (tx, now)
     return { status: 400, body: { error: "Dip date plus rd and lpg reading objects are required" } };
   }
   const assignedBranchId = String(req.auth!.branchId ?? "").trim();
+  if (!assignedBranchId) {
+    return { status: 400, body: { error: "Your account is not assigned to a branch yet. Ask an admin to set your branch in Users, then try again — your readings are kept." } };
+  }
   const branches = await state(tx, "branches");
   const assignedBranch = branches.find(branch => String(branch.id ?? "") === assignedBranchId);
-  const assignedBranchName = String(assignedBranch?.name ?? "").trim();
-  if (!assignedBranchId || !assignedBranchName) {
-    return { status: 400, body: { error: "The manager must be assigned to a valid branch" } };
-  }
-  const readingError = await validateReadings(tx, input.rd, input.lpg, assignedBranchId);
-  if (readingError) return { status: 400, body: { error: readingError } };
+  const assignedBranchName = String(assignedBranch?.name ?? "").trim() || assignedBranchId;
+  const checked = await validateReadings(tx, input.rd, input.lpg, assignedBranchId);
+  if ("error" in checked) return { status: 400, body: { error: checked.error } };
   const dips = await state(tx, "dips");
-  const existingDailyDip = dips.find(dip =>
-    dip.branchId === assignedBranchId &&
-    String(dip.dt ?? "").slice(0, 10) === input.dt.slice(0, 10) &&
-    dip.status !== "rejected",
-  );
-  if (existingDailyDip) {
-    return {
-      status: 409,
-      body: {
-        error: existingDailyDip.status === "approved"
-          ? "This branch already has an approved tank dip for that business date"
-          : "This branch already has a tank dip awaiting MD approval for that business date",
-      },
-    };
-  }
-  const dip = { id: idFor(dips), dt: input.dt, rd: input.rd, lpg: input.lpg, obs: typeof input.obs === "string" ? input.obs : "", by: req.auth!.username, branchId: assignedBranchId, branchName: assignedBranchName, submittedAt: now, status: "pending", workflowRevision: 0 };
-  dips.unshift(dip); await save(tx, "dips", dips); await audit(tx, "Dip submitted", req.auth!.username, `Dip ${dip.id} submitted`, now);
-  return { status: 201, body: { dip } };
+  // A newer reading for the same business date replaces a pending one rather
+  // than being refused, so an earlier unreviewed dip can never lock a manager
+  // out. Approved dips stay untouched; the new one goes to MD as a correction.
+  const supersededIds = dips
+    .filter(dip => dip.branchId === assignedBranchId && dateKey(dip.dt) === dateKey(input.dt) && dip.status === "pending")
+    .map(dip => String(dip.id));
+  const correctsApproved = dips.find(dip => dip.branchId === assignedBranchId && dateKey(dip.dt) === dateKey(input.dt) && dip.status === "approved");
+  const remaining = dips.filter(dip => !supersededIds.includes(String(dip.id)));
+  const dip = {
+    id: idFor(dips), dt: input.dt, rd: checked.rd, lpg: checked.lpg, obs: typeof input.obs === "string" ? input.obs : "",
+    by: req.auth!.username, branchId: assignedBranchId, branchName: assignedBranchName, submittedAt: now, status: "pending", workflowRevision: 0,
+    ...(supersededIds.length ? { replacesDipIds: supersededIds.map(Number) } : {}),
+    ...(correctsApproved ? { correctsDipId: correctsApproved.id } : {}),
+  };
+  remaining.unshift(dip); await save(tx, "dips", remaining);
+  await audit(tx, "Dip submitted", req.auth!.username, `Dip ${dip.id} submitted${supersededIds.length ? ` (replaces pending dip ${supersededIds.join(", ")})` : ""}${correctsApproved ? ` (correction of approved dip ${correctsApproved.id})` : ""}`, now);
+  return { status: 201, body: { dip, supersededDipIds: supersededIds.map(Number) } };
 }));
 
 router.patch("/workflows/dips/:id", async (req, res) => run(req, res, async (tx, now) => {
@@ -225,44 +244,31 @@ router.patch("/workflows/dips/:id", async (req, res) => run(req, res, async (tx,
   const revisedRd = record(input.rd) ? input.rd : (record(old.rd) ? old.rd : {});
   const revisedLpg = record(input.lpg) ? input.lpg : (record(old.lpg) ? old.lpg : {});
   const validationBranchId = isAdmin && typeof old.branchId === "string" ? old.branchId : req.auth!.branchId;
-  const readingError = await validateReadings(tx, revisedRd, revisedLpg, validationBranchId);
-  if (readingError) return { status: 400, body: { error: readingError } };
+  const checked = await validateReadings(tx, revisedRd, revisedLpg, validationBranchId);
+  if ("error" in checked) return { status: 400, body: { error: checked.error } };
   // A corrected applies-on date must not collide with another non-rejected
   // dip for the same branch, otherwise a manager correcting a rejected dip
   // could silently create a duplicate reading for that business date.
-  if (typeof input.dt === "string" && input.dt && input.dt.slice(0, 10) !== String(old.dt ?? "").slice(0, 10)) {
-    const conflictingDip = dips.find(dip =>
-      dip.id !== old.id &&
-      dip.branchId === old.branchId &&
-      String(dip.dt ?? "").slice(0, 10) === input.dt.slice(0, 10) &&
-      dip.status !== "rejected",
-    );
-    if (conflictingDip) {
-      return {
-        status: 409,
-        body: {
-          error: conflictingDip.status === "approved"
-            ? "This branch already has an approved tank dip for that business date"
-            : "This branch already has a tank dip awaiting MD approval for that business date",
-        },
-      };
-    }
-  }
+  // Moving a dip onto a date that already has a pending dip replaces that
+  // pending dip instead of refusing the correction.
+  const supersededIds = typeof input.dt === "string" && input.dt && dateKey(input.dt) !== dateKey(old.dt)
+    ? dips.filter(dip => dip.id !== old.id && dip.branchId === old.branchId && dateKey(dip.dt) === dateKey(input.dt) && dip.status === "pending").map(dip => String(dip.id))
+    : [];
   const managerResubmission = !isAdmin && old.status === "rejected";
   const dip = {
     ...old,
     ...(typeof input.dt === "string" ? { dt: input.dt } : {}),
-    ...(record(input.rd) ? { rd: input.rd } : {}),
-    ...(record(input.lpg) ? { lpg: input.lpg } : {}),
+    ...(record(input.rd) ? { rd: checked.rd } : {}),
+    ...(record(input.lpg) ? { lpg: checked.lpg } : {}),
     ...(typeof input.obs === "string" ? { obs: input.obs } : {}),
     ...(managerResubmission ? { status: "pending", submittedAt: now, approvedBy: null, approvedDt: null } : {}),
     workflowRevision: revision(old) + 1,
     updatedAt: now,
   };
   dips[index] = dip;
-  await save(tx, "dips", dips);
+  await save(tx, "dips", dips.filter(item => !supersededIds.includes(String(item.id))));
   await audit(tx, managerResubmission ? "Dip resubmitted" : "Dip updated", req.auth!.username, `Dip ${old.id} updated`, now);
-  return { status: 200, body: { dip } };
+  return { status: 200, body: { dip, supersededDipIds: supersededIds.map(Number) } };
 }));
 
 router.delete("/workflows/dips/:id", async (req, res) => run(req, res, async (tx, now) => {

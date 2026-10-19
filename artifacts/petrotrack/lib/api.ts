@@ -230,7 +230,11 @@ export async function apiLogin(username: string, password: string): Promise<Logi
   }
 }
 
+export interface LiveIdentity { username: string; empName: string | null; role: string; branchId: string | null }
+
 export const authApi = {
+  /** The caller's current role and branch as stored in the database. */
+  me: () => get<LiveIdentity>('/auth/me'),
   /** Changes the password for the account identified by the current JWT. */
   changeOwnPassword: (currentPassword: string, newPassword: string) =>
     post<{ ok: true }>('/auth/change-password', { currentPassword, newPassword }),
@@ -262,7 +266,7 @@ export interface WorkflowCommand {
 }
 export type WorkflowRecordResponse<T> = { record: T; deleted?: boolean; replay?: boolean };
 export type DeliveryWorkflowResponse<T> = { delivery: T; replayed?: boolean };
-export type DipWorkflowResponse<T> = { dip: T; inventoryLog?: unknown[]; replayed?: boolean };
+export type DipWorkflowResponse<T> = { dip: T; inventoryLog?: unknown[]; replayed?: boolean; supersededDipIds?: number[] };
 export type PriceProposalWorkflowResponse<T> = {
   proposal: T; prices?: unknown; priceHistory?: unknown; replayed?: boolean;
 };
