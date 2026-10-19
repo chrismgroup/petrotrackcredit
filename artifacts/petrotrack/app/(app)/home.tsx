@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -33,7 +33,6 @@ import {
   ACTION_ITEMS_DASHBOARD_ACCESS_ID,
   canViewActionItemsDashboard,
   type Budget,
-  type Message,
   type MyFolderFile,
   type PumpDailyReport,
   type StockProduct,
@@ -42,6 +41,7 @@ import {
   fmtDate,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { chatApi } from '@/lib/api';
 import { getDashboardApprovalRoute } from '@/lib/dashboard-approval-routing';
 import { findLatestDipForProduct } from '@/lib/dip-helpers';
 import { canAccessWorkspaceRoute } from '@/lib/workspace-access';
@@ -366,7 +366,7 @@ function ApprovalDetailsSheet({
 }
 
 interface MsgRowProps {
-  msg: Message;
+  msg: { body: string; ts: string };
   from: string;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
@@ -456,7 +456,7 @@ export default function HomeScreen() {
     tanks, lpgTanks, pumps, dips,
     deliveries, maintenance, expenses, budgets,
     financialEntry, priceProposals, creditCustomers, customerPayments,
-    pumpDailyReports, userAccounts, messages, notifications,
+    pumpDailyReports, userAccounts, notifications, chatUnread,
     approveDip, approveExpense,
     approveDelivery, approvePriceProposal,
     sales, startupStocks, stockSnapshotConfig, myFolderFiles, actionItems,
@@ -843,17 +843,36 @@ export default function HomeScreen() {
 
   // ── Notification badge ────────────────────────────────────────────────
   const unread = notifications.filter(item => !item.read).length;
-  const unreadMessages = useMemo(() => {
-    const all: { key: string; msg: Message }[] = [];
-    for (const [key, thread] of Object.entries(messages)) {
-      const peer = key.split('-').find(p => p !== role) ?? key;
-      const unreadInThread = (thread as Message[]).filter(m => m.type !== 'alert' && m.to === role && !m.read);
-      for (const msg of unreadInThread) all.push({ key: peer, msg });
+  const [unreadMessages, setUnreadMessages] = useState<{ id: number; from: string; body: string; ts: string }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!chatUnread) {
+      setUnreadMessages([]);
+      return;
     }
-    return all
-      .sort((a, b) => new Date(b.msg.ts).getTime() - new Date(a.msg.ts).getTime())
-      .slice(0, 5);
-  }, [messages, role]);
+    void chatApi.conversations().then(result => {
+      if (cancelled || !result) return;
+      setUnreadMessages(result.conversations
+        .filter(conversation => conversation.unread > 0 && conversation.lastMessage && !conversation.archived)
+        .slice(0, 5)
+        .map(conversation => {
+          const last = conversation.lastMessage!;
+          const preview = last.deleted ? 'This message was deleted' : last.body || (last.media ? `📎 ${last.media.name}` : 'New message');
+          const from = conversation.kind === 'group'
+            ? `${conversation.name ?? 'Group'} (${conversation.unread})`
+            : `${last.senderName}${conversation.unread > 1 ? ` (${conversation.unread})` : ''}`;
+          return {
+            id: conversation.id,
+            from,
+            body: conversation.kind === 'group' ? `${last.senderName}: ${preview}` : preview,
+            ts: last.createdAt,
+          };
+        }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [chatUnread]);
 
   // ── Maintenance ────────────────────────────────────────────────────────
   const urgentMaintenance = canOpen(SCREEN_ROUTES.maint)
@@ -1437,11 +1456,11 @@ export default function HomeScreen() {
                 <Text style={[s.emptyText, { color: colors.textMuted }]}>No unread messages</Text>
               </View>
             ) : (
-              unreadMessages.map(({ key, msg }) => (
+              unreadMessages.map(item => (
                 <MsgRow
-                  key={msg.id}
-                  msg={msg}
-                  from={key.replace(/_/g, ' ')}
+                  key={item.id}
+                  msg={item}
+                  from={item.from}
                   colors={colors}
                   onPress={() => router.push(SCREEN_ROUTES.messages as never)}
                 />

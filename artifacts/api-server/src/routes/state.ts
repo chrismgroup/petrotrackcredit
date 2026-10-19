@@ -1,4 +1,5 @@
 import { validatedCreditSaleLines } from "./credit-sales";
+import { chatStore } from "../lib/chatStore";
 import { Router, type IRouter, type Request } from "express";
 import { isDeepStrictEqual } from "node:util";
 import { eq, inArray, sql } from "drizzle-orm";
@@ -2213,6 +2214,8 @@ router.put("/state/:key", async (req, res): Promise<void> => {
       res.status(403).json({ error: error instanceof Error ? error.message : "Unable to save messages" });
     });
     if (res.headersSent) return;
+    // Older app builds still write here; copy their messages into the relational chat tables.
+    void chatStore.ensure().then(() => chatStore.importLegacy()).catch(() => undefined);
     res.json({ ok: true });
     return;
   }

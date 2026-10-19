@@ -490,6 +490,121 @@ export const payrollApi = {
   myPayslips: () => get<{ payslips: PayrollEntry[] }>('/payroll/my-payslips'),
 };
 
+export const CHAT_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '👏', '✅'] as const;
+
+export interface ChatMedia {
+  objectPath?: string;
+  uri?: string;
+  name: string;
+  mimeType: string;
+  size?: number;
+}
+
+export interface ChatMember {
+  username: string;
+  empName: string;
+  appRole: string | null;
+  role: 'admin' | 'member';
+  joinedAt: string;
+}
+
+export interface ChatReply {
+  id: number;
+  sender: string | null;
+  senderName: string;
+  kind: string;
+  body: string;
+  media: ChatMedia | null;
+  deleted: boolean;
+}
+
+export interface ChatMessage {
+  id: number;
+  conversationId: number;
+  sender: string | null;
+  senderName: string;
+  kind: 'text' | 'media' | 'system';
+  body: string;
+  media: ChatMedia | null;
+  replyTo: ChatReply | null;
+  forwarded: boolean;
+  createdAt: string;
+  editedAt: string | null;
+  deleted: boolean;
+  pinnedAt: string | null;
+  pinnedBy: string | null;
+  reactions: { emoji: string; usernames: string[] }[];
+  seenCount: number;
+  recipientCount: number;
+}
+
+export interface ChatConversation {
+  id: number;
+  kind: 'direct' | 'group';
+  name: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  myRole: 'admin' | 'member';
+  archived: boolean;
+  unread: number;
+  lastReadMessageId: number;
+  members: ChatMember[];
+  lastMessage: ChatMessage | null;
+}
+
+export interface ChatMessageInfo {
+  seenBy: { username: string; empName: string; readAt: string | null }[];
+  notSeenBy: { username: string; empName: string }[];
+}
+
+const chatConversationPath = (id: number) => `/chat/conversations/${encodeURIComponent(String(id))}`;
+const chatMessagePath = (id: number) => `/chat/messages/${encodeURIComponent(String(id))}`;
+
+export const chatApi = {
+  conversations: () => get<{ conversations: ChatConversation[] }>('/chat/conversations'),
+  unread: () => get<{ total: number }>('/chat/unread'),
+  conversation: (id: number) => get<{ conversation: ChatConversation }>(chatConversationPath(id)),
+  openDirect: (username: string) =>
+    authenticatedJsonCommand<{ conversation: ChatConversation }>('POST', '/chat/conversations', { kind: 'direct', username }),
+  createGroup: (name: string, members: string[]) =>
+    authenticatedJsonCommand<{ conversation: ChatConversation }>('POST', '/chat/conversations', { kind: 'group', name, members }),
+  renameGroup: (id: number, name: string) =>
+    authenticatedJsonCommand<{ conversation: ChatConversation }>('PATCH', chatConversationPath(id), { name }),
+  addMembers: (id: number, usernames: string[]) =>
+    authenticatedJsonCommand<{ conversation: ChatConversation }>('POST', `${chatConversationPath(id)}/members`, { usernames }),
+  removeMember: (id: number, username: string) =>
+    authenticatedJsonCommand<{ ok: true; left: boolean }>('DELETE', `${chatConversationPath(id)}/members/${encodeURIComponent(username)}`, {}),
+  setMemberRole: (id: number, username: string, role: 'admin' | 'member') =>
+    authenticatedJsonCommand<{ conversation: ChatConversation }>('POST', `${chatConversationPath(id)}/members/${encodeURIComponent(username)}/role`, { role }),
+  setArchived: (id: number, archived: boolean) =>
+    authenticatedJsonCommand<{ ok: true }>('POST', `${chatConversationPath(id)}/archive`, { archived }),
+  markRead: (id: number, upToId?: number) =>
+    authenticatedJsonCommand<{ ok: true; lastReadMessageId: number }>('POST', `${chatConversationPath(id)}/read`, upToId ? { upToId } : {}),
+  messages: (id: number, opts: { before?: number; limit?: number; q?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.before) params.set('before', String(opts.before));
+    if (opts.limit) params.set('limit', String(opts.limit));
+    if (opts.q) params.set('q', opts.q);
+    const query = params.toString();
+    return get<{ messages: ChatMessage[]; hasMore: boolean }>(`${chatConversationPath(id)}/messages${query ? `?${query}` : ''}`);
+  },
+  pinned: (id: number) => get<{ messages: ChatMessage[] }>(`${chatConversationPath(id)}/pinned`),
+  send: (id: number, input: { body?: string; media?: ChatMedia; replyToId?: number }) =>
+    authenticatedJsonCommand<{ message: ChatMessage }>('POST', `${chatConversationPath(id)}/messages`, input),
+  forward: (messageId: number, conversationIds: number[]) =>
+    authenticatedJsonCommand<{ ok: true; conversationIds: number[] }>('POST', `${chatMessagePath(messageId)}/forward`, { conversationIds }),
+  edit: (messageId: number, body: string) =>
+    authenticatedJsonCommand<{ message: ChatMessage }>('PATCH', chatMessagePath(messageId), { body }),
+  remove: (messageId: number, scope: 'me' | 'everyone') =>
+    authenticatedJsonCommand<{ ok: true; scope: 'me' | 'everyone'; conversationId: number }>('DELETE', `${chatMessagePath(messageId)}?scope=${scope}`, { scope }),
+  react: (messageId: number, emoji: string) =>
+    authenticatedJsonCommand<{ message: ChatMessage }>('POST', `${chatMessagePath(messageId)}/reactions`, { emoji }),
+  pin: (messageId: number, pinned: boolean) =>
+    authenticatedJsonCommand<{ message: ChatMessage }>('POST', `${chatMessagePath(messageId)}/pin`, { pinned }),
+  info: (messageId: number) => get<ChatMessageInfo>(`${chatMessagePath(messageId)}/info`),
+};
+
 export const versionApi = {
   get: () => get<{ version: string }>('/version'),
 };

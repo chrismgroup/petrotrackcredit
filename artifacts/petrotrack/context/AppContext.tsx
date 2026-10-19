@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 import {
-  stateApi, versionApi, usersApi, notificationsApi, sendOperationalNotification, maintenanceApi, realtimeApi, workflowApi,
+  stateApi, versionApi, usersApi, notificationsApi, sendOperationalNotification, maintenanceApi, realtimeApi, workflowApi, chatApi,
   AppNotification, StaffUserRecord, apiLogin, authApi, saveToken, clearToken,
   enqueueShiftReportOutbox, loadShiftReportOutbox, removeShiftReportOutbox,
   SHIFT_REPORT_OUTBOX_STORAGE_KEY,
@@ -10,6 +10,7 @@ import {
   type MaintenanceWorkflowStatus,
 } from '@/lib/api';
 import { mergeWorkflowRecords } from '@/lib/workflow-record-merge';
+import { emitChatChange, subscribeChatChanges } from '@/lib/chatEvents';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { startForegroundTimer } from '@/lib/foreground-timer';
 import { clearViewedFiles } from '@/lib/viewed-files';
@@ -1619,6 +1620,9 @@ interface AppContextType {
   validateCredentials: (username: string, password: string) => Promise<UserAccount | null>;
   getConversation: (peerName: string) => Message[];
   unreadCount: () => number;
+  /** Unread chat messages from the server's relational chat store (null until loaded). */
+  chatUnread: number | null;
+  refreshChatUnread: () => Promise<void>;
   tasks: Task[];
   kpis: KPI[];
   addTask: (t: Omit<Task, 'id' | 'createdAt'>) => void;
@@ -2431,6 +2435,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [loaded, isServerAuthenticated, refreshNotifications]);
 
+  /* ── Chat unread total: realtime chat events refresh it, a slow poll is the fallback ── */
+  const [chatUnread, setChatUnread] = useState<number | null>(null);
+  const refreshChatUnread = useCallback(async () => {
+    const result = await chatApi?.unread?.();
+    if (result && typeof result.total === 'number') setChatUnread(result.total);
+  }, []);
+  useEffect(() => {
+    if (!loaded || !isServerAuthenticated) {
+      setChatUnread(null);
+      return;
+    }
+    void refreshChatUnread();
+    const unsubscribe = subscribeChatChanges(() => void refreshChatUnread());
+    const stopTimer = startForegroundTimer({
+      delayMs: 30_000,
+      callback: refreshChatUnread,
+      runOnResume: true,
+    });
+    return () => {
+      unsubscribe();
+      stopTimer?.();
+    };
+  }, [loaded, isServerAuthenticated, refreshChatUnread]);
+
   /* ── Realtime report invalidation: sockets improve freshness; sync remains authoritative ── */
   useEffect(() => {
     if (!loaded || !isServerAuthenticated || !role) return;
@@ -2452,8 +2480,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       socket.onmessage = event => {
         try {
-          const message = JSON.parse(String(event.data)) as { type?: string };
+          const message = JSON.parse(String(event.data)) as { type?: string; conversationId?: number };
           if (message.type === 'pump-report.changed') void syncFromServer();
+          if (message.type === 'chat.changed') {
+            emitChatChange(typeof message.conversationId === 'number' ? message.conversationId : null);
+          }
         } catch {
           // Ignore malformed realtime events; the version poll remains the fallback.
         }
@@ -5155,6 +5186,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const unreadCount = useCallback((): number => {
     if (!userName) return 0;
+    if (chatUnread !== null) return chatUnread;
     return Object.values(messages).reduce((sum, msgs) => {
       if (!Array.isArray(msgs)) return sum;
       return sum + msgs.filter(m => (
@@ -5163,7 +5195,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         !m.read
       )).length;
     }, 0);
-  }, [role, userName, messages]);
+  }, [chatUnread, role, userName, messages]);
 
   const updateRoleAccess = useCallback((targetRole: string, moduleId: string, enabled: boolean) => {
     if (role !== 'admin') return;
@@ -5616,7 +5648,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       submitPumpReport, submitPumpReportConfirmed, mgrForwardPumpReport, accApprovePumpReport, accRejectPumpReport, mgrResubmitPumpReport, mgrReturnPumpReportToAttendant, attResubmitPumpReport, adminReturnApprovedPumpReport, deletePumpReport, updatePumpReport, correctApprovedPumpReportDate,
           sendMessage, markRead, archiveConversation, unarchiveConversation, approveExpense, approveExpenseConfirmed, rejectExpense, rejectExpenseConfirmed,
        notifications, refreshNotifications, markNotificationRead, markAllNotificationsRead,
-      addStaff, toggleStaff, deleteStaff, reconcileUserStaffDirectory, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount,
+      addStaff, toggleStaff, deleteStaff, reconcileUserStaffDirectory, addBranch, updateBranch, deleteBranch, addAudit, getConversation, unreadCount, chatUnread, refreshChatUnread,
       deleteTank, deleteLpgTank, deletePump,
        addDepartment, updateDepartment, assignStaffDept, deleteDepartment,
       userAccounts, refreshUsers, addUserAccount, addActiveUserAccount, updateUserAccount, updateEnrollmentData, changeOwnPassword, enrollStaff, mdApproveEnrollment, mdRejectEnrollment, approveUserAccount, suspendUserAccount, reactivateUserAccount, rejectUserAccount, rejectEnrollmentWithReason, resubmitEnrollment, deleteUserAccount, validateCredentials,

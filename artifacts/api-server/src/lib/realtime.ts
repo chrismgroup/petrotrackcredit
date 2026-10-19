@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import type { AuthPayload } from "../middlewares/requireAuth";
 
 const clients = new Set<Duplex>();
+const clientUsers = new WeakMap<Duplex, string>();
 
 function frame(payload: string, opcode = 0x1): Buffer {
   const body = Buffer.from(payload);
@@ -33,8 +34,9 @@ export function attachRealtimeServer(server: Server): void {
       socket.destroy();
       return;
     }
+    let auth: AuthPayload;
     try {
-      jwt.verify(token, secret) as AuthPayload;
+      auth = jwt.verify(token, secret) as AuthPayload;
     } catch {
       socket.destroy();
       return;
@@ -51,6 +53,7 @@ export function attachRealtimeServer(server: Server): void {
       "\r\n",
     ].join("\r\n"));
     clients.add(socket);
+    if (auth?.username) clientUsers.set(socket, auth.username);
     socket.on("close", () => clients.delete(socket));
     socket.on("error", () => clients.delete(socket));
     socket.on("data", data => {
@@ -67,5 +70,19 @@ export function broadcastRealtime(event: Record<string, unknown>): void {
   for (const client of clients) {
     if (client.destroyed || !client.writable) clients.delete(client);
     else client.write(payload);
+  }
+}
+/** Sends an event only to sockets signed in as one of the given users. */
+export function sendRealtimeToUsers(usernames: Iterable<string>, event: Record<string, unknown>): void {
+  const targets = new Set(usernames);
+  if (targets.size === 0) return;
+  const payload = frame(JSON.stringify(event));
+  for (const client of clients) {
+    if (client.destroyed || !client.writable) {
+      clients.delete(client);
+      continue;
+    }
+    const username = clientUsers.get(client);
+    if (username && targets.has(username)) client.write(payload);
   }
 }

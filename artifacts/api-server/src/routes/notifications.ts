@@ -45,6 +45,16 @@ async function sendPush(tokens: string[], title: string, body: string, data: Rec
   }
 }
 
+/** Push-only alert (no inbox entry), used for new chat messages. */
+export async function pushToUsers(usernames: string[], title: string, body: string, data: Record<string, unknown>): Promise<void> {
+  if (usernames.length === 0) return;
+  const tokens = await db
+    .select({ token: notificationTokensTable.token })
+    .from(notificationTokensTable)
+    .where(inArray(notificationTokensTable.username, usernames));
+  await sendPush(tokens.map(row => row.token), title, body, data);
+}
+
 export async function deliverNotification(input: {
   target: string;
   branchId?: string | null;
