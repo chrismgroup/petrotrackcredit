@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import React, { useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput,
@@ -15,7 +14,7 @@ import {
   ROLE_COLORS, ROLE_LABELS, UserAccount, fmtDate, fmtDateTime, useApp, type Role,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { storageApi } from '@/lib/api';
+import { storageApi, uploadFailureMessage } from '@/lib/api';
 import { safeStr } from '@/lib/report-helpers';
 
 const REQUIRED_DOCS: { type: HRDocType; label: string; icon: string; color: string }[] = [
@@ -261,21 +260,11 @@ export default function HRScreen() {
       setEnrollDocs(prev => [...prev, placeholder]);
       setEnrollDocUploading(true);
       try {
-        const fileInfo = await FileSystem.getInfoAsync(file.uri);
-        const size = fileInfo.exists ? (fileInfo as FileSystem.FileInfo & { size?: number }).size ?? 1 : 1;
-        const mimeType = file.mimeType ?? 'application/octet-stream';
-        const upload = await storageApi.requestUploadUrl(file.name, size, mimeType);
-        if (!upload) throw new Error('No upload URL returned');
-        const uploadResult = await FileSystem.uploadAsync(upload.uploadURL, file.uri, {
-          httpMethod: 'PUT',
-          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-          headers: { 'Content-Type': mimeType },
-        });
-        if (uploadResult.status < 200 || uploadResult.status >= 300) throw new Error(`Upload failed: ${uploadResult.status}`);
+        const upload = await storageApi.uploadFile(file);
         setEnrollDocs(prev => prev.map(d => d === placeholder ? { name: file.name, objectPath: upload.objectPath } : d));
       } catch (err) {
         setEnrollDocs(prev => prev.map(d => d === placeholder ? { name: file.name, objectPath: undefined } : d));
-        Alert.alert('Upload failed', 'File was attached locally but could not be uploaded to the server.');
+        Alert.alert('Upload failed', `File was attached locally but could not be uploaded to the server.\n\n${uploadFailureMessage(err)}`);
       } finally {
         setEnrollDocUploading(false);
       }

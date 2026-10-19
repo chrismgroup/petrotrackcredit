@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import express, { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { Readable } from "stream";
 import {
   RequestUploadUrlBody,
@@ -6,10 +6,70 @@ import {
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/requireAuth";
+import {
+  FileStore,
+  MAX_UPLOAD_BYTES,
+  contentDisposition,
+  decodeHeaderFileName,
+} from "../lib/fileStore";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+const fileStore = new FileStore();
 const FILE_MANAGEMENT_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
+
+const rawUploadBody = express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES });
+
+function readUploadBody(req: Request, res: Response, next: NextFunction) {
+  rawUploadBody(req, res, (error?: unknown) => {
+    if (!error) {
+      next();
+      return;
+    }
+    const type = (error as { type?: string }).type;
+    if (type === "entity.too.large") {
+      res.status(413).json({ error: `File is larger than ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.` });
+      return;
+    }
+    res.status(400).json({ error: "The file could not be read. Please try again." });
+  });
+}
+
+function wildcardObjectPath(raw: string | string[] | undefined): string {
+  const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw ?? "";
+  return `/objects/${wildcardPath}`;
+}
+
+/**
+ * POST /storage/uploads
+ *
+ * Upload a file through the API. The raw file bytes are the request body
+ * (sent as application/octet-stream); the original name and type travel in
+ * X-File-Name (URI-encoded) and X-File-Type. Files are stored in PostgreSQL.
+ */
+router.post("/storage/uploads", requireAuth, readUploadBody, async (req: Request, res: Response) => {
+  const data = Buffer.isBuffer(req.body) ? req.body : null;
+  if (!data || data.length === 0) {
+    res.status(400).json({ error: "The selected file is empty." });
+    return;
+  }
+
+  const headerType = req.get("x-file-type");
+  const contentType = headerType && headerType.trim() ? headerType.trim().slice(0, 200) : "application/octet-stream";
+
+  try {
+    const stored = await fileStore.save({
+      name: decodeHeaderFileName(req.headers["x-file-name"]),
+      contentType,
+      data,
+      uploadedBy: req.auth?.username ?? null,
+    });
+    res.status(201).json(stored);
+  } catch (error) {
+    req.log.error({ err: error }, "Error saving uploaded file");
+    res.status(500).json({ error: "The server could not save the file. Please try again." });
+  }
+});
 
 /**
  * POST /storage/uploads/request-url
@@ -56,10 +116,17 @@ router.delete("/storage/objects/*path", requireAuth, async (req: Request, res: R
     return;
   }
 
+  const objectPath = wildcardObjectPath(req.params.path);
   try {
-    const raw = req.params.path;
-    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
-    await objectStorageService.deleteObjectEntity(`/objects/${wildcardPath}`);
+    if (await fileStore.delete(objectPath)) {
+      res.status(204).end();
+      return;
+    }
+    if (!process.env.PRIVATE_OBJECT_DIR) {
+      res.status(204).end();
+      return;
+    }
+    await objectStorageService.deleteObjectEntity(objectPath);
     res.status(204).end();
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
@@ -114,10 +181,24 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
  * be protected with authentication or ACL checks based on the use case.
  */
 router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Response) => {
+  const objectPath = wildcardObjectPath(req.params.path);
   try {
-    const raw = req.params.path;
-    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
-    const objectPath = `/objects/${wildcardPath}`;
+    const stored = await fileStore.get(objectPath);
+    if (stored) {
+      res.status(200);
+      res.setHeader("Content-Type", stored.contentType);
+      res.setHeader("Content-Length", String(stored.data.length));
+      res.setHeader("Content-Disposition", contentDisposition(stored.name));
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+      res.end(stored.data);
+      return;
+    }
+    if (!process.env.PRIVATE_OBJECT_DIR) {
+      res.status(404).json({ error: "Object not found" });
+      return;
+    }
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
     const response = await objectStorageService.downloadObject(objectFile);

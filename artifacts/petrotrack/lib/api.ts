@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 
 function getBase(): string {
   const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -620,8 +621,115 @@ export const usersApi = {
   remove: (id: number) => del(`/users/${id}`),
 };
 
-/** Storage — presigned URL upload flow */
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+export interface UploadableFile {
+  uri: string;
+  name: string;
+  mimeType?: string | null;
+  size?: number | null;
+  /** Browser File object provided by expo-document-picker on web. */
+  file?: Blob | null;
+}
+
+export interface UploadedFile {
+  objectPath: string;
+  name: string;
+  mimeType: string;
+  size: number;
+}
+
+export class UploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UploadError';
+  }
+}
+
+export function uploadErrorMessage(status: number, serverMessage?: string | null): string {
+  if (status === 401) return 'Your session has expired. Please sign out and sign in again, then retry.';
+  if (status === 403) return 'You do not have permission to upload files here.';
+  if (status === 413) return `The file is too large. The maximum size is ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.`;
+  if (serverMessage) return serverMessage;
+  if (status === 0) return 'Could not reach the server. Check your internet connection and try again.';
+  return `The server could not save the file (error ${status}). Please try again.`;
+}
+
+export function uploadFailureMessage(error: unknown): string {
+  return error instanceof UploadError
+    ? error.message
+    : 'The file could not be uploaded. Please try again.';
+}
+
+function parseServerError(body: string | null | undefined): string | null {
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    return typeof parsed.error === 'string' ? parsed.error : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Storage — files are uploaded through the API and stored in PostgreSQL. */
 export const storageApi = {
+  uploadFile: async (asset: UploadableFile): Promise<UploadedFile> => {
+    if (!BASE) throw new UploadError('The app is not connected to a server.');
+    if (asset.size != null && asset.size > MAX_UPLOAD_BYTES) {
+      throw new UploadError(uploadErrorMessage(413));
+    }
+    const mimeType = asset.mimeType || 'application/octet-stream';
+    const headers = {
+      ...(await authHeaders()),
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(asset.name || 'document'),
+      'X-File-Type': mimeType,
+    };
+    const url = `${BASE}/storage/uploads`;
+
+    let status = 0;
+    let body: string | null = null;
+    try {
+      if (Platform.OS === 'web') {
+        const blob = asset.file ?? await (await fetch(asset.uri)).blob();
+        if (blob.size > MAX_UPLOAD_BYTES) throw new UploadError(uploadErrorMessage(413));
+        const response = await fetch(url, { method: 'POST', headers, body: blob });
+        status = response.status;
+        body = await response.text();
+      } else {
+        const result = await FileSystem.uploadAsync(url, asset.uri, {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+          headers,
+        });
+        status = result.status;
+        body = result.body;
+      }
+    } catch (error) {
+      if (error instanceof UploadError) throw error;
+      throw new UploadError(uploadErrorMessage(0));
+    }
+
+    if (status < 200 || status >= 300) {
+      throw new UploadError(uploadErrorMessage(status, parseServerError(body)));
+    }
+    let saved: { objectPath?: unknown; size?: unknown } = {};
+    try {
+      saved = JSON.parse(body ?? '{}');
+    } catch {
+      // handled below
+    }
+    if (typeof saved.objectPath !== 'string' || !saved.objectPath.startsWith('/objects/')) {
+      throw new UploadError('The server did not confirm the upload. Please try again.');
+    }
+    return {
+      objectPath: saved.objectPath,
+      name: asset.name,
+      mimeType,
+      size: typeof saved.size === 'number' && saved.size > 0 ? saved.size : Math.max(1, asset.size ?? 1),
+    };
+  },
+  /** @deprecated Direct-to-cloud uploads; use uploadFile instead. */
   requestUploadUrl: async (name: string, size: number, contentType: string): Promise<{ uploadURL: string; objectPath: string } | null> => {
     if (!BASE) return null;
     try {

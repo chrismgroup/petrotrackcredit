@@ -83,6 +83,9 @@ jest.mock('@/lib/api', () => {
   };
   return {
     SHIFT_REPORT_OUTBOX_STORAGE_KEY: outboxKey,
+    MAX_UPLOAD_BYTES: 20 * 1024 * 1024,
+    uploadFailureMessage: jest.fn((error: unknown) =>
+      error instanceof Error ? error.message : 'The file could not be uploaded. Please try again.'),
     loadShiftReportOutbox: jest.fn(readOutbox),
     enqueueShiftReportOutbox: jest.fn(async (item: { idempotencyKey: string }) => {
       const storage = jest.requireMock('@react-native-async-storage/async-storage').default;

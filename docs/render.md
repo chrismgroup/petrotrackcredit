@@ -16,9 +16,15 @@ Render supplies `PORT` to each service. The API health check is
    deployed `petrotrack-api` service, for example
    `https://petrotrack-api.onrender.com`. Do not leave this unset: the web
    service cannot serve `/api` itself.
-3. Create a Google Cloud Storage bucket for application files and backups.
-4. Give a Google service account access to that bucket, then set these API
-   service variables in Render:
+3. Uploaded documents (My Folders, meeting-minute attachments and HR
+   enrollment documents) are stored in PostgreSQL in the `stored_files` table,
+   up to 20 MB per file. The API creates the table automatically on first
+   upload (see `lib/db/migrations/20261020_stored_files.sql`). No cloud
+   bucket is needed for uploads; size the Render database for the expected
+   document volume.
+4. Optional: Google Cloud Storage is only needed to keep serving files that
+   were uploaded to a bucket before database storage was introduced, and for
+   bucket backups. In that case set these API service variables in Render:
 
    - `GCP_SERVICE_ACCOUNT_JSON`: the service account JSON as one environment
      variable. Omit it when the runtime already has Google Application Default

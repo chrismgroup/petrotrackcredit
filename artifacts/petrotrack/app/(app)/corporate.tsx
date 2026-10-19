@@ -18,7 +18,7 @@ import {
   MY_FOLDER_ALLOWED_ROLES, ROLE_COLORS, fmtDate, fmtDateTime, useApp,
   type Role,
 } from '@/context/AppContext';
-import { storageApi } from '@/lib/api';
+import { MAX_UPLOAD_BYTES, storageApi, uploadFailureMessage } from '@/lib/api';
 import { useColors } from '@/hooks/useColors';
 
 // ── Compliance helpers ──────────────────────────────────────────────────────
@@ -258,33 +258,20 @@ export function FolderWorkspacePanel({
 
       const file = result.assets[0];
       setUploading(true);
-      const fileInfo = await FileSystem.getInfoAsync(file.uri);
-      const size = Math.max(1, file.size ?? (fileInfo.exists ? (fileInfo as FileSystem.FileInfo & { size?: number }).size ?? 0 : 0));
-      const mimeType = file.mimeType ?? 'application/octet-stream';
-      const upload = await storageApi.requestUploadUrl(file.name, size, mimeType);
-      if (!upload) throw new Error('No upload URL returned');
-
-      const uploadResult = await FileSystem.uploadAsync(upload.uploadURL, file.uri, {
-        httpMethod: 'PUT',
-        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-        headers: { 'Content-Type': mimeType },
-      });
-      if (uploadResult.status < 200 || uploadResult.status >= 300) {
-        throw new Error(`Upload failed: ${uploadResult.status}`);
-      }
+      const upload = await storageApi.uploadFile(file);
 
       return {
         section,
         folderId: selectedFolderId,
         name: file.name,
         objectPath: upload.objectPath,
-        mimeType,
-        size,
+        mimeType: upload.mimeType,
+        size: upload.size,
         uploadedBy: userName || 'System',
         ...metadata,
       };
-    } catch {
-      Alert.alert('Upload failed', 'The file could not be uploaded. Please try again.');
+    } catch (error) {
+      Alert.alert('Upload failed', uploadFailureMessage(error));
       return null;
     } finally {
       setUploading(false);
@@ -452,8 +439,17 @@ export function FolderWorkspacePanel({
           style={[sty.uploadAnyBtn, { backgroundColor: uploading ? colors.border : roleColor }]}
         >
           <Ionicons name={uploading ? 'hourglass-outline' : 'cloud-upload-outline'} size={16} color="#fff" />
-          <Text style={sty.uploadAnyTxt}>{uploading ? 'Uploading…' : 'Upload file or certificate'}</Text>
+          <Text style={sty.uploadAnyTxt} numberOfLines={1}>
+            {uploading
+              ? 'Uploading…'
+              : `Upload to ${selectedFolderId === null ? 'Main folder' : sectionFolders.find(f => f.id === selectedFolderId)?.name ?? 'folder'}`}
+          </Text>
         </TouchableOpacity>
+      )}
+      {canManage && (
+        <Text style={[sty.workspaceEmpty, { color: colors.textSubtle, marginTop: -4 }]}>
+          Any file type up to {MAX_UPLOAD_BYTES / (1024 * 1024)} MB. Choose a folder above first.
+        </Text>
       )}
 
       <Text style={[sty.workspaceFilesLabel, { color: colors.textMuted }]}>
@@ -840,23 +836,9 @@ export default function CorporateScreen() {
       if (result.canceled) return;
 
       const file = result.assets[0];
-      const fileInfo = await FileSystem.getInfoAsync(file.uri);
-      const sizeBytes = Math.max(
-        1,
-        file.size ?? (fileInfo.exists ? (fileInfo as FileSystem.FileInfo & { size?: number }).size ?? 0 : 0),
-      );
-      const mimeType = file.mimeType ?? 'application/octet-stream';
-      const upload = await storageApi.requestUploadUrl(file.name, sizeBytes, mimeType);
-      if (!upload) throw new Error('No upload URL returned');
-
-      const uploadResult = await FileSystem.uploadAsync(upload.uploadURL, file.uri, {
-        httpMethod: 'PUT',
-        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-        headers: { 'Content-Type': mimeType },
-      });
-      if (uploadResult.status < 200 || uploadResult.status >= 300) {
-        throw new Error(`Upload failed: ${uploadResult.status}`);
-      }
+      const upload = await storageApi.uploadFile(file);
+      const sizeBytes = upload.size;
+      const mimeType = upload.mimeType;
 
       addCorpAttachment(attachingTo.type, attachingTo.id, {
         name: file.name,
@@ -868,8 +850,8 @@ export default function CorporateScreen() {
       });
       setAttachingTo(null);
       Alert.alert('Uploaded', `${file.name} was uploaded to the meeting minutes.`);
-    } catch {
-      Alert.alert('Upload failed', 'The document could not be uploaded. Please try again.');
+    } catch (error) {
+      Alert.alert('Upload failed', uploadFailureMessage(error));
     }
   }
 
