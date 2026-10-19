@@ -19,6 +19,7 @@ import {
   type Role,
 } from '@/context/AppContext';
 import { MAX_UPLOAD_BYTES, storageApi, uploadFailureMessage } from '@/lib/api';
+import { resolveStoredFileUri } from '@/lib/stored-files';
 import { useColors } from '@/hooks/useColors';
 
 // ── Compliance helpers ──────────────────────────────────────────────────────
@@ -127,26 +128,9 @@ export function FolderWorkspacePanel({
     if (focusedFile) setSelectedFolderId(focusedFile.folderId);
   }, [files, focusedFileId, routeSection, section]);
 
-  function localFileName(file: MyFolderFile): string {
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    return `petrotrack-my-folder-${file.id}-${safeName}`;
-  }
-
-  async function getLocalFile(file: MyFolderFile): Promise<string> {
-    if (!file.objectPath) throw new Error('This document is missing its stored file.');
-    if (Platform.OS === 'web') {
-      const fetched = await storageApi.fetchObject(file.objectPath);
-      if (!fetched) throw new Error('The document could not be downloaded.');
-      return URL.createObjectURL(fetched.blob);
-    }
-    const root = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
-    if (!root) throw new Error('No local file directory is available.');
-    const destinationUri = `${root}${localFileName(file)}`;
-    const existing = await FileSystem.getInfoAsync(destinationUri);
-    if (existing.exists) return destinationUri;
-    const downloaded = await storageApi.downloadObject(file.objectPath, destinationUri);
-    if (!downloaded) throw new Error('The document could not be downloaded.');
-    return downloaded;
+  function getLocalFile(file: MyFolderFile): Promise<string> {
+    if (!file.objectPath) return Promise.reject(new Error('This document is missing its stored file.'));
+    return resolveStoredFileUri({ objectPath: file.objectPath, name: file.name, mimeType: file.mimeType });
   }
 
   async function previewDocument(file: MyFolderFile) {
@@ -258,7 +242,10 @@ export function FolderWorkspacePanel({
 
       const file = result.assets[0];
       setUploading(true);
-      const upload = await storageApi.uploadFile(file);
+      const upload = await storageApi.uploadFile(file, {
+        category: 'my_folder',
+        relatedId: `${section}:${selectedFolderId ?? 'main'}`,
+      });
 
       return {
         section,
@@ -836,7 +823,10 @@ export default function CorporateScreen() {
       if (result.canceled) return;
 
       const file = result.assets[0];
-      const upload = await storageApi.uploadFile(file);
+      const upload = await storageApi.uploadFile(file, {
+        category: attachingTo.type === 'minutes' ? 'meeting_minutes' : 'general',
+        relatedId: `${attachingTo.type}:${attachingTo.id}`,
+      });
       const sizeBytes = upload.size;
       const mimeType = upload.mimeType;
 

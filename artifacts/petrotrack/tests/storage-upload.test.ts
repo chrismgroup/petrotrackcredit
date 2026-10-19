@@ -38,7 +38,7 @@ describe('storageApi.uploadFile', () => {
       name: 'Board minutes.pdf',
       mimeType: 'application/pdf',
       size: 42,
-    });
+    }, { category: 'meeting_minutes', relatedId: 'minutes:7' });
 
     expect(uploaded).toEqual({ objectPath: '/objects/uploads/abc', name: 'Board minutes.pdf', mimeType: 'application/pdf', size: 42 });
     const [url, uri, options] = mockUploadAsync.mock.calls[0];
@@ -49,6 +49,8 @@ describe('storageApi.uploadFile', () => {
       'Content-Type': 'application/octet-stream',
       'X-File-Name': 'Board%20minutes.pdf',
       'X-File-Type': 'application/pdf',
+      'X-File-Category': 'meeting_minutes',
+      'X-Related-Id': 'minutes%3A7',
     });
     expect(options.headers.Authorization).toContain('token-123');
   });

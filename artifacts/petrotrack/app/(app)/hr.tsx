@@ -10,12 +10,13 @@ import { ModalSheet } from '@/components/FormSheet';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
-  GeneratedLetter, HRDocType, HRDocStatus, HREmployee, OnboardingStatus,
+  GeneratedLetter, HRDocType, HRDocStatus, HREmployee, HREmployeeDoc, OnboardingStatus,
   ROLE_COLORS, ROLE_LABELS, UserAccount, fmtDate, fmtDateTime, useApp, type Role,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { storageApi, uploadFailureMessage } from '@/lib/api';
 import { safeStr } from '@/lib/report-helpers';
+import { openStoredFile } from '@/lib/stored-files';
 
 const REQUIRED_DOCS: { type: HRDocType; label: string; icon: string; color: string }[] = [
   { type: 'biodata',        label: 'Bio-Data Form',         icon: 'person',            color: '#1F6848' },
@@ -173,6 +174,7 @@ export default function HRScreen() {
 
   /* ── other state ── */
   const [hbCat,     setHbCat]     = useState(HANDBOOK_CATS[0]);
+  const [hrFileUploading, setHrFileUploading] = useState(false);
   const [recEmpId,  setRecEmpId]  = useState<number | null>(null);
   const [recType,   setRecType]   = useState<'suspend' | 'deactivate' | 'delete'>('suspend');
   const [recReason, setRecReason] = useState('');
@@ -260,11 +262,11 @@ export default function HRScreen() {
       setEnrollDocs(prev => [...prev, placeholder]);
       setEnrollDocUploading(true);
       try {
-        const upload = await storageApi.uploadFile(file);
+        const upload = await storageApi.uploadFile(file, { category: 'hr_enrollment' });
         setEnrollDocs(prev => prev.map(d => d === placeholder ? { name: file.name, objectPath: upload.objectPath } : d));
       } catch (err) {
-        setEnrollDocs(prev => prev.map(d => d === placeholder ? { name: file.name, objectPath: undefined } : d));
-        Alert.alert('Upload failed', `File was attached locally but could not be uploaded to the server.\n\n${uploadFailureMessage(err)}`);
+        setEnrollDocs(prev => prev.filter(d => d !== placeholder));
+        Alert.alert('Upload failed', `${file.name} was not attached.\n\n${uploadFailureMessage(err)}`);
       } finally {
         setEnrollDocUploading(false);
       }
@@ -461,10 +463,26 @@ export default function HRScreen() {
       const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (result.canceled) return;
       const file = result.assets[0];
-      uploadHRDocFile(empId, docType, file.name, file.uri, file.mimeType ?? undefined, file.size ?? undefined);
-      Alert.alert('Uploaded', `${file.name} uploaded successfully.`);
+      setHrFileUploading(true);
+      try {
+        const saved = await storageApi.uploadFile(file, { category: 'hr_document', relatedId: `${empId}:${docType}` });
+        uploadHRDocFile(empId, docType, saved.name, saved.objectPath, saved.mimeType, saved.size);
+        Alert.alert('Uploaded', `${file.name} uploaded successfully.`);
+      } catch (err) {
+        Alert.alert('Upload failed', uploadFailureMessage(err));
+      } finally {
+        setHrFileUploading(false);
+      }
     } catch {
       Alert.alert('Error', 'Could not pick file. Please try again.');
+    }
+  }
+
+  async function openHRFile(doc: HREmployeeDoc) {
+    try {
+      await openStoredFile({ objectPath: doc.objectPath, uri: doc.uri, name: doc.name, mimeType: doc.mimeType });
+    } catch {
+      Alert.alert('Cannot open', 'This document could not be opened.');
     }
   }
 
@@ -474,8 +492,19 @@ export default function HRScreen() {
       if (result.canceled) return;
       const file = result.assets[0];
       const ext = file.name.split('.').pop()?.toLowerCase() ?? 'other';
-      addHRHandbook({ name: file.name, fileType: ext, cat: hbCat, uploadedBy: userName || 'HR' });
-      Alert.alert('Uploaded', `${file.name} uploaded. Awaiting approval.`);
+      setHrFileUploading(true);
+      try {
+        const saved = await storageApi.uploadFile(file, { category: 'hr_handbook', relatedId: hbCat });
+        addHRHandbook({
+          name: saved.name, fileType: ext, cat: hbCat, uploadedBy: userName || 'HR',
+          objectPath: saved.objectPath, mimeType: saved.mimeType, size: saved.size,
+        });
+        Alert.alert('Uploaded', `${file.name} uploaded. Awaiting approval.`);
+      } catch (err) {
+        Alert.alert('Upload failed', uploadFailureMessage(err));
+      } finally {
+        setHrFileUploading(false);
+      }
     } catch {
       Alert.alert('Error', 'Could not pick file. Please try again.');
     }
@@ -582,10 +611,11 @@ export default function HRScreen() {
               {isHR && (doc.status === 'pending' || doc.status === 'n/a') && (
                 <TouchableOpacity
                   onPress={() => handlePickDocFile(emp.id, rd.type)}
-                  style={[styles.uploadBtn, { backgroundColor: roleColor }]}
+                  disabled={hrFileUploading}
+                  style={[styles.uploadBtn, { backgroundColor: roleColor, opacity: hrFileUploading ? 0.6 : 1 }]}
                 >
                   <Ionicons name="cloud-upload-outline" size={11} color="#fff" />
-                  <Text style={styles.uploadBtnText}>Upload</Text>
+                  <Text style={styles.uploadBtnText}>{hrFileUploading ? 'Uploading…' : 'Upload'}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1293,10 +1323,10 @@ export default function HRScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-              <TouchableOpacity onPress={handlePickHandbook}
-                style={[styles.submitBtn, { backgroundColor: roleColor }]}>
+              <TouchableOpacity onPress={handlePickHandbook} disabled={hrFileUploading}
+                style={[styles.submitBtn, { backgroundColor: roleColor, opacity: hrFileUploading ? 0.6 : 1 }]}>
                 <Ionicons name="cloud-upload" size={14} color="#fff" />
-                <Text style={styles.submitBtnText}>Choose & Upload File (any format)</Text>
+                <Text style={styles.submitBtnText}>{hrFileUploading ? 'Uploading…' : 'Choose & Upload File (any format, max 20 MB)'}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1308,14 +1338,20 @@ export default function HRScreen() {
             </View>
           )}
           {hrHandbooks.map(doc => (
-            <View key={doc.id} style={[styles.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              key={doc.id}
+              activeOpacity={0.8}
+              disabled={!doc.objectPath}
+              onPress={() => openHRFile(doc)}
+              style={[styles.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
               <View style={[styles.fileIconWrap, { backgroundColor: '#286247' + '18' }]}>
                 <Ionicons name="document-attach" size={20} color="#286247" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>{doc.name}</Text>
                 <Text style={[styles.fileMeta, { color: colors.textMuted }]}>{doc.cat} · by {doc.uploadedBy}</Text>
-                <Text style={[styles.fileDate, { color: colors.textSubtle }]}>{fmtDateTime(doc.dt)}</Text>
+                <Text style={[styles.fileDate, { color: colors.textSubtle }]}>{fmtDateTime(doc.dt)}{doc.objectPath ? ' · tap to open' : ''}</Text>
                 {doc.approved && <Text style={[styles.approvedBy, { color: '#1F6848' }]}>✓ Approved by {doc.approvedBy}</Text>}
               </View>
               {doc.approved ? (
@@ -1332,7 +1368,7 @@ export default function HRScreen() {
                   <Text style={[styles.pillText, { color: '#71805B' }]}>Pending</Text>
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
           ))}
           <View style={{ height: 24 }} />
         </KeyboardAwareScrollViewCompat>

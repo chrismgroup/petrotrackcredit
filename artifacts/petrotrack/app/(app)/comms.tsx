@@ -1,13 +1,13 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
+  ImageSourcePropType,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -30,6 +30,8 @@ import {
   useApp,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { MAX_UPLOAD_BYTES, storageApi, uploadFailureMessage, type UploadableFile } from '@/lib/api';
+import { openStoredFile, useStoredFileSource } from '@/lib/stored-files';
 
 type Tab    = 'chats';
 type InboxFilter = 'active' | 'archived';
@@ -95,9 +97,10 @@ function MediaBubble({
   msg, isMine, peerColor, colors, onViewImage,
 }: {
   msg: Message; isMine: boolean; peerColor: string; colors: Colors;
-  onViewImage: (uri: string) => void;
+  onViewImage: (source: ImageSourcePropType) => void;
 }) {
   const { media } = msg;
+  const imageSource = useStoredFileSource(media?.mimeType.startsWith('image/') ? media : null);
   if (!media) return null;
 
   const isImage = media.mimeType.startsWith('image/');
@@ -108,12 +111,7 @@ function MediaBubble({
     const m = msg.media;
     if (!m) return;
     try {
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(m.uri, { mimeType: m.mimeType });
-      } else {
-        await Linking.openURL(m.uri);
-      }
+      await openStoredFile(m);
     } catch {
       Alert.alert('Cannot Open', 'Unable to open this file on your device.');
     }
@@ -123,7 +121,8 @@ function MediaBubble({
     return (
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={() => onViewImage(media.uri)}
+        disabled={!imageSource}
+        onPress={() => imageSource && onViewImage(imageSource)}
         style={[
           styles.mediaBubble,
           isMine
@@ -131,11 +130,17 @@ function MediaBubble({
             : { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderBottomLeftRadius: 4 },
         ]}
       >
-        <Image
-          source={{ uri: media.uri }}
-          style={styles.mediaImage}
-          resizeMode="cover"
-        />
+        {imageSource ? (
+          <Image
+            source={imageSource}
+            style={styles.mediaImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[styles.mediaImage, { alignItems: 'center', justifyContent: 'center' }]}>
+            <Ionicons name="image-outline" size={28} color={isMine ? '#fff' : colors.textSubtle} />
+          </View>
+        )}
         {!!msg.body && (
           <Text style={[styles.bubbleText, { color: isMine ? '#fff' : colors.text, marginTop: 6 }]}>
             {msg.body}
@@ -186,7 +191,7 @@ function MediaBubble({
   );
 }
 
-function ImageViewerModal({ uri, onClose }: { uri: string; onClose: () => void }) {
+function ImageViewerModal({ source, onClose }: { source: ImageSourcePropType; onClose: () => void }) {
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.imgViewerBg} onPress={onClose}>
@@ -194,7 +199,7 @@ function ImageViewerModal({ uri, onClose }: { uri: string; onClose: () => void }
           <Ionicons name="close" size={22} color="#fff" />
         </TouchableOpacity>
         <Pressable onPress={() => {/* prevent close on image tap */}}>
-          <Image source={{ uri }} style={styles.imgViewerImg} resizeMode="contain" />
+          <Image source={source} style={styles.imgViewerImg} resizeMode="contain" />
         </Pressable>
         <Text style={styles.imgViewerHint}>Tap outside to close</Text>
       </Pressable>
@@ -225,7 +230,8 @@ export default function CommsScreen() {
   // ── Direct message state ───────────────────────────────────────────────────
   const [chatPeer,     setChatPeer]     = useState<UserAccount | null>(null);
   const [draft,        setDraft]        = useState('');
-  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [viewingImage, setViewingImage] = useState<ImageSourcePropType | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const chatScrollRef = useRef<ScrollView>(null);
 
   // ── Contact search ─────────────────────────────────────────────────────────
@@ -299,6 +305,28 @@ export default function CommsScreen() {
     ]);
   }
 
+  async function sendAttachment(asset: UploadableFile & { mimeType: string }) {
+    if (!chatPeer) return;
+    if (asset.size != null && asset.size > MAX_UPLOAD_BYTES) {
+      Alert.alert('File Too Large', `The maximum size is ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.`);
+      return;
+    }
+    const peerName = chatPeer.empName;
+    setUploadingAttachment(true);
+    try {
+      const saved = await storageApi.uploadFile(asset, { category: 'chat_media', relatedId: peerName });
+      sendMessage(peerName, {
+        type: 'media', body: '', to: peerName,
+        media: { objectPath: saved.objectPath, name: saved.name, mimeType: saved.mimeType, size: saved.size },
+      });
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
+    } catch (error) {
+      Alert.alert('Upload Failed', uploadFailureMessage(error));
+    } finally {
+      setUploadingAttachment(false);
+    }
+  }
+
   async function handlePickImage() {
     if (!chatPeer) return;
     const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -306,20 +334,16 @@ export default function CommsScreen() {
       Alert.alert('Permission Required', 'Please allow photo library access in Settings to use this feature.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.25, base64: true });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.5 });
     if (result.canceled) return;
     const asset = result.assets[0];
-    const b64   = asset.base64 || '';
-    if (b64.length > 500_000) {
-      Alert.alert('Image Too Large', 'This image is too large to send in-app. Please select a smaller or lower-resolution photo.');
-      return;
-    }
-    const uri = b64 ? `data:image/jpeg;base64,${b64}` : asset.uri;
-    sendMessage(chatPeer.empName, {
-      type: 'media', body: '', to: chatPeer.empName,
-      media: { uri, name: asset.fileName || 'photo.jpg', mimeType: 'image/jpeg', size: asset.fileSize },
+    await sendAttachment({
+      uri: asset.uri,
+      file: asset.file ?? null,
+      name: asset.fileName || 'photo.jpg',
+      mimeType: asset.mimeType || 'image/jpeg',
+      size: asset.fileSize ?? null,
     });
-    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
   }
 
   async function handlePickVideo() {
@@ -332,11 +356,13 @@ export default function CommsScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'] });
     if (result.canceled) return;
     const asset = result.assets[0];
-    sendMessage(chatPeer.empName, {
-      type: 'media', body: '', to: chatPeer.empName,
-      media: { uri: asset.uri, name: asset.fileName || 'video.mp4', mimeType: 'video/mp4', size: asset.fileSize },
+    await sendAttachment({
+      uri: asset.uri,
+      file: asset.file ?? null,
+      name: asset.fileName || 'video.mp4',
+      mimeType: asset.mimeType || 'video/mp4',
+      size: asset.fileSize ?? null,
     });
-    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
   }
 
   async function handlePickDocument() {
@@ -344,11 +370,13 @@ export default function CommsScreen() {
     const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (result.canceled) return;
     const doc = result.assets[0];
-    sendMessage(chatPeer.empName, {
-      type: 'media', body: '', to: chatPeer.empName,
-      media: { uri: doc.uri, name: doc.name, mimeType: doc.mimeType || 'application/octet-stream', size: doc.size ?? undefined },
+    await sendAttachment({
+      uri: doc.uri,
+      file: doc.file ?? null,
+      name: doc.name,
+      mimeType: doc.mimeType || 'application/octet-stream',
+      size: doc.size ?? null,
     });
-    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
   }
 
   // ── Selected group message ─────────────────────────────────────────────────
@@ -411,7 +439,7 @@ export default function CommsScreen() {
     return (
       <ScreenLayout title={chatPeer.empName}>
         {viewingImage && (
-          <ImageViewerModal uri={viewingImage} onClose={() => setViewingImage(null)} />
+          <ImageViewerModal source={viewingImage} onClose={() => setViewingImage(null)} />
         )}
 
         {/* Thread header */}
@@ -548,10 +576,14 @@ export default function CommsScreen() {
           <View style={[styles.inputBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
             <TouchableOpacity
               onPress={handleAttach}
+              disabled={uploadingAttachment}
+              accessibilityLabel={uploadingAttachment ? 'Uploading attachment' : 'Send attachment'}
               style={[styles.attachBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
               activeOpacity={0.8}
             >
-              <Ionicons name="attach" size={20} color={colors.textMuted} />
+              {uploadingAttachment
+                ? <ActivityIndicator size="small" color={colors.textMuted} />
+                : <Ionicons name="attach" size={20} color={colors.textMuted} />}
             </TouchableOpacity>
             <TextInput
               style={[styles.msgInput, { backgroundColor: colors.background, borderColor: colors.inputBorder, color: colors.text }]}

@@ -18,49 +18,37 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Returns a presigned GCS URL for direct upload. The client sends JSON
- * metadata here, then uploads the file directly to the returned URL.
- * @summary Request a presigned URL for file upload
+ * The request body is the raw file (send it as application/octet-stream,
+ * maximum 20 MB). Pass the original file name URI-encoded in X-File-Name
+ * and its MIME type in X-File-Type. X-File-Category and X-Related-Id link
+ * the file to the app record it belongs to.
+ * @summary Upload a file and store it in PostgreSQL
  */
+export const uploadFileHeaderXRelatedIdMax = 120;
 
 
 
-
-
-export const RequestUploadUrlBody = zod.object({
-  "name": zod.string().min(1),
-  "size": zod.number().min(1),
-  "contentType": zod.string().min(1)
+export const UploadFileHeader = zod.object({
+  "X-File-Name": zod.string().optional(),
+  "X-File-Type": zod.string().optional(),
+  "X-File-Category": zod.enum(['general', 'my_folder', 'meeting_minutes', 'hr_enrollment', 'hr_document', 'hr_handbook', 'delivery_evidence', 'chat_media']).optional(),
+  "X-Related-Id": zod.string().max(uploadFileHeaderXRelatedIdMax).optional()
 })
 
-
-
-
-
-
-export const RequestUploadUrlResponse = zod.object({
-  "uploadURL": zod.string(),
+export const UploadFileResponse = zod.object({
   "objectPath": zod.string(),
-  "metadata": zod.object({
-  "name": zod.string().min(1),
-  "size": zod.number().min(1),
-  "contentType": zod.string().min(1)
-}).optional()
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "category": zod.enum(['general', 'my_folder', 'meeting_minutes', 'hr_enrollment', 'hr_document', 'hr_handbook', 'delivery_evidence', 'chat_media']),
+  "relatedId": zod.string().nullish(),
+  "branchId": zod.string().nullish(),
+  "uploadedBy": zod.string().nullish()
 })
 
 
 /**
- * @summary Serve a public asset from PUBLIC_OBJECT_SEARCH_PATHS
- */
-export const GetPublicObjectParams = zod.object({
-  "filePath": zod.coerce.string()
-})
-
-export const GetPublicObjectResponse = zod.unknown()
-
-
-/**
- * @summary Serve an object entity from PRIVATE_OBJECT_DIR
+ * @summary Serve an uploaded file stored in PostgreSQL
  */
 export const GetStorageObjectParams = zod.object({
   "objectPath": zod.coerce.string()

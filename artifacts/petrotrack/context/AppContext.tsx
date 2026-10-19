@@ -12,6 +12,7 @@ import {
 import { mergeWorkflowRecords } from '@/lib/workflow-record-merge';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { startForegroundTimer } from '@/lib/foreground-timer';
+import { clearViewedFiles } from '@/lib/viewed-files';
 import type { CreditCustomer, CreditSaleLine, CustomerPayment } from '@/lib/customer-ledger';
 export type { CreditCustomer, CreditSaleLine, CustomerPayment } from '@/lib/customer-ledger';
 import { LAST_SIGNED_IN_USERNAME_STORAGE_KEY } from '@/lib/device-identity';
@@ -277,7 +278,7 @@ export const getPriceForPump = (pump: Pump, prices: Prices): number => {
   return getPriceForProduct(prices, pump.prod, pump.branchId);
 };
 export interface PriceChange { id: number; prod: string; oldPrice: number; newPrice: number; by: string; dt: string; branchId?: string; reason?: string; }
-export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media' | 'call'; body: string; ts: string; createdAt?: string; read: boolean; archivedBy?: string[]; archiveState?: Record<string, { archived: boolean; updatedAt: string }>; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { uri: string; name: string; mimeType: string; size?: number }; call?: { callId: string; kind: 'audio' | 'video'; roomUrl: string }; }
+export interface Message { id: number; from: string; to: string; type: 'txt' | 'req' | 'alert' | 'media' | 'call'; body: string; ts: string; createdAt?: string; read: boolean; archivedBy?: string[]; archiveState?: Record<string, { archived: boolean; updatedAt: string }>; req?: { product: string; qty: number; sup: string; reason: string }; alrt?: { title: string; pri: string; detail: string }; media?: { objectPath?: string; uri?: string; name: string; mimeType: string; size?: number }; call?: { callId: string; kind: 'audio' | 'video'; roomUrl: string }; }
 export type { AppNotification };
 export interface Broadcast { id: number; from: Role; fromName: string; title: string; body: string; audience: string; audienceName: string; ts: string; }
 export interface AuditEntry { id: number; action: string; user: string; detail: string; ts: string; }
@@ -399,7 +400,7 @@ export function getActionItemUrgency(targetDate: string, now = new Date()): Acti
   if (daysUntilTarget <= 14) return 'due-soon';
   return 'on-track';
 }
-export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video' | 'document'; name: string; dt: string; by: string; uri?: string; mimeType?: string; size?: number; }
+export interface DeliveryEvidence { id: number; delivId: number; type: 'photo' | 'video' | 'document'; name: string; dt: string; by: string; uri?: string; objectPath?: string; mimeType?: string; size?: number; }
 export type PumpReportStatus = 'pending_manager' | 'pending_accountant' | 'returned' | 'returned_attendant' | 'approved';
 export interface PumpDailyReport {
   id: number;
@@ -1050,7 +1051,7 @@ export function mergeDipRecords(current: DipRecord[], incoming: DipRecord[]): Di
 export type HRDocType = 'biodata' | 'contract' | 'guarantor' | 'nin' | 'passport_photo' | 'certificate' | 'nysc' | 'medical' | 'reference' | 'bank_details' | 'tin' | 'pension';
 export type HRDocStatus = 'pending' | 'submitted' | 'approved' | 'n/a';
 export interface HRDoc { type: HRDocType; status: HRDocStatus; date?: string; note?: string; fileName?: string; }
-export interface HREmployeeDoc { id: number; name: string; fileType: string; cat: string; uploadedBy: string; dt: string; approved: boolean; approvedBy?: string; approvedAt?: string; uri?: string; mimeType?: string; size?: number; }
+export interface HREmployeeDoc { id: number; name: string; fileType: string; cat: string; uploadedBy: string; dt: string; approved: boolean; approvedBy?: string; approvedAt?: string; uri?: string; objectPath?: string; mimeType?: string; size?: number; }
 export type OnboardingStatus = 'draft' | 'forwarded' | 'md_approved' | 'ceo_approved';
 export interface OnboardingApproval { status: OnboardingStatus; forwardedAt?: string; forwardedBy?: string; mdApprovedBy?: string; mdApprovedAt?: string; ceoApprovedBy?: string; ceoApprovedAt?: string; }
 export interface GeneratedLetter { id: number; type: 'appointment' | 'promotion'; title: string; content: string; generatedAt: string; generatedBy: string; newRole?: string; }
@@ -1640,7 +1641,7 @@ interface AppContextType {
   addHREmployee: (e: Omit<HREmployee, 'id' | 'empId' | 'serial'>) => void;
   updateHRDocStatus: (empId: number, docType: HRDocType, status: HRDocStatus, note?: string) => void;
   removeHREmployee: (id: number) => void;
-  uploadHRDocFile: (empId: number, docType: HRDocType, fileName: string, uri?: string, mimeType?: string, size?: number) => void;
+  uploadHRDocFile: (empId: number, docType: HRDocType, fileName: string, objectPath: string, mimeType?: string, size?: number) => void;
   addHRUpload: (empId: number, doc: Omit<HREmployeeDoc, 'id' | 'dt' | 'approved'>) => void;
   approveHRUpload: (empId: number, docId: number, by: string) => void;
   addHRRecommendation: (rec: Omit<HRRecommendation, 'id' | 'dt' | 'status'>) => void;
@@ -2829,6 +2830,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await notificationsApi.unregisterToken();
     await clearToken();
     await Promise.all([
+      clearViewedFiles(),
       AsyncStorage.removeItem('auth'),
       AsyncStorage.removeItem('messages'),
       AsyncStorage.removeItem('actionItems'),
@@ -5073,14 +5075,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setHrHandbooks(prev => prev.map(d => d.id === docId ? { ...d, approved: true, approvedBy: by, approvedAt: nowTs() } : d));
   }, []);
 
-  const uploadHRDocFile = useCallback((empId: number, docType: HRDocType, fileName: string, uri?: string, mimeType?: string, size?: number) => {
+  const uploadHRDocFile = useCallback((empId: number, docType: HRDocType, fileName: string, objectPath: string, mimeType?: string, size?: number) => {
     const ext = fileName.split('.').pop()?.toLowerCase() ?? 'other';
     setHrEmployees(prev => prev.map(emp => {
       if (emp.id !== empId) return emp;
       return {
         ...emp,
         docs: emp.docs.map(d => d.type === docType ? { ...d, status: 'submitted' as HRDocStatus, date: nowTs(), fileName } : d),
-        uploads: [...(emp.uploads ?? []), { id: genId(), name: fileName, fileType: ext, cat: docType, uploadedBy: userName, dt: nowTs(), approved: false, uri, mimeType, size }],
+        uploads: [...(emp.uploads ?? []), { id: genId(), name: fileName, fileType: ext, cat: docType, uploadedBy: userName, dt: nowTs(), approved: false, objectPath, mimeType, size }],
       };
     }));
     setAudit(a => [{ id: genId(), action: 'HR document uploaded', user: userName, detail: `${docType}: ${fileName}`, ts: nowTs() }, ...a]);

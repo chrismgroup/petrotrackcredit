@@ -632,6 +632,22 @@ export interface UploadableFile {
   file?: Blob | null;
 }
 
+export type FileCategory =
+  | 'general'
+  | 'my_folder'
+  | 'meeting_minutes'
+  | 'hr_enrollment'
+  | 'hr_document'
+  | 'hr_handbook'
+  | 'delivery_evidence'
+  | 'chat_media';
+
+/** Links an uploaded file to the app record it belongs to in the database. */
+export interface UploadLink {
+  category: FileCategory;
+  relatedId?: string | number | null;
+}
+
 export interface UploadedFile {
   objectPath: string;
   name: string;
@@ -673,7 +689,7 @@ function parseServerError(body: string | null | undefined): string | null {
 
 /** Storage — files are uploaded through the API and stored in PostgreSQL. */
 export const storageApi = {
-  uploadFile: async (asset: UploadableFile): Promise<UploadedFile> => {
+  uploadFile: async (asset: UploadableFile, link?: UploadLink): Promise<UploadedFile> => {
     if (!BASE) throw new UploadError('The app is not connected to a server.');
     if (asset.size != null && asset.size > MAX_UPLOAD_BYTES) {
       throw new UploadError(uploadErrorMessage(413));
@@ -684,6 +700,10 @@ export const storageApi = {
       'Content-Type': 'application/octet-stream',
       'X-File-Name': encodeURIComponent(asset.name || 'document'),
       'X-File-Type': mimeType,
+      'X-File-Category': link?.category ?? 'general',
+      ...(link?.relatedId != null && link.relatedId !== ''
+        ? { 'X-Related-Id': encodeURIComponent(String(link.relatedId)) }
+        : {}),
     };
     const url = `${BASE}/storage/uploads`;
 
@@ -729,21 +749,11 @@ export const storageApi = {
       size: typeof saved.size === 'number' && saved.size > 0 ? saved.size : Math.max(1, asset.size ?? 1),
     };
   },
-  /** @deprecated Direct-to-cloud uploads; use uploadFile instead. */
-  requestUploadUrl: async (name: string, size: number, contentType: string): Promise<{ uploadURL: string; objectPath: string } | null> => {
-    if (!BASE) return null;
-    try {
-      const headers = await authHeaders();
-      const r = await fetch(`${BASE}/storage/uploads/request-url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ name, size, contentType }),
-      });
-      if (!r.ok) return null;
-      return r.json() as Promise<{ uploadURL: string; objectPath: string }>;
-    } catch {
-      return null;
-    }
+  /** Authenticated URL for streaming a stored file (e.g. an image) without saving it on the device. */
+  objectSource: async (objectPath: string): Promise<{ uri: string; headers: Record<string, string> } | null> => {
+    if (!BASE || !objectPath.startsWith('/objects/')) return null;
+    const encodedPath = objectPath.slice('/objects/'.length).split('/').map(encodeURIComponent).join('/');
+    return { uri: `${BASE}/storage/objects/${encodedPath}`, headers: await authHeaders() };
   },
   deleteObject: async (objectPath: string): Promise<boolean> => {
     if (!BASE || !objectPath.startsWith('/objects/')) return false;

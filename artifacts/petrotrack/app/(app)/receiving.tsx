@@ -2,16 +2,18 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useRef, useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useBusinessDateConfirmation } from '@/components/BusinessDateConfirmation';
-import { Delivery, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForProduct, useApp } from '@/context/AppContext';
+import { Delivery, DeliveryEvidence, ROLE_COLORS, fmt, fmtDate, fmtDateTime, getPriceForProduct, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { MAX_UPLOAD_BYTES, storageApi, uploadFailureMessage, type UploadableFile } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
+import { openStoredFile, useStoredFileSource } from '@/lib/stored-files';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const ST_MAP = {
@@ -168,6 +170,24 @@ function MgrFormFields({ f, setF, roleColor }: MgrFormFieldsProps) {
   );
 }
 
+function EvidenceThumb({ evidence, icon, color }: { evidence: DeliveryEvidence; icon: string; color: string }) {
+  const source = useStoredFileSource(evidence);
+  if (source) return <Image source={source} style={styles.evThumb} />;
+  return (
+    <View style={[styles.evIconBox, { backgroundColor: color + '15' }]}>
+      <Ionicons name={icon as any} size={16} color={color} />
+    </View>
+  );
+}
+
+async function openEvidence(evidence: DeliveryEvidence) {
+  try {
+    await openStoredFile(evidence);
+  } catch {
+    Alert.alert('Cannot open', 'This evidence file could not be opened.');
+  }
+}
+
 export default function ReceivingScreen() {
   const {
     role, userName, branchId,
@@ -189,6 +209,7 @@ export default function ReceivingScreen() {
   const isAdmin      = role === 'admin';
 
   const [showForm, setShowForm] = useState(false);
+  const [uploadingEvidenceFor, setUploadingEvidenceFor] = useState<number | null>(null);
   const [form, setForm] = useState<MgrFormState>(blankMgrForm());
 
   const [editTarget, setEditTarget] = useState<Delivery | null>(null);
@@ -247,6 +268,37 @@ export default function ReceivingScreen() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  async function saveEvidence(
+    delivId: number,
+    type: DeliveryEvidence['type'],
+    asset: UploadableFile & { mimeType: string },
+  ) {
+    if (asset.size != null && asset.size > MAX_UPLOAD_BYTES) {
+      Alert.alert('File too large', `The maximum size is ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.`);
+      return;
+    }
+    setUploadingEvidenceFor(delivId);
+    try {
+      let uploaded;
+      try {
+        uploaded = await storageApi.uploadFile(asset, { category: 'delivery_evidence', relatedId: delivId });
+      } catch (error) {
+        Alert.alert('Upload failed', uploadFailureMessage(error));
+        return;
+      }
+      const saved = await addDeliveryEvidence({
+        delivId, type, name: uploaded.name, by: userName ?? '',
+        objectPath: uploaded.objectPath, mimeType: uploaded.mimeType, size: uploaded.size,
+      });
+      if (!saved.ok) {
+        void storageApi.deleteObject(uploaded.objectPath);
+        Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this attachment. Please select it again to retry.');
+      }
+    } finally {
+      setUploadingEvidenceFor(null);
+    }
+  }
+
   async function pickFromGallery(delivId: number) {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -257,8 +309,13 @@ export default function ReceivingScreen() {
     if (!result.canceled && result.assets[0]) {
       const a = result.assets[0];
       const isVid = a.type === 'video';
-      const saved = await addDeliveryEvidence({ delivId, type: isVid ? 'video' : 'photo', name: a.fileName ?? `${isVid ? 'video' : 'photo'}_${Date.now()}`, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? (isVid ? 'video/mp4' : 'image/jpeg'), size: a.fileSize });
-      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this attachment. Please select it again to retry.');
+      await saveEvidence(delivId, isVid ? 'video' : 'photo', {
+        uri: a.uri,
+        file: a.file ?? null,
+        name: a.fileName ?? `${isVid ? 'video' : 'photo'}_${Date.now()}.${isVid ? 'mp4' : 'jpg'}`,
+        mimeType: a.mimeType ?? (isVid ? 'video/mp4' : 'image/jpeg'),
+        size: a.fileSize ?? null,
+      });
     }
   }
 
@@ -266,8 +323,13 @@ export default function ReceivingScreen() {
     const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (!result.canceled && result.assets?.[0]) {
       const a = result.assets[0];
-      const saved = await addDeliveryEvidence({ delivId, type: 'document', name: a.name, by: userName ?? '', uri: a.uri, mimeType: a.mimeType ?? 'application/octet-stream', size: a.size });
-      if (!saved.ok) Alert.alert('Evidence not saved', saved.error ?? 'The server could not save this document. Please select it again to retry.');
+      await saveEvidence(delivId, 'document', {
+        uri: a.uri,
+        file: a.file ?? null,
+        name: a.name,
+        mimeType: a.mimeType ?? 'application/octet-stream',
+        size: a.size ?? null,
+      });
     }
   }
 
@@ -764,7 +826,12 @@ export default function ReceivingScreen() {
                       <Text style={[styles.evTitle, { color: colors.textMuted }]}>
                         {'Evidence'}{evList.length > 0 ? ` (${evList.length})` : ''}
                       </Text>
-                      {canAdd && (
+                      {canAdd && uploadingEvidenceFor === d.id ? (
+                        <View style={styles.evBtns}>
+                          <ActivityIndicator size="small" color={roleColor} />
+                          <Text style={[styles.evBtnText, { color: colors.textMuted }]}>Uploading…</Text>
+                        </View>
+                      ) : canAdd && (
                         <View style={styles.evBtns}>
                           <TouchableOpacity onPress={() => pickFromGallery(d.id)} style={[styles.evBtn, { backgroundColor: '#28624712', borderColor: '#28624744' }]}>
                             <Ionicons name="images-outline" size={12} color="#286247" />
@@ -789,9 +856,15 @@ export default function ReceivingScreen() {
                         const ic2   = isImg ? roleColor : isVid ? '#286247' : '#315F49';
                         const lbl   = isImg ? 'IMG' : isVid ? 'VID' : 'FILE';
                         return (
-                          <View key={ev.id} style={[styles.evItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                            {isImg && ev.uri ? (
-                              <Image source={{ uri: ev.uri }} style={styles.evThumb} />
+                          <TouchableOpacity
+                            key={ev.id}
+                            activeOpacity={0.8}
+                            disabled={!ev.objectPath && !ev.uri}
+                            onPress={() => openEvidence(ev)}
+                            style={[styles.evItem, { backgroundColor: colors.background, borderColor: colors.border }]}
+                          >
+                            {isImg ? (
+                              <EvidenceThumb evidence={ev} icon={ic} color={ic2} />
                             ) : (
                               <View style={[styles.evIconBox, { backgroundColor: ic2 + '15' }]}>
                                 <Ionicons name={ic as any} size={16} color={ic2} />
@@ -807,7 +880,7 @@ export default function ReceivingScreen() {
                             <View style={[styles.evTypeBadge, { backgroundColor: ic2 + '15' }]}>
                               <Text style={[styles.evTypeText, { color: ic2 }]}>{lbl}</Text>
                             </View>
-                          </View>
+                          </TouchableOpacity>
                         );
                       })
                     )}

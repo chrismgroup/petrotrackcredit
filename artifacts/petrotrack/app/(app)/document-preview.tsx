@@ -18,7 +18,7 @@ import {
   type MyFolderSection,
   type Role,
 } from '@/context/AppContext';
-import { storageApi } from '@/lib/api';
+import { clearViewedFiles, resolveStoredFileUri } from '@/lib/stored-files';
 import { useColors } from '@/hooks/useColors';
 
 const SECTION_LABELS: Record<MyFolderSection, string> = {
@@ -39,10 +39,6 @@ function formatSize(bytes: number): string {
 function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value || '—' : date.toLocaleDateString();
-}
-
-function safeFileName(file: MyFolderFile): string {
-  return `petrotrack-my-folder-${file.id}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 }
 
 function isImageFile(file: MyFolderFile): boolean {
@@ -96,30 +92,16 @@ export default function DocumentPreviewScreen() {
     setLoadError('');
   }, [file?.id]);
 
+  useEffect(() => () => { void clearViewedFiles(); }, []);
+
   async function loadFile(): Promise<string> {
     if (!file?.objectPath) throw new Error('This document is missing its stored file.');
-    if (Platform.OS === 'web') {
-      const fetched = await storageApi.fetchObject(file.objectPath);
-      if (!fetched) throw new Error('The document could not be downloaded.');
-      const uri = URL.createObjectURL(fetched.blob);
-      setPreviewUri(current => {
-        if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
-        return uri;
-      });
+    const uri = await resolveStoredFileUri({ objectPath: file.objectPath, name: file.name, mimeType: file.mimeType });
+    setPreviewUri(current => {
+      if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
       return uri;
-    }
-    const root = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
-    if (!root) throw new Error('No local file directory is available.');
-    const destinationUri = `${root}${safeFileName(file)}`;
-    const existing = await FileSystem.getInfoAsync(destinationUri);
-    if (existing.exists) {
-      setPreviewUri(destinationUri);
-      return destinationUri;
-    }
-    const downloaded = await storageApi.downloadObject(file.objectPath, destinationUri);
-    if (!downloaded) throw new Error('The document could not be downloaded.');
-    setPreviewUri(downloaded);
-    return downloaded;
+    });
+    return uri;
   }
 
   async function ensurePreview() {

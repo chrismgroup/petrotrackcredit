@@ -8,6 +8,6 @@
 
 export * from './deleteApprovedPumpReport200';
 export * from './errorEnvelope';
+export * from './fileCategory';
 export * from './healthStatus';
-export * from './uploadUrlRequest';
-export * from './uploadUrlResponse';
+export * from './storedFile';

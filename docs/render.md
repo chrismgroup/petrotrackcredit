@@ -16,29 +16,35 @@ Render supplies `PORT` to each service. The API health check is
    deployed `petrotrack-api` service, for example
    `https://petrotrack-api.onrender.com`. Do not leave this unset: the web
    service cannot serve `/api` itself.
-3. Uploaded documents (My Folders, meeting-minute attachments and HR
-   enrollment documents) are stored in PostgreSQL in the `stored_files` table,
-   up to 20 MB per file. The API creates the table automatically on first
-   upload (see `lib/db/migrations/20261020_stored_files.sql`). No cloud
-   bucket is needed for uploads; size the Render database for the expected
-   document volume.
-4. Optional: Google Cloud Storage is only needed to keep serving files that
-   were uploaded to a bucket before database storage was introduced, and for
-   bucket backups. In that case set these API service variables in Render:
-
-   - `GCP_SERVICE_ACCOUNT_JSON`: the service account JSON as one environment
-     variable. Omit it when the runtime already has Google Application Default
-     Credentials.
-   - `PUBLIC_OBJECT_SEARCH_PATHS`: comma-separated paths such as
-     `/petrotrack-assets/public`.
-   - `PRIVATE_OBJECT_DIR`: a path such as `/petrotrack-assets/private`.
-
-5. Provision the Render database schema before first use. The repository's
+3. All app data lives in the app's own PostgreSQL database. Nothing is stored
+   in Google Cloud or any other external storage, and the app keeps no
+   permanent file copies on phones or browsers.
+   - Uploaded files (My Folders, meeting-minute attachments, HR enrollment
+     documents, HR documents and handbooks, delivery evidence and chat media)
+     are stored relationally, up to 20 MB per file:
+     - `stored_files`: one row per file, with name, type, size, `category`,
+       `related_id` (the folder, delivery, employee or chat it belongs to),
+       `branch_id`, a SHA-256 checksum and `uploaded_by_user_id`, a foreign
+       key to `staff_users`.
+     - `stored_file_contents`: the file bytes, keyed by `object_path` with
+       `ON DELETE CASCADE`, so deleting a file removes its contents.
+     - `stored_files_overview`: a view joining files to their uploader's
+       name and role, for reporting and management.
+   - Scheduled and manual app-state backups are stored in the
+     `app_state_backups` table.
+   The API creates and upgrades these tables automatically on first use (see
+   `lib/db/migrations/20261021_app_state_backups.sql` and
+   `lib/db/migrations/20261022_relational_file_storage.sql`), including
+   moving bytes from the older single-table layout. Size the Render database
+   for the expected document volume. The old `GCP_SERVICE_ACCOUNT_JSON`,
+   `PUBLIC_OBJECT_SEARCH_PATHS` and `PRIVATE_OBJECT_DIR` variables are no
+   longer used and can be deleted.
+4. Provision the Render database schema before first use. The repository's
    `@workspace/db push` command is intentionally blocked when
    `NODE_ENV=production`; use a reviewed SQL migration or run the schema
    provisioning command from a controlled non-production environment against
    the new database.
-6. Replace `https://petrotrack-1.onrender.com/` in `app.json` if a custom
+5. Replace `https://petrotrack-1.onrender.com/` in `app.json` if a custom
    web domain is used.
 
 ## Native builds

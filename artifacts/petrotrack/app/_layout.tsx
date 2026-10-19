@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { clearViewedFiles } from "@/lib/viewed-files";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -42,6 +43,10 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+
+  useEffect(() => {
+    void clearViewedFiles();
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {

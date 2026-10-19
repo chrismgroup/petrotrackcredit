@@ -32,13 +32,10 @@ type ApiResult<T extends JsonRecord = JsonRecord> = {
 
 test("restoring a stale backup cannot resurrect deleted deliveries or expenses", {
   concurrency: false,
-  skip: !process.env.DATABASE_URL || !process.env.JWT_SECRET || !process.env.PRIVATE_OBJECT_DIR,
+  skip: !process.env.DATABASE_URL || !process.env.JWT_SECRET,
   timeout: 30_000,
 }, async () => {
-  const [{ default: app }, { objectStorageClient }] = await Promise.all([
-    import("../app"),
-    import("../lib/objectStorage"),
-  ]);
+  const { default: app } = await import("../app");
   const pool = await getDatabasePool();
   const marker = `backup-restore-${randomUUID()}`;
   const password = `Test-${randomUUID()}`;
@@ -58,21 +55,6 @@ test("restoring a stale backup cannot resurrect deleted deliveries or expenses",
   const priorState = new Map<string, unknown>(
     priorRows.rows.map((row: { key: string; data: unknown }) => [row.key, row.data]),
   );
-  const backupObjects = new Map<string, Buffer>();
-  const originalBucket = objectStorageClient.bucket;
-  Object.defineProperty(objectStorageClient, "bucket", {
-    configurable: true,
-    value: () => ({
-      file: (name: string) => ({
-        save: async (body: string) => {
-          backupObjects.set(name, Buffer.from(body));
-        },
-        exists: async () => [backupObjects.has(name)],
-        download: async () => [backupObjects.get(name) as Buffer],
-      }),
-      getFiles: async () => [[]],
-    }),
-  });
   const server = app.listen(0);
   await once(server, "listening");
   const { port } = server.address() as AddressInfo;
@@ -254,10 +236,6 @@ test("restoring a stale backup cannot resurrect deleted deliveries or expenses",
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close(error => error ? reject(error) : resolve());
-      });
-      Object.defineProperty(objectStorageClient, "bucket", {
-        configurable: true,
-        value: originalBucket,
       });
     }
   }

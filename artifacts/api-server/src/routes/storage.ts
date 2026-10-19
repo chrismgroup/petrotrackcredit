@@ -1,20 +1,15 @@
 import express, { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
-import { Readable } from "stream";
-import {
-  RequestUploadUrlBody,
-  RequestUploadUrlResponse,
-} from "@workspace/api-zod";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/requireAuth";
 import {
   FileStore,
   MAX_UPLOAD_BYTES,
   contentDisposition,
   decodeHeaderFileName,
+  normalizeCategory,
+  normalizeRelatedId,
 } from "../lib/fileStore";
 
 const router: IRouter = Router();
-const objectStorageService = new ObjectStorageService();
 const fileStore = new FileStore();
 const FILE_MANAGEMENT_ROLES = new Set(["admin", "acc", "mktg", "csm", "md", "ceo"]);
 
@@ -45,7 +40,9 @@ function wildcardObjectPath(raw: string | string[] | undefined): string {
  *
  * Upload a file through the API. The raw file bytes are the request body
  * (sent as application/octet-stream); the original name and type travel in
- * X-File-Name (URI-encoded) and X-File-Type. Files are stored in PostgreSQL.
+ * X-File-Name (URI-encoded) and X-File-Type. X-File-Category and
+ * X-Related-Id link the file to the app record it belongs to. Files are
+ * stored in PostgreSQL.
  */
 router.post("/storage/uploads", requireAuth, readUploadBody, async (req: Request, res: Response) => {
   const data = Buffer.isBuffer(req.body) ? req.body : null;
@@ -63,6 +60,9 @@ router.post("/storage/uploads", requireAuth, readUploadBody, async (req: Request
       contentType,
       data,
       uploadedBy: req.auth?.username ?? null,
+      category: normalizeCategory(req.get("x-file-category")),
+      relatedId: normalizeRelatedId(req.get("x-related-id")),
+      branchId: req.auth?.branchId ?? null,
     });
     res.status(201).json(stored);
   } catch (error) {
@@ -72,113 +72,36 @@ router.post("/storage/uploads", requireAuth, readUploadBody, async (req: Request
 });
 
 /**
- * POST /storage/uploads/request-url
- *
- * Request a presigned URL for file upload.
- * The client sends JSON metadata (name, size, contentType) — NOT the file.
- * Then uploads the file directly to the returned presigned URL.
- */
-router.post("/storage/uploads/request-url", requireAuth, async (req: Request, res: Response) => {
-  const parsed = RequestUploadUrlBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Missing or invalid required fields" });
-    return;
-  }
-
-  try {
-    const { name, size, contentType } = parsed.data;
-
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
-
-    res.json(
-      RequestUploadUrlResponse.parse({
-        uploadURL,
-        objectPath,
-        metadata: { name, size, contentType },
-      }),
-    );
-  } catch (error) {
-    req.log.error({ err: error }, "Error generating upload URL");
-    res.status(500).json({ error: "Failed to generate upload URL" });
-  }
-});
-
-/**
  * DELETE /storage/objects/*
  *
  * Remove a private uploaded object after its owning metadata has been
- * removed or replaced. Only users who can manage corporate folders may do so.
+ * removed or replaced. Users who manage corporate folders may delete any
+ * file; everyone else may only delete files they uploaded.
  */
 router.delete("/storage/objects/*path", requireAuth, async (req: Request, res: Response) => {
-  if (!req.auth?.role || !FILE_MANAGEMENT_ROLES.has(req.auth.role)) {
-    res.status(403).json({ error: "You do not have permission to manage folder files" });
-    return;
-  }
-
   const objectPath = wildcardObjectPath(req.params.path);
   try {
-    if (await fileStore.delete(objectPath)) {
-      res.status(204).end();
-      return;
+    const canManage = !!req.auth?.role && FILE_MANAGEMENT_ROLES.has(req.auth.role);
+    if (!canManage) {
+      const meta = await fileStore.getMeta(objectPath);
+      if (!meta || !req.auth?.username || meta.uploadedBy !== req.auth.username) {
+        res.status(403).json({ error: "You do not have permission to manage folder files" });
+        return;
+      }
     }
-    if (!process.env.PRIVATE_OBJECT_DIR) {
-      res.status(204).end();
-      return;
-    }
-    await objectStorageService.deleteObjectEntity(objectPath);
+    // Deletion is idempotent when metadata outlives an already-removed file.
+    await fileStore.delete(objectPath);
     res.status(204).end();
   } catch (error) {
-    if (error instanceof ObjectNotFoundError) {
-      // Deletion is idempotent when metadata outlives an already-removed object.
-      res.status(204).end();
-      return;
-    }
     req.log.error({ err: error }, "Error deleting object");
     res.status(500).json({ error: "Failed to delete object" });
   }
 });
 
 /**
- * GET /storage/public-objects/*
- *
- * Serve public assets from PUBLIC_OBJECT_SEARCH_PATHS.
- * These are unconditionally public — no authentication or ACL checks.
- * IMPORTANT: Always provide this endpoint when object storage is set up.
- */
-router.get("/storage/public-objects/*filePath", async (req: Request, res: Response) => {
-  try {
-    const raw = req.params.filePath;
-    const filePath = Array.isArray(raw) ? raw.join("/") : raw;
-    const file = await objectStorageService.searchPublicObject(filePath);
-    if (!file) {
-      res.status(404).json({ error: "File not found" });
-      return;
-    }
-
-    const response = await objectStorageService.downloadObject(file);
-
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
-  } catch (error) {
-    req.log.error({ err: error }, "Error serving public object");
-    res.status(500).json({ error: "Failed to serve public object" });
-  }
-});
-
-/**
  * GET /storage/objects/*
  *
- * Serve object entities from PRIVATE_OBJECT_DIR.
- * These are served from a separate path from /public-objects and can optionally
- * be protected with authentication or ACL checks based on the use case.
+ * Serve an uploaded file from PostgreSQL to signed-in users.
  */
 router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Response) => {
   const objectPath = wildcardObjectPath(req.params.path);
@@ -189,35 +112,15 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
       res.setHeader("Content-Type", stored.contentType);
       res.setHeader("Content-Length", String(stored.data.length));
       res.setHeader("Content-Disposition", contentDisposition(stored.name));
-      res.setHeader("Cache-Control", "private, max-age=3600");
+      // Files are never cached on devices; the database is the only copy.
+      res.setHeader("Cache-Control", "no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
       res.end(stored.data);
       return;
     }
-    if (!process.env.PRIVATE_OBJECT_DIR) {
-      res.status(404).json({ error: "Object not found" });
-      return;
-    }
-    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-
-    const response = await objectStorageService.downloadObject(objectFile);
-
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
+    res.status(404).json({ error: "Object not found" });
   } catch (error) {
-    if (error instanceof ObjectNotFoundError) {
-      req.log.warn({ err: error }, "Object not found");
-      res.status(404).json({ error: "Object not found" });
-      return;
-    }
     req.log.error({ err: error }, "Error serving object");
     res.status(500).json({ error: "Failed to serve object" });
   }

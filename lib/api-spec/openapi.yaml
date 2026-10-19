@@ -11,7 +11,7 @@ tags:
   - name: health
     description: Health operations
   - name: Storage
-    description: Object storage upload and serving endpoints.
+    description: File upload and download endpoints (files are stored in PostgreSQL).
 paths:
   /healthz:
     get:
@@ -26,60 +26,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
-  /storage/uploads/request-url:
+  /storage/uploads:
     post:
       tags: [Storage]
-      operationId: requestUploadUrl
-      summary: Request a presigned URL for file upload
+      operationId: uploadFile
+      summary: Upload a file and store it in PostgreSQL
       description: |
-        Returns a presigned GCS URL for direct upload. The client sends JSON
-        metadata here, then uploads the file directly to the returned URL.
+        The request body is the raw file (send it as application/octet-stream,
+        maximum 20 MB). Pass the original file name URI-encoded in X-File-Name
+        and its MIME type in X-File-Type. X-File-Category and X-Related-Id link
+        the file to the app record it belongs to.
+      parameters:
+        - name: X-File-Name
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-File-Type
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-File-Category
+          in: header
+          required: false
+          schema:
+            $ref: '#/components/schemas/FileCategory'
+        - name: X-Related-Id
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 120
       requestBody:
         required: true
         content:
-          application/json:
+          application/octet-stream:
             schema:
-              $ref: '#/components/schemas/UploadUrlRequest'
+              type: string
+              format: binary
       responses:
-        '200':
-          description: Presigned upload URL generated.
+        '201':
+          description: File stored.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UploadUrlResponse'
+                $ref: '#/components/schemas/StoredFile'
         '400':
-          description: Missing or invalid required fields.
+          description: Empty or unreadable file.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-        '500':
-          description: Failed to generate upload URL.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-  /storage/public-objects/{filePath}:
-    get:
-      tags: [Storage]
-      operationId: getPublicObject
-      summary: Serve a public asset from PUBLIC_OBJECT_SEARCH_PATHS
-      parameters:
-        - name: filePath
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Object content streamed.
-          content:
-            '*/*':
-              schema:
-                type: string
-                format: binary
-        '404':
-          description: File not found.
+        '413':
+          description: File is larger than 20 MB.
           content:
             application/json:
               schema:
@@ -88,7 +88,7 @@ paths:
     get:
       tags: [Storage]
       operationId: getStorageObject
-      summary: Serve an object entity from PRIVATE_OBJECT_DIR
+      summary: Serve an uploaded file stored in PostgreSQL
       parameters:
         - name: objectPath
           in: path
@@ -165,29 +165,32 @@ components:
           type: string
       required:
         - status
-    UploadUrlRequest:
+    FileCategory:
+      type: string
+      enum: [general, my_folder, meeting_minutes, hr_enrollment, hr_document, hr_handbook, delivery_evidence, chat_media]
+    StoredFile:
       type: object
-      required: [name, size, contentType]
+      required: [objectPath, name, contentType, size, category]
       properties:
-        name:
-          type: string
-          minLength: 1
-        size:
-          type: integer
-          minimum: 1
-        contentType:
-          type: string
-          minLength: 1
-    UploadUrlResponse:
-      type: object
-      required: [uploadURL, objectPath]
-      properties:
-        uploadURL:
-          type: string
         objectPath:
           type: string
-        metadata:
-          $ref: '#/components/schemas/UploadUrlRequest'
+        name:
+          type: string
+        contentType:
+          type: string
+        size:
+          type: integer
+        category:
+          $ref: '#/components/schemas/FileCategory'
+        relatedId:
+          type: string
+          nullable: true
+        branchId:
+          type: string
+          nullable: true
+        uploadedBy:
+          type: string
+          nullable: true
     ErrorEnvelope:
       type: object
       required: [error]

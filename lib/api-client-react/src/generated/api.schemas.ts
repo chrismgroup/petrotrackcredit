@@ -9,19 +9,29 @@ export interface HealthStatus {
   status: string;
 }
 
-export interface UploadUrlRequest {
-  /** @minLength 1 */
-  name: string;
-  /** @minimum 1 */
-  size: number;
-  /** @minLength 1 */
-  contentType: string;
-}
+export type FileCategory = typeof FileCategory[keyof typeof FileCategory];
 
-export interface UploadUrlResponse {
-  uploadURL: string;
+
+export const FileCategory = {
+  general: 'general',
+  my_folder: 'my_folder',
+  meeting_minutes: 'meeting_minutes',
+  hr_enrollment: 'hr_enrollment',
+  hr_document: 'hr_document',
+  hr_handbook: 'hr_handbook',
+  delivery_evidence: 'delivery_evidence',
+  chat_media: 'chat_media',
+} as const;
+
+export interface StoredFile {
   objectPath: string;
-  metadata?: UploadUrlRequest;
+  name: string;
+  contentType: string;
+  size: number;
+  category: FileCategory;
+  relatedId?: string | null;
+  branchId?: string | null;
+  uploadedBy?: string | null;
 }
 
 export interface ErrorEnvelope {
