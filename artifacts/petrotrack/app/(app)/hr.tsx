@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 
 import { ModalSheet } from '@/components/FormSheet';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
@@ -1172,10 +1173,27 @@ export default function HRScreen() {
                 { label: 'Annual Salary ₦',  val: newSalary,  set: setNewSalary,  ph: 'e.g. 1200000',            kb: 'numeric' as const },
                 { label: 'Grade Level',      val: newGrade,   set: setNewGrade,   ph: 'e.g. GL 08',               kb: 'default' as const },
                 { label: 'Email',            val: newEmail,   set: setNewEmail,   ph: 'name@petrotrack.com',      kb: 'email-address' as const },
-                { label: 'Date of Birth',    val: newDob,     set: setNewDob,     ph: 'YYYY-MM-DD',               kb: 'default' as const },
+                { label: 'Date of Birth',    val: newDob,     set: setNewDob,     ph: '',                         kb: 'default' as const },
                 { label: 'Home Address',     val: newAddr,    set: setNewAddr,    ph: 'Street, City, State',      kb: 'default' as const },
                 { label: 'Next of Kin',      val: newKin,     set: setNewKin,     ph: 'Full name',                kb: 'default' as const },
-              ].map(f => (
+              ].map(f => f.label === 'Date of Birth' ? (
+                <View key={f.label}>
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
+                  <AppliedDateField
+                    testID="staff-dob"
+                    label="Date of Birth"
+                    showLabel={false}
+                    value={newDob}
+                    onChange={setNewDob}
+                    placeholder="Tap to pick date of birth"
+                    dialogTitle="Select date of birth"
+                    dialogSubtitle="Tap the month title to jump to the birth year."
+                    maxDate="today"
+                    clearable
+                    helper=""
+                  />
+                </View>
+              ) : (
                 <View key={f.label}>
                   <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{f.label}</Text>
                   <TextInput value={f.val} onChangeText={f.set} placeholder={f.ph}
@@ -1744,9 +1762,18 @@ export default function HRScreen() {
                 placeholder="e.g. GL 10" placeholderTextColor={colors.textMuted}
                 style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
               <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Effective Date</Text>
-              <TextInput value={letterEffDate} onChangeText={setLetterEffDate}
-                placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted}
-                style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]} />
+              <AppliedDateField
+                testID="letter-effective-date"
+                label="Effective Date"
+                showLabel={false}
+                value={letterEffDate}
+                onChange={setLetterEffDate}
+                placeholder="Tap to pick the effective date"
+                dialogTitle="Select effective date"
+                dialogSubtitle="The day the promotion takes effect."
+                clearable
+                helper=""
+              />
             </>
           )}
           <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Employee</Text>

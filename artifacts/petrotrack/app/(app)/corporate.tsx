@@ -9,6 +9,7 @@ import {
 
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import {
   CorpApproval, CorpAttachment, CorpProject, CorpRecordType,
   LegalMatter, MeetingMinutes, MyFolder, MyFolderFile, MyFolderSection,
@@ -217,11 +218,7 @@ export function FolderWorkspacePanel({
   }
 
   async function uploadNewFile() {
-    const normalizedExpiry = expiryDate.trim();
-    if (normalizedExpiry && Number.isNaN(new Date(normalizedExpiry).getTime())) {
-      Alert.alert('Check the expiry date', 'Use a valid date in YYYY-MM-DD format, or leave it blank.');
-      return;
-    }
+    const normalizedExpiry = /^\d{4}-\d{2}-\d{2}$/.test(expiryDate) ? expiryDate : '';
     setShowUploadDetails(false);
     const uploaded = await pickAndUploadFile({
       documentKind,
@@ -531,18 +528,19 @@ export function FolderWorkspacePanel({
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={[sty.detailsLabel, { color: colors.textMuted }]}>Expiry date (optional)</Text>
-            <TextInput
+            <AppliedDateField
+              testID="file-expiry-date"
+              label="Expiry date (optional)"
               value={expiryDate}
-              onChangeText={setExpiryDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.textSubtle}
-              autoCapitalize="none"
-              style={[sty.detailsInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+              onChange={setExpiryDate}
+              accent={roleColor}
+              placeholder="Tap to pick an expiry date"
+              dialogTitle="Select expiry date"
+              dialogSubtitle="Pick the day this document or certificate expires."
+              minDate="today"
+              clearable
+              helper="Petrotrack will notify active users three months before this date."
             />
-            <Text style={[sty.detailsHint, { color: colors.textMuted }]}>
-              Petrotrack will notify active users three months before this date.
-            </Text>
             <TouchableOpacity onPress={() => void uploadNewFile()} style={[sty.detailsSubmit, { backgroundColor: roleColor }]}>
               <Ionicons name="folder-open-outline" size={17} color="#fff" />
               <Text style={sty.detailsSubmitText}>Choose file</Text>
@@ -1301,18 +1299,33 @@ export default function CorporateScreen() {
               <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Project Lead *</Text>
               <TextInput value={pLead} onChangeText={setPLead} placeholder="e.g. Ngozi Okafor" placeholderTextColor={colors.textMuted}
                 style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-              <View style={sty.twoCol}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Start Date</Text>
-                  <TextInput value={pStart} onChangeText={setPStart} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted}
-                    style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Due Date *</Text>
-                  <TextInput value={pDue} onChangeText={setPDue} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted}
-                    style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-                </View>
-              </View>
+              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Start Date</Text>
+              <AppliedDateField
+                testID="project-start-date"
+                label="Start Date"
+                showLabel={false}
+                value={pStart}
+                onChange={value => { setPStart(value); if (pDue && value > pDue) setPDue(''); }}
+                accent={roleColor}
+                placeholder="Tap to pick the start date"
+                dialogTitle="Select start date"
+                dialogSubtitle="The day work on this project begins."
+                helper=""
+              />
+              <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Due Date *</Text>
+              <AppliedDateField
+                testID="project-due-date"
+                label="Due Date"
+                showLabel={false}
+                value={pDue}
+                onChange={setPDue}
+                accent={roleColor}
+                placeholder="Tap to pick the due date"
+                dialogTitle="Select due date"
+                dialogSubtitle="The day this project should be completed."
+                minDate={pStart || undefined}
+                helper=""
+              />
               <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Status</Text>
               <View style={sty.chipRow}>
                 {(['Planning','Active','On Hold'] as CorpProject['status'][]).map(s => {
@@ -1548,12 +1561,20 @@ export default function CorporateScreen() {
                 <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Meeting Title *</Text>
                 <TextInput value={mTitle} onChangeText={setMTitle} placeholder="e.g. Board Meeting — Q3 Review" placeholderTextColor={colors.textMuted}
                   style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
+                <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Date</Text>
+                <AppliedDateField
+                  testID="meeting-date"
+                  label="Meeting date"
+                  showLabel={false}
+                  value={mDate}
+                  onChange={setMDate}
+                  accent={roleColor}
+                  placeholder="Tap to pick the meeting date"
+                  dialogTitle="Select meeting date"
+                  dialogSubtitle="The day this meeting held or will hold."
+                  helper=""
+                />
                 <View style={sty.twoCol}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Date</Text>
-                    <TextInput value={mDate} onChangeText={setMDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted}
-                      style={[sty.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]} />
-                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[sty.fieldLabel, { color: colors.textMuted }]}>Venue</Text>
                     <TextInput value={mVenue} onChangeText={setMVenue} placeholder="e.g. HQ Boardroom" placeholderTextColor={colors.textMuted}
@@ -1858,8 +1879,6 @@ const sty = StyleSheet.create({
   detailsChoiceRow: { flexDirection: 'row', gap: 8 },
   detailsChoice: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   detailsChoiceText: { fontSize: 12, fontWeight: '800' },
-  detailsInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 10, fontSize: 14 },
-  detailsHint: { fontSize: 10, lineHeight: 14 },
   detailsSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 11, paddingVertical: 12, marginTop: 3 },
   detailsSubmitText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   previewBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', justifyContent: 'center', alignItems: 'center', padding: 18 },

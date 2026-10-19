@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -328,16 +329,21 @@ export default function AssetManagementScreen() {
                 <TextInput value={String(form.endOfLifeValue || '')} onChangeText={value => setForm(prev => ({ ...prev, endOfLifeValue: numeric(value) }))} keyboardType="numeric" style={[styles.input, { color: colors.text, borderColor: colors.border }]} placeholder="0" placeholderTextColor={colors.textSubtle} />
               </View>
             </View>
-            <View style={styles.fieldRow}>
-              <View style={styles.flex}>
-                <Text style={[styles.label, { color: colors.textMuted }]}>Useful life (years)</Text>
-                <TextInput value={String(form.usefulLifeYears || '')} onChangeText={value => setForm(prev => ({ ...prev, usefulLifeYears: numeric(value) }))} keyboardType="decimal-pad" style={[styles.input, { color: colors.text, borderColor: colors.border }]} placeholder="1" placeholderTextColor={colors.textSubtle} />
-              </View>
-              <View style={styles.flex}>
-                <Text style={[styles.label, { color: colors.textMuted }]}>Acquisition date</Text>
-                <TextInput value={form.acquiredOn} onChangeText={acquiredOn => setForm(prev => ({ ...prev, acquiredOn }))} style={[styles.input, { color: colors.text, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSubtle} />
-              </View>
-            </View>
+            <Text style={[styles.label, { color: colors.textMuted }]}>Useful life (years)</Text>
+            <TextInput value={String(form.usefulLifeYears || '')} onChangeText={value => setForm(prev => ({ ...prev, usefulLifeYears: numeric(value) }))} keyboardType="decimal-pad" style={[styles.input, { color: colors.text, borderColor: colors.border }]} placeholder="1" placeholderTextColor={colors.textSubtle} />
+            <Text style={[styles.label, { color: colors.textMuted }]}>Acquisition date</Text>
+            <AppliedDateField
+              testID="asset-acquired-date"
+              label="Acquisition date"
+              showLabel={false}
+              value={form.acquiredOn}
+              onChange={acquiredOn => setForm(prev => ({ ...prev, acquiredOn }))}
+              placeholder="Pick the date this asset was acquired"
+              dialogTitle="Select acquisition date"
+              dialogSubtitle="The day the asset was bought or received."
+              maxDate="today"
+              helper=""
+            />
             <Text style={[styles.label, { color: colors.textMuted }]}>Notes</Text>
             <TextInput value={form.notes} onChangeText={notes => setForm(prev => ({ ...prev, notes }))} multiline style={[styles.input, styles.notes, { color: colors.text, borderColor: colors.border }]} placeholder="Optional asset details" placeholderTextColor={colors.textSubtle} />
             <View style={[styles.preview, { backgroundColor: colors.card }]}>

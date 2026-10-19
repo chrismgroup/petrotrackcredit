@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { fmt, ROLE_COLORS, useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -434,7 +435,18 @@ export default function CustomerProfileScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-            <TextInput value={invoiceAnchorDate} onChangeText={setInvoiceAnchorDate} placeholder="A date within the period (YYYY-MM-DD)" placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.text }]} />
+            <AppliedDateField
+              testID="invoice-period-date"
+              label="Invoice period date"
+              showLabel={false}
+              value={invoiceAnchorDate}
+              onChange={setInvoiceAnchorDate}
+              accent={roleColor}
+              placeholder="Pick any date within the invoice period"
+              dialogTitle="Select invoice period"
+              dialogSubtitle="Pick any day in the period you want to invoice."
+              helper=""
+            />
             {customerLedgerPeriodRange(invoiceAnchorDate, invoicePeriod) && (
               <Text style={[styles.hint, { color: colors.textMuted }]}>Period: {customerLedgerPeriodRange(invoiceAnchorDate, invoicePeriod)?.from} to {customerLedgerPeriodRange(invoiceAnchorDate, invoicePeriod)?.to}</Text>
             )}
@@ -473,7 +485,19 @@ export default function CustomerProfileScreen() {
               ))}
             </View>
             <TextInput value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" placeholder="Amount paid or deposited" placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.text }]} />
-            <TextInput value={paymentDate} onChangeText={setPaymentDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.text }]} />
+            <AppliedDateField
+              testID="customer-payment-date"
+              label="Payment date"
+              showLabel={false}
+              value={paymentDate}
+              onChange={setPaymentDate}
+              accent={roleColor}
+              placeholder="Pick the payment date"
+              dialogTitle="Select payment date"
+              dialogSubtitle="The day the customer paid or deposited."
+              maxDate={localDateKey()}
+              helper=""
+            />
             <TextInput value={paymentReference} onChangeText={setPaymentReference} placeholder="Receipt or bank reference" placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.text }]} />
             <TouchableOpacity onPress={recordCustomerPayment} style={[styles.primaryButton, { backgroundColor: roleColor }]}>
               <Text style={styles.primaryButtonText}>Record Payment</Text>

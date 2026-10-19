@@ -39,6 +39,7 @@ import {
   type StockProduct,
   type ActionItem,
   getActionItemUrgency,
+  fmtDate,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { getDashboardApprovalRoute } from '@/lib/dashboard-approval-routing';
@@ -178,7 +179,7 @@ function DocumentExpiryCard({
               <View style={s.expiryBody}>
                 <Text style={[s.expiryName, { color: colors.text }]} numberOfLines={1}>{file.name}</Text>
                 <Text style={[s.expiryMeta, { color: colors.textMuted }]}>
-                  {FOLDER_SECTION_LABELS[file.section]} · {file.expiresAt}
+                  {FOLDER_SECTION_LABELS[file.section]} · Expires {fmtDate(file.expiresAt ?? '')}
                 </Text>
               </View>
               <View style={s.expiryRight}>

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
+import { AppliedDateField } from '@/components/AppliedDateField';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
@@ -481,11 +482,21 @@ export default function TasksScreen() {
             </View>
 
             {/* Due date */}
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Completion date (YYYY-MM-DD)" placeholderTextColor={colors.textSubtle}
-              value={taskForm.dueDate} onChangeText={v => setTaskForm(f => ({ ...f, dueDate: v }))}
+            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Completion date</Text>
+            <AppliedDateField
+              testID="task-due-date"
+              label="Completion date"
+              showLabel={false}
+              value={taskForm.dueDate}
+              onChange={dueDate => setTaskForm(f => ({ ...f, dueDate }))}
+              placeholder="Tap to pick a completion date (optional)"
+              dialogTitle="Select completion date"
+              dialogSubtitle="When should this task be completed?"
+              minDate="today"
+              clearable
+              helper=""
             />
+            <View style={{ height: 10 }} />
 
             {/* Assign to */}
             <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Assign to *</Text>
