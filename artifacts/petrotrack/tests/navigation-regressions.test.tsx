@@ -190,6 +190,7 @@ jest.mock('@/context/AppContext', () => ({
     stockSnapshot: '/(app)/stock-snapshot',
     inventory: '/(app)/inventory',
     hr: '/(app)/hr',
+    payroll: '/(app)/payroll',
     prices: '/(app)/prices',
     creditFacility: '/(app)/credit-facility',
     posTransactions: '/(app)/pos-transactions',

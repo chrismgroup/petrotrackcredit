@@ -391,6 +391,105 @@ export const maintenanceApi = {
     del(`/maintenance/${encodeURIComponent(taskId)}`),
 };
 
+export type PayrollStatus = 'draft' | 'acc_review' | 'md_review' | 'returned' | 'released';
+export type PayrollOverrideField = 'pensionEmployee' | 'nhis' | 'paye';
+
+export interface PayrollEntry {
+  id: number;
+  runId: number;
+  period: string;
+  staffKey: string;
+  staffUserId: number | null;
+  username: string | null;
+  empName: string;
+  empId: string | null;
+  jobTitle: string | null;
+  role: string | null;
+  dept: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  bankName: string;
+  accountNumber: string;
+  basic: number; housing: number; transport: number; otherAllowances: number; overtime: number; bonus: number;
+  gross: number;
+  pensionEmployee: number; pensionEmployer: number; nhis: number; taxable: number; paye: number;
+  loan: number; otherDeductions: number; otherDeductionsLabel: string;
+  totalDeductions: number; net: number;
+  overrides: Partial<Record<PayrollOverrideField, number>>;
+  note: string;
+  version: number;
+  updatedBy: string | null;
+  updatedAt: string;
+  runStatus?: PayrollStatus;
+  releasedAt?: string | null;
+}
+
+export interface PayrollRunTotals {
+  staff: number; gross: number; paye: number; pensionEmployee: number; pensionEmployer: number;
+  nhis: number; loan: number; otherDeductions: number; totalDeductions: number; net: number;
+}
+
+export interface PayrollRun {
+  id: number;
+  period: string;
+  status: PayrollStatus;
+  notes: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  submittedBy: string | null; submittedAt: string | null;
+  reviewedBy: string | null; reviewedAt: string | null;
+  approvedBy: string | null; approvedAt: string | null;
+  releasedAt: string | null;
+  history: Array<{ action: string; by: string; role: string; at: string; note?: string }>;
+  totals: PayrollRunTotals;
+}
+
+export interface PayrollEntryInput {
+  empName?: string; empId?: string | null; jobTitle?: string | null; dept?: string | null;
+  bankName?: string; accountNumber?: string;
+  basic?: number; housing?: number; transport?: number; otherAllowances?: number; overtime?: number; bonus?: number;
+  loan?: number; otherDeductions?: number; otherDeductionsLabel?: string;
+  pensionEmployee?: number | null; nhis?: number | null; paye?: number | null;
+  monthlyGross?: number;
+  note?: string;
+  reason?: string;
+}
+
+export interface PayrollRevision {
+  version: number;
+  snapshot: PayrollEntry;
+  reason: string;
+  changedBy: string;
+  changedAt: string;
+}
+
+type RunDetail = { run: PayrollRun; entries: PayrollEntry[] };
+const payrollRunPath = (runId: number) => `/payroll/runs/${encodeURIComponent(String(runId))}`;
+
+export const payrollApi = {
+  listRuns: () => get<{ runs: PayrollRun[] }>('/payroll/runs'),
+  getRun: (runId: number) => get<RunDetail>(payrollRunPath(runId)),
+  createRun: (period: string, notes = '') =>
+    authenticatedJsonCommand<RunDetail>('POST', '/payroll/runs', { period, notes }),
+  updateNotes: (runId: number, notes: string) =>
+    authenticatedJsonCommand<RunDetail>('PATCH', payrollRunPath(runId), { notes }),
+  deleteRun: (runId: number) =>
+    authenticatedJsonCommand<{ ok: true }>('DELETE', payrollRunPath(runId), {}),
+  syncStaff: (runId: number) =>
+    authenticatedJsonCommand<RunDetail & { added: number }>('POST', `${payrollRunPath(runId)}/sync`, {}),
+  addEntry: (runId: number, input: PayrollEntryInput) =>
+    authenticatedJsonCommand<{ entry: PayrollEntry }>('POST', `${payrollRunPath(runId)}/entries`, input),
+  updateEntry: (runId: number, entryId: number, input: PayrollEntryInput) =>
+    authenticatedJsonCommand<{ entry: PayrollEntry; revised: boolean }>('PATCH', `${payrollRunPath(runId)}/entries/${entryId}`, input),
+  removeEntry: (runId: number, entryId: number) =>
+    authenticatedJsonCommand<{ ok: true }>('DELETE', `${payrollRunPath(runId)}/entries/${entryId}`, {}),
+  revisions: (entryId: number) => get<{ revisions: PayrollRevision[] }>(`/payroll/entries/${entryId}/revisions`),
+  transition: (runId: number, action: 'submit' | 'approve' | 'return', note = '') =>
+    authenticatedJsonCommand<{ run: PayrollRun }>('POST', `${payrollRunPath(runId)}/${action}`, { note }),
+  myPayslips: () => get<{ payslips: PayrollEntry[] }>('/payroll/my-payslips'),
+};
+
 export const versionApi = {
   get: () => get<{ version: string }>('/version'),
 };

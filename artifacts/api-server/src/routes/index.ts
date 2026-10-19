@@ -11,6 +11,7 @@ import deliveryWorkflowRouter from "./workflow-deliveries";
 import financeWorkflowRouter from "./workflow-finance";
 import workflowDipsPricesRouter from "./workflow-dips-prices";
 import paymentsRouter from "./payments";
+import payrollRouter from "./payroll";
 import { requireAuth } from "../middlewares/requireAuth";
 import { invalidateLiveIdentity } from "../lib/liveIdentity";
 
@@ -36,6 +37,7 @@ router.use(requireAuth, deliveryWorkflowRouter);
 router.use(requireAuth, financeWorkflowRouter);
 router.use(requireAuth, workflowDipsPricesRouter);
 router.use(requireAuth, paymentsRouter);
+router.use(requireAuth, payrollRouter);
 router.use(storageRouter);
 
 export default router;

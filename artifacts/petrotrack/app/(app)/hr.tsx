@@ -12,7 +12,7 @@ import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollV
 import { ScreenLayout } from '@/components/ScreenLayout';
 import {
   GeneratedLetter, HRDocType, HRDocStatus, HREmployee, HREmployeeDoc, OnboardingStatus,
-  ROLE_COLORS, ROLE_LABELS, UserAccount, fmtDate, fmtDateTime, useApp, type Role,
+  ROLE_COLORS, ROLE_LABELS, SCREEN_ROUTES, UserAccount, fmtDate, fmtDateTime, useApp, type Role,
 } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { storageApi, uploadFailureMessage } from '@/lib/api';
@@ -1004,6 +1004,21 @@ export default function HRScreen() {
   ═══════════════════════════════════════════════════ */
   return (
     <ScreenLayout title="HR Panel">
+      {isHR || isAdmin ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => router.push(SCREEN_ROUTES.payroll as never)}
+          style={styles.payrollBanner}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="wallet" size={20} color="#fff" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.payrollBannerTitle}>Payroll & Payslips</Text>
+            <Text style={styles.payrollBannerSub}>Generate monthly payroll, send for approval and release payslips</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#fff" />
+        </TouchableOpacity>
+      ) : null}
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
         {TABS.map(t => (
           <TouchableOpacity key={t.key} onPress={() => setActiveTab(t.key)}
@@ -1921,6 +1936,9 @@ const styles = StyleSheet.create({
   approvalMetaText:{ fontSize: 11, fontWeight: '600' },
 
   sheet:           { padding: 18 },
+  payrollBanner:   { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#174D36', marginHorizontal: 16, marginTop: 12, padding: 14, borderRadius: 14 },
+  payrollBannerTitle: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  payrollBannerSub: { color: '#CFE5D8', fontSize: 12, marginTop: 2 },
   sheetTitle:      { fontSize: 17, fontWeight: '800', marginBottom: 6 },
   pwRow:           { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, paddingVertical: 9, marginBottom: 4 },
   pwInput:         { flex: 1, fontSize: 13 },

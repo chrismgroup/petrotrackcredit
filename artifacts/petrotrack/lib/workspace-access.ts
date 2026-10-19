@@ -37,6 +37,7 @@ export const WORKSPACE_ROUTE_ACCESS: readonly WorkspaceRouteAccess[] = [
   { path: '/marketing', permission: 'mktg' },
   { path: '/prices', permission: 'prices' },
   { path: '/hr', permission: 'hr' },
+  { path: '/payroll', permission: 'payroll' },
   { path: '/corporate', permission: 'corp' },
   { path: '/corporate-workspace', permission: 'corporateWorkspace' },
   { path: '/document-preview', permission: 'documentPreview' },

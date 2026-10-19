@@ -176,6 +176,7 @@ jest.mock('@/context/AppContext', () => {
       exprpt: '/(app)/reports',
       exp: '/(app)/expenses',
       hr: '/(app)/hr',
+      payroll: '/(app)/payroll',
       maint: '/(app)/maintenance',
       messages: '/(app)/messages',
       notifications: '/(app)/notifications',

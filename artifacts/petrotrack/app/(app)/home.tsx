@@ -12,6 +12,7 @@ import {
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { ActionItemsTable } from '@/components/ActionItemsTable';
 import { ModalSheet } from '@/components/FormSheet';
+import { MyPayslipCard } from '@/components/MyPayslipCard';
 import {
   fmt,
   GLOBAL_OVERVIEW_ROLES,
@@ -1030,6 +1031,8 @@ export default function HomeScreen() {
             />
           ) : null}
         </View>
+
+        <MyPayslipCard onOpenAll={canOpen(SCREEN_ROUTES.payroll) ? () => router.push(SCREEN_ROUTES.payroll as never) : undefined} />
 
         {canOpen(SCREEN_ROUTES.corp) ? (
           <DocumentExpiryCard files={myFolderFiles} colors={colors} onOpen={openFolderFile} />

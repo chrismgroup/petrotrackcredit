@@ -1154,6 +1154,7 @@ export const NAVDEF: Record<string, NavItem[]> = {
     { id: 'creditFacility', icon: 'shield-checkmark', label: 'Credit Facility' },
     { id: 'posTransactions', icon: 'card', label: 'POS Transactions' },
     { id: 'posTerminals', icon: 'hardware-chip', label: 'POS Terminals' },
+    { id: 'payroll',  icon: 'wallet',           label: 'Payroll'  },
     { id: 'settings', icon: 'settings',         label: 'Settings' },
   ],
 };
@@ -1177,6 +1178,7 @@ export const FULL_NAV_CATALOG: NavItem[] = [
   { id: 'tasks',    icon: 'checkmark-circle', label: 'Tasks'      },
   { id: 'actionItems', icon: 'flash',          label: 'Action Items' },
   { id: 'hr',       icon: 'people-circle',    label: 'HR'         },
+  { id: 'payroll',  icon: 'wallet',           label: 'Payroll & Payslips' },
   { id: 'acct',     icon: 'calculator',       label: 'Accounts'   },
   { id: 'dailyRevenueLog', icon: 'calendar',  label: 'Daily Revenue Log' },
   { id: 'branchRevenueLog', icon: 'business', label: 'Branch Revenue Log' },
@@ -1297,6 +1299,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   creditFacility: '/(app)/credit-facility',
   posTransactions: '/(app)/pos-transactions',
   posTerminals: '/(app)/pos-terminals',
+  payroll: '/(app)/payroll',
   tasks: '/(app)/tasks',
   actionItems: '/(app)/action-items',
   dailyRevenueLog: '/(app)/daily-revenue-log',

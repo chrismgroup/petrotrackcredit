@@ -1,0 +1,68 @@
+-- Monthly payroll runs, payslips and payslip revision history.
+CREATE TABLE IF NOT EXISTS payroll_runs (
+  id SERIAL PRIMARY KEY,
+  period TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'draft',
+  notes TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  submitted_by TEXT,
+  submitted_at TIMESTAMPTZ,
+  reviewed_by TEXT,
+  reviewed_at TIMESTAMPTZ,
+  approved_by TEXT,
+  approved_at TIMESTAMPTZ,
+  released_at TIMESTAMPTZ,
+  history JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+CREATE TABLE IF NOT EXISTS payroll_entries (
+  id SERIAL PRIMARY KEY,
+  run_id INTEGER NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
+  staff_key TEXT NOT NULL,
+  staff_user_id INTEGER REFERENCES staff_users(id) ON DELETE SET NULL,
+  username TEXT,
+  emp_name TEXT NOT NULL,
+  emp_id TEXT,
+  job_title TEXT,
+  role TEXT,
+  dept TEXT,
+  branch_id TEXT,
+  branch_name TEXT,
+  bank_name TEXT NOT NULL DEFAULT '',
+  account_number TEXT NOT NULL DEFAULT '',
+  basic NUMERIC(14,2) NOT NULL DEFAULT 0,
+  housing NUMERIC(14,2) NOT NULL DEFAULT 0,
+  transport NUMERIC(14,2) NOT NULL DEFAULT 0,
+  other_allowances NUMERIC(14,2) NOT NULL DEFAULT 0,
+  overtime NUMERIC(14,2) NOT NULL DEFAULT 0,
+  bonus NUMERIC(14,2) NOT NULL DEFAULT 0,
+  gross NUMERIC(14,2) NOT NULL DEFAULT 0,
+  pension_employee NUMERIC(14,2) NOT NULL DEFAULT 0,
+  pension_employer NUMERIC(14,2) NOT NULL DEFAULT 0,
+  nhis NUMERIC(14,2) NOT NULL DEFAULT 0,
+  taxable NUMERIC(14,2) NOT NULL DEFAULT 0,
+  paye NUMERIC(14,2) NOT NULL DEFAULT 0,
+  loan NUMERIC(14,2) NOT NULL DEFAULT 0,
+  other_deductions NUMERIC(14,2) NOT NULL DEFAULT 0,
+  other_deductions_label TEXT NOT NULL DEFAULT '',
+  total_deductions NUMERIC(14,2) NOT NULL DEFAULT 0,
+  net NUMERIC(14,2) NOT NULL DEFAULT 0,
+  overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+  note TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_by TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (run_id, staff_key)
+);
+CREATE INDEX IF NOT EXISTS payroll_entries_username_idx ON payroll_entries (username);
+CREATE TABLE IF NOT EXISTS payroll_entry_revisions (
+  id SERIAL PRIMARY KEY,
+  entry_id INTEGER NOT NULL REFERENCES payroll_entries(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  snapshot JSONB NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  changed_by TEXT NOT NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS payroll_entry_revisions_entry_idx ON payroll_entry_revisions (entry_id);

@@ -54,6 +54,7 @@ const finance: JobItem[] = [
 
 const humanResources: JobItem[] = [
   { id: 'people', label: 'People & HR', description: 'Staff, departments and employee records', icon: 'people-outline', route: SCREEN_ROUTES.hr },
+  { id: 'payroll', label: 'Payroll & payslips', description: 'Monthly payroll, PAYE, pension and downloadable payslips', icon: 'wallet-outline', route: SCREEN_ROUTES.payroll },
   { id: 'tasks', label: 'Tasks & KPIs', description: 'Keep assigned work and targets moving', icon: 'checkmark-circle-outline', route: SCREEN_ROUTES.tasks },
   { id: 'actionItems', label: 'Action items', description: 'Track ownership, close-out dates and branch accountability', icon: 'flash-outline', route: SCREEN_ROUTES.actionItems },
 ];
