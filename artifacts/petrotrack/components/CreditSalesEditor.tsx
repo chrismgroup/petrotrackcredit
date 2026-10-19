@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { useColors } from '@/hooks/useColors';
 import type { CreditCustomer, CreditSaleDraft } from '@/lib/customer-ledger';
 
 const CREDIT_ACCENT = '#62754D';
+const SEARCH_THRESHOLD = 6;
 
 const naira = (value: number) =>
   `₦${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -34,11 +35,18 @@ export function CreditSalesEditor({
   const colors = useColors();
   const selectedIds = new Set(drafts.map(draft => draft.customerId));
 
-  const toggle = (customerId: string) => {
-    onChange(selectedIds.has(customerId)
-      ? drafts.filter(draft => draft.customerId !== customerId)
-      : [...drafts, { customerId, quantity: '' }]);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const available = customers.filter(customer => !selectedIds.has(customer.id));
+  const query = search.trim().toLowerCase();
+  const filtered = query ? available.filter(customer => customer.name.toLowerCase().includes(query)) : available;
+
+  const add = (customerId: string) => {
+    if (!selectedIds.has(customerId)) onChange([...drafts, { customerId, quantity: '' }]);
+    setOpen(false);
+    setSearch('');
   };
+  const remove = (customerId: string) => onChange(drafts.filter(draft => draft.customerId !== customerId));
   const setQuantity = (customerId: string, quantity: string) => {
     onChange(drafts.map(draft => draft.customerId === customerId ? { ...draft, quantity } : draft));
   };
@@ -60,39 +68,65 @@ export function CreditSalesEditor({
       ) : (
         <>
           <Text style={[styles.hint, { color: colors.textMuted }]}>
-            Tap every approved customer who bought on credit this shift, then enter how much each one took.
+            Add each approved customer who bought on credit this shift, then enter how much each one took.
           </Text>
-          <View style={styles.chips}>
-            {customers.map(customer => {
-              const selected = selectedIds.has(customer.id);
-              const balance = balanceFor?.(customer.id);
-              return (
-                <TouchableOpacity
-                  key={customer.id}
-                  testID={`${testIDPrefix}-customer-${customer.id}`}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selected }}
-                  onPress={() => toggle(customer.id)}
-                  style={[styles.chip, {
-                    backgroundColor: selected ? accent : colors.background,
-                    borderColor: selected ? accent : colors.border,
-                  }]}
-                >
-                  <Ionicons
-                    name={selected ? 'checkmark-circle' : 'add-circle-outline'}
-                    size={15}
-                    color={selected ? '#fff' : CREDIT_ACCENT}
-                  />
-                  <Text style={[styles.chipText, { color: selected ? '#fff' : colors.text }]}>{customer.name}</Text>
-                  {balance !== undefined && (
-                    <Text style={[styles.chipBalance, { color: selected ? '#fff' : balance > 0 ? colors.error : colors.success }]}>
-                      {balance > 0 ? `Owes ${naira(balance)}` : balance < 0 ? `Advance ${naira(Math.abs(balance))}` : 'Balanced'}
-                    </Text>
+          {available.length === 0 ? (
+            <Text style={[styles.hint, { color: colors.textMuted }]}>All approved customers have been added.</Text>
+          ) : (
+            <View>
+              <TouchableOpacity
+                testID={`${testIDPrefix}-dropdown`}
+                accessibilityRole="combobox"
+                accessibilityState={{ expanded: open }}
+                onPress={() => { setOpen(value => !value); setSearch(''); }}
+                style={[styles.dropdown, { backgroundColor: colors.background, borderColor: open ? accent : colors.border }]}
+              >
+                <Ionicons name="person-add-outline" size={16} color={CREDIT_ACCENT} />
+                <Text style={[styles.dropdownText, { color: colors.textMuted }]}>
+                  {drafts.length === 0 ? 'Select approved customer' : 'Add another approved customer'}
+                </Text>
+                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+              {open && (
+                <View testID={`${testIDPrefix}-options`} style={[styles.menu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  {available.length > SEARCH_THRESHOLD && (
+                    <View style={[styles.searchWrap, { borderColor: colors.border }]}>
+                      <Ionicons name="search-outline" size={15} color={colors.textMuted} />
+                      <TextInput
+                        testID={`${testIDPrefix}-search`}
+                        style={[styles.searchInput, { color: colors.text }]}
+                        placeholder="Search customers"
+                        placeholderTextColor={colors.textSubtle}
+                        value={search}
+                        onChangeText={setSearch}
+                        autoFocus
+                      />
+                    </View>
                   )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                  {filtered.length === 0 ? (
+                    <Text style={[styles.hint, styles.option, { color: colors.textMuted }]}>No approved customer matches “{search}”.</Text>
+                  ) : filtered.map((customer, index) => {
+                    const balance = balanceFor?.(customer.id);
+                    return (
+                      <TouchableOpacity
+                        key={customer.id}
+                        testID={`${testIDPrefix}-customer-${customer.id}`}
+                        onPress={() => add(customer.id)}
+                        style={[styles.option, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}
+                      >
+                        <Text style={[styles.optionName, { color: colors.text }]} numberOfLines={1}>{customer.name}</Text>
+                        {balance !== undefined && (
+                          <Text style={[styles.chipBalance, { color: balance > 0 ? colors.error : colors.success }]}>
+                            {balance > 0 ? `Owes ${naira(balance)}` : balance < 0 ? `Advance ${naira(Math.abs(balance))}` : 'Balanced'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          )}
         </>
       )}
 
@@ -113,7 +147,7 @@ export function CreditSalesEditor({
               <TouchableOpacity
                 testID={`${testIDPrefix}-remove-${line.customerId}`}
                 accessibilityLabel={`Remove ${name}`}
-                onPress={() => toggle(line.customerId)}
+                onPress={() => remove(line.customerId)}
                 hitSlop={8}
               >
                 <Ionicons name="close-circle-outline" size={18} color={colors.textMuted} />
@@ -166,12 +200,19 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, fontWeight: '600' },
   hint: { fontSize: 12, lineHeight: 17 },
   bold: { fontWeight: '800' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 11, paddingVertical: 7, borderRadius: 18, borderWidth: 1,
+  dropdown: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11,
   },
-  chipText: { fontSize: 13, fontWeight: '600' },
+  dropdownText: { flex: 1, fontSize: 14 },
+  menu: { marginTop: 4, borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderBottomWidth: 1 },
+  searchInput: { flex: 1, paddingVertical: 9, fontSize: 14 },
+  option: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 11,
+  },
+  optionName: { flex: 1, fontSize: 14, fontWeight: '600' },
   chipBalance: { fontSize: 11, fontWeight: '600' },
   line: { borderWidth: 1, borderRadius: 10, padding: 10, gap: 6 },
   lineHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },

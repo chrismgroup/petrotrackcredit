@@ -52,8 +52,15 @@ describe('CreditSalesEditor', () => {
     act(() => { tree = create(<Harness onDrafts={drafts => { latest = drafts; }} />); });
     const byId = (id: string) => tree.root.findByProps({ testID: id });
 
+    expect(tree.root.findAllByProps({ testID: 'shift-credit-options' })).toHaveLength(0);
+    act(() => byId('shift-credit-dropdown').props.onPress());
     act(() => byId('shift-credit-customer-IBOM').props.onPress());
+    // Picking closes the list, and an added customer is not offered again.
+    expect(tree.root.findAllByProps({ testID: 'shift-credit-options' })).toHaveLength(0);
+    act(() => byId('shift-credit-dropdown').props.onPress());
+    expect(tree.root.findAllByProps({ testID: 'shift-credit-customer-IBOM' })).toHaveLength(0);
     act(() => byId('shift-credit-customer-TULCAN').props.onPress());
+    expect(text(tree)).toContain('All approved customers have been added.');
     act(() => byId('shift-credit-quantity-IBOM').props.onChangeText('100'));
     act(() => byId('shift-credit-quantity-TULCAN').props.onChangeText('50'));
 
@@ -70,6 +77,25 @@ describe('CreditSalesEditor', () => {
     act(() => byId('shift-credit-remove-IBOM').props.onPress());
     expect(latest).toEqual([{ customerId: 'TULCAN', quantity: '50' }]);
     expect(tree.root.findAllByProps({ testID: 'shift-credit-total' })).toHaveLength(0);
+  });
+
+  it('searches long customer lists', () => {
+    const many = Array.from({ length: 8 }, (_, index) => customer(`C${index}`, `Customer ${index}`))
+      .concat(customer('IBOM', 'Ibom Air'));
+    const onChange = jest.fn();
+    let tree!: ReactTestRenderer;
+    act(() => {
+      tree = create(
+        <CreditSalesEditor customers={many} drafts={[]} onChange={onChange} unitPrice={1_000} unit="L" accent="#000" />,
+      );
+    });
+    act(() => tree.root.findByProps({ testID: 'shift-credit-dropdown' }).props.onPress());
+    act(() => tree.root.findByProps({ testID: 'shift-credit-search' }).props.onChangeText('ibom'));
+    const options = tree.root.findAll(node => typeof node.props.testID === 'string'
+      && node.props.testID.startsWith('shift-credit-customer-') && (node.type as unknown) === 'TouchableOpacity');
+    expect(options.map(node => node.props.testID)).toEqual(['shift-credit-customer-IBOM']);
+    act(() => options[0].props.onPress());
+    expect(onChange).toHaveBeenCalledWith([{ customerId: 'IBOM', quantity: '' }]);
   });
 
   it('only offers the approved customers it is given', () => {
