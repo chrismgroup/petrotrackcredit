@@ -1,0 +1,69 @@
+Attached Element Context from Integrated Browser
+
+Element: div.css-text-146c3p1.r-fontSize-10x49cs.r-marginTop-14gqq1x.r-textAlign-1ff274t
+
+URL: http://localhost:8081/messages
+
+HTML Path: div#root > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx > div.css-view-g5y9jx > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0.r-bottom-1p0dtai.r-left-1d2f490.r-position-u8s1d.r-right-zchlnj.r-top-ipm5af > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0.r-bottom-1p0dtai.r-left-1d2f490.r-position-u8s1d.r-right-zchlnj.r-top-ipm5af > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0.r-width-13qz1uu > div.css-view-g5y9jx.r-alignSelf-1kihuf0.r-flex-13awgt0.r-maxWidth-1maqer6.r-width-13qz1uu > div.css-view-g5y9jx > div.css-view-g5y9jx.r-WebkitOverflowScrolling-150rngu.r-flexDirection-eqz5dr.r-flexGrow-16y2uox.r-flexShrink-1wbh5a2.r-overflowX-11yh6sk.r-overflowY-1rnoaur.r-transform-agouwx > div.css-view-g5y9jx.r-padding-1slz7xr.r-paddingBottom-xd6kpl > div.css-view-g5y9jx.r-marginBottom-5oul0u.r-maxWidth-n86hso.r-alignSelf-173mn98.r-flexDirection-1euycsn > div.css-view-g5y9jx.r-borderRadius-1867qdf.r-paddingBlock-1s5swlz.r-paddingInline-gu64tb > div.css-text-146c3p1.r-fontSize-10x49cs.r-marginTop-14gqq1x.r-textAlign-1ff274t
+
+Outer HTML:
+```html
+<div dir="auto" class="css-text-146c3p1 r-fontSize-10x49cs r-marginTop-14gqq1x r-textAlign-1ff274t" style="color: rgba(255, 255, 255, 0.6);">13:22</div>
+```
+
+Dimensions:
+- top: 240px
+- left: 456px
+- width: 40px
+- height: 16px
+
+CSS:
+```css
+element { color: rgba(255, 255, 255, 0.6); }
+.css-text-146c3p1 { background-color: rgba(0, 0, 0, 0); border: 0px solid black; box-sizing: border-box; color: rgb(0, 0, 0); display: inline; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; list-style: none; margin: 0px; padding: 0px; position: relative; text-align: start; text-decoration: none; white-space: pre-wrap; overflow-wrap: break-word; }
+.r-textAlign-1ff274t { text-align: right; }
+.r-fontSize-10x49cs { font-size: 10px; }
+.r-marginTop-14gqq1x { margin-top: 4px; }
+
+/* Inherited */
+.css-view-g5y9jx { list-style: none }
+
+/* Resolved values */
+margin: 4px 0px 0px;
+padding: 0px;
+border: 0px solid rgb(0, 0, 0);
+text-decoration: rgba(255, 255, 255, 0.6);
+white-space: pre-wrap;
+background-color: rgba(0, 0, 0, 0);
+box-sizing: border-box;
+color: rgba(255, 255, 255, 0.6);
+display: block;
+font-family: -apple-system, "system-ui", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+font-feature-settings: normal;
+font-kerning: auto;
+font-language-override: normal;
+font-optical-sizing: auto;
+font-size: 10px;
+font-size-adjust: none;
+font-stretch: 100%;
+font-style: normal;
+font-variant-alternates: normal;
+font-variant-caps: normal;
+font-variant-east-asian: normal;
+font-variant-emoji: normal;
+font-variant-ligatures: normal;
+font-variant-numeric: normal;
+font-variant-position: normal;
+font-variation-settings: normal;
+font-weight: 400;
+height: 11.5px;
+line-height: normal;
+list-style-image: none;
+list-style-position: outside;
+list-style-type: none;
+overflow-wrap: break-word;
+position: relative;
+text-align: right;
+unicode-bidi: isolate /*UA*/;
+width: 40.3906px;
+```
