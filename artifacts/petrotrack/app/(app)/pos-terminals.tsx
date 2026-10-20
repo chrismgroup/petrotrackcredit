@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { ScreenLayout } from '@/components/ScreenLayout';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { paymentsApi, type PosPaymentMethod, type PosProviderStatus, type PosTerminal } from '@/lib/api';
@@ -163,7 +164,12 @@ export default function PosTerminalsScreen() {
 
   return (
     <ScreenLayout title="POS Terminals">
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollViewCompat
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
+        bottomOffset={24}
+      >
         <View style={[styles.hero, { backgroundColor: colors.primary }]}>
           <View style={styles.inline}>
             <Ionicons name="hardware-chip" size={20} color="#fff" />
@@ -302,7 +308,7 @@ export default function PosTerminalsScreen() {
             ) : null}
           </View>
         ))}
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
     </ScreenLayout>
   );
 }

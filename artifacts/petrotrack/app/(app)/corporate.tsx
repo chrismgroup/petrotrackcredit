@@ -105,6 +105,7 @@ export function FolderWorkspacePanel({
   const [uploading, setUploading] = useState(false);
   const [busyFileId, setBusyFileId] = useState<number | null>(null);
   const [showUploadDetails, setShowUploadDetails] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState<Pick<MyFolderFile, 'documentKind' | 'expiresAt'> | null>(null);
   const [documentKind, setDocumentKind] = useState<'certificate' | 'document'>('document');
   const [expiryDate, setExpiryDate] = useState('');
   const { fileId: routeFileId, section: routeSection } = useLocalSearchParams<{ fileId?: string; section?: string }>();
@@ -178,16 +179,26 @@ export function FolderWorkspacePanel({
   }
 
   async function pickAndUploadFile(metadata: Pick<MyFolderFile, 'documentKind' | 'expiresAt'>): Promise<Omit<MyFolderFile, 'id' | 'uploadedAt'> | null> {
+    let result: DocumentPicker.DocumentPickerResult;
     try {
-      const result = await DocumentPicker.getDocumentAsync({
+      result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
         multiple: false,
       });
-      if (result.canceled) return null;
+    } catch (error) {
+      // Do not report a native picker-presentation error as an upload error.
+      // In particular, iOS rejects a second presentation while this screen's
+      // details modal is still animating away.
+      const detail = error instanceof Error && error.message ? `\n\n${error.message}` : '';
+      Alert.alert('File picker unavailable', `Could not open the file chooser. Close any open dialog and try again.${detail}`);
+      return null;
+    }
+    if (result.canceled) return null;
 
-      const file = result.assets[0];
-      setUploading(true);
+    const file = result.assets[0];
+    setUploading(true);
+    try {
       const upload = await storageApi.uploadFile(file, {
         category: 'my_folder',
         relatedId: `${section}:${selectedFolderId ?? 'main'}`,
@@ -219,15 +230,29 @@ export function FolderWorkspacePanel({
 
   async function uploadNewFile() {
     const normalizedExpiry = /^\d{4}-\d{2}-\d{2}$/.test(expiryDate) ? expiryDate : '';
+    // The system document picker is another native modal. Launching it in the
+    // same turn as dismissing this React Native modal causes iOS to reject the
+    // presentation, so defer it until the dismissal animation has completed.
     setShowUploadDetails(false);
-    const uploaded = await pickAndUploadFile({
+    setPendingUpload({
       documentKind,
       ...(normalizedExpiry ? { expiresAt: normalizedExpiry } : {}),
     });
-    if (!uploaded) return;
-    addFile(uploaded);
-    Alert.alert('Uploaded', `${uploaded.name} was added to ${selectedFolderId === null ? 'the main folder' : 'the selected folder'}.`);
   }
+
+  useEffect(() => {
+    if (!pendingUpload) return;
+    const launchPicker = setTimeout(() => {
+      const metadata = pendingUpload;
+      setPendingUpload(null);
+      void pickAndUploadFile(metadata).then((uploaded) => {
+        if (!uploaded) return;
+        addFile(uploaded);
+        Alert.alert('Uploaded', `${uploaded.name} was added to ${selectedFolderId === null ? 'the main folder' : 'the selected folder'}.`);
+      });
+    }, Platform.OS === 'ios' ? 350 : 100);
+    return () => clearTimeout(launchPicker);
+  }, [pendingUpload, selectedFolderId]);
 
   async function replaceExistingFile(existing: MyFolderFile) {
     const replacement = await pickAndUploadFile({

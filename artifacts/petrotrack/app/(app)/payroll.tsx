@@ -677,7 +677,12 @@ export default function PayrollScreen() {
       <ModalSheet visible={!!editing} onClose={() => { setEditing(null); setForm(null); }}>{renderEditSheet()}</ModalSheet>
 
       <ModalSheet visible={creating} onClose={() => setCreating(false)}>
-        <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+        <KeyboardAwareScrollViewCompat
+          style={[styles.sheet, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          bottomOffset={24}
+        >
           <View style={styles.sheetHead}>
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Generate payroll</Text>
             <TouchableOpacity accessibilityLabel="Close" onPress={() => setCreating(false)}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
@@ -696,22 +701,32 @@ export default function PayrollScreen() {
           <View style={[styles.btnRow, { marginTop: 14 }]}>
             <ActionButton tone="primary" icon="flash" label="Generate" disabled={runExists} onPress={() => void createRun()} />
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       <ModalSheet visible={returning} onClose={() => setReturning(false)}>
-        <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+        <KeyboardAwareScrollViewCompat
+          style={[styles.sheet, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          bottomOffset={24}
+        >
           <Text style={[styles.sheetTitle, { color: colors.text }]}>Return payroll to HR</Text>
           <TextInput value={returnNote} onChangeText={setReturnNote} multiline placeholder="What should HR correct?" placeholderTextColor={colors.textSubtle}
             style={[styles.input, { minHeight: 80, textAlignVertical: 'top', color: colors.text, borderColor: colors.inputBorder, backgroundColor: colors.surface }]} />
           <View style={[styles.btnRow, { marginTop: 14 }]}>
             <ActionButton tone="danger" icon="arrow-undo" label="Return" disabled={!returnNote.trim()} onPress={() => void transition('return', returnNote.trim())} />
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
 
       <ModalSheet visible={adding} onClose={() => setAdding(false)}>
-        <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+        <KeyboardAwareScrollViewCompat
+          style={[styles.sheet, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          bottomOffset={24}
+        >
           <Text style={[styles.sheetTitle, { color: colors.text }]}>Add staff to payroll</Text>
           <Text style={[styles.mutedSmall, { color: colors.textMuted, marginBottom: 8 }]}>For casual or contract staff without an app account.</Text>
           {([['empName', 'Full name'], ['empId', 'Staff ID'], ['jobTitle', 'Job title'], ['monthlyGross', 'Monthly gross (₦)']] as const).map(([key, label]) => (
@@ -722,7 +737,7 @@ export default function PayrollScreen() {
           <View style={styles.btnRow}>
             <ActionButton tone="primary" icon="person-add" label="Add" disabled={!addForm.empName.trim()} onPress={() => void addStaff()} />
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       </ModalSheet>
     </ScreenLayout>
   );
