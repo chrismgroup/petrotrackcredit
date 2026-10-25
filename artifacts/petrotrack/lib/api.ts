@@ -663,6 +663,8 @@ export interface PosShiftSummary {
 }
 
 export interface PosProviderStatus { id: string; label: string; ready: boolean }
+export interface ShiftTerminal extends Pick<PosTerminal, 'id' | 'label' | 'provider' | 'providerTerminalId'> { available: boolean }
+export interface ShiftTerminalAssignment { id: string; terminalId: string; openedAt: string; closedAt: string | null }
 
 export interface PosTransactionFilters {
   branchId?: string;
@@ -677,10 +679,19 @@ export interface PosTransactionFilters {
 export const paymentsApi = {
   config: () => get<{ providers: PosProviderStatus[] }>('/payments/config'),
   terminals: () => get<{ terminals: PosTerminal[] }>('/payments/terminals'),
-  registerTerminal: (data: { provider: string; providerTerminalId: string; branchId: string; pumpId: string; label: string }) =>
+  registerTerminal: (data: { provider: string; providerTerminalId: string; branchId: string; label: string }) =>
     authenticatedJsonCommand<{ terminal: PosTerminal }>('POST', '/payments/terminals', data),
   disableTerminal: (id: string) =>
     authenticatedJsonCommand<{ terminal: PosTerminal }>('POST', `/payments/terminals/${encodeURIComponent(id)}/disable`, {}),
+  shiftTerminals: () => get<{ terminals: ShiftTerminal[] }>('/payments/shift-terminals'),
+  claimShiftTerminal: (terminalId: string) =>
+    authenticatedJsonCommand<{ assignment: ShiftTerminalAssignment; terminal: PosTerminal }>('POST', `/payments/shift-terminals/${encodeURIComponent(terminalId)}/claim`, {}),
+  releaseShiftTerminal: (assignmentId: string) =>
+    authenticatedJsonCommand<{ assignment: ShiftTerminalAssignment }>('POST', `/payments/shift-terminals/${encodeURIComponent(assignmentId)}/release`, {}),
+  shiftTerminalSummary: (assignmentIds: string[]) =>
+    get<{ transactions: PosTransaction[]; totals: PosTransactionTotals; assignments: ShiftTerminalAssignment[] }>(
+      `/payments/shift-terminal-summary?assignmentIds=${assignmentIds.map(encodeURIComponent).join(',')}`,
+    ),
   transactions: (filters: PosTransactionFilters = {}) => {
     const params = Object.entries(filters)
       .filter(([, value]) => value !== undefined && value !== '')
