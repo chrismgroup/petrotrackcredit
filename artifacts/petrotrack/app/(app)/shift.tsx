@@ -434,7 +434,7 @@ export default function ShiftReportScreen() {
     } finally { setTerminalLoading(false); }
   }, [loadShiftTerminals]);
   const releaseAssignment = useCallback(async (assignmentId: string) => {
-    const result = await paymentsApi.releaseShiftTerminal(assignmentId);
+    const result = await paymentsApi.releaseShiftTerminal(assignmentId, 'replacement');
     if (result?.assignment) {
       setTerminalAssignments(current => current.filter(item => item.id !== assignmentId));
       await loadShiftTerminals();
@@ -509,8 +509,6 @@ export default function ShiftReportScreen() {
       }
       setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditDrafts([]); setNoteAtt('');
       setAppliesOn('');
-      await Promise.all(terminalAssignments.map(item => paymentsApi.releaseShiftTerminal(item.id)));
-      setTerminalAssignments([]);
       const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
       if (submitted === 'queued') {
         Alert.alert(
