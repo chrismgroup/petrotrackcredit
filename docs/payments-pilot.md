@@ -124,3 +124,17 @@ records signed notifications of payments that already happened.
   Visible to attendants and managers (own branch only) and to admin, CEO, MD,
   accountants and the other global viewers (HR, marketing).
 - Shadow mode: manual POS/transfer inputs remain unchanged for one week. The\n  shift card displays the signed Moniepoint total next to them and flags the\n  variance. After the pilot, enable automatic field population only after\n  comparing every shift and resolving exceptions.
+
+
+## Terminal-to-shift assignment
+
+A POS terminal belongs to a **branch**, not to a pump. An attendant starts a
+shift by claiming one or more branch terminals. Each claim is a time-bounded
+assignment, so a replacement terminal can be added when the original fails.
+
+The shift POS value is the net of completed provider transactions occurring
+within the union of that attendant shift's terminal-assignment intervals.
+It is intentionally not apportioned between PMS, AGO, LPG, or pumps: meter
+readings establish product sales, while the POS feed independently controls
+the attendant's total electronic collections. A terminal cannot have
+overlapping active assignments.
