@@ -686,8 +686,8 @@ export const paymentsApi = {
   shiftTerminals: () => get<{ terminals: ShiftTerminal[] }>('/payments/shift-terminals'),
   claimShiftTerminal: (terminalId: string) =>
     authenticatedJsonCommand<{ assignment: ShiftTerminalAssignment; terminal: PosTerminal }>('POST', `/payments/shift-terminals/${encodeURIComponent(terminalId)}/claim`, {}),
-  releaseShiftTerminal: (assignmentId: string) =>
-    authenticatedJsonCommand<{ assignment: ShiftTerminalAssignment }>('POST', `/payments/shift-terminals/${encodeURIComponent(assignmentId)}/release`, {}),
+  releaseShiftTerminal: (assignmentId: string, reason?: 'replacement') =>
+    authenticatedJsonCommand<{ assignment: ShiftTerminalAssignment }>('POST', `/payments/shift-terminals/${encodeURIComponent(assignmentId)}/release`, reason ? { reason } : {}),
   shiftTerminalSummary: (assignmentIds: string[]) =>
     get<{ transactions: PosTransaction[]; totals: PosTransactionTotals; assignments: ShiftTerminalAssignment[] }>(
       `/payments/shift-terminal-summary?assignmentIds=${assignmentIds.map(encodeURIComponent).join(',')}`,
