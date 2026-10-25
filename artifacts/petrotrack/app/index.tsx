@@ -152,24 +152,27 @@ export default function LoginScreen() {
         <View style={styles.logoRing}>
           <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
         </View>
+        <View style={styles.eyebrow}>
+          <View style={styles.eyebrowDot} />
+          <Text style={styles.eyebrowText}>THE OPERATING SYSTEM FOR FUEL RETAIL</Text>
+        </View>
         <Text style={styles.appName}>Petrotrack</Text>
-        <Text style={styles.tagline}>Fuel Station Management System</Text>
+        <Text style={styles.heroHeadline}>Every litre.{'
+'}Clearly accounted for.</Text>
+        <Text style={styles.tagline}>One calm, connected view of your station’s people, stock, sales and cash.</Text>
 
-        {/* Trust indicators */}
-        <View style={styles.trustRow}>
-          <View style={styles.trustChip}>
-            <Ionicons name="shield-checkmark" size={11} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.trustTxt}>Secure</Text>
+        <View style={styles.promiseRow}>
+          <View style={styles.promise}>
+            <Ionicons name="speedometer-outline" size={16} color="#A7F3C2" />
+            <Text style={styles.promiseText}>Live operations</Text>
           </View>
-          <View style={styles.trustDot} />
-          <View style={styles.trustChip}>
-            <Ionicons name="flash" size={11} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.trustTxt}>Real-time</Text>
+          <View style={styles.promise}>
+            <Ionicons name="shield-checkmark-outline" size={16} color="#A7F3C2" />
+            <Text style={styles.promiseText}>Clear accountability</Text>
           </View>
-          <View style={styles.trustDot} />
-          <View style={styles.trustChip}>
-            <Ionicons name="cloud-done" size={11} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.trustTxt}>Cloud-synced</Text>
+          <View style={styles.promise}>
+            <Ionicons name="trending-up-outline" size={16} color="#A7F3C2" />
+            <Text style={styles.promiseText}>Built to grow</Text>
           </View>
         </View>
       </View>
@@ -310,7 +313,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Hero ─────────────────────────────────────────────────────
-  hero:         { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 32 },
+  hero:         { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 28 },
   logoRing: {
     width: 88, height: 88, borderRadius: 24, overflow: 'hidden',
     marginBottom: 16,
@@ -319,13 +322,15 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   logo:         { width: 88, height: 88 },
-  appName:      { fontSize: 30, fontWeight: '800', color: '#fff', letterSpacing: -0.8 },
-  tagline:      { fontSize: 13, color: 'rgba(255,255,255,0.50)', marginTop: 4, letterSpacing: 0.4 },
-
-  trustRow:     { flexDirection: 'row', alignItems: 'center', marginTop: 16, gap: 8 },
-  trustChip:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  trustTxt:     { fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: '500' },
-  trustDot:     { width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.25)' },
+  eyebrow:      { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(167,243,194,0.12)', borderWidth: 1, borderColor: 'rgba(167,243,194,0.22)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 99, marginBottom: 12 },
+  eyebrowDot:   { width: 6, height: 6, borderRadius: 3, backgroundColor: '#A7F3C2' },
+  eyebrowText:  { fontSize: 9, fontWeight: '800', letterSpacing: 0.8, color: '#DDFBE8' },
+  appName:      { fontSize: 18, fontWeight: '800', color: '#A7F3C2', letterSpacing: 0.2 },
+  heroHeadline: { fontSize: 31, lineHeight: 35, fontWeight: '900', color: '#fff', letterSpacing: -1.1, textAlign: 'center', marginTop: 4 },
+  tagline:      { fontSize: 13, lineHeight: 19, color: 'rgba(255,255,255,0.64)', marginTop: 10, textAlign: 'center', maxWidth: 310 },
+  promiseRow:   { flexDirection: 'row', gap: 8, marginTop: 17, width: '100%' },
+  promise:      { flex: 1, minHeight: 66, borderRadius: 14, padding: 9, gap: 7, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)' },
+  promiseText:  { fontSize: 10, lineHeight: 13, color: 'rgba(255,255,255,0.82)', fontWeight: '700' },
 
   // ── Card ─────────────────────────────────────────────────────
   card:         { flex: 1, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24 },
