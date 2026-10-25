@@ -13,6 +13,7 @@ export const paymentTerminalsTable = pgTable("payment_terminals", {
   provider: text("provider").notNull(),
   providerTerminalId: text("provider_terminal_id").notNull(),
   branchId: text("branch_id").notNull(),
+  /** Terminal belongs to a branch; it is assigned to an attendant shift, never a pump. */
   pumpId: text("pump_id"),
   label: text("label").notNull(),
   status: text("status").notNull().default("active"),
@@ -20,10 +21,8 @@ export const paymentTerminalsTable = pgTable("payment_terminals", {
   disabledAt: timestamp("disabled_at", { withTimezone: true }),
 }, table => ({
   providerTerminalUnique: uniqueIndex("payment_terminals_provider_terminal_unique").on(table.provider, table.providerTerminalId),
-  activePumpUnique: uniqueIndex("payment_terminals_active_pump_unique").on(table.branchId, table.pumpId).where(sql`${table.status} = 'active'`),
   branchIndex: index("payment_terminals_branch_idx").on(table.branchId),
   statusCheck: check("payment_terminals_status_check", sql`${table.status} IN ('active', 'disabled')`),
-  activeRequiresPump: check("payment_terminals_active_requires_pump", sql`${table.status} <> 'active' OR ${table.pumpId} IS NOT NULL`),
   disabledAtCheck: check("payment_terminals_disabled_at_check", sql`(${table.status} = 'active') = (${table.disabledAt} IS NULL)`),
 }));
 
