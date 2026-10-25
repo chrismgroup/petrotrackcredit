@@ -175,6 +175,23 @@ export default function LoginScreen() {
             <Text style={styles.promiseText}>Built to grow</Text>
           </View>
         </View>
+
+        <View style={styles.trustRow}>
+          <View style={styles.trustChip}>
+            <Ionicons name="shield-checkmark" size={11} color="rgba(255,255,255,0.72)" />
+            <Text style={styles.trustTxt}>Secure</Text>
+          </View>
+          <View style={styles.trustDot} />
+          <View style={styles.trustChip}>
+            <Ionicons name="flash" size={11} color="rgba(255,255,255,0.72)" />
+            <Text style={styles.trustTxt}>Real-time</Text>
+          </View>
+          <View style={styles.trustDot} />
+          <View style={styles.trustChip}>
+            <Ionicons name="cloud-done" size={11} color="rgba(255,255,255,0.72)" />
+            <Text style={styles.trustTxt}>Cloud-synced</Text>
+          </View>
+        </View>
       </View>
 
       {/* ── Login card ── */}
@@ -331,6 +348,10 @@ const styles = StyleSheet.create({
   promiseRow:   { flexDirection: 'row', gap: 8, marginTop: 17, width: '100%' },
   promise:      { flex: 1, minHeight: 66, borderRadius: 14, padding: 9, gap: 7, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)' },
   promiseText:  { fontSize: 10, lineHeight: 13, color: 'rgba(255,255,255,0.82)', fontWeight: '700' },
+  trustRow:     { flexDirection: 'row', alignItems: 'center', marginTop: 15, gap: 8 },
+  trustChip:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  trustTxt:     { fontSize: 11, color: 'rgba(255,255,255,0.64)', fontWeight: '600' },
+  trustDot:     { width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.30)' },
 
   // ── Card ─────────────────────────────────────────────────────
   card:         { flex: 1, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24 },
