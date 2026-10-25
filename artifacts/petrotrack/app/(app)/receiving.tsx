@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ModalSheet } from '@/components/FormSheet';
 import { AppliedDateField } from '@/components/AppliedDateField';
@@ -15,6 +15,7 @@ import { useColors } from '@/hooks/useColors';
 import { MAX_UPLOAD_BYTES, storageApi, uploadFailureMessage, type UploadableFile } from '@/lib/api';
 import { safeNum } from '@/lib/report-helpers';
 import { storedFilePreviewRoute, useStoredFileSource } from '@/lib/stored-files';
+import { deliveryMonthKey, deliveryMonthLabel, matchesDeliveryReportPeriod, type DeliveryReportPeriod } from '@/lib/delivery-reporting';
 
 const PRODUCTS = ['PMS', 'AGO', 'DPK', 'LPG', 'Lube Oil'];
 const ST_MAP = {
@@ -203,7 +204,10 @@ export default function ReceivingScreen() {
   // Date confirmation is retained only for editing a returned receipt. New
   // receipts submit directly to the accountant from their form.
   const { requestDateConfirmation, confirmationContent, hasPendingConfirmation } = useBusinessDateConfirmation();
-  const [filterDate, setFilterDate] = useState('');
+  const [reportBranchId, setReportBranchId] = useState('all');
+  const [reportProduct, setReportProduct] = useState('all');
+  const [reportPeriod, setReportPeriod] = useState<DeliveryReportPeriod>('all');
+  const [reportDate, setReportDate] = useState(todayIso());
 
   const isMgr        = role === 'mgr' || role === 'csm' || role === 'admin';
   const isAcc        = role === 'acc' || role === 'admin';
@@ -256,9 +260,14 @@ export default function ReceivingScreen() {
       return true; // acc and others see all branch deliveries
     })
     .sort(compareDeliveriesForReview);
-  const sortedDeliveries = filterDate
-    ? visibleDeliveries.filter(d => d.dt.slice(0, 10) === filterDate)
-    : visibleDeliveries;
+  const reportBranches = isGlobalViewer
+    ? branches
+    : branches.filter(branch => branch.id === branchId);
+  const sortedDeliveries = visibleDeliveries.filter(d =>
+    (reportBranchId === 'all' || d.branchId === reportBranchId) &&
+    (reportProduct === 'all' || d.prod === reportProduct) &&
+    matchesDeliveryReportPeriod(d.dt, reportDate, reportPeriod),
+  );
 
   const pendingAccCount = sortedDeliveries.filter(d => d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending').length;
   const pendingMdCount  = sortedDeliveries.filter(d => d.approvalStatus === 'pending_md').length;
@@ -543,48 +552,25 @@ export default function ReceivingScreen() {
   const isLocked = (d: Delivery) =>
     d.approvalStatus === 'md_approved' || d.approvalStatus === 'approved';
 
-  const submittedGroups = [
-    {
-      key: 'draft',
-      title: 'Submitted · Drafts',
-      subtitle: 'Saved by the receiving manager and not yet forwarded',
-      items: sortedDeliveries.filter(d => !isLocked(d) && (d.approvalStatus === 'draft' || !d.approvalStatus)),
-    },
-    {
-      key: 'accountant',
-      title: 'Submitted · Awaiting accountant',
-      subtitle: 'Cost price still needs to be entered',
-      items: sortedDeliveries.filter(d => !isLocked(d) && (d.approvalStatus === 'pending_acc' || d.approvalStatus === 'pending')),
-    },
-    {
-      key: 'md',
-      title: 'Submitted · Awaiting MD approval',
-      subtitle: 'Cost has been entered and the record is ready for final approval',
-      items: sortedDeliveries.filter(d => !isLocked(d) && d.approvalStatus === 'pending_md'),
-    },
-    {
-      key: 'returned',
-      title: 'Submitted · Returned for correction',
-      subtitle: 'These records need attention before they can move forward',
-      items: sortedDeliveries.filter(d => !isLocked(d) && (d.approvalStatus === 'returned' || d.approvalStatus === 'rejected')),
-    },
-  ].filter(group => group.items.length > 0);
-
-  const approvedByBranch = new Map<string, { name: string; items: Delivery[] }>();
-  sortedDeliveries.filter(isLocked).forEach(delivery => {
-    const key = delivery.branchId ?? 'unassigned';
-    const name = branches.find(branch => branch.id === delivery.branchId)?.name ?? 'Unassigned branch';
-    const existing = approvedByBranch.get(key);
-    if (existing) existing.items.push(delivery);
-    else approvedByBranch.set(key, { name, items: [delivery] });
-  });
-  const approvedGroups = [...approvedByBranch.entries()].map(([key, group]) => ({
-    key: `approved-${key}`,
-    title: `Approved · ${group.name}`,
-    subtitle: `${group.items.length} locked delivery record${group.items.length === 1 ? '' : 's'} recorded for this branch`,
-    items: group.items,
-  }));
-  const deliveryGroups = [...submittedGroups, ...approvedGroups];
+  const deliveryGroups = useMemo(() => {
+    const grouped = new Map<string, { branchName: string; product: string; month: string; items: Delivery[] }>();
+    sortedDeliveries.forEach(delivery => {
+      const branchName = branches.find(branch => branch.id === delivery.branchId)?.name ?? 'Unassigned branch';
+      const month = deliveryMonthKey(delivery.dt);
+      const key = `${delivery.branchId ?? 'unassigned'}:${delivery.prod}:${month}`;
+      const current = grouped.get(key);
+      if (current) current.items.push(delivery);
+      else grouped.set(key, { branchName, product: delivery.prod, month, items: [delivery] });
+    });
+    return [...grouped.entries()]
+      .sort(([, a], [, b]) => b.month.localeCompare(a.month) || a.branchName.localeCompare(b.branchName) || a.product.localeCompare(b.product))
+      .map(([key, group]) => ({
+        key,
+        title: `${group.branchName} · ${group.product}`,
+        subtitle: `${deliveryMonthLabel(`${group.month}-01`)} · ${group.items.length} delivery record${group.items.length === 1 ? '' : 's'} · ${group.items.reduce((total, item) => total + safeNum(item.rec), 0).toLocaleString()}${unitForProd(group.product)} received`,
+        items: group.items,
+      }));
+  }, [branches, sortedDeliveries]);
 
   return (
     <ScreenLayout
@@ -645,7 +631,9 @@ export default function ReceivingScreen() {
             accessibilityLabel={`View ${pendingMdCount} delivery record${pendingMdCount > 1 ? 's' : ''} awaiting your approval`}
             activeOpacity={0.75}
             onPress={() => {
-              setFilterDate('');
+              setReportBranchId('all');
+              setReportProduct('all');
+              setReportPeriod('all');
               deliveryScrollRef.current?.scrollTo({ y: 0, animated: true });
             }}
             style={[styles.banner, { backgroundColor: colors.warning + '18', borderColor: colors.warning }]}
@@ -658,15 +646,74 @@ export default function ReceivingScreen() {
           </TouchableOpacity>
         ) : null}
 
-        <AppliedDateField
-          value={filterDate}
-          onChange={setFilterDate}
-          label="View deliveries for a date"
-          accent={roleColor}
-          helper="Filter by the date the delivery applies to."
-        />
+        <View style={[styles.auditFilters, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.auditFilterHeader}>
+            <View style={[styles.auditIcon, { backgroundColor: roleColor + '18' }]}>
+              <Ionicons name="funnel-outline" size={16} color={roleColor} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.auditTitle, { color: colors.text }]}>Audit delivery history</Text>
+              <Text style={[styles.auditSubtitle, { color: colors.textMuted }]}>Filter by branch, product and reporting period.</Text>
+            </View>
+            {(reportBranchId !== 'all' || reportProduct !== 'all' || reportPeriod !== 'all') && (
+              <TouchableOpacity
+                accessibilityLabel="Clear delivery report filters"
+                onPress={() => { setReportBranchId('all'); setReportProduct('all'); setReportPeriod('all'); setReportDate(todayIso()); }}
+              >
+                <Text style={[styles.clearFilters, { color: roleColor }]}>Reset</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Delivery Reports</Text>
+          {isGlobalViewer && reportBranches.length > 1 ? (
+            <>
+              <Text style={[styles.filterLabel, { color: colors.textMuted }]}>Branch</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
+                <TouchableOpacity onPress={() => setReportBranchId('all')} style={[styles.filterChip, { backgroundColor: reportBranchId === 'all' ? roleColor : colors.background, borderColor: reportBranchId === 'all' ? roleColor : colors.border }]}>
+                  <Text style={[styles.filterChipText, { color: reportBranchId === 'all' ? '#fff' : colors.textMuted }]}>All branches</Text>
+                </TouchableOpacity>
+                {reportBranches.map(branch => (
+                  <TouchableOpacity key={branch.id} onPress={() => setReportBranchId(branch.id)} style={[styles.filterChip, { backgroundColor: reportBranchId === branch.id ? roleColor : colors.background, borderColor: reportBranchId === branch.id ? roleColor : colors.border }]}>
+                    <Text style={[styles.filterChipText, { color: reportBranchId === branch.id ? '#fff' : colors.textMuted }]}>{branch.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </>
+          ) : null}
+
+          <Text style={[styles.filterLabel, { color: colors.textMuted }]}>Product</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
+            <TouchableOpacity onPress={() => setReportProduct('all')} style={[styles.filterChip, { backgroundColor: reportProduct === 'all' ? roleColor : colors.background, borderColor: reportProduct === 'all' ? roleColor : colors.border }]}>
+              <Text style={[styles.filterChipText, { color: reportProduct === 'all' ? '#fff' : colors.textMuted }]}>All products</Text>
+            </TouchableOpacity>
+            {PRODUCTS.map(product => {
+              const color = PROD_COLORS[product] || roleColor;
+              return <TouchableOpacity key={product} onPress={() => setReportProduct(product)} style={[styles.filterChip, { backgroundColor: reportProduct === product ? color : colors.background, borderColor: reportProduct === product ? color : colors.border }]}>
+                <Text style={[styles.filterChipText, { color: reportProduct === product ? '#fff' : colors.textMuted }]}>{product}</Text>
+              </TouchableOpacity>;
+            })}
+          </ScrollView>
+
+          <Text style={[styles.filterLabel, { color: colors.textMuted }]}>Period</Text>
+          <View style={styles.periodRow}>
+            {([['week', 'Week'], ['month', 'Month'], ['year', 'Year'], ['all', 'All time']] as const).map(([value, label]) => (
+              <TouchableOpacity key={value} onPress={() => setReportPeriod(value)} style={[styles.periodChip, { backgroundColor: reportPeriod === value ? roleColor : colors.background, borderColor: reportPeriod === value ? roleColor : colors.border }]}>
+                <Text style={[styles.filterChipText, { color: reportPeriod === value ? '#fff' : colors.textMuted }]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {reportPeriod !== 'all' ? (
+            <AppliedDateField
+              value={reportDate}
+              onChange={setReportDate}
+              label={reportPeriod === 'week' ? 'Week containing' : reportPeriod === 'month' ? 'Month containing' : 'Year containing'}
+              accent={roleColor}
+              helper="Choose any date within the reporting period you want to audit."
+            />
+          ) : null}
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Delivery reports · {sortedDeliveries.length} record{sortedDeliveries.length === 1 ? '' : 's'}</Text>
         {sortedDeliveries.length === 0 ? (
           <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="cube-outline" size={36} color={colors.textSubtle} />
@@ -1268,6 +1315,18 @@ export default function ReceivingScreen() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 16 },
+  auditFilters: { borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 14, gap: 7 },
+  auditFilterHeader: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 2 },
+  auditIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  auditTitle: { fontSize: 14, fontWeight: '800' },
+  auditSubtitle: { fontSize: 11, marginTop: 1 },
+  clearFilters: { fontSize: 12, fontWeight: '700', padding: 5 },
+  filterLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginTop: 3 },
+  filterChips: { gap: 7, paddingVertical: 1, paddingRight: 6 },
+  filterChip: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 11, paddingVertical: 7 },
+  filterChipText: { fontSize: 12, fontWeight: '700' },
+  periodRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  periodChip: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, paddingVertical: 7 },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 12 },
   bannerText: { fontSize: 13, fontWeight: '600', flex: 1 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, marginTop: 4 },
