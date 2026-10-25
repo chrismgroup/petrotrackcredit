@@ -19,6 +19,10 @@ export type PaymentStatus = typeof PAYMENT_STATUSES[number];
 export const SANDBOX_SIGNATURE_HEADER = "x-petrotrack-signature";
 export const SANDBOX_TIMESTAMP_HEADER = "x-petrotrack-timestamp";
 export const SANDBOX_SIGNATURE_VERSION = "petrotrack-hmac-sha256-v1";
+export const MONIEPOINT_SIGNATURE_VERSION = "moniepoint-hmac-sha256-v1";
+export const MONIEPOINT_WEBHOOK_ID_HEADER = "moniepoint-webhook-id";
+export const MONIEPOINT_WEBHOOK_TIMESTAMP_HEADER = "moniepoint-webhook-timestamp";
+export const MONIEPOINT_WEBHOOK_SIGNATURE_HEADER = "moniepoint-webhook-signature";
 export const MAX_TIMESTAMP_SKEW_SECONDS = 300;
 export const MAX_TRANSACTION_KOBO = 100_000_000_000; // ₦1bn per POS transaction
 
@@ -87,6 +91,92 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function idField(value: unknown): string | null {
   return typeof value === "string" && ID_PATTERN.test(value) ? value : null;
+}
+
+/**
+ * Moniepoint signs the literal received body with:
+ *   HMAC-SHA256(secret, webhookId + "__" + timestampMs + "__" + rawBody)
+ * and encodes the digest as base64. Keep this handler on the raw request body.
+ */
+export function moniepointSecret(env: NodeJS.ProcessEnv = process.env): string | null {
+  const secret = env.MONIEPOINT_WEBHOOK_SECRET?.trim() ?? "";
+  return secret.length ? secret : null;
+}
+
+export function verifyMoniepointSignature(
+  secret: string,
+  raw: Buffer,
+  webhookId: string | undefined,
+  timestampHeader: string | undefined,
+  signatureHeader: string | undefined,
+  nowMs: number = Date.now(),
+): { ok: true } | { ok: false; error: string } {
+  if (!webhookId || !idField(webhookId) || !timestampHeader || !/^\d{13}$/.test(timestampHeader) || !signatureHeader) {
+    return { ok: false, error: "Missing or invalid Moniepoint signature headers" };
+  }
+  if (Math.abs(nowMs - Number(timestampHeader)) > MAX_TIMESTAMP_SKEW_SECONDS * 1000) {
+    return { ok: false, error: "Timestamp outside the allowed window" };
+  }
+  const signed = `${webhookId}__${timestampHeader}__${raw.toString("utf8")}`;
+  const expected = Buffer.from(createHmac("sha256", secret).update(signed).digest("base64"));
+  const received = Buffer.from(signatureHeader.trim());
+  if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
+    return { ok: false, error: "Invalid Moniepoint signature" };
+  }
+  return { ok: true };
+}
+
+function moniepointOccurredAt(value: unknown, fallback: unknown): Date | null {
+  if (typeof value === "string") {
+    const iso = new Date(value);
+    if (!Number.isNaN(iso.getTime())) return iso;
+    const match = /^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/.exec(value);
+    if (match) {
+      const [, y, m, d, h, min, s] = match;
+      const parsed = new Date(`${y}-${m}-${d}T${h}:${min}:${s}+01:00`);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+  }
+  if (typeof fallback === "string") {
+    const parsed = new Date(fallback);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+/** Parses the documented Moniepoint POS purchase and transfer notification envelope. */
+export function parseMoniepointEvent(raw: Buffer): ParseResult {
+  let body: unknown;
+  try { body = JSON.parse(raw.toString("utf8")); } catch { return { ok: false, error: "Body must be JSON" }; }
+  if (!isRecord(body) || !isRecord(body.data)) return { ok: false, error: "Missing Moniepoint data" };
+  const data = body.data;
+  const providerEventId = idField(body.eventId);
+  const eventType = typeof body.eventType === "string" ? body.eventType : "";
+  if (!providerEventId) return { ok: false, error: "Invalid eventId" };
+  if (!["V1_POS_PURCHASE_TRANSACTION", "V1_POS_TRANSFER_TRANSACTION"].includes(eventType)) {
+    return { ok: false, error: "Unsupported Moniepoint event type" };
+  }
+  const providerTransactionId = idField(data.transactionReference);
+  const providerTerminalId = idField(data.terminalSerial);
+  const amountKobo = data.amount;
+  const occurredAt = moniepointOccurredAt(data.transactionTime, body.createdAt);
+  if (!providerTransactionId || !providerTerminalId || !occurredAt) return { ok: false, error: "Invalid Moniepoint transaction identifiers or time" };
+  if (typeof amountKobo !== "number" || !Number.isSafeInteger(amountKobo) || amountKobo <= 0 || amountKobo > MAX_TRANSACTION_KOBO) {
+    return { ok: false, error: "Invalid Moniepoint amount" };
+  }
+  const rawStatus = typeof data.transactionStatus === "string" ? data.transactionStatus.toUpperCase() : "";
+  const rawCode = typeof data.responseCode === "string" ? data.responseCode : "";
+  const status: PaymentStatus = (rawStatus === "COMPLETED" || rawStatus === "APPROVED" || rawCode === "00" || rawCode === "20000")
+    ? "successful" : "failed";
+  const metadata: Record<string, string> = {};
+  const set = (key: string, value: unknown) => { if (typeof value === "string" && value.trim()) metadata[key] = value.trim().slice(0, 80); };
+  set("reference", data.merchantReference); set("rrn", data.retrievalReferenceNumber);
+  set("narration", data.narration); set("responseCode", data.responseCode); set("responseMessage", data.responseMessage);
+  return { ok: true, event: {
+    providerEventId, eventType, occurredAt, providerTransactionId, providerTerminalId,
+    method: eventType === "V1_POS_PURCHASE_TRANSACTION" ? "card" : "transfer",
+    status, amountKobo, currency: "NGN", reversalOfProviderTransactionId: null, metadata,
+  }};
 }
 
 /** Parses the documented Petrotrack sandbox payload (see docs/payments-pilot.md). */
