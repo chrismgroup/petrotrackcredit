@@ -674,6 +674,56 @@ describe('asset depreciation financial screens', () => {
     act(() => renderer.unmount());
   });
 
+  it('keeps the sales report and product totals separate from expenses', () => {
+    mockRouteParams = { type: 'sales', period: 'Monthly', date: '2026-09-15' };
+    mockedUseApp.mockReturnValue(baseAppState({
+      role: 'md',
+      expenses: [{
+        id: 501,
+        dt: '2026-09-03',
+        branchId: branchA.id,
+        by: 'mgr',
+        byName: 'Branch Manager',
+        cat: 'Utilities',
+        desc: 'Generator fuel',
+        amt: 250_000,
+        status: 'approved',
+      }],
+      pumpDailyReports: [
+        {
+          id: 101,
+          pumpName: 'PMS',
+          product: 'PMS',
+          liters: 1_000,
+          grossAmount: 1_000_000,
+          date: '2026-09-03',
+          branchId: branchA.id,
+          status: 'approved',
+        },
+        {
+          id: 102,
+          pumpName: 'LPG',
+          product: 'LPG',
+          liters: 250,
+          grossAmount: 300_000,
+          date: '2026-09-04',
+          branchId: branchA.id,
+          status: 'approved',
+        },
+      ],
+    }) as any);
+
+    const renderer = mount(<ReportsScreen detail />);
+    const text = renderedText(renderer);
+
+    expect(text).toContain('Total Sales Amount ₦1,300,000');
+    expect(text).toContain('1,000 L');
+    expect(text).toContain('250 kg');
+    expect(text).not.toContain('Less: Manager Expenses');
+    expect(text).not.toContain('Generator fuel');
+    act(() => renderer.unmount());
+  });
+
   it('keeps the report launcher compact and sends the selected report context to the viewer', () => {
     mockRouteParams = {};
     mockedUseApp.mockReturnValue(baseAppState({
