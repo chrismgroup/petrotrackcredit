@@ -1215,7 +1215,12 @@ export default function ShiftReportScreen() {
                       </TouchableOpacity>
                     ))}
                     {terminalAssignments.length ? <View style={[c.calcRow, { backgroundColor: roleColor + '12', borderColor: roleColor + '33' }]}>
-                      <Text style={[c.calcTxt, { color: roleColor }]}>Automatic Moniepoint: POS {fmt(automaticPosVal ?? 0)} · Transfer {fmt(automaticXferVal ?? 0)} · Total {fmt(terminalTotals.netKobo / 100)}</Text>
+                      <View style={{ gap: 3 }}>
+                        <Text style={[c.calcTxt, { color: roleColor }]}>Automatic Moniepoint: POS {fmt(automaticPosVal ?? 0)} · Transfer {fmt(automaticXferVal ?? 0)} · Total {fmt(terminalTotals.netKobo / 100)}</Text>
+                        <Text style={[c.calcTxt, { color: (posVal === (automaticPosVal ?? 0) && xferVal === (automaticXferVal ?? 0)) ? colors.success : colors.error }]}>
+                          Manual vs automatic variance: {fmt((posVal + xferVal) - ((automaticPosVal ?? 0) + (automaticXferVal ?? 0)))}
+                        </Text>
+                      </View>
                     </View> : null}
                   </View>
 
