@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHmac } from "node:crypto";
 
 import {
   businessDayWindow,
@@ -93,4 +94,36 @@ test("maps a business date to the Lagos calendar day", () => {
   assert.equal(window?.from.toISOString(), "2026-10-17T23:00:00.000Z");
   assert.equal(window?.to.toISOString(), "2026-10-18T23:00:00.000Z");
   for (const bad of ["", "2026-02-30", "18-10-2026", "2026-10-18T00:00"]) assert.equal(businessDayWindow(bad), null, bad);
+});
+
+
+test("verifies and normalizes a documented Moniepoint POS transaction", () => {
+  const secret = "m".repeat(40);
+  const body = Buffer.from(JSON.stringify({
+    eventId: "7a35b4d4-f985-4c14-846a-173af3fa677c",
+    eventType: "V1_POS_TRANSFER_TRANSACTION",
+    data: {
+      terminalSerial: "P260678997653", amount: 25300,
+      transactionReference: "ATP|2MPT0073|1838496858930533333120",
+      transactionTime: "2026/10/18 09:49:25", transactionStatus: "COMPLETED",
+      responseCode: "20000", retrievalReferenceNumber: "123456789012",
+    },
+    createdAt: "2026-10-18T08:55:55.210Z",
+  }));
+  const webhookId = "7a35b4d4-f985-4c14-846a-173af3fa677c";
+  const timestamp = String(NOW_MS);
+  const signature = createHmac("sha256", secret).update(`${webhookId}__${timestamp}__${body.toString("utf8")}`).digest("base64");
+  assert.deepEqual(verifyMoniepointSignature(secret, body, webhookId, timestamp, signature, NOW_MS), { ok: true });
+  const result = parseMoniepointEvent(body);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.event.method, "transfer");
+  assert.equal(result.event.status, "successful");
+  assert.equal(result.event.amountKobo, 25300);
+  assert.equal(result.event.occurredAt.toISOString(), "2026-10-18T08:49:25.000Z");
+});
+
+test("does not enable Moniepoint until its webhook secret is set", () => {
+  assert.equal(moniepointSecret({}), null);
+  assert.equal(moniepointSecret({ MONIEPOINT_WEBHOOK_SECRET: " secret " }), "secret");
 });
