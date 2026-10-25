@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
@@ -21,6 +21,7 @@ import {
   buildCreditSales, creditSaleFields, customerLedgerBalance, reportCreditLines, type CreditSaleDraft,
 } from '@/lib/customer-ledger';
 import { getPriceForPumpOnDate } from '@/lib/price-history';
+import { paymentsApi, type ShiftTerminal, type ShiftTerminalAssignment } from '@/lib/api';
 
 /* ── helpers ─────────────────────────────────────────── */
 const fmtL = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
@@ -412,18 +413,64 @@ export default function ShiftReportScreen() {
   const [appliesOn, setAppliesOn]     = useState('');
   const [historyDate, setHistoryDate] = useState('');
   const [reportSearch, setReportSearch] = useState('');
+  // A terminal belongs to this attendant shift, never to a pump.  We retain
+  // manual values during the one-week shadow period and submit provider totals.
+  const [shiftTerminals, setShiftTerminals] = useState<ShiftTerminal[]>([]);
+  const [terminalAssignments, setTerminalAssignments] = useState<ShiftTerminalAssignment[]>([]);
+  const [terminalTotals, setTerminalTotals] = useState({ cardNetKobo: 0, transferNetKobo: 0, netKobo: 0 });
+  const [terminalLoading, setTerminalLoading] = useState(false);
+
+  const loadShiftTerminals = useCallback(async () => {
+    const result = await paymentsApi.shiftTerminals();
+    if (result?.terminals) setShiftTerminals(result.terminals);
+  }, []);
+  const claimTerminal = useCallback(async (terminal: ShiftTerminal) => {
+    setTerminalLoading(true);
+    try {
+      const result = await paymentsApi.claimShiftTerminal(terminal.id);
+      if (!result?.assignment) { Alert.alert('Terminal unavailable', 'This terminal may already be assigned to another active shift.'); return; }
+      setTerminalAssignments(current => [...current, result.assignment]);
+      await loadShiftTerminals();
+    } finally { setTerminalLoading(false); }
+  }, [loadShiftTerminals]);
+  const releaseAssignment = useCallback(async (assignmentId: string) => {
+    const result = await paymentsApi.releaseShiftTerminal(assignmentId);
+    if (result?.assignment) {
+      setTerminalAssignments(current => current.filter(item => item.id !== assignmentId));
+      await loadShiftTerminals();
+    }
+  }, [loadShiftTerminals]);
+  useEffect(() => { if (isAtt) void loadShiftTerminals(); }, [isAtt, loadShiftTerminals]);
+  useEffect(() => {
+    if (!terminalAssignments.length) { setTerminalTotals({ cardNetKobo: 0, transferNetKobo: 0, netKobo: 0 }); return; }
+    let cancelled = false;
+    const load = async () => {
+      const result = await paymentsApi.shiftTerminalSummary(terminalAssignments.map(item => item.id));
+      if (!cancelled && result?.totals) setTerminalTotals({
+        cardNetKobo: result.totals.cardNetKobo ?? result.totals.cardKobo,
+        transferNetKobo: result.totals.transferNetKobo ?? result.totals.transferKobo,
+        netKobo: result.totals.netKobo,
+      });
+    };
+    void load(); const timer = setInterval(() => { void load(); }, 30_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [terminalAssignments]);
 
   const closeVal  = parseFloat(closeMeter.replace(/,/g, '')) || 0;
   const liters    = closeVal > openingMeter ? parseFloat((closeVal - openingMeter).toFixed(4)) : 0;
   const unitPrice = pump ? getPriceForPumpOnDate(pump, prices, priceHistory, appliesOn || today) : 0;
   const grossAmt  = liters * unitPrice;
   const posVal    = parseFloat(posAmt.replace(/,/g, ''))    || 0;
+  const automaticPosVal = terminalAssignments.length ? terminalTotals.cardNetKobo / 100 : null;
+  const automaticXferVal = terminalAssignments.length ? terminalTotals.transferNetKobo / 100 : null;
+  const reportedPosVal = automaticPosVal ?? posVal;
+  const reportedXferVal = automaticXferVal ?? (parseFloat(xferAmt.replace(/,/g, '')) || 0);
   const cashVal   = parseFloat(cashAmt.replace(/,/g, ''))   || 0;
   const xferVal   = parseFloat(xferAmt.replace(/,/g, ''))   || 0;
   const creditVal = Number(creditDrafts
     .reduce((total, draft) => total + (parseFloat(draft.quantity.replace(/,/g, '')) || 0) * unitPrice, 0)
     .toFixed(2));
-  const totalColl = posVal + cashVal + xferVal;
+  const totalColl = reportedPosVal + cashVal + reportedXferVal;
   const variance  = totalColl + creditVal - grossAmt;
   const varColor  = variance === 0 ? '#1F6848' : variance > 0 ? '#286247' : '#365A47';
   const reportBranchId = branchId ?? pump?.branchId ?? '';
@@ -450,7 +497,7 @@ export default function ShiftReportScreen() {
         branchId: branchId ?? pump.branchId ?? '',
         openingMeter, closingMeter: closeVal, liters,
         unitPrice, grossAmount: grossAmt,
-        posAmount: posVal, cashAmount: cashVal, transferAmount: xferVal,
+        posAmount: reportedPosVal, cashAmount: cashVal, transferAmount: reportedXferVal,
         ...creditSaleFields(credit.lines, credit.totalAmount),
         totalCollected: totalColl, variance: totalColl + credit.totalAmount - grossAmt,
         note: noteAtt.trim(),
@@ -462,6 +509,8 @@ export default function ShiftReportScreen() {
       }
       setCloseMeter(''); setPosAmt(''); setCashAmt(''); setXferAmt(''); setCreditDrafts([]); setNoteAtt('');
       setAppliesOn('');
+      await Promise.all(terminalAssignments.map(item => paymentsApi.releaseShiftTerminal(item.id)));
+      setTerminalAssignments([]);
       const vLabel = variance === 0 ? 'Balanced ✓' : variance > 0 ? `Overage of ${fmt(variance)}` : `Shortage of ${fmt(Math.abs(variance))}`;
       if (submitted === 'queued') {
         Alert.alert(
@@ -1148,17 +1197,27 @@ export default function ShiftReportScreen() {
                     )}
                   </View>
 
-                  {appliesOn ? (
-                    <ShiftPosSummary
-                      role={role}
-                      pumpId={pump.id}
-                      branchId={branchId ?? pump.branchId}
-                      date={appliesOn}
-                      reportedPos={posVal}
-                      reportedTransfer={xferVal}
-                      live
-                    />
-                  ) : null}
+                  <View style={[c.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[c.formTitle, { color: colors.text }]}>Shift POS terminals</Text>
+                    <Text style={[c.formHint, { color: colors.textMuted }]}>Select the terminal picked up at the start of shift. Add a replacement if it fails. Moniepoint totals are assigned to this shift automatically.</Text>
+                    {terminalAssignments.map(assignment => {
+                      const terminal = shiftTerminals.find(item => item.id === assignment.terminalId);
+                      return <View key={assignment.id} style={c.terminalRow}>
+                        <Text style={[c.terminalText, { color: colors.text }]}>{terminal?.label ?? 'Assigned POS terminal'}</Text>
+                        <TouchableOpacity onPress={() => void releaseAssignment(assignment.id)}><Text style={{ color: colors.error, fontWeight: '700' }}>Replace</Text></TouchableOpacity>
+                      </View>;
+                    })}
+                    {shiftTerminals.filter(item => item.available).map(terminal => (
+                      <TouchableOpacity key={terminal.id} disabled={terminalLoading} onPress={() => void claimTerminal(terminal)} style={[c.terminalPick, { borderColor: colors.border }]}>
+                        <Ionicons name="card-outline" size={16} color={colors.primary} />
+                        <Text style={[c.terminalText, { color: colors.text }]}>{terminal.label} · {terminal.providerTerminalId}</Text>
+                        <Text style={{ color: colors.primary, fontWeight: '700' }}>{terminalAssignments.length ? 'Add replacement' : 'Start shift'}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    {terminalAssignments.length ? <View style={[c.calcRow, { backgroundColor: roleColor + '12', borderColor: roleColor + '33' }]}>
+                      <Text style={[c.calcTxt, { color: roleColor }]}>Automatic Moniepoint: POS {fmt(automaticPosVal ?? 0)} · Transfer {fmt(automaticXferVal ?? 0)} · Total {fmt(terminalTotals.netKobo / 100)}</Text>
+                    </View> : null}
+                  </View>
 
                   {/* Payment breakdown */}
                   <View style={[c.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1166,9 +1225,9 @@ export default function ShiftReportScreen() {
                     <Text style={[c.formHint, { color: colors.textMuted }]}>Enter all amounts received and the customer’s quantity. Petrotrack calculates the customer amount from the branch price for the selected business date. An available advance is applied automatically.</Text>
 
                     {[
-                      { label: 'POS Amount (₦)', val: posAmt, set: setPosAmt, icon: 'card-outline', color: '#286247' },
+                      { label: terminalAssignments.length ? 'Manual POS (shadow comparison) (₦)' : 'POS Amount (₦)', val: posAmt, set: setPosAmt, icon: 'card-outline', color: '#286247' },
                       { label: 'Cash Amount (₦)', val: cashAmt, set: setCashAmt, icon: 'cash-outline', color: '#1F6848' },
-                      { label: 'Bank Transfer (₦)', val: xferAmt, set: setXferAmt, icon: 'swap-horizontal-outline', color: '#315F49' },
+                      { label: terminalAssignments.length ? 'Manual Transfer (shadow comparison) (₦)' : 'Bank Transfer (₦)', val: xferAmt, set: setXferAmt, icon: 'swap-horizontal-outline', color: '#315F49' },
                     ].map(f => (
                       <View key={f.label} style={{ marginBottom: 10 }}>
                         <Text style={[c.inputLabel, { color: colors.textMuted }]}>{f.label}</Text>
