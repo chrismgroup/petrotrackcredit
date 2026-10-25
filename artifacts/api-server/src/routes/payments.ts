@@ -521,17 +521,22 @@ router.post("/payments/shift-terminals/:terminalId/claim", async (req, res) => {
 router.post("/payments/shift-terminals/:assignmentId/release", async (req, res) => {
   const auth = req.auth!;
   const assignmentId = String(req.params.assignmentId);
-  if (!SHIFT_ASSIGNMENT_ROLES.has(auth.role) || !UUID_PATTERN.test(assignmentId)) {
-    res.status(403).json({ error: "Invalid shift terminal assignment" }); return;
+  const replacement = (req.body as Record<string, unknown> | undefined)?.reason === "replacement";
+  if (!UUID_PATTERN.test(assignmentId)) {
+    res.status(400).json({ error: "Invalid shift terminal assignment" }); return;
+  }
+  const [existing] = await db.select().from(terminalShiftAssignmentsTable)
+    .where(and(eq(terminalShiftAssignmentsTable.id, assignmentId), isNull(terminalShiftAssignmentsTable.closedAt)));
+  if (!existing) { res.status(404).json({ error: "Open terminal assignment not found" }); return; }
+  const managerRelease = auth.role === "admin" || (auth.role === "mgr" && auth.branchId === existing.branchId);
+  const attendantReplacement = replacement && auth.role === "att" && existing.attendantUsername === auth.username;
+  if (!managerRelease && !attendantReplacement) {
+    res.status(403).json({ error: "Only the branch manager can release a terminal for the next shift" }); return;
   }
   const [assignment] = await db.update(terminalShiftAssignmentsTable).set({
     closedAt: new Date(), closedBy: auth.username,
-  }).where(and(
-    eq(terminalShiftAssignmentsTable.id, assignmentId),
-    eq(terminalShiftAssignmentsTable.attendantUsername, auth.username),
-    isNull(terminalShiftAssignmentsTable.closedAt),
-  )).returning();
-  if (!assignment) { res.status(404).json({ error: "Open terminal assignment not found" }); return; }
+  }).where(and(eq(terminalShiftAssignmentsTable.id, assignmentId), isNull(terminalShiftAssignmentsTable.closedAt))).returning();
+  if (!assignment) { res.status(409).json({ error: "Terminal assignment was already released" }); return; }
   res.json({ assignment });
 });
 
