@@ -17,11 +17,18 @@ import {
   SANDBOX_SIGNATURE_VERSION,
   SANDBOX_TIMESTAMP_HEADER,
   MAX_TRANSACTION_KOBO,
+  MONIEPOINT_SIGNATURE_VERSION,
+  MONIEPOINT_WEBHOOK_ID_HEADER,
+  MONIEPOINT_WEBHOOK_SIGNATURE_HEADER,
+  MONIEPOINT_WEBHOOK_TIMESTAMP_HEADER,
   isPaymentProvider,
   businessDayWindow,
   ledgerLinesFor,
+  parseMoniepointEvent,
   parseSandboxEvent,
+  moniepointSecret,
   sandboxSecret,
+  verifyMoniepointSignature,
   sha256Hex,
   signSandboxPayload,
   verifySandboxSignature,
@@ -137,8 +144,36 @@ paymentsWebhookRouter.post(
       return;
     }
     if (provider === "moniepoint") {
-      // Enabled only after Moniepoint's POS webhook schema and signature are confirmed.
-      res.status(503).json({ error: "Provider not configured" });
+      const secret = moniepointSecret();
+      if (!secret) {
+        res.status(503).json({ error: "Provider not configured" });
+        return;
+      }
+      const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+      const verified = verifyMoniepointSignature(
+        secret, raw,
+        req.header(MONIEPOINT_WEBHOOK_ID_HEADER),
+        req.header(MONIEPOINT_WEBHOOK_TIMESTAMP_HEADER),
+        req.header(MONIEPOINT_WEBHOOK_SIGNATURE_HEADER),
+      );
+      if (!verified.ok) {
+        req.log.warn({ provider, reason: verified.error }, "Rejected payment webhook");
+        res.status(401).json({ error: "Invalid signature" });
+        return;
+      }
+      const parsed = parseMoniepointEvent(raw);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error });
+        return;
+      }
+      try {
+        const result = await ingestPaymentEvent(provider, parsed.event, sha256Hex(raw), MONIEPOINT_SIGNATURE_VERSION);
+        if (result.status === 422) req.log.warn({ provider, terminal: parsed.event.providerTerminalId }, "Payment webhook for unknown terminal");
+        res.status(result.status).json(result.body);
+      } catch (err) {
+        req.log.error({ err }, "Payment webhook ingest failed");
+        res.status(500).json({ error: "Could not record event" });
+      }
       return;
     }
     const secret = sandboxSecret();
@@ -205,7 +240,7 @@ router.get("/payments/config", (req, res) => {
   res.json({
     providers: [
       { id: "sandbox", label: "Petrotrack sandbox", ready: !!sandboxSecret() },
-      { id: "moniepoint", label: "Moniepoint POS", ready: false },
+      { id: "moniepoint", label: "Moniepoint POS", ready: !!moniepointSecret() },
     ],
   });
 });
