@@ -468,6 +468,92 @@ router.get("/payments/shift-summary", async (req, res) => {
   res.json({ ...summary, terminals, window: { from: window.from.toISOString(), to: window.to.toISOString() } });
 });
 
+/**
+ * Terminals are claimed by the attendant's current shift, not by a pump.
+ * The server owns all timestamps so attendants cannot expand a shift window.
+ */
+const SHIFT_ASSIGNMENT_ROLES = new Set(["att", "mgr", "admin", "ceo", "md", "acc", "csm"]);
+
+router.get("/payments/shift-terminals", async (req, res) => {
+  const auth = req.auth!;
+  if (!SHIFT_ASSIGNMENT_ROLES.has(auth.role) || !auth.branchId) {
+    res.status(403).json({ error: "A branch assignment is required" }); return;
+  }
+  const terminals = await db.select({
+    id: paymentTerminalsTable.id, label: paymentTerminalsTable.label,
+    provider: paymentTerminalsTable.provider, providerTerminalId: paymentTerminalsTable.providerTerminalId,
+  }).from(paymentTerminalsTable).where(and(
+    eq(paymentTerminalsTable.branchId, auth.branchId),
+    eq(paymentTerminalsTable.status, "active"),
+  )).orderBy(paymentTerminalsTable.label);
+  const open = await db.select({ terminalId: terminalShiftAssignmentsTable.terminalId })
+    .from(terminalShiftAssignmentsTable).where(isNull(terminalShiftAssignmentsTable.closedAt));
+  const claimed = new Set(open.map(row => row.terminalId));
+  res.json({ terminals: terminals.map(terminal => ({ ...terminal, available: !claimed.has(terminal.id) })) });
+});
+
+router.post("/payments/shift-terminals/:terminalId/claim", async (req, res) => {
+  const auth = req.auth!;
+  const terminalId = String(req.params.terminalId);
+  if (!SHIFT_ASSIGNMENT_ROLES.has(auth.role) || !auth.branchId || !UUID_PATTERN.test(terminalId)) {
+    res.status(403).json({ error: "A valid branch terminal is required" }); return;
+  }
+  const [terminal] = await db.select().from(paymentTerminalsTable).where(and(
+    eq(paymentTerminalsTable.id, terminalId), eq(paymentTerminalsTable.branchId, auth.branchId),
+    eq(paymentTerminalsTable.status, "active"),
+  ));
+  if (!terminal) { res.status(404).json({ error: "Available terminal not found" }); return; }
+  try {
+    const [assignment] = await db.insert(terminalShiftAssignmentsTable).values({
+      terminalId: terminal.id, branchId: terminal.branchId, pumpId: null,
+      attendantUsername: auth.username, openedBy: auth.username, openedAt: new Date(),
+    }).returning();
+    res.status(201).json({ assignment, terminal });
+  } catch (err) {
+    if (pgError(err).code === "23505" || pgError(err).constraint === "terminal_shift_assignments_no_overlap") {
+      res.status(409).json({ error: "This terminal is already assigned to an active shift" }); return;
+    }
+    req.log.error({ err }, "Terminal shift claim failed");
+    res.status(500).json({ error: "Could not assign terminal to shift" });
+  }
+});
+
+router.post("/payments/shift-terminals/:assignmentId/release", async (req, res) => {
+  const auth = req.auth!;
+  const assignmentId = String(req.params.assignmentId);
+  if (!SHIFT_ASSIGNMENT_ROLES.has(auth.role) || !UUID_PATTERN.test(assignmentId)) {
+    res.status(403).json({ error: "Invalid shift terminal assignment" }); return;
+  }
+  const [assignment] = await db.update(terminalShiftAssignmentsTable).set({
+    closedAt: new Date(), closedBy: auth.username,
+  }).where(and(
+    eq(terminalShiftAssignmentsTable.id, assignmentId),
+    eq(terminalShiftAssignmentsTable.attendantUsername, auth.username),
+    isNull(terminalShiftAssignmentsTable.closedAt),
+  )).returning();
+  if (!assignment) { res.status(404).json({ error: "Open terminal assignment not found" }); return; }
+  res.json({ assignment });
+});
+
+router.get("/payments/shift-terminal-summary", async (req, res) => {
+  const auth = req.auth!;
+  const ids = typeof req.query.assignmentIds === "string"
+    ? req.query.assignmentIds.split(",").filter(id => UUID_PATTERN.test(id)) : [];
+  if (!SHIFT_ASSIGNMENT_ROLES.has(auth.role) || !ids.length) {
+    res.status(400).json({ error: "assignmentIds are required" }); return;
+  }
+  const assignments = await db.select().from(terminalShiftAssignmentsTable)
+    .where(inArray(terminalShiftAssignmentsTable.id, ids));
+  if (assignments.length !== ids.length || (!VIEW_ALL_ROLES.has(auth.role) && assignments.some(row => row.attendantUsername !== auth.username))) {
+    res.status(403).json({ error: "You can only use your own terminal assignments" }); return;
+  }
+  const where = inArray(paymentTransactionsTable.shiftAssignmentId, ids);
+  const summary = await queryTransactions(where, 500);
+  res.json({ ...summary, assignments: assignments.map(row => ({
+    id: row.id, terminalId: row.terminalId, openedAt: row.openedAt, closedAt: row.closedAt,
+  })) });
+});
+
 /** Admin-only demo helper: signs a sample event and sends it through the real webhook pipeline. */
 router.post("/payments/sandbox/simulate", async (req, res) => {
   if (req.auth!.role !== "admin") {
