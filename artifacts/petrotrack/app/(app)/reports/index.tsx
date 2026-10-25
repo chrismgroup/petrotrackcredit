@@ -352,26 +352,36 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
     [safePumpReports, selBranch, fromStr, toStr]
   );
 
-  const mgrBranchExps = useMemo(() =>
-    fExps.filter((e: any) => e.by === 'mgr' && e.status === 'approved'),
-    [fExps]
-  );
-
   const shiftGross    = useMemo(() => Math.round(fPumpReports.reduce((s: number, r: any) => s + r.grossAmount, 0)), [fPumpReports]);
-  const mgrExpScaled  = useMemo(() => Math.round(mgrBranchExps.reduce((s: number, e: any) => s + e.amt, 0)), [mgrBranchExps]);
-  const netSalesFigure = shiftGross - mgrExpScaled;
 
   const shiftProdSales = useMemo(() =>
-    (['PMS','AGO','DPK','LPG','Lube Oil'] as const).map(prod => {
+    [...new Set(fPumpReports.map((report: any) => safeStr(report.product, 'Unknown product')))]
+      .sort((a, b) => a.localeCompare(b))
+      .map(prod => {
       const color = PROD_COLORS[prod] || rc;
       const reps = fPumpReports.filter((r: any) => r.product === prod);
-      const L    = reps.reduce((s: number, r: any) => s + r.liters, 0);
+      const quantity = reps.reduce((s: number, r: any) => s + r.liters, 0);
       const gross = reps.reduce((s: number, r: any) => s + r.grossAmount, 0);
       const hasIncomplete = reps.some((r: any) => r._amtMissing);
-      return { prod, color, L, scaledL: Math.round(L), scaledGross: Math.round(gross), hasIncomplete };
-    }).filter(p => p.L > 0),
+      return {
+        prod,
+        color,
+        unit: prod === 'LPG' ? 'kg' : 'L',
+        quantity,
+        scaledQuantity: Math.round(quantity),
+        scaledGross: Math.round(gross),
+        records: reps.length,
+        hasIncomplete,
+      };
+    }).filter(p => p.records > 0),
     [fPumpReports, rc]
   );
+  const shiftLiquidQuantity = useMemo(() => Math.round(
+    shiftProdSales.filter(product => product.unit === 'L').reduce((sum, product) => sum + product.quantity, 0)
+  ), [shiftProdSales]);
+  const shiftLpgQuantity = useMemo(() => Math.round(
+    shiftProdSales.filter(product => product.unit === 'kg').reduce((sum, product) => sum + product.quantity, 0)
+  ), [shiftProdSales]);
 
   const approved    = useMemo(() => fExps.filter((e: any) => e.status === 'approved'), [fExps]);
   const totalExp    = useMemo(() => approved.reduce((s: number, e: any) => s + e.amt, 0), [approved]);
@@ -380,7 +390,6 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
      sync and was coerced to ₦0 by safeNum. Used for in-app badges and PDF footnotes. */
   const incompleteExpCount     = useMemo(() => approved.filter((e: any) => e._amtMissing).length, [approved]);
   const incompletePumpCount    = useMemo(() => fPumpReports.filter((r: any) => r._amtMissing).length, [fPumpReports]);
-  const incompleteMgrExpCount  = useMemo(() => mgrBranchExps.filter((e: any) => e._amtMissing).length, [mgrBranchExps]);
 
   function buildIncompleteFootnote(count: number): string | undefined {
     if (count <= 0) return undefined;
@@ -542,24 +551,18 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
         footnote: buildIncompleteFootnote(incompleteExpCount),
         });
       } else if (reportType === 'sales') {
-        // Sales report totals (shiftGross, netSalesFigure) derive from pump reports
-        // and manager expenses — not from the legacy fSales entries.
-        const salesIncomplete = incompletePumpCount + incompleteMgrExpCount;
         html = buildPdf({ ...common, title: 'Sales Report',
         sections: [{ heading: 'Sales Summary', rows: [
-          { label: 'Gross Sales (Shift Reports)', value: nfmt(shiftGross)      },
-          { label: 'Less: Manager Expenses',      value: `(${nfmt(mgrExpScaled)})` },
-          { label: 'Net Sales',                   value: nfmt(netSalesFigure)  },
-          { label: 'Shift Reports',               value: `${fPumpReports.length}` },
-          { label: 'Manager Expense Items',       value: `${mgrBranchExps.length}` },
+          { label: 'Total Sales Amount', value: nfmt(shiftGross) },
+          { label: 'Liquid Products Sold', value: `${shiftLiquidQuantity.toLocaleString()} L` },
+          { label: 'LPG Sold', value: `${shiftLpgQuantity.toLocaleString()} kg` },
+          { label: 'Approved Shift Reports', value: `${fPumpReports.length}` },
         ]}],
         tables: [
-          { heading: 'Product Breakdown', headers: ['Product','Volume (L)','Gross Revenue'],
-            rows: shiftProdSales.map(p => [p.prod, p.scaledL.toLocaleString(), nfmt(p.scaledGross)]) },
-          ...(mgrBranchExps.length > 0 ? [{ heading: 'Manager Expenses Deducted', headers: ['Category','Description','By','Amount','Approved By'],
-            rows: mgrBranchExps.map((e: any) => [e.cat, e.desc, e.byName, nfmt(e.amt), e.approvedBy ?? '—']) }] : []),
+          { heading: 'Sales by Product', headers: ['Product','Quantity','Unit','Sales Amount'],
+            rows: shiftProdSales.map(p => [p.prod, p.scaledQuantity.toLocaleString(), p.unit, nfmt(p.scaledGross)]) },
         ],
-        footnote: buildIncompleteFootnote(salesIncomplete),
+        footnote: buildIncompleteFootnote(incompletePumpCount),
         });
       } else if (reportType === 'prices') {
         html = buildPdf({ ...common, title: 'Price Report',
@@ -907,50 +910,30 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
         {/* ── SALES ── */}
         {reportType === 'sales' ? (
           <>
-            {/* Net Sales pill */}
-            <View style={[s.totalPill, { backgroundColor: (netSalesFigure >= 0 ? '#1F6848' : '#365A47') + '18', borderColor: (netSalesFigure >= 0 ? '#1F6848' : '#365A47') + '33' }]}>
-              <Text style={[s.totalPillLabel, { color: netSalesFigure >= 0 ? '#1F6848' : '#365A47' }]}>Net Sales</Text>
-              <Text style={[s.totalPillValue, { color: netSalesFigure >= 0 ? '#1F6848' : '#365A47' }]}>{fmt(netSalesFigure)}</Text>
+            <View style={[s.totalPill, { backgroundColor: '#1F684818', borderColor: '#1F684833' }]}>
+              <Text style={[s.totalPillLabel, { color: '#1F6848' }]}>Total Sales Amount</Text>
+              <Text style={[s.totalPillValue, { color: '#1F6848' }]}>{fmt(shiftGross)}</Text>
             </View>
 
-            {/* Breakdown card */}
             <View style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 4 }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
-                <Text style={{ fontSize: 13, color: colors.text }}>Gross Sales (shift reports)</Text>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#286247' }}>{fmt(shiftGross)}</Text>
+                <Text style={{ fontSize: 13, color: colors.text }}>Liquid products sold</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#286247' }}>{shiftLiquidQuantity.toLocaleString()} L</Text>
               </View>
               <View style={{ height: 1, backgroundColor: colors.border }} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
-                <Text style={{ fontSize: 13, color: colors.text }}>Less: Manager Expenses</Text>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#365A47' }}>({fmt(mgrExpScaled)})</Text>
+                <Text style={{ fontSize: 13, color: colors.text }}>LPG sold</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#174D36' }}>{shiftLpgQuantity.toLocaleString()} kg</Text>
               </View>
               <View style={{ height: 1, backgroundColor: colors.border }} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Net Sales</Text>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: netSalesFigure >= 0 ? '#1F6848' : '#365A47' }}>{fmt(netSalesFigure)}</Text>
+                <Text style={{ fontSize: 13, color: colors.text }}>Approved shift records</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{fPumpReports.length.toLocaleString()}</Text>
               </View>
             </View>
 
-            {/* Manager expenses detail */}
-            {mgrBranchExps.length > 0 && (
-              <>
-                <SecTitle label={`Manager Expenses (${mgrBranchExps.length})`} colors={colors} />
-                {mgrBranchExps.map((e: any) => (
-                  <View key={e.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[s.rowCardTitle, { color: colors.text }]}>{e.cat}</Text>
-                      <Text style={[s.rowCardSub, { color: colors.textMuted }]}>{e.desc}</Text>
-                      <Text style={{ fontSize: 10, marginTop: 3, color: colors.textSubtle }}>by {e.byName} · Approved by {e.approvedBy}</Text>
-                      {e._amtMissing && <IncompleteBadge />}
-                    </View>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#365A47' }}>{fmt(e.amt)}</Text>
-                  </View>
-                ))}
-              </>
-            )}
-
             {/* Product breakdown from shift reports */}
-            {shiftProdSales.length > 0 && <SecTitle label="Shift Report Breakdown by Product" colors={colors} />}
+            {shiftProdSales.length > 0 && <SecTitle label="Sales by Product" colors={colors} />}
             {shiftProdSales.length === 0 && fPumpReports.length === 0 ? <EmptyState icon="bar-chart-outline" label="No approved shift reports" colors={colors} /> : null}
             {shiftProdSales.map(p => (
               <View key={p.prod} style={[s.catCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -960,7 +943,7 @@ export default function ReportsScreen({ detail = false }: { detail?: boolean }) 
                     <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{p.prod}</Text>
                     <Text style={{ fontSize: 13, fontWeight: '700', color: p.color }}>{fmt(p.scaledGross)}</Text>
                   </View>
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>{p.scaledL.toLocaleString()} L</Text>
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>{p.scaledQuantity.toLocaleString()} {p.unit}</Text>
                   {p.hasIncomplete && <IncompleteBadge />}
                 </View>
               </View>
