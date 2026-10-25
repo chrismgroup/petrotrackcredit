@@ -24,6 +24,9 @@ export const MONIEPOINT_WEBHOOK_ID_HEADER = "moniepoint-webhook-id";
 export const MONIEPOINT_WEBHOOK_TIMESTAMP_HEADER = "moniepoint-webhook-timestamp";
 export const MONIEPOINT_WEBHOOK_SIGNATURE_HEADER = "moniepoint-webhook-signature";
 export const MAX_TIMESTAMP_SKEW_SECONDS = 300;
+// Moniepoint retries signed notifications. Its event ID idempotency guard makes a
+// one-day delivery window safe while allowing delayed provider retries.
+export const MONIEPOINT_MAX_TIMESTAMP_SKEW_MS = 24 * 60 * 60 * 1000;
 export const MAX_TRANSACTION_KOBO = 100_000_000_000; // ₦1bn per POS transaction
 
 export interface NormalizedPaymentEvent {
@@ -114,7 +117,7 @@ export function verifyMoniepointSignature(
   if (!webhookId || !idField(webhookId) || !timestampHeader || !/^\d{13}$/.test(timestampHeader) || !signatureHeader) {
     return { ok: false, error: "Missing or invalid Moniepoint signature headers" };
   }
-  if (Math.abs(nowMs - Number(timestampHeader)) > MAX_TIMESTAMP_SKEW_SECONDS * 1000) {
+  if (Math.abs(nowMs - Number(timestampHeader)) > MONIEPOINT_MAX_TIMESTAMP_SKEW_MS) {
     return { ok: false, error: "Timestamp outside the allowed window" };
   }
   const signed = `${webhookId}__${timestampHeader}__${raw.toString("utf8")}`;
@@ -156,11 +159,11 @@ export function parseMoniepointEvent(raw: Buffer): ParseResult {
   if (!["V1_POS_PURCHASE_TRANSACTION", "V1_POS_TRANSFER_TRANSACTION"].includes(eventType)) {
     return { ok: false, error: "Unsupported Moniepoint event type" };
   }
-  const providerTransactionId = idField(data.transactionReference);
+  const transactionReference = idField(data.transactionReference);
   const providerTerminalId = idField(data.terminalSerial);
   const amountKobo = data.amount;
   const occurredAt = moniepointOccurredAt(data.transactionTime, body.createdAt);
-  if (!providerTransactionId || !providerTerminalId || !occurredAt) return { ok: false, error: "Invalid Moniepoint transaction identifiers or time" };
+  if (!transactionReference || !providerTerminalId || !occurredAt) return { ok: false, error: "Invalid Moniepoint transaction identifiers or time" };
   if (typeof amountKobo !== "number" || !Number.isSafeInteger(amountKobo) || amountKobo <= 0 || amountKobo > MAX_TRANSACTION_KOBO) {
     return { ok: false, error: "Invalid Moniepoint amount" };
   }
@@ -168,9 +171,12 @@ export function parseMoniepointEvent(raw: Buffer): ParseResult {
   const rawCode = typeof data.responseCode === "string" ? data.responseCode : "";
   const status: PaymentStatus = (rawStatus === "COMPLETED" || rawStatus === "APPROVED" || rawCode === "00" || rawCode === "20000")
     ? "successful" : "failed";
+  // A transfer may first notify as pending and then complete. Failed/pending
+  // evidence must not consume the unique completed-transaction reference.
+  const providerTransactionId = status === "successful" ? transactionReference : providerEventId;
   const metadata: Record<string, string> = {};
   const set = (key: string, value: unknown) => { if (typeof value === "string" && value.trim()) metadata[key] = value.trim().slice(0, 80); };
-  set("reference", data.merchantReference); set("rrn", data.retrievalReferenceNumber);
+  set("reference", data.merchantReference ?? transactionReference); set("rrn", data.retrievalReferenceNumber);
   set("narration", data.narration); set("responseCode", data.responseCode); set("responseMessage", data.responseMessage);
   return { ok: true, event: {
     providerEventId, eventType, occurredAt, providerTransactionId, providerTerminalId,
