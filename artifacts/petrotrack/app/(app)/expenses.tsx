@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -14,6 +14,7 @@ import { Budget, Expense, ROLE_COLORS, businessDateKey, fmt, fmtDateTime, isReve
 import { useColors } from '@/hooks/useColors';
 import { safeNum } from '@/lib/report-helpers';
 import { workflowApi } from '@/lib/api';
+import { expenseReportPeriodLabel, matchesExpenseReportPeriod, type ExpenseReportPeriod } from '@/lib/expense-reporting';
 
 type ExpenseCategoryGroup = {
   key: string;
@@ -270,6 +271,9 @@ export default function ExpensesScreen() {
   const [budgetRefreshError, setBudgetRefreshError] = useState('');
   const [formBusy, setFormBusy]     = useState(false);
   const [repairingBranches, setRepairingBranches] = useState(false);
+  const [reportBranchId, setReportBranchId] = useState('all');
+  const [reportPeriod, setReportPeriod] = useState<ExpenseReportPeriod>('all');
+  const [reportDate, setReportDate] = useState(localDateKey());
   const [reviewingExpenseIds, setReviewingExpenseIds] = useState<Set<number>>(() => new Set());
   const reviewingExpenseIdsRef = useRef<Set<number>>(new Set());
 
@@ -300,13 +304,37 @@ export default function ExpensesScreen() {
     : isAcc
     ? (tab === 0 ? pendingForAcc : expenses)
     : (tab === 0 ? myExpenses : expenses);
-  const displayedExpenses = displayedExpensesBase.slice().sort((a, b) => {
+  const displayedExpenses = displayedExpensesBase.filter(expense =>
+    (reportBranchId === 'all' || expense.branchId === reportBranchId)
+    && matchesExpenseReportPeriod(expense.dt, reportDate, reportPeriod),
+  ).sort((a, b) => {
     const businessDateOrder = b.dt.localeCompare(a.dt);
     if (businessDateOrder !== 0) return businessDateOrder;
     const submittedOrder = Date.parse(b.submittedAt ?? b.dt) - Date.parse(a.submittedAt ?? a.dt);
     if (Number.isFinite(submittedOrder) && submittedOrder !== 0) return submittedOrder;
     return b.id - a.id;
   });
+  const expenseGroups = useMemo(() => {
+    const grouped = new Map<string, { name: string; items: Expense[] }>();
+    displayedExpenses.forEach(expense => {
+      const key = expense.branchId || 'unassigned';
+      const name = expense.branchName || branchNames[expense.branchId] || 'Branch not assigned';
+      const current = grouped.get(key);
+      if (current) current.items.push(expense);
+      else grouped.set(key, { name, items: [expense] });
+    });
+    return [...grouped.entries()]
+      .sort(([, a], [, b]) => a.name.localeCompare(b.name))
+      .map(([key, group]) => ({
+        key,
+        name: group.name,
+        items: group.items,
+        total: group.items.reduce((sum, expense) => sum + safeNum(expense.amt), 0),
+        approved: group.items.filter(expense => expense.status === 'approved').reduce((sum, expense) => sum + safeNum(expense.amt), 0),
+        pending: group.items.filter(expense => expense.status !== 'approved').reduce((sum, expense) => sum + safeNum(expense.amt), 0),
+      }));
+  }, [branchNames, displayedExpenses]);
+  const reportTotal = displayedExpenses.reduce((sum, expense) => sum + safeNum(expense.amt), 0);
 
   const pendingCount = isAcc ? pendingForAcc.length : isMD ? pendingForMd.length : isReadOnlyViewer ? pendingForViewer.length : 0;
 
@@ -568,6 +596,68 @@ export default function ExpensesScreen() {
         </TouchableOpacity>
       ) : null}
 
+      <View style={[styles.auditFilters, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={styles.auditFilterHeader}>
+          <View style={[styles.auditIcon, { backgroundColor: roleColor + '18' }]}>
+            <Ionicons name="funnel-outline" size={16} color={roleColor} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.auditTitle, { color: colors.text }]}>Audit expense reports</Text>
+            <Text style={[styles.auditSubtitle, { color: colors.textMuted }]}>Reconcile records by branch and reporting period.</Text>
+          </View>
+          {(reportBranchId !== 'all' || reportPeriod !== 'all') ? (
+            <TouchableOpacity
+              accessibilityLabel="Clear expense report filters"
+              onPress={() => { setReportBranchId('all'); setReportPeriod('all'); setReportDate(localDateKey()); }}
+            >
+              <Text style={[styles.clearFilters, { color: roleColor }]}>Reset</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {branches.length > 1 ? (
+          <>
+            <Text style={[styles.filterLabel, { color: colors.textMuted }]}>Branch</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
+              <TouchableOpacity onPress={() => setReportBranchId('all')} style={[styles.filterChip, { backgroundColor: reportBranchId === 'all' ? roleColor : colors.background, borderColor: reportBranchId === 'all' ? roleColor : colors.border }]}>
+                <Text style={[styles.filterChipText, { color: reportBranchId === 'all' ? '#fff' : colors.textMuted }]}>All branches</Text>
+              </TouchableOpacity>
+              {branches.map(branch => (
+                <TouchableOpacity key={branch.id} onPress={() => setReportBranchId(branch.id)} style={[styles.filterChip, { backgroundColor: reportBranchId === branch.id ? roleColor : colors.background, borderColor: reportBranchId === branch.id ? roleColor : colors.border }]}>
+                  <Text style={[styles.filterChipText, { color: reportBranchId === branch.id ? '#fff' : colors.textMuted }]}>{branch.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
+
+        <Text style={[styles.filterLabel, { color: colors.textMuted }]}>Period</Text>
+        <View style={styles.periodRow}>
+          {([['date', 'Date'], ['week', 'Week'], ['month', 'Month'], ['quarter', 'Quarter'], ['year', 'Year'], ['all', 'All time']] as const).map(([value, label]) => (
+            <TouchableOpacity key={value} onPress={() => setReportPeriod(value)} style={[styles.periodChip, { backgroundColor: reportPeriod === value ? roleColor : colors.background, borderColor: reportPeriod === value ? roleColor : colors.border }]}>
+              <Text style={[styles.filterChipText, { color: reportPeriod === value ? '#fff' : colors.textMuted }]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {reportPeriod !== 'all' ? (
+          <AppliedDateField
+            value={reportDate}
+            onChange={setReportDate}
+            label={reportPeriod === 'date' ? 'Expense date' : `${reportPeriod[0].toUpperCase()}${reportPeriod.slice(1)} containing`}
+            accent={roleColor}
+            helper="Choose a date within the period you want to reconcile."
+          />
+        ) : null}
+
+        <View style={[styles.auditSummary, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          <View>
+            <Text style={[styles.auditSummaryLabel, { color: colors.textMuted }]}>{expenseReportPeriodLabel(reportDate, reportPeriod)}</Text>
+            <Text style={[styles.auditSummaryCount, { color: colors.text }]}>{displayedExpenses.length} expense record{displayedExpenses.length === 1 ? '' : 's'}</Text>
+          </View>
+          <Text style={[styles.auditSummaryTotal, { color: roleColor }]}>{fmt(reportTotal)}</Text>
+        </View>
+      </View>
+
       <View style={styles.scroll}>
         {displayedExpenses.length === 0 ? (
           <View style={styles.emptyState}>
@@ -578,7 +668,21 @@ export default function ExpensesScreen() {
           </View>
         ) : null}
 
-        {displayedExpenses.map(exp => {
+        {expenseGroups.map(group => (
+          <View key={group.key} style={styles.expenseGroup}>
+            <View style={[styles.expenseGroupHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.expenseGroupIcon, { backgroundColor: roleColor + '18' }]}>
+                <Ionicons name="business-outline" size={17} color={roleColor} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.expenseGroupName, { color: colors.text }]}>{group.name}</Text>
+                <Text style={[styles.expenseGroupMeta, { color: colors.textMuted }]}>
+                  {group.items.length} record{group.items.length === 1 ? '' : 's'} · Approved {fmt(group.approved)} · Pending {fmt(group.pending)}
+                </Text>
+              </View>
+              <Text style={[styles.expenseGroupTotal, { color: roleColor }]}>{fmt(group.total)}</Text>
+            </View>
+            {group.items.map(exp => {
           const st = ST_MAP[exp.status] || ST_MAP.pending;
           const locked = exp.status === 'approved';
 
@@ -728,7 +832,9 @@ export default function ExpensesScreen() {
               ) : null}
             </View>
           );
-        })}
+            })}
+          </View>
+        ))}
         <View style={{ height: 20 }} />
       </View>
       </ScrollView>
@@ -801,6 +907,28 @@ const styles = StyleSheet.create({
   metricValue:  { fontSize: 18, fontWeight: '700' },
   metricLabel:  { fontSize: 11, marginTop: 2 },
   metricCount:  { fontSize: 11, marginTop: 2 },
+  auditFilters: { borderWidth: 1, borderRadius: 14, padding: 12, marginHorizontal: 16, marginTop: 4, marginBottom: 8, gap: 7 },
+  auditFilterHeader: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 2 },
+  auditIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  auditTitle: { fontSize: 14, fontWeight: '800' },
+  auditSubtitle: { fontSize: 11, marginTop: 1 },
+  clearFilters: { fontSize: 12, fontWeight: '700', padding: 5 },
+  filterLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginTop: 3 },
+  filterChips: { gap: 7, paddingVertical: 1, paddingRight: 6 },
+  filterChip: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 11, paddingVertical: 7 },
+  filterChipText: { fontSize: 12, fontWeight: '700' },
+  periodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  periodChip: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, paddingVertical: 7 },
+  auditSummary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderWidth: 1, borderRadius: 10, padding: 11, marginTop: 3 },
+  auditSummaryLabel: { fontSize: 11, fontWeight: '600' },
+  auditSummaryCount: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  auditSummaryTotal: { fontSize: 18, fontWeight: '800' },
+  expenseGroup: { marginBottom: 8 },
+  expenseGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 8 },
+  expenseGroupIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  expenseGroupName: { fontSize: 14, fontWeight: '800' },
+  expenseGroupMeta: { fontSize: 10, lineHeight: 15, marginTop: 2 },
+  expenseGroupTotal: { fontSize: 15, fontWeight: '800' },
   reportSection: { marginTop: 4, marginBottom: 6 },
   reportSectionTitle: { fontSize: 15, fontWeight: '700', marginHorizontal: 16, marginBottom: 8 },
   reportScope: { fontSize: 11, marginHorizontal: 16, marginTop: -5, marginBottom: 6 },
