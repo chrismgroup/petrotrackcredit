@@ -105,6 +105,11 @@ export default function CustomerProfileScreen() {
   const [invoicePeriod, setInvoicePeriod] = useState<CustomerLedgerPeriod>('monthly');
   const [invoiceAnchorDate, setInvoiceAnchorDate] = useState(localDateKey());
   const approvedCustomers = creditCustomers.filter(customer => customer.status === 'approved');
+  const selectedPaymentBalance = paymentCustomerId
+    ? customerLedgerBalance(paymentCustomerId, pumpDailyReports, customerPayments, localDateKey())
+    : null;
+  const paymentPreview = Number(paymentAmount.replace(/,/g, '')) || 0;
+  const projectedPaymentBalance = selectedPaymentBalance === null ? null : selectedPaymentBalance - paymentPreview;
 
   function createCustomer() {
     const details = {
@@ -465,8 +470,8 @@ export default function CustomerProfileScreen() {
 
         {(role === 'acc' || role === 'admin') && approvedCustomers.length > 0 && (
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Record Payment or Advance</Text>
-            <Text style={[styles.hint, { color: colors.textMuted }]}>Payments reduce outstanding credit. Any excess remains available for the customer’s next purchase.</Text>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Reconcile Customer Credit Account</Text>
+            <Text style={[styles.hint, { color: colors.textMuted }]}>Record money received from a credit customer. Petrotrack immediately offsets it against approved credit sales; any excess becomes the customer’s available advance.</Text>
             <View style={styles.customerOptions}>
               {approvedCustomers.map(customer => (
                 <TouchableOpacity
@@ -484,6 +489,17 @@ export default function CustomerProfileScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            {selectedPaymentBalance !== null ? (
+              <View style={[styles.reconcileBox, { borderColor: colors.border, backgroundColor: selectedPaymentBalance > 0 ? '#FFF7E8' : '#EEF7F0' }]}>
+                <Text style={[styles.reconcileLabel, { color: colors.textMuted }]}>Current account position</Text>
+                <Text style={[styles.reconcileValue, { color: selectedPaymentBalance > 0 ? colors.error : colors.success }]}>
+                  {selectedPaymentBalance > 0 ? `Outstanding debt: ${fmt(selectedPaymentBalance)}` : selectedPaymentBalance < 0 ? `Customer advance: ${fmt(Math.abs(selectedPaymentBalance))}` : 'Account balanced'}
+                </Text>
+                {paymentPreview > 0 ? <Text style={[styles.hint, { color: colors.textMuted }]}>
+                  After this payment: {projectedPaymentBalance! > 0 ? `outstanding ${fmt(projectedPaymentBalance!)}` : projectedPaymentBalance! < 0 ? `advance ${fmt(Math.abs(projectedPaymentBalance!))}` : 'account balanced'}
+                </Text> : null}
+              </View>
+            ) : null}
             <TextInput value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" placeholder="Amount paid or deposited" placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.text }]} />
             <AppliedDateField
               testID="customer-payment-date"
