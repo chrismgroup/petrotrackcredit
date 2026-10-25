@@ -886,7 +886,7 @@ describe('screens tolerate incomplete synced records', () => {
     expectScreenToRender(<HRScreen />, 'EMP-MISSING-FIELDS');
   });
 
-  it('builds sales overview directly from submitted shift records without rendering shift reports', () => {
+  it('builds the sales audit ledger from approved shift records without exposing pump details', () => {
     const today = [
       new Date().getFullYear(),
       String(new Date().getMonth() + 1).padStart(2, '0'),
@@ -905,7 +905,7 @@ describe('screens tolerate incomplete synced records', () => {
         date: today,
         product: 'PMS',
         branchId: 'uyo',
-        status: 'pending_manager',
+        status: 'approved',
         openingMeter: 1000,
         closingMeter: 1125,
         liters: 125,
@@ -916,8 +916,10 @@ describe('screens tolerate incomplete synced records', () => {
     let renderer!: ReactTestRenderer;
     act(() => { renderer = create(<SalesScreen />); });
     const text = renderedText(renderer);
-    expect(text).toContain('Revenue & Volume by Product');
-    expect(text).toContain('Revenue & Volume by Branch');
+    expect(text).toContain('Sales audit ledger');
+    expect(text).toContain('Approved shift sales only. Expenses are excluded.');
+    expect(text).toContain('Sales amount');
+    expect(text).toContain('PMS');
     expect(text).toContain('₦100,000');
     expect(text).toContain('125 L');
     expect(text).toContain('Uyo Fuel Station');
