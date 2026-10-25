@@ -267,7 +267,6 @@ router.post("/payments/terminals", async (req, res) => {
   const provider = String(body.provider ?? "");
   const providerTerminalId = String(body.providerTerminalId ?? "").trim();
   const branchId = String(body.branchId ?? "").trim();
-  const pumpId = String(body.pumpId ?? "").trim();
   const label = String(body.label ?? "").trim();
   if (!isPaymentProvider(provider)) {
     res.status(400).json({ error: "Choose a supported provider" });
@@ -281,27 +280,21 @@ router.post("/payments/terminals", async (req, res) => {
     res.status(400).json({ error: "Enter a label of up to 80 characters" });
     return;
   }
-  const { branches, pumps } = await loadBranchesAndPumps();
+  const { branches } = await loadBranchesAndPumps();
   if (!branches.some(branch => branch.id === branchId)) {
     res.status(400).json({ error: "Choose an existing branch" });
     return;
   }
-  if (!pumps.some(pump => pump.id === pumpId && pump.branchId === branchId)) {
-    res.status(400).json({ error: "Choose a pump that belongs to this branch" });
-    return;
-  }
   try {
     const [terminal] = await db.insert(paymentTerminalsTable)
-      .values({ provider, providerTerminalId, branchId, pumpId, label })
+      .values({ provider, providerTerminalId, branchId, pumpId: null, label })
       .returning();
     res.status(201).json({ terminal });
   } catch (err) {
     const { code, constraint } = pgError(err);
     if (code === "23505") {
       res.status(409).json({
-        error: constraint === "payment_terminals_active_pump_unique"
-          ? "This pump already has an active terminal. Disable it first."
-          : "This terminal ID is already registered.",
+        error: "This terminal ID is already registered.",
       });
       return;
     }
