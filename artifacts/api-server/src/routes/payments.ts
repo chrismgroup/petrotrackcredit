@@ -510,7 +510,7 @@ router.post("/payments/shift-terminals/:terminalId/claim", async (req, res) => {
     }).returning();
     res.status(201).json({ assignment, terminal });
   } catch (err) {
-    if (pgError(err).code === "23505" || pgError(err).constraint === "terminal_shift_assignments_no_overlap") {
+    if (pgError(err).code === "23505" || pgError(err).code === "23P01" || pgError(err).constraint === "terminal_shift_assignments_no_overlap") {
       res.status(409).json({ error: "This terminal is already assigned to an active shift" }); return;
     }
     req.log.error({ err }, "Terminal shift claim failed");
