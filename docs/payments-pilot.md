@@ -123,4 +123,4 @@ records signed notifications of payments that already happened.
   difference from the amounts typed on the report, and the transaction list.
   Visible to attendants and managers (own branch only) and to admin, CEO, MD,
   accountants and the other global viewers (HR, marketing).
-- Not yet done: auto-filling shift report POS/transfer fields from these records.
+- Shadow mode: manual POS/transfer inputs remain unchanged for one week. The\n  shift card displays the signed Moniepoint total next to them and flags the\n  variance. After the pilot, enable automatic field population only after\n  comparing every shift and resolving exceptions.
